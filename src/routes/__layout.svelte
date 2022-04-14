@@ -5,8 +5,6 @@
 
   let dbFilePath
 
-  $: console.log($wn)
-
   $: if ($wn) dbFilePath = $wn.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json')
 
   const initialiseFission = async () => {

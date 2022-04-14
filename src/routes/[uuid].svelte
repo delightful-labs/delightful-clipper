@@ -19,11 +19,8 @@
     article = $db[uuid]
   }
 
-  $: console.log(content)
-
   $: if (browser && article && $wn) {
     const getHtml = async () => {
-      console.log('hello')
       const path = $wn.path.file('public', 'Web Pages', article.html)
 
       content = await $fs.cat(path).then((bytes) => {

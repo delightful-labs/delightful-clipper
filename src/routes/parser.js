@@ -1,12 +1,3 @@
-// export async function post({ params, request }) {
-//   const body = await request.json()
-//   console.log(body)
-//   return {
-//     status: 201,
-//     body: body
-//   }
-// }
-
 import { extract } from 'article-parser'
 
 export async function post({ params, request }) {

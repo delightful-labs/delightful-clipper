@@ -14,7 +14,7 @@
     })
 
     const article = await response.json()
-    console.log(article)
+    //console.log(article)
 
     //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
 
@@ -24,14 +24,6 @@
     articleWithoutContent.html = `${article.title}.html`
     $db[uuidv4()] = articleWithoutContent
     await $fs.write(dbFilePath, $db, { publish: true })
-    //console.log(articleWithoutContent)
-    //TODO: actually save to Fission
-  }
-
-  const logArticles = async () => {
-    const publicPath = $wn.path.directory('public', 'Web Pages')
-    const publicLinksObject = await $fs.ls(publicPath)
-    console.log(publicLinksObject)
   }
 
   const loadImage = async () => {
@@ -53,7 +45,6 @@
 
 <h1>Delightful Clipper</h1>
 <button on:click={parseArticle} disabled={!$state}>Parse Artilce</button>
-<button on:click={logArticles} disabled={!$state}>Log Articles</button>
 <button on:click={loadImage} disabled={!$state}>Load Image</button>
 <button on:click={flushDb} disabled={!$state}>Flush DB</button>
 
