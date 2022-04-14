@@ -1,83 +1,7 @@
 <script>
   import * as wn from 'webnative'
-  import { browser } from '$app/env'
-
-  let state
-  let db
-
-  $: console.log(db)
-
-  const initialiseFission = async () => {
-    state = await wn
-      .initialise({
-        permissions: {
-          // Will ask the user permission to store
-          // your apps data in `prWinampivate/Apps/Nullsoft/`
-          app: {
-            name: 'Delightful Clipper',
-            creator: 'Delightful Labs',
-          },
-
-          // Ask the user permission to additional filesystem paths
-          fs: {
-            private: [wn.path.directory('Web Pages')],
-            public: [wn.path.directory('Web Pages')],
-          },
-        },
-      })
-      .catch((err) => {
-        switch (err) {
-          case wn.InitialisationError.InsecureContext:
-          // We need a secure context to do cryptography
-          // Usually this means we need HTTPS or localhost
-
-          case wn.InitialisationError.UnsupportedBrowser:
-          // Browser not supported.
-          // Example: Firefox private mode can't use indexedDB.
-        }
-      })
-
-    switch (state.scenario) {
-      case wn.Scenario.AuthCancelled:
-        // User was redirected to lobby,
-        // but cancelled the authorisation
-        break
-
-      case wn.Scenario.AuthSucceeded:
-      case wn.Scenario.Continuation:
-        // State:
-        // state.authenticated    -  Will always be `true` in these scenarios
-        // state.newUser          -  If the user is new to Fission
-        // state.throughLobby     -  If the user authenticated through the lobby, or just came back.
-        // state.username         -  The user's username.
-        //
-        // ☞ We can now interact with our file system (more on that later)
-        state.fs
-
-        //Check for DB file and create if missing
-        //TODO: turn this into a setIfMissing function
-        const dbFilePath = wn.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json')
-        const hasDb = await state.fs.exists(dbFilePath)
-
-        if (hasDb) {
-          const dbFile = await state.fs.get(dbFilePath)
-          db = dbFile
-        } else {
-          const dbFile = await state.fs.add(dbFilePath, {})
-          db = dbFile
-        }
-
-        break
-
-      case wn.Scenario.NotAuthorised:
-        wn.redirectToLobby(state.permissions)
-        break
-    }
-  }
-
-  $: if (browser) {
-    initialiseFission()
-  }
+  import { v4 as uuidv4 } from 'uuid'
+  import { db, dbFilePath, fs, state } from '$lib/stores'
 
   const parseArticle = async () => {
     let response = await fetch('/parser', {
@@ -85,19 +9,24 @@
       body: JSON.stringify({ url: 'https://alistapart.com/article/breaking-out-of-the-box/' }),
     })
 
-    const json = await response.json()
+    const article = await response.json()
+    console.log(article)
 
-    console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
+    //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
 
-    //await state.fs.add(wn.path.file('public', 'Web Pages', `${json.title}.html`), json.content)
+    await $fs.write(wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
 
+    let { content, ...articleWithoutContent } = article
+    articleWithoutContent.html = `${article.title}.html`
+    $db[uuidv4()] = articleWithoutContent
+    await $fs.write(dbFilePath, $db, { publish: true })
+    //console.log(articleWithoutContent)
     //TODO: actually save to Fission
   }
 
   const logArticles = async () => {
-    console.log('starting')
     const publicPath = wn.path.directory('public', 'Web Pages')
-    const publicLinksObject = await state.fs.ls(publicPath)
+    const publicLinksObject = await $fs.ls(publicPath)
     console.log(publicLinksObject)
   }
 
@@ -109,11 +38,28 @@
 
     const json = await response.json()
 
-    await state.fs.add(wn.path.file('public', 'Web Pages', 'WindowControlsOverlay.png'), json.blob)
+    await $fs.add(wn.path.file('public', 'Web Pages', 'WindowControlsOverlay.png'), json.blob)
+  }
+
+  const flushDb = async () => {
+    $db = {}
+    await $fs.write(dbFilePath, {}, { publish: true })
   }
 </script>
 
 <h1>Delightful Clipper</h1>
-<button on:click={parseArticle} disabled={!state}>Parse Artilce</button>
-<button on:click={logArticles} disabled={!state}>Log Articles</button>
-<button on:click={loadImage} disabled={!state}>Load Image</button>
+<button on:click={parseArticle} disabled={!$state}>Parse Artilce</button>
+<button on:click={logArticles} disabled={!$state}>Log Articles</button>
+<button on:click={loadImage} disabled={!$state}>Load Image</button>
+<button on:click={flushDb} disabled={!$state}>Flush DB</button>
+
+<!--TODO: show different states based on if loading, no articles, etc -->
+{#if $db}
+  {#each Object.entries($db) as [uuid, article]}
+    <a href="/{uuid}">
+      <h2>{article.title}</h2>
+    </a>
+  {/each}
+{:else}
+  <p>No articles</p>
+{/if}

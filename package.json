@@ -10,9 +10,11 @@
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "next",
+    "@sveltejs/adapter-static": "^1.0.0-next.29",
     "@sveltejs/kit": "next",
     "article-parser": "^6.0.0",
-    "svelte": "^3.44.0"
+    "svelte": "^3.44.0",
+    "uuid": "^8.3.2"
   },
   "type": "module",
   "dependencies": {
