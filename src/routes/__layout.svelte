@@ -1,6 +1,7 @@
 <script>
+  import '../assets/global.css'
   import { browser } from '$app/env'
-  import { db, fs, state, wn } from '$lib/stores'
+  import { db, fs, state, wn, userFontSize } from '$lib/stores'
   import { onMount } from 'svelte'
 
   let dbFilePath
@@ -75,6 +76,16 @@
 
   $: if (browser && $wn) {
     initialiseFission()
+  }
+
+  // Anytime the store changes, update the local storage value.
+  $: if (browser) {
+    //TODO: turn into a function that can be used for other number settings
+    const storedFontSize = localStorage.userFontSize
+    if (storedFontSize) {
+      $userFontSize = parseInt(storedFontSize)
+    }
+    userFontSize.subscribe((value) => (localStorage.userFontSize = String(value)))
   }
 
   onMount(async () => {
