@@ -1,7 +1,11 @@
 <script>
-  import * as wn from 'webnative'
   import { v4 as uuidv4 } from 'uuid'
-  import { db, dbFilePath, fs, state } from '$lib/stores'
+  import { db, fs, state, wn } from '$lib/stores'
+
+  //TODO: change to store
+  let dbFilePath
+
+  $: if ($wn) dbFilePath = $wn.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json')
 
   const parseArticle = async () => {
     let response = await fetch('/parser', {
@@ -25,7 +29,7 @@
   }
 
   const logArticles = async () => {
-    const publicPath = wn.path.directory('public', 'Web Pages')
+    const publicPath = $wn.path.directory('public', 'Web Pages')
     const publicLinksObject = await $fs.ls(publicPath)
     console.log(publicLinksObject)
   }

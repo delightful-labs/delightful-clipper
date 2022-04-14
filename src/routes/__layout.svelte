@@ -1,15 +1,16 @@
 <script>
-  import * as wn from 'webnative'
   import { browser } from '$app/env'
-  import { db, fs, state } from '$lib/stores'
+  import { db, fs, state, wn } from '$lib/stores'
+  import { onMount } from 'svelte'
 
-  const dbFilePath = wn.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json')
+  let dbFilePath
 
-  $: console.log($db)
-  $: console.log($state)
+  $: console.log($wn)
+
+  $: if ($wn) dbFilePath = $wn.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json')
 
   const initialiseFission = async () => {
-    $state = await wn
+    $state = await $wn
       .initialise({
         permissions: {
           // Will ask the user permission to store
@@ -21,31 +22,31 @@
 
           // Ask the user permission to additional filesystem paths
           fs: {
-            private: [wn.path.directory('Web Pages')],
-            public: [wn.path.directory('Web Pages')],
+            private: [$wn.path.directory('Web Pages')],
+            public: [$wn.path.directory('Web Pages')],
           },
         },
       })
       .catch((err) => {
         switch (err) {
-          case wn.InitialisationError.InsecureContext:
+          case $wn.InitialisationError.InsecureContext:
           // We need a secure context to do cryptography
           // Usually this means we need HTTPS or localhost
 
-          case wn.InitialisationError.UnsupportedBrowser:
+          case $wn.InitialisationError.UnsupportedBrowser:
           // Browser not supported.
           // Example: Firefox private mode can't use indexedDB.
         }
       })
 
     switch ($state.scenario) {
-      case wn.Scenario.AuthCancelled:
+      case $wn.Scenario.AuthCancelled:
         // User was redirected to lobby,
         // but cancelled the authorisation
         break
 
-      case wn.Scenario.AuthSucceeded:
-      case wn.Scenario.Continuation:
+      case $wn.Scenario.AuthSucceeded:
+      case $wn.Scenario.Continuation:
         // State:
         // state.authenticated    -  Will always be `true` in these scenarios
         // state.newUser          -  If the user is new to Fission
@@ -68,15 +69,20 @@
 
         break
 
-      case wn.Scenario.NotAuthorised:
-        wn.redirectToLobby($state.permissions)
+      case $wn.Scenario.NotAuthorised:
+        $wn.redirectToLobby($state.permissions)
         break
     }
   }
 
-  $: if (browser) {
+  $: if (browser && $wn) {
     initialiseFission()
   }
+
+  onMount(async () => {
+    const wnfs = await import('webnative')
+    $wn = wnfs
+  })
 </script>
 
 <slot />

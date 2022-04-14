@@ -9,9 +9,8 @@
 </script>
 
 <script>
-  import * as wn from 'webnative'
   import { browser } from '$app/env'
-  import { db, dbFilePath, fs, state } from '$lib/stores'
+  import { db, fs, wn } from '$lib/stores'
   export let uuid
   let article
   let content
@@ -22,10 +21,10 @@
 
   $: console.log(content)
 
-  $: if (browser && article) {
+  $: if (browser && article && $wn) {
     const getHtml = async () => {
       console.log('hello')
-      const path = wn.path.file('public', 'Web Pages', article.html)
+      const path = $wn.path.file('public', 'Web Pages', article.html)
 
       content = await $fs.cat(path).then((bytes) => {
         const text = new TextDecoder().decode(bytes)
