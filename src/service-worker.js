@@ -24,7 +24,7 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   // If this is an incoming POST request for the
   // registered "action" URL, respond to it.
-  if (request.method === 'POST' && url.pathname === '/add') {
+  if (request.method === 'POST' && url.pathname === '/add/') {
     event.respondWith((async () => {
       const formData = await request.formData()
       const link = formData.get('link') || ''
@@ -35,6 +35,30 @@ self.addEventListener('fetch', event => {
     return
   }
 
-  const cached = caches.match(request)
+  const cached = caches.match(request);
+
+	if (url.origin === location.origin && build.includes(url.pathname)) {
+		// always return build files from cache
+		// @ts-expect-error
+		event.respondWith(cached)
+	} else if (url.protocol === 'https:' || location.hostname === 'localhost') {
+		// hit the network for everything else...
+		const promise = fetch(request)
+
+		// ...and cache successful responses...
+		promise.then((response) => {
+			// cache successful responses
+			if (response.ok && response.type === 'basic') {
+				const clone = response.clone()
+				caches.open(name).then((cache) => {
+					cache.put(request, clone)
+				})
+			}
+		});
+
+		// ...but if it fails, fall back to cache if available
+		// @ts-expect-error
+		event.respondWith(promise.catch(() => cached || promise))
+	}
 
 })
