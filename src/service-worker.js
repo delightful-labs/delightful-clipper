@@ -24,13 +24,13 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   // If this is an incoming POST request for the
   // registered "action" URL, respond to it.
-  if (request.method === 'POST' && url.pathname === '/add/') {
-    event.respondWith((async () => {
-      const formData = await request.formData()
-      const link = formData.get('link') || ''
-      const responseUrl = await saveBookmark(link)
-      return Response.redirect(responseUrl, 303)
-    })())
+  if (request.method === 'POST' && url.pathname === '/add') {
+    // event.respondWith((async () => {
+    //   const formData = await request.formData()
+    //   const link = formData.get('link') || ''
+    //   const responseUrl = await saveBookmark(link)
+    //   return Response.redirect(responseUrl, 303)
+    // })())
   } else if (request.method !== 'GET' || request.headers.has('range') ) {
     return
   }
