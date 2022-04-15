@@ -21,10 +21,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
 	// @ts-expect-error
 	const { request } = event;
+  const url = new URL(request.url);
 
-	if (request.method !== 'GET' || request.headers.has('range')) return;
+	if (request.method !== 'GET' || request.headers.has('range') || url.pathname === '/add') return;
 
-	const url = new URL(request.url);
 	const cached = caches.match(request);
 
 	if (url.origin === location.origin && build.includes(url.pathname)) {
