@@ -47,6 +47,7 @@
 <button on:click={parseArticle} disabled={!$state}>Parse Artilce</button>
 <button on:click={loadImage} disabled={!$state}>Load Image</button>
 <button on:click={flushDb} disabled={!$state}>Flush DB</button>
+<a href="/add">Add Article</a>
 
 <!--TODO: show different states based on if loading, no articles, etc -->
 {#if $db}

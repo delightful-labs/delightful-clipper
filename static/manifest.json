@@ -13,5 +13,15 @@
   "display": "standalone",
   "scope": "/",
   "theme_color": "#000000",
-  "description": "Zero data, local first web clipper"
+  "description": "Zero data, local first web clipper",
+  "share_target": {
+    "action": "/add",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }
