@@ -22,6 +22,7 @@
 <style>
   details {
     position: relative;
+    width: 300px;
   }
 
   .setting-container {

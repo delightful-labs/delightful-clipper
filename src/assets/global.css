@@ -1,6 +1,18 @@
 :root {
-  background-color: Canvas;
-  color: CanvasText;
+  --color__actionable: #94ff47;
+  accent-color: var(--color__actionable);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color__foreground: #fff;
+    --color__background: #262626;
+  }  
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--color__actionable);
 }
 
 
@@ -54,6 +66,8 @@ body {
   text-rendering: optimizeSpeed;
   word-break: break-word;
   line-height: 1.5;
+  color: var(--color__foreground);
+  background-color: var(--color__background);
 }
 
 /* A elements that don't have a class get default styles */

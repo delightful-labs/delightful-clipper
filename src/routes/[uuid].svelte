@@ -35,7 +35,10 @@
   }
 </script>
 
-<SettingsPanel />
+<header>
+  <a href="/">Home</a>
+  <SettingsPanel />
+</header>
 
 {#if article}
   <article style:font-size="{$userFontSize}px" style:width="{$userContentWidth}vw">
@@ -51,5 +54,11 @@
 <style>
   article {
     margin: 0 auto;
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-self: center;
   }
 </style>
