@@ -33,7 +33,7 @@
   .settings-wrapper {
     position: absolute;
     top: 100%;
-    background-color: canvas;
+    background-color: var(--color__background);
     padding: 1rem;
   }
 </style>
