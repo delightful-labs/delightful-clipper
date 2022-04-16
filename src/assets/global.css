@@ -1,3 +1,9 @@
+:root {
+  background-color: Canvas;
+  color: CanvasText;
+}
+
+
 /* Box sizing rules */
 *,
 *::before,
