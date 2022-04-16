@@ -1,7 +1,7 @@
 <script>
   import '../assets/global.css'
   import { browser } from '$app/env'
-  import { db, fs, state, wn, userFontSize } from '$lib/stores'
+  import { db, fs, state, wn, userFontSize, userContentWidth } from '$lib/stores'
   import { onMount } from 'svelte'
 
   let dbFilePath
@@ -78,14 +78,21 @@
     initialiseFission()
   }
 
+  const initialiseUserSettingNumber = (setting) => {
+    const settingTitle = (setting) => Object.keys(setting)[0]
+    const storedSetting = localStorage[settingTitle]
+
+    if (storedSetting) {
+      setting.update(() => parseInt(storedSetting))
+    }
+
+    setting.subscribe((value) => (localStorage[settingTitle] = String(value)))
+  }
+
   // Anytime the store changes, update the local storage value.
   $: if (browser) {
-    //TODO: turn into a function that can be used for other number settings
-    const storedFontSize = localStorage.userFontSize
-    if (storedFontSize) {
-      $userFontSize = parseInt(storedFontSize)
-    }
-    userFontSize.subscribe((value) => (localStorage.userFontSize = String(value)))
+    initialiseUserSettingNumber(userFontSize)
+    initialiseUserSettingNumber(userContentWidth)
   }
 
   onMount(async () => {

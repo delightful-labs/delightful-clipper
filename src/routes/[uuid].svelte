@@ -10,7 +10,7 @@
 
 <script>
   import { browser } from '$app/env'
-  import { db, fs, wn, userFontSize } from '$lib/stores'
+  import { db, fs, wn, userFontSize, userContentWidth } from '$lib/stores'
   import SettingsPanel from '$lib/components/SettingsPanel.svelte'
   export let uuid
   let article
@@ -38,7 +38,7 @@
 <SettingsPanel />
 
 {#if article}
-  <article style:font-size="{$userFontSize}px">
+  <article style:font-size="{$userFontSize}px" style:width="{$userContentWidth}vw">
     <h1>{article.title}</h1>
     {#await content}
       <p>loading...</p>
@@ -47,3 +47,9 @@
     {/await}
   </article>
 {/if}
+
+<style>
+  article {
+    margin: 0 auto;
+  }
+</style>
