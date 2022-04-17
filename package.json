@@ -13,9 +13,11 @@
     "@sveltejs/adapter-netlify": "^1.0.0-next.51",
     "@sveltejs/adapter-static": "^1.0.0-next.29",
     "@sveltejs/kit": "next",
+    "@xstate/svelte": "^1.0.0",
     "article-parser": "^6.0.0",
     "svelte": "^3.44.0",
-    "uuid": "^8.3.2"
+    "uuid": "^8.3.2",
+    "xstate": "^4.31.0"
   },
   "type": "module",
   "dependencies": {
