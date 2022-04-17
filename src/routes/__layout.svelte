@@ -1,7 +1,7 @@
 <script>
   import '../assets/global.css'
   import { browser } from '$app/env'
-  import { db, fs, state, wn, userFontSize, userContentWidth } from '$lib/stores'
+  import { db, fs, fissionState, wn, userFontSize, userContentWidth, send, state } from '$lib/stores'
   import { onMount } from 'svelte'
 
   let dbFilePath
@@ -9,7 +9,7 @@
   $: if ($wn) dbFilePath = $wn.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json')
 
   const initialiseFission = async () => {
-    $state = await $wn
+    $fissionState = await $wn
       .initialise({
         permissions: {
           // Will ask the user permission to store
@@ -38,7 +38,7 @@
         }
       })
 
-    switch ($state.scenario) {
+    switch ($fissionState.scenario) {
       case $wn.Scenario.AuthCancelled:
         // User was redirected to lobby,
         // but cancelled the authorisation
@@ -53,7 +53,7 @@
         // state.username         -  The user's username.
         //
         // ☞ We can now interact with our file system (more on that later)
-        $fs = $state.fs
+        $fs = $fissionState.fs
 
         //Check for DB file and create if missing
         //TODO: turn this into a setIfMissing function
@@ -69,7 +69,7 @@
         break
 
       case $wn.Scenario.NotAuthorised:
-        $wn.redirectToLobby($state.permissions)
+        $wn.redirectToLobby($fissionState.permissions)
         break
     }
   }
@@ -101,4 +101,5 @@
   })
 </script>
 
+<p>Status: {$state.value}</p>
 <slot />

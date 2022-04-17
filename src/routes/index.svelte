@@ -1,6 +1,6 @@
 <script>
   import { v4 as uuidv4 } from 'uuid'
-  import { db, fs, state, wn } from '$lib/stores'
+  import { db, fs, fissionState, wn } from '$lib/stores'
 
   //TODO: change to store
   let dbFilePath
@@ -44,9 +44,9 @@
 </script>
 
 <h1>Delightful Clipper</h1>
-<button on:click={parseArticle} disabled={!$state}>Parse Artilce</button>
-<button on:click={loadImage} disabled={!$state}>Load Image</button>
-<button on:click={flushDb} disabled={!$state}>Flush DB</button>
+<button on:click={parseArticle} disabled={!$fissionState}>Parse Artilce</button>
+<button on:click={loadImage} disabled={!$fissionState}>Load Image</button>
+<button on:click={flushDb} disabled={!$fissionState}>Flush DB</button>
 <a href="/add">Add Article</a>
 
 <!--TODO: show different states based on if loading, no articles, etc -->
