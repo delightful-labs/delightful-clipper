@@ -14,7 +14,6 @@
     }
 
     settingStore.subscribe((value) => {
-      console.log(value)
       localStorage[settingTitle] = String(value)
     })
   }
