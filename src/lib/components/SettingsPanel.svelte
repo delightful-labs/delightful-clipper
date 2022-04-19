@@ -1,5 +1,7 @@
 <script>
-  import { userFontSize, userContentWidth } from '$lib/stores'
+  import { userSettings } from '$lib/stores'
+
+  const { contentWidth, fontSize } = userSettings
 </script>
 
 <details>
@@ -8,13 +10,13 @@
   Also turn into component-->
   <div class="settings-wrapper">
     <div class="setting-container">
-      <label for={'userFontSize'}>Font Size: {$userFontSize}px</label>
-      <input id={'userFontSize'} type="range" bind:value={$userFontSize} min="10" max="48" />
+      <label for={'userFontSize'}>Font Size: {$fontSize}px</label>
+      <input id={'userFontSize'} type="range" bind:value={$fontSize} min="10" max="48" />
     </div>
 
     <div class="setting-container">
-      <label for={'userContentWidth'}>Content Width: {$userContentWidth}%</label>
-      <input id={'userContentWidth'} type="range" bind:value={$userContentWidth} min="1" max="100" />
+      <label for={'userContentWidth'}>Content Width: {$contentWidth}%</label>
+      <input id={'userContentWidth'} type="range" bind:value={$contentWidth} min="1" max="100" />
     </div>
   </div>
 </details>

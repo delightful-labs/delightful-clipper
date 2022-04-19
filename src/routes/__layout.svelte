@@ -1,105 +1,35 @@
 <script>
   import '../assets/global.css'
   import { browser } from '$app/env'
-  import { db, fs, fissionState, wn, userFontSize, userContentWidth, send, state } from '$lib/stores'
-  import { onMount } from 'svelte'
+  import { db, fs, fissionState, wn, userSettings, send, state } from '$lib/stores'
+  //import { onMount } from 'svelte'
 
-  let dbFilePath
+  $: console.log($state)
 
-  $: if ($wn) dbFilePath = $wn.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json')
-
-  const initialiseFission = async () => {
-    $fissionState = await $wn
-      .initialise({
-        permissions: {
-          // Will ask the user permission to store
-          // your apps data in `prWinampivate/Apps/Nullsoft/`
-          app: {
-            name: 'Delightful Clipper',
-            creator: 'Delightful Labs',
-          },
-
-          // Ask the user permission to additional filesystem paths
-          fs: {
-            private: [$wn.path.directory('Web Pages')],
-            public: [$wn.path.directory('Web Pages')],
-          },
-        },
-      })
-      .catch((err) => {
-        switch (err) {
-          case $wn.InitialisationError.InsecureContext:
-          // We need a secure context to do cryptography
-          // Usually this means we need HTTPS or localhost
-
-          case $wn.InitialisationError.UnsupportedBrowser:
-          // Browser not supported.
-          // Example: Firefox private mode can't use indexedDB.
-        }
-      })
-
-    switch ($fissionState.scenario) {
-      case $wn.Scenario.AuthCancelled:
-        // User was redirected to lobby,
-        // but cancelled the authorisation
-        break
-
-      case $wn.Scenario.AuthSucceeded:
-      case $wn.Scenario.Continuation:
-        // State:
-        // state.authenticated    -  Will always be `true` in these scenarios
-        // state.newUser          -  If the user is new to Fission
-        // state.throughLobby     -  If the user authenticated through the lobby, or just came back.
-        // state.username         -  The user's username.
-        //
-        // ☞ We can now interact with our file system (more on that later)
-        $fs = $fissionState.fs
-
-        //Check for DB file and create if missing
-        //TODO: turn this into a setIfMissing function
-        const hasDb = await $fs.exists(dbFilePath)
-
-        if (hasDb) {
-          const dbFile = await $fs.cat(dbFilePath)
-          $db = dbFile
-        } else {
-          $db = {}
-        }
-
-        break
-
-      case $wn.Scenario.NotAuthorised:
-        $wn.redirectToLobby($fissionState.permissions)
-        break
-    }
-  }
-
-  $: if (browser && $wn) {
-    initialiseFission()
-  }
-
-  const initialiseUserSettingNumber = (setting) => {
-    const settingTitle = (setting) => Object.keys(setting)[0]
+  const initialiseUserSettingNumber = (settingTitle, settingStore) => {
     const storedSetting = localStorage[settingTitle]
 
     if (storedSetting) {
-      setting.update(() => parseInt(storedSetting))
+      settingStore.update(() => parseInt(storedSetting))
     }
 
-    setting.subscribe((value) => (localStorage[settingTitle] = String(value)))
+    settingStore.subscribe((value) => {
+      console.log(value)
+      localStorage[settingTitle] = String(value)
+    })
   }
 
   // Anytime the store changes, update the local storage value.
   $: if (browser) {
-    initialiseUserSettingNumber(userFontSize)
-    initialiseUserSettingNumber(userContentWidth)
+    for (const [key, value] of Object.entries(userSettings)) {
+      initialiseUserSettingNumber(key, value)
+    }
   }
 
-  onMount(async () => {
-    const wnfs = await import('webnative')
-    $wn = wnfs
-  })
+  $: if (browser) {
+    send('IN_BROWSER')
+  }
 </script>
 
-<p>Status: {$state.value}</p>
+<p>Status: {$state?.value}</p>
 <slot />

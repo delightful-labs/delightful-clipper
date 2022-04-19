@@ -10,11 +10,13 @@
 
 <script>
   import { browser } from '$app/env'
-  import { db, fs, wn, userFontSize, userContentWidth } from '$lib/stores'
+  import { db, fs, wn, userSettings } from '$lib/stores'
   import SettingsPanel from '$lib/components/SettingsPanel.svelte'
   export let uuid
   let article
   let content
+
+  const { contentWidth, fontSize } = userSettings
 
   $: if ($db) {
     article = $db[uuid]
@@ -41,7 +43,7 @@
 </header>
 
 {#if article}
-  <article style:font-size="{$userFontSize}px" style:width="{$userContentWidth}vw">
+  <article style:font-size="{$fontSize}px" style:width="{$contentWidth}vw">
     <h1>{article.title}</h1>
     {#await content}
       <p>loading...</p>
