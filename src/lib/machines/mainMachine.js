@@ -1,4 +1,6 @@
-import { createMachine, assign } from 'xstate'
+import { createMachine, assign, send } from 'xstate'
+import { fromWebWorker } from '$lib/scripts/fromWebWorker'
+import fileSystemWorker from '$lib/scripts/fileSystemWorker.js?worker'
 
 //const { permissions } = wn.initialise({ loadFileSystem: false })
 
@@ -89,7 +91,7 @@ const mainMachine = createMachine({
     fs: undefined,
     wnState: undefined,
     dbFilePath: undefined,
-    error: undefined
+    error: undefined,
   },
   states: {
     uninitialized: {
@@ -117,60 +119,48 @@ const mainMachine = createMachine({
     },
     initializingWn: {
       on: {
-        CONTINUATION: 'initialized',
+        CONTINUATION: 'loadingFs',
+        AUTH_SUCCEEDED: 'loadingFs',
+        NOT_AUTHORISED: 'failure', //@TODO: figure out logic for this. Probably an idle state.
+        AUTH_CANCELLED: 'failure', //@TODO: figure out logic for this
       },
       invoke: {
-        src: (context, event) => (send) => {
-          context.wn.initialise({ loadFileSystem: false }).then(a => send({type: a.scenario}))
-
-          return;
-        }
-        // src: (context, event) => context.wn.initialise({ loadFileSystem: false }),
-        // onDone: {
-        //   target: 'authenticating',
-        //   actions: [
-        //     (context, event) => console.log(event.data.scenario),
-        //     (context, event) => send(event.data.scenario)
-        //     // assign({
-        //     //   wnState: (context, event) => {
-        //     //     switch (event.data.scenario) {
-        //     //       case context.wn.Scenario.AuthCancelled:
-        //     //         // User was redirected to lobby,
-        //     //         // but cancelled the authorisation
-        //     //         break
-              
-        //     //       case context.wn.Scenario.AuthSucceeded:
-        //     //       case context.wn.Scenario.Continuation:
-        //     //         // ☞ We can now interact with our file system (more on that later)
-        //     //         //@TODO              
-        //     //         break
-              
-        //     //       case context.wn.Scenario.NotAuthorised:
-        //     //         context.wn.redirectToLobby($fissionState.permissions)
-        //     //         break
-        //     //     }
-        //     //   }
-        //     // })
-        //   ]
-        // },
-        // onError: {
-        //   target: 'failure',
-        //   actions: [
-        //     assign({ error: (context, event) => event.data })
-        //   ]
-        // },
+        src: (context, event) => (send) => context.wn.initialise({ 
+          loadFileSystem: false, 
+          permissions: {
+            app: {
+              name: 'Delightful Clipper',
+              creator: 'Delightful Labs',
+            },
+            fs: {
+              private: [context.wn.path.directory('Web Pages')],
+              public: [context.wn.path.directory('Web Pages')],
+            },
+          },
+        }).then(a => {
+          send({type: a.scenario, state: a})
+        })
+        //@TODO: add catch for errors
       },
+      exit: assign((context, event) =>  ({wnState: event.state}))
     },
     loadingFs: {
-      on: { CONTINUATION: 'initialized'}
-      //on: { TOGGLE: 'inactive' }
+      on: {
+        FS_LOADED: 'initialized',
+      },
+      invoke: {
+        id: 'fileSystem',
+        src: fromWebWorker(() => new fileSystemWorker()),
+      },
+      entry: [
+        send((context, event) => ({ type: 'LOAD_FS', permissions: context.wnState.permissions }), { to: 'fileSystem' })
+      ],
     },
     initialized: {
       //on: { TOGGLE: 'inactive' }
+      //entry: send({ type: 'POW' }, { to: 'fileSystem' }),
     },
-    failure: [
-      
-    ]
+    failure: {}
   }
 })
 
