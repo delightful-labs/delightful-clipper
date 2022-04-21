@@ -1,5 +1,5 @@
 import { interpret } from 'xstate';
-import { getEventType } from 'xstate/lib/utils';
+import { getEventType } from 'xstate/lib/utils.js';
 
 export function fromWebWorker(createWorker) {
   return (context, event) => (sendBack, receive) => {
@@ -14,6 +14,7 @@ export function fromWebWorker(createWorker) {
     worker.addEventListener('message', handler);
 
     receive(({ _transfer, ...event }) => {
+      console.log(_transfer)
       worker.postMessage(event, _transfer);
     });
 
@@ -39,6 +40,7 @@ export function interpretInWebWorker(machine, options) {
   });
 
   _self.addEventListener('message', (event) => {
+    console.log(event)
     try {
       // Will error out if the data is not a valid event
       getEventType(event.data);

@@ -4,7 +4,7 @@
   import { db, fs, fissionState, wn, userSettings, send, state } from '$lib/stores'
   //import { onMount } from 'svelte'
 
-  $: console.log($state)
+  //$: console.log($state)
 
   const initialiseUserSettingNumber = (settingTitle, settingStore) => {
     const storedSetting = localStorage[settingTitle]

@@ -9,17 +9,28 @@ const fsMachine = createMachine({
   context: {
     fs: undefined
   },
-  on: {
-    LOAD_FS: {
-      invoke: {
-        src: (ctx, evt) => wn.loadFileSystem(evt.data.permissions)
-      }
-      // actions: [
-      //   log((ctx, evt) => evt.permissions),
-      //   log('PING'), sendParent('FS_LOADED')
-      // ],
+  initial: 'uninitialized',
+  states: {
+    uninitialized: {
+      on: {
+        LOAD_FS: { 
+          target: 'initializing',
+          actions: (ctx, evt) => console.log(evt)
+        },
+      },
     },
-  },
+    initializing: {
+      invoke: {
+        src: (ctx, evt) => (send) => {
+          //wn.loadFileSystem(evt.permissions).then(e=> console.log(e)).catch(e=> console.log(e))
+        }
+      },
+      entry: log('entry')
+    },
+    initialized: {
+      entry: log('init')
+    }
+  }
 })
 
 const service = interpretInWebWorker(fsMachine)

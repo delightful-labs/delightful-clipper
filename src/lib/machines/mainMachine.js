@@ -119,8 +119,8 @@ const mainMachine = createMachine({
     },
     initializingWn: {
       on: {
-        CONTINUATION: 'loadingFs',
-        AUTH_SUCCEEDED: 'loadingFs',
+        CONTINUATION: 'creatingPort',
+        AUTH_SUCCEEDED: 'creatingPort',
         NOT_AUTHORISED: 'failure', //@TODO: figure out logic for this. Probably an idle state.
         AUTH_CANCELLED: 'failure', //@TODO: figure out logic for this
       },
@@ -144,16 +144,34 @@ const mainMachine = createMachine({
       },
       exit: assign((context, event) =>  ({wnState: event.state}))
     },
-    loadingFs: {
+    creatingPort: {
+      invoke: {
+        id: 'port',
+        src: (context, event) => context.wn.ipfs.iframe(),
+        onDone: {
+          target: 'invokingWebWorker',
+          //actions: assign({ user: (context, event) => event.data })
+        },
+        onError: {
+          target: 'failure',
+          actions: assign({ error: (context, event) => event.data })
+        }
+      },
+    },
+    invokingWebWorker: {
       on: {
         FS_LOADED: 'initialized',
       },
       invoke: {
         id: 'fileSystem',
         src: fromWebWorker(() => new fileSystemWorker()),
+        onDone: {
+          //actions: console.log('hello')
+        }
       },
       entry: [
-        send((context, event) => ({ type: 'LOAD_FS', permissions: context.wnState.permissions }), { to: 'fileSystem' })
+        //(context, event)=> console.log(event),
+        send((context, event) => ({ type: 'LOAD_FS', _transfer: [event.data] }), { to: 'fileSystem' })
       ],
     },
     initialized: {
