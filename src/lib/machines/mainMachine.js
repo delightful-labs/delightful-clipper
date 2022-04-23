@@ -89,33 +89,52 @@ const mainMachine = createMachine({
         idle: {
           on: {
             SAVE_ARTICLE: {
-              target: 'savingArticle',
-              actions: [
-                () => console.log('bye')
-                // let response = await fetch('/parser', {
-                //   method: 'post',
-                //   body: JSON.stringify({ url: 'https://alistapart.com/article/breaking-out-of-the-box/' }),
-                // })
-            
-                // const article = await response.json()
-            
-                // //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
-            
-                // await $state.context.fs.write($state.context.wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
-            
-                // let { content, ...articleWithoutContent } = article
-                // articleWithoutContent.html = `${article.title}.html`
-                // $state.context.db[uuidv4()] = articleWithoutContent
-                // await $state.context.fs.write($state.context.dbFilePath, $state.context.db, { publish: true })
-              ],
+              target: 'parsingArticle',
             } 
           },
         },
+        parsingArticle: {
+          //entry: ()=> console.log('hello'),
+          invoke: {
+            //Move saving function here
+            src: (ctx, evt) => async (send) => {
+              let response = await fetch('/parser', {
+                method: 'post',
+                body: JSON.stringify({ url: 'https://alistapart.com/article/breaking-out-of-the-box/' }),
+              })
+          
+              const article = await response.json()
+          
+              //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
+          
+              await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
+          
+              let { content, ...articleWithoutContent } = article
+              articleWithoutContent.html = `${article.title}.html`
+
+              send({ type: 'SAVE', response: article})
+            }
+          },
+          on: {
+            SAVE: { 
+              actions: [
+                ()=> console.log('hi'),
+                assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: evt.response}}))
+              ],
+              target: 'savingArticle'
+            }
+          }
+        },
         savingArticle: {
-          entry: ()=> console.log('hello')
+          invoke: {
+            src: (ctx, evt) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
+            onDone: {
+              actions: [(c,e)=> console.log(e)]
+            }
+          },
+          //entry: (ctx, evt) => console.log(ctx),
         }
       }
-      //entry: send({ type: 'POW' }, { to: 'fileSystem' }),
     },
     failure: {}
   }
