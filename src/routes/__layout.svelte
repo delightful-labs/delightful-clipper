@@ -1,8 +1,7 @@
 <script>
   import '../assets/global.css'
   import { browser } from '$app/env'
-  import { db, fs, fissionState, wn, userSettings, send, state } from '$lib/stores'
-  //import { onMount } from 'svelte'
+  import { userSettings, send, state } from '$lib/stores'
 
   $: console.log($state)
 
@@ -32,7 +31,7 @@
   const signin = () => send('AUTHORIZE')
 </script>
 
-<p>Status: {$state?.value}</p>
+<p>Status: {JSON.stringify($state?.value)}</p>
 {#if $state?.value === 'unauthorized'}
   <button on:click={signin}>Sign in with Fission</button>
 {/if}

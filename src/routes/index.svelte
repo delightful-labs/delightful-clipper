@@ -1,27 +1,10 @@
 <script>
-  import { v4 as uuidv4 } from 'uuid'
-  import { db, fissionState, wn, state } from '$lib/stores'
+  import { db, fissionState, wn, state, send } from '$lib/stores'
 
   //TODO: change to store
   let dbFilePath
 
-  const parseArticle = async () => {
-    let response = await fetch('/parser', {
-      method: 'post',
-      body: JSON.stringify({ url: 'https://alistapart.com/article/breaking-out-of-the-box/' }),
-    })
-
-    const article = await response.json()
-
-    //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
-
-    await $state.context.fs.write($state.context.wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
-
-    let { content, ...articleWithoutContent } = article
-    articleWithoutContent.html = `${article.title}.html`
-    $state.context.db[uuidv4()] = articleWithoutContent
-    await $state.context.fs.write($state.context.dbFilePath, $state.context.db, { publish: true })
-  }
+  const parseArticle = () => send('SAVE_ARTICLE')
 
   const loadImage = async () => {
     let response = await fetch('/loadImage', {
