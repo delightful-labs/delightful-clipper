@@ -1,11 +1,9 @@
 <script>
   import { v4 as uuidv4 } from 'uuid'
-  import { db, fs, fissionState, wn } from '$lib/stores'
+  import { db, fissionState, wn, state } from '$lib/stores'
 
   //TODO: change to store
   let dbFilePath
-
-  $: if ($wn) dbFilePath = $wn.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json')
 
   const parseArticle = async () => {
     let response = await fetch('/parser', {
@@ -18,12 +16,12 @@
 
     //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
 
-    await $fs.write(wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
+    await $state.fs.write(wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
 
     let { content, ...articleWithoutContent } = article
     articleWithoutContent.html = `${article.title}.html`
     $db[uuidv4()] = articleWithoutContent
-    await $fs.write(dbFilePath, $db, { publish: true })
+    await $state.fs.write(dbFilePath, $db, { publish: true })
   }
 
   const loadImage = async () => {
@@ -34,12 +32,12 @@
 
     const json = await response.json()
 
-    await $fs.add(wn.path.file('public', 'Web Pages', 'WindowControlsOverlay.png'), json.blob)
+    await $state.fs.add(wn.path.file('public', 'Web Pages', 'WindowControlsOverlay.png'), json.blob)
   }
 
   const flushDb = async () => {
     $db = {}
-    await $fs.write(dbFilePath, {}, { publish: true })
+    await $state.fs.write(dbFilePath, {}, { publish: true })
   }
 </script>
 

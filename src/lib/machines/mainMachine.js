@@ -91,6 +91,7 @@ const mainMachine = createMachine({
     fs: undefined,
     wnState: undefined,
     dbFilePath: undefined,
+    db: {},
     error: undefined,
   },
   states: {
@@ -105,7 +106,8 @@ const mainMachine = createMachine({
           target: 'initializingWn',
           actions: [
             assign({
-              wn: (context, event) => event.data
+              wn: (context, event) => event.data,
+              dbFilePath: (context, event) => event.data.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json'),
             })
           ]
         },
@@ -119,14 +121,13 @@ const mainMachine = createMachine({
     },
     initializingWn: {
       on: {
-        CONTINUATION: 'creatingPort',
-        AUTH_SUCCEEDED: 'creatingPort',
+        CONTINUATION: 'initialized',
+        AUTH_SUCCEEDED: 'initialized',
         NOT_AUTHORISED: 'failure', //@TODO: figure out logic for this. Probably an idle state.
         AUTH_CANCELLED: 'failure', //@TODO: figure out logic for this
       },
       invoke: {
         src: (context, event) => (send) => context.wn.initialise({ 
-          loadFileSystem: false, 
           permissions: {
             app: {
               name: 'Delightful Clipper',
@@ -142,37 +143,15 @@ const mainMachine = createMachine({
         })
         //@TODO: add catch for errors
       },
-      exit: assign((context, event) =>  ({wnState: event.state}))
-    },
-    creatingPort: {
-      invoke: {
-        id: 'port',
-        src: (context, event) => context.wn.ipfs.iframe(),
-        onDone: {
-          target: 'invokingWebWorker',
-          //actions: assign({ user: (context, event) => event.data })
-        },
-        onError: {
-          target: 'failure',
-          actions: assign({ error: (context, event) => event.data })
-        }
-      },
-    },
-    invokingWebWorker: {
-      on: {
-        FS_LOADED: 'initialized',
-      },
-      invoke: {
-        id: 'fileSystem',
-        src: fromWebWorker(() => new fileSystemWorker()),
-        onDone: {
-          //actions: console.log('hello')
-        }
-      },
-      entry: [
-        //(context, event)=> console.log(event),
-        send((context, event) => ({ type: 'LOAD_FS', _transfer: [event.data] }), { to: 'fileSystem' })
-      ],
+      exit: assign({
+        wnState: (context, event) =>  event.state,
+        fs: (context, event) =>  event.state.fs,
+        //TODO: Move to invoked promise/callback
+        // db: async (context, event) => {
+        //     const hasDb = await event.state.exists(context.dbFilePath)
+        //     return !hasDb ? await event.state.fs.cat(context.dbFilePath) : {}
+        // }   
+      })
     },
     initialized: {
       //on: { TOGGLE: 'inactive' }
