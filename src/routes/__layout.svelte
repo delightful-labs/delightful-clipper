@@ -28,7 +28,13 @@
   $: if (browser) {
     send('IN_BROWSER')
   }
+
+  const signin = () => send('AUTHORIZE')
 </script>
 
 <p>Status: {$state?.value}</p>
+{#if $state?.value === 'unauthorized'}
+  <button on:click={signin}>Sign in with Fission</button>
+{/if}
+
 <slot />

@@ -123,7 +123,7 @@ const mainMachine = createMachine({
       on: {
         CONTINUATION: 'initialized',
         AUTH_SUCCEEDED: 'initialized',
-        NOT_AUTHORISED: 'failure', //@TODO: figure out logic for this. Probably an idle state.
+        NOT_AUTHORISED: 'unauthorized', //@TODO: figure out logic for this. Probably an idle state.
         AUTH_CANCELLED: 'failure', //@TODO: figure out logic for this
       },
       invoke: {
@@ -156,6 +156,18 @@ const mainMachine = createMachine({
     initialized: {
       //on: { TOGGLE: 'inactive' }
       //entry: send({ type: 'POW' }, { to: 'fileSystem' }),
+    },
+    unauthorized: {
+      on: {
+        'AUTHORIZE': {
+          target: 'authorizing'
+        }
+      }
+    },
+    authorizing: {
+      entry: (context) => {
+        context.wn.redirectToLobby(context.wnState.permissions)
+      }
     },
     failure: {}
   }
