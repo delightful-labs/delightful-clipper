@@ -153,10 +153,6 @@ const mainMachine = createMachine({
         // }   
       })
     },
-    initialized: {
-      //on: { TOGGLE: 'inactive' }
-      //entry: send({ type: 'POW' }, { to: 'fileSystem' }),
-    },
     unauthorized: {
       on: {
         'AUTHORIZE': {
@@ -168,6 +164,16 @@ const mainMachine = createMachine({
       entry: (context) => {
         context.wn.redirectToLobby(context.wnState.permissions)
       }
+    },
+    initialized: {
+      on: { 
+        SAVE_ARTICLE: {
+          actions: [
+            
+          ]
+        } 
+      }
+      //entry: send({ type: 'POW' }, { to: 'fileSystem' }),
     },
     failure: {}
   }

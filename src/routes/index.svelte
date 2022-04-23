@@ -12,16 +12,15 @@
     })
 
     const article = await response.json()
-    //console.log(article)
 
     //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
 
-    await $state.fs.write(wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
+    await $state.context.fs.write($state.context.wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
 
     let { content, ...articleWithoutContent } = article
     articleWithoutContent.html = `${article.title}.html`
-    $db[uuidv4()] = articleWithoutContent
-    await $state.fs.write(dbFilePath, $db, { publish: true })
+    $state.context.db[uuidv4()] = articleWithoutContent
+    await $state.context.fs.write($state.context.dbFilePath, $state.context.db, { publish: true })
   }
 
   const loadImage = async () => {
@@ -42,7 +41,7 @@
 </script>
 
 <h1>Delightful Clipper</h1>
-<button on:click={parseArticle} disabled={!$fissionState}>Parse Artilce</button>
+<button on:click={parseArticle} disabled={!$state.context.wnState}>Parse Article</button>
 <button on:click={loadImage} disabled={!$fissionState}>Load Image</button>
 <button on:click={flushDb} disabled={!$fissionState}>Flush DB</button>
 <a href="/add">Add Article</a>
