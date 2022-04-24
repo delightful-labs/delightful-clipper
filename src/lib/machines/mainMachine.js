@@ -69,22 +69,27 @@ const mainMachine = createMachine({
     checkingForDb: {
       on: {
         FOUND_DB: {
-          actions: ()=> console.log('YES')
+          target: 'loadingDb'
         },
         NO_DB: {
-          actions: ()=> console.log('NO')
+          target: 'initialized'
         }
       },
       invoke: {
         src: (context, event) => (send) => context.fs.exists(context.dbFilePath)
-          .then(e => send(event.data ? 'FOUND_DB' : 'NO_DB'))
-        // onDone: {
-        //   target:  evt.data ? 'loadingDd' : 'initialized'           
-        // }
+          .then(e => send(e ? 'FOUND_DB' : 'NO_DB'))
       }
     },
     loadingDb: {
-      // context.fs.cat(context.dbFilePath) : {}
+      invoke: {
+        src: (context, event) => context.fs.cat(context.dbFilePath),
+        onDone: {
+          actions: assign({
+            db: (context, event) => event.data
+          }),
+          target: 'initialized'
+        }
+      }
     },
     unauthorized: {
       on: {
@@ -109,7 +114,6 @@ const mainMachine = createMachine({
           },
         },
         parsingArticle: {
-          //entry: ()=> console.log('hello'),
           invoke: {
             //Move saving function here
             src: (ctx, evt) => async (send) => {
@@ -133,7 +137,6 @@ const mainMachine = createMachine({
           on: {
             SAVE: { 
               actions: [
-                ()=> console.log('hi'),
                 assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: evt.response}}))
               ],
               target: 'savingArticle'
@@ -144,10 +147,9 @@ const mainMachine = createMachine({
           invoke: {
             src: (ctx, evt) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
             onDone: {
-              actions: [(c,e)=> console.log(e)]
+              target: 'idle'
             }
           },
-          //entry: (ctx, evt) => console.log(ctx),
         }
       }
     },
