@@ -1,4 +1,4 @@
-import { createMachine, assign, send } from 'xstate'
+import { createMachine, assign } from 'xstate'
 import { v4 as uuidv4 } from 'uuid'
 
 const mainMachine = createMachine({
@@ -108,9 +108,12 @@ const mainMachine = createMachine({
       states: {
         idle: {
           on: {
+            ERASE_DATABASE: {
+              target: 'erasingDatabase'
+            },
             SAVE_ARTICLE: {
-              target: 'parsingArticle',
-            } 
+              target: 'parsingArticle'
+            }
           },
         },
         parsingArticle: {
@@ -146,6 +149,14 @@ const mainMachine = createMachine({
         savingArticle: {
           invoke: {
             src: (ctx) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
+            onDone: {
+              target: 'idle'
+            }
+          },
+        },
+        erasingDatabase: {
+          invoke: {
+            src: (ctx) => ctx.fs.write(ctx.dbFilePath, {}, { publish: true }),
             onDone: {
               target: 'idle'
             }

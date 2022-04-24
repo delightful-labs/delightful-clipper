@@ -1,7 +1,15 @@
 <script>
-  import { userSettings } from '$lib/stores'
+  import { userSettings, state, send } from '$lib/stores'
 
   const { contentWidth, fontSize } = userSettings
+
+  //await $state.fs.write(dbFilePath, {}, { publish: true })
+  const eraseDb = async () => {
+    let text = 'Delete database?\nThis cannot be undone'
+    if (confirm(text) == true) {
+      send('ERASE_DATABASE')
+    }
+  }
 </script>
 
 <details>
@@ -18,6 +26,8 @@
       <label for={'userContentWidth'}>Content Width: {$contentWidth}%</label>
       <input id={'userContentWidth'} type="range" bind:value={$contentWidth} min="1" max="100" />
     </div>
+
+    <button on:click={eraseDb}>Erase Database</button>
   </div>
 </details>
 
