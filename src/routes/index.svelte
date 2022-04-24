@@ -1,9 +1,7 @@
 <script>
   import { state, send } from '$lib/stores'
-
-  //TODO: change to store
-
-  const parseArticle = () => send('SAVE_ARTICLE')
+  import { isEmpty } from 'ramda'
+  import ParseForm from '$components/ParseForm.svelte'
 
   // const loadImage = async () => {
   //   let response = await fetch('/loadImage', {
@@ -23,11 +21,11 @@
 </script>
 
 <h1>Delightful Clipper</h1>
-<button on:click={parseArticle} disabled={!$state.context.wnState}>Parse Article</button>
+<ParseForm />
 <a href="/add">Add Article</a>
 
 <!--TODO: show different states based on if loading, no articles, etc -->
-{#if $state.context?.db}
+{#if $state.context?.db && !isEmpty($state.context.db)}
   {#each Object.entries($state.context.db) as [uuid, article]}
     <a href="/{uuid}">
       <h2>{article.title}</h2>

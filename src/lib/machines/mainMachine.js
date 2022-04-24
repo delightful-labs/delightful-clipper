@@ -19,20 +19,20 @@ const mainMachine = createMachine({
     loadingWn: {
       invoke: {
         id: 'loadWn',
-        src: (context, event) =>  import('webnative'),
+        src: () =>  import('webnative'),
         onDone: {
           target: 'initializingWn',
           actions: [
             assign({
-              wn: (context, event) => event.data,
-              dbFilePath: (context, event) => event.data.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json'),
+              wn: (ctx, evt) => evt.data,
+              dbFilePath: (ctx, evt) => evt.data.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json'),
             })
           ]
         },
         onError: {
           target: 'failure',
           actions: [
-            assign({ error: (context, event) => event.data })
+            assign({ error: (ctx, evt) => evt.data })
           ]
         }
       },
@@ -41,19 +41,19 @@ const mainMachine = createMachine({
       on: {
         CONTINUATION: 'checkingForDb',
         AUTH_SUCCEEDED: 'checkingForDb',
-        NOT_AUTHORISED: 'unauthorized', //@TODO: figure out logic for this. Probably an idle state.
-        AUTH_CANCELLED: 'failure', //@TODO: figure out logic for this
+        NOT_AUTHORISED: 'unauthorized',
+        AUTH_CANCELLED: 'unauthorized',
       },
       invoke: {
-        src: (context, event) => (send) => context.wn.initialise({ 
+        src: (ctx, evt) => (send) => ctx.wn.initialise({ 
           permissions: {
             app: {
               name: 'Delightful Clipper',
               creator: 'Delightful Labs',
             },
             fs: {
-              private: [context.wn.path.directory('Web Pages')],
-              public: [context.wn.path.directory('Web Pages')],
+              private: [ctx.wn.path.directory('Web Pages')],
+              public: [ctx.wn.path.directory('Web Pages')],
             },
           },
         }).then(a => {
@@ -62,8 +62,8 @@ const mainMachine = createMachine({
         //@TODO: add catch for errors
       },
       exit: assign({
-        wnState: (context, event) =>  event.state,
-        fs: (context, event) =>  event.state.fs, 
+        wnState: (ctx, evt) =>  evt.state,
+        fs: (ctx, evt) =>  evt.state.fs, 
       })
     },
     checkingForDb: {
@@ -76,16 +76,16 @@ const mainMachine = createMachine({
         }
       },
       invoke: {
-        src: (context, event) => (send) => context.fs.exists(context.dbFilePath)
+        src: (ctx) => (send) => ctx.fs.exists(ctx.dbFilePath)
           .then(e => send(e ? 'FOUND_DB' : 'NO_DB'))
       }
     },
     loadingDb: {
       invoke: {
-        src: (context, event) => context.fs.cat(context.dbFilePath),
+        src: (ctx) => ctx.fs.cat(ctx.dbFilePath),
         onDone: {
           actions: assign({
-            db: (context, event) => event.data
+            db: (ctx, evt) => evt.data
           }),
           target: 'initialized'
         }
@@ -99,8 +99,8 @@ const mainMachine = createMachine({
       }
     },
     authorizing: {
-      entry: (context) => {
-        context.wn.redirectToLobby(context.wnState.permissions)
+      entry: (ctx) => {
+        ctx.wn.redirectToLobby(ctx.wnState.permissions)
       }
     },
     initialized: {
@@ -118,7 +118,7 @@ const mainMachine = createMachine({
             src: (ctx, evt) => async (send) => {
               let response = await fetch('/parser', {
                 method: 'post',
-                body: JSON.stringify({ url: 'https://alistapart.com/article/breaking-out-of-the-box/' }),
+                body: JSON.stringify({ url: evt.url }),
               })
           
               const article = await response.json()
@@ -144,7 +144,7 @@ const mainMachine = createMachine({
         },
         savingArticle: {
           invoke: {
-            src: (ctx, evt) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
+            src: (ctx) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
             onDone: {
               target: 'idle'
             }
