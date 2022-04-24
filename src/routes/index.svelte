@@ -1,5 +1,5 @@
 <script>
-  import { state, send } from '$lib/stores'
+  import { state } from '$lib/stores'
   import { isEmpty } from 'ramda'
   import ParseForm from '$components/ParseForm.svelte'
 
@@ -12,11 +12,6 @@
   //   const json = await response.json()
 
   //   await $state.fs.add(wn.path.file('public', 'Web Pages', 'WindowControlsOverlay.png'), json.blob)
-  // }
-
-  // const flushDb = async () => {
-  //   $db = {}
-  //   await $state.fs.write(dbFilePath, {}, { publish: true })
   // }
 </script>
 

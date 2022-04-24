@@ -36,7 +36,7 @@
   <button on:click={signin}>Sign in with Fission</button>
 {/if}
 
-{#if $state.matches('initialized')}
+{#if $state.matches('fileSystem.initialized')}
   <slot />
 {:else}
   <p>Loading...</p>

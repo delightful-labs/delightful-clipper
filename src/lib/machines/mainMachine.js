@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 const mainMachine = createMachine({
   id: 'main',
-  initial: 'uninitialized',
+  type: 'parallel',
   context: {
     wn: null,
     fs: undefined,
@@ -13,158 +13,170 @@ const mainMachine = createMachine({
     error: undefined,
   },
   states: {
-    uninitialized: {
-      on: { IN_BROWSER: 'loadingWn' }
-    },
-    loadingWn: {
-      invoke: {
-        id: 'loadWn',
-        src: () =>  import('webnative'),
-        onDone: {
-          target: 'initializingWn',
-          actions: [
-            assign({
-              wn: (ctx, evt) => evt.data,
-              dbFilePath: (ctx, evt) => evt.data.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json'),
-            })
-          ]
-        },
-        onError: {
-          target: 'failure',
-          actions: [
-            assign({ error: (ctx, evt) => evt.data })
-          ]
-        }
-      },
-    },
-    initializingWn: {
-      on: {
-        CONTINUATION: 'checkingForDb',
-        AUTH_SUCCEEDED: 'checkingForDb',
-        NOT_AUTHORISED: 'unauthorized',
-        AUTH_CANCELLED: 'unauthorized',
-      },
-      invoke: {
-        src: (ctx, evt) => (send) => ctx.wn.initialise({ 
-          permissions: {
-            app: {
-              name: 'Delightful Clipper',
-              creator: 'Delightful Labs',
-            },
-            fs: {
-              private: [ctx.wn.path.directory('Web Pages')],
-              public: [ctx.wn.path.directory('Web Pages')],
-            },
-          },
-        }).then(a => {
-          send({type: a.scenario, state: a})
-        })
-        //@TODO: add catch for errors
-      },
-      exit: assign({
-        wnState: (ctx, evt) =>  evt.state,
-        fs: (ctx, evt) =>  evt.state.fs, 
-      })
-    },
-    checkingForDb: {
-      on: {
-        FOUND_DB: {
-          target: 'loadingDb'
-        },
-        NO_DB: {
-          target: 'initialized'
-        }
-      },
-      invoke: {
-        src: (ctx) => (send) => ctx.fs.exists(ctx.dbFilePath)
-          .then(e => send(e ? 'FOUND_DB' : 'NO_DB'))
-      }
-    },
-    loadingDb: {
-      invoke: {
-        src: (ctx) => ctx.fs.cat(ctx.dbFilePath),
-        onDone: {
-          actions: assign({
-            db: (ctx, evt) => evt.data
-          }),
-          target: 'initialized'
-        }
-      }
-    },
-    unauthorized: {
-      on: {
-        'AUTHORIZE': {
-          target: 'authorizing'
-        }
-      }
-    },
-    authorizing: {
-      entry: (ctx) => {
-        ctx.wn.redirectToLobby(ctx.wnState.permissions)
-      }
-    },
-    initialized: {
-      initial: 'idle',
+    fileSystem: {
+      initial: 'uninitialized',
       states: {
-        idle: {
-          on: {
-            ERASE_DATABASE: {
-              target: 'erasingDatabase'
+        uninitialized: {
+          on: { IN_BROWSER: 'loadingWn' }
+        },
+        loadingWn: {
+          invoke: {
+            id: 'loadWn',
+            src: () =>  import('webnative'),
+            onDone: {
+              target: 'initializingWn',
+              actions: [
+                assign({
+                  wn: (ctx, evt) => evt.data,
+                  dbFilePath: (ctx, evt) => evt.data.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json'),
+                })
+              ]
             },
-            SAVE_ARTICLE: {
-              target: 'parsingArticle'
+            onError: {
+              target: 'failure',
+              actions: [
+                assign({ error: (ctx, evt) => evt.data })
+              ]
             }
           },
         },
-        parsingArticle: {
+        initializingWn: {
+          on: {
+            CONTINUATION: 'checkingForDb',
+            AUTH_SUCCEEDED: 'checkingForDb',
+            NOT_AUTHORISED: 'unauthorized',
+            AUTH_CANCELLED: 'unauthorized',
+          },
           invoke: {
-            src: (ctx, evt) => async (send) => {
-              let response = await fetch('/parser', {
-                method: 'post',
-                body: JSON.stringify({ url: evt.url }),
-              })
-          
-              const article = await response.json()
-          
-              //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
-          
-              await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
-          
-              let { content, ...articleWithoutContent } = article
-
-              articleWithoutContent.html = `${article.title}.html`
-
-              send({ type: 'SAVE', response: articleWithoutContent})
+            src: (ctx, evt) => (send) => ctx.wn.initialise({ 
+              permissions: {
+                app: {
+                  name: 'Delightful Clipper',
+                  creator: 'Delightful Labs',
+                },
+                fs: {
+                  private: [ctx.wn.path.directory('Web Pages')],
+                  public: [ctx.wn.path.directory('Web Pages')],
+                },
+              },
+            }).then(a => {
+              send({type: a.scenario, state: a})
+            })
+            //@TODO: add catch for errors
+          },
+          exit: assign({
+            wnState: (ctx, evt) =>  evt.state,
+            fs: (ctx, evt) =>  evt.state.fs, 
+          })
+        },
+        checkingForDb: {
+          on: {
+            FOUND_DB: {
+              target: 'loadingDb'
+            },
+            NO_DB: {
+              target: 'initialized'
             }
           },
-          on: {
-            SAVE: { 
-              actions: [
-                assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: evt.response}}))
-              ],
-              target: 'savingArticle'
+          invoke: {
+            src: (ctx) => (send) => ctx.fs.exists(ctx.dbFilePath)
+              .then(e => send(e ? 'FOUND_DB' : 'NO_DB'))
+          }
+        },
+        loadingDb: {
+          invoke: {
+            src: (ctx) => ctx.fs.cat(ctx.dbFilePath),
+            onDone: {
+              actions: assign({
+                db: (ctx, evt) => evt.data
+              }),
+              target: 'initialized'
             }
           }
         },
-        savingArticle: {
-          invoke: {
-            src: (ctx) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
-            onDone: {
-              target: 'idle'
+        unauthorized: {
+          on: {
+            'AUTHORIZE': {
+              target: 'authorizing'
             }
-          },
+          }
         },
-        erasingDatabase: {
-          invoke: {
-            src: (ctx) => ctx.fs.write(ctx.dbFilePath, {}, { publish: true }),
-            onDone: {
-              target: 'idle'
+        authorizing: {
+          entry: (ctx) => {
+            ctx.wn.redirectToLobby(ctx.wnState.permissions)
+          }
+        },
+        initialized: {
+          initial: 'idle',
+          states: {
+            idle: {
+              on: {
+                ERASE_DATABASE: {
+                  target: 'erasingDatabase'
+                },
+                SAVE_ARTICLE: {
+                  target: 'parsingArticle'
+                }
+              },
+            },
+            parsingArticle: {
+              invoke: {
+                src: (ctx, evt) => async (send) => {
+                  let response = await fetch('/parser', {
+                    method: 'post',
+                    body: JSON.stringify({ url: evt.url }),
+                  })
+              
+                  const article = await response.json()
+              
+                  //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
+              
+                  await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
+              
+                  let { content, ...articleWithoutContent } = article
+    
+                  articleWithoutContent.html = `${article.title}.html`
+    
+                  send({ type: 'SAVE', response: articleWithoutContent})
+                }
+              },
+              on: {
+                SAVE: { 
+                  actions: [
+                    assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: evt.response}}))
+                  ],
+                  target: 'savingArticle'
+                }
+              }
+            },
+            savingArticle: {
+              invoke: {
+                src: (ctx) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
+                onDone: {
+                  target: 'idle'
+                }
+              },
+            },
+            erasingDatabase: {
+              invoke: {
+                src: (ctx) => ctx.fs.write(ctx.dbFilePath, {}, { publish: true }),
+                onDone: {
+                  target: 'idle'
+                }
+              },
             }
-          },
-        }
+          }
+        },
+        failure: {}
       }
     },
-    failure: {}
+    network: {
+      initial: 'offline',
+      states: {
+        online: {},
+        offline: {}
+      }
+    }
   }
 })
 
