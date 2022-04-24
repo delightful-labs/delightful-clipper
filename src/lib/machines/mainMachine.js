@@ -115,7 +115,6 @@ const mainMachine = createMachine({
         },
         parsingArticle: {
           invoke: {
-            //Move saving function here
             src: (ctx, evt) => async (send) => {
               let response = await fetch('/parser', {
                 method: 'post',

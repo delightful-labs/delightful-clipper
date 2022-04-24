@@ -1,4 +1,5 @@
 :root {
+  --color__background: #fff;
   --color__actionable: #94ff47;
   accent-color: var(--color__actionable);
 }
