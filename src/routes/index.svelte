@@ -1,7 +1,6 @@
 <script>
   import { state } from '$lib/stores'
   import { isEmpty } from 'ramda'
-  import ParseForm from '$components/ParseForm.svelte'
 
   // const loadImage = async () => {
   //   let response = await fetch('/loadImage', {
@@ -16,8 +15,6 @@
 </script>
 
 <h1>Delightful Clipper</h1>
-
-<ParseForm />
 
 <!--<a href="/add">Add Article</a>-->
 

@@ -11,7 +11,6 @@
 <script>
   import { browser } from '$app/env'
   import { userSettings, state } from '$lib/stores'
-  import SettingsPanel from '$lib/components/SettingsPanel.svelte'
   export let uuid
   let article
   let content
@@ -37,11 +36,6 @@
   }
 </script>
 
-<header>
-  <a href="/">Home</a>
-  <SettingsPanel />
-</header>
-
 {#if article}
   <article style:font-size="{$fontSize}px" style:width="{$contentWidth}vw">
     <h1>{article.title}</h1>
@@ -56,11 +50,5 @@
 <style>
   article {
     margin: 0 auto;
-  }
-
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-self: center;
   }
 </style>

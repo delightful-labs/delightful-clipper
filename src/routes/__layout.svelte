@@ -2,6 +2,8 @@
   import '../assets/global.css'
   import { browser } from '$app/env'
   import { userSettings, send, state } from '$lib/stores'
+  import ParseForm from '$components/ParseForm.svelte'
+  import SettingsPanel from '$lib/components/SettingsPanel.svelte'
 
   $: console.log($state)
 
@@ -31,6 +33,15 @@
   const signin = () => send('AUTHORIZE')
 </script>
 
+<header>
+  <a href="/">Home</a>
+  <details>
+    <summary>Add</summary>
+    <ParseForm />
+  </details>
+  <SettingsPanel />
+</header>
+
 <p>Status: {JSON.stringify($state?.value)}</p>
 {#if $state?.value === 'unauthorized'}
   <button on:click={signin}>Sign in with Fission</button>
@@ -41,3 +52,11 @@
 {:else}
   <p>Loading...</p>
 {/if}
+
+<style>
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-self: center;
+  }
+</style>
