@@ -128,9 +128,10 @@ const mainMachine = createMachine({
               await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
           
               let { content, ...articleWithoutContent } = article
+
               articleWithoutContent.html = `${article.title}.html`
 
-              send({ type: 'SAVE', response: article})
+              send({ type: 'SAVE', response: articleWithoutContent})
             }
           },
           on: {

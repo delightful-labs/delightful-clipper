@@ -21,7 +21,7 @@
   }
 
   $: if (browser) {
-    console.log('browser')
+    //@TODO: Add check for user interaction
     checkClipboard()
   }
 </script>
@@ -29,8 +29,11 @@
 <form>
   <input type="url" bind:value={url} required />
   <button on:click={() => parseArticle(trim(url))} disabled={!$state.can('SAVE_ARTICLE') || !trim(url).match(regexUrl)}>Parse Article</button>
-  {#if !isEmpty(clipboard)}
+</form>
+
+{#if !isEmpty(clipboard)}
+  <form>
     <p>Found {clipboard} from clipboard</p>
     <button on:click={() => parseArticle(trim(clipboard))}>Save from clipboard</button>
-  {/if}
-</form>
+  </form>
+{/if}

@@ -21,8 +21,10 @@
 </script>
 
 <h1>Delightful Clipper</h1>
+
 <ParseForm />
-<a href="/add">Add Article</a>
+
+<!--<a href="/add">Add Article</a>-->
 
 <!--TODO: show different states based on if loading, no articles, etc -->
 {#if $state.context?.db && !isEmpty($state.context.db)}

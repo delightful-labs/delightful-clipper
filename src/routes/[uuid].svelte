@@ -10,7 +10,7 @@
 
 <script>
   import { browser } from '$app/env'
-  import { db, fs, wn, userSettings, state } from '$lib/stores'
+  import { userSettings, state } from '$lib/stores'
   import SettingsPanel from '$lib/components/SettingsPanel.svelte'
   export let uuid
   let article
@@ -24,7 +24,10 @@
 
   $: if (browser && article && $state?.context.wn) {
     const getHtml = async () => {
+      console.log(article)
       const path = $state.context.wn.path.file('public', 'Web Pages', article.html)
+
+      console.log(path)
 
       content = await $state.context.fs.cat(path).then((bytes) => {
         const text = new TextDecoder().decode(bytes)
