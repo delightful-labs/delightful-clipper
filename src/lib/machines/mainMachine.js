@@ -39,8 +39,8 @@ const mainMachine = createMachine({
     },
     initializingWn: {
       on: {
-        CONTINUATION: 'initialized',
-        AUTH_SUCCEEDED: 'initialized',
+        CONTINUATION: 'checkingForDb',
+        AUTH_SUCCEEDED: 'checkingForDb',
         NOT_AUTHORISED: 'unauthorized', //@TODO: figure out logic for this. Probably an idle state.
         AUTH_CANCELLED: 'failure', //@TODO: figure out logic for this
       },
@@ -63,13 +63,28 @@ const mainMachine = createMachine({
       },
       exit: assign({
         wnState: (context, event) =>  event.state,
-        fs: (context, event) =>  event.state.fs,
-        //TODO: Move to invoked promise/callback
-        // db: async (context, event) => {
-        //     const hasDb = await event.state.exists(context.dbFilePath)
-        //     return !hasDb ? await event.state.fs.cat(context.dbFilePath) : {}
-        // }   
+        fs: (context, event) =>  event.state.fs, 
       })
+    },
+    checkingForDb: {
+      on: {
+        FOUND_DB: {
+          actions: ()=> console.log('YES')
+        },
+        NO_DB: {
+          actions: ()=> console.log('NO')
+        }
+      },
+      invoke: {
+        src: (context, event) => (send) => context.fs.exists(context.dbFilePath)
+          .then(e => send(event.data ? 'FOUND_DB' : 'NO_DB'))
+        // onDone: {
+        //   target:  evt.data ? 'loadingDd' : 'initialized'           
+        // }
+      }
+    },
+    loadingDb: {
+      // context.fs.cat(context.dbFilePath) : {}
     },
     unauthorized: {
       on: {
