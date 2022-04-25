@@ -1,4 +1,4 @@
-import { createMachine, assign } from 'xstate'
+import { createMachine, assign, send } from 'xstate'
 import { v4 as uuidv4 } from 'uuid'
 
 const mainMachine = createMachine({
@@ -115,9 +115,31 @@ const mainMachine = createMachine({
                   target: 'erasingDatabase'
                 },
                 SAVE_ARTICLE: {
-                  target: 'parsingArticle'
+                  target: 'creatingEntry'
                 }
               },
+            },
+            creatingEntry: {
+              //Create DB entry
+              //If online, go to parse;
+              //If not, go to go to updatingDb
+              //entry: (ctx, evt, meta) => console.log(meta),
+              //entry: assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: {url: evt.url}}})),
+              on: {
+                PARSE: {
+                  actions: ()=> console.log('parse')
+                },
+                UPDATE: {
+                  actions: ()=> console.log('update')
+                },
+              },
+              entry: [
+                assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: {url: evt.url}}})),
+                //Change to invoked callback
+                send({ 
+                  type: (ctx, evt, meta)=> meta.state.value === 'online' ? 'PARSE' : 'UPDATE'
+                })
+              ]
             },
             parsingArticle: {
               invoke: {
@@ -145,11 +167,11 @@ const mainMachine = createMachine({
                   actions: [
                     assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: evt.response}}))
                   ],
-                  target: 'savingArticle'
+                  target: 'updatingDatabase'
                 }
               }
             },
-            savingArticle: {
+            updatingDatabase: {
               invoke: {
                 src: (ctx) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
                 onDone: {

@@ -20,7 +20,7 @@
 {#if $state.context?.db && !isEmpty($state.context.db)}
   {#each Object.entries($state.context.db) as [uuid, article]}
     <a href="/{uuid}">
-      <h2>{article.title}</h2>
+      <h2>{article.title ? article.title : article.url}</h2>
     </a>
   {/each}
 {:else}
