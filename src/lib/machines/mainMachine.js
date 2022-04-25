@@ -123,31 +123,24 @@ const mainMachine = createMachine({
               //Create DB entry
               //If online, go to parse;
               //If not, go to go to updatingDb
-              entry: (ctx, evt, meta) => {
-                const networkStatus = meta.state.value.network
-                const isOnline = networkStatus === 'online'
-                const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
-                console.log(nextEvt)
-                send({type: 'PARSE'})
-              },
-              //entry: assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: {url: evt.url}}})),
               on: {
                 PARSE: {
+                  target: 'parsingArticle',
+                  //@TODO: Pass id and URL
                   actions: ()=> console.log('parse')
                 },
                 UPDATE: {
-                  actions: ()=> console.log('update')
+                  target: 'updatingDatabase',
+                  actions: assign((ctx, evt)=> ({db: {...ctx.db, [evt.id]: {url: evt.url}}}))
                 },
               },
-              //entry: assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: {url: evt.url}}})),
-              // invoke: {
-              //   src: (ctx, evt, meta)=> (send) => {
-              //     console.log(meta)
-              //     const isOnline = meta.state.value === 'online'
-              //     const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
-              //     send({ type: nextEvt })
-              //   }
-              // }
+              invoke: {
+                src: (ctx, evt) => (send) => {
+                  const isOnline = evt.networkStatus === 'online'
+                  const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
+                  send({ type: nextEvt,  id: uuidv4(), url: evt.url})
+                }
+              }
             },
             parsingArticle: {
               invoke: {
@@ -173,7 +166,8 @@ const mainMachine = createMachine({
               on: {
                 SAVE: { 
                   actions: [
-                    assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: evt.response}}))
+                    //@TODO: Change this so it adds to existing item instead of creating new one.
+                    //assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: evt.response}}))
                   ],
                   target: 'updatingDatabase'
                 }

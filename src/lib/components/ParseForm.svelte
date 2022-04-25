@@ -10,7 +10,12 @@
   let url = 'https://ramdajs.com/docs/#trim'
   let clipboard = ''
 
-  const parseArticle = (url) => send({ type: 'SAVE_ARTICLE', url: url })
+  const parseArticle = (url) =>
+    send({
+      type: 'SAVE_ARTICLE',
+      url: url,
+      networkStatus: $state.value.network,
+    })
 
   const checkClipboard = async () => {
     const clipboardText = await navigator.clipboard.readText()
