@@ -123,7 +123,13 @@ const mainMachine = createMachine({
               //Create DB entry
               //If online, go to parse;
               //If not, go to go to updatingDb
-              //entry: (ctx, evt, meta) => console.log(meta),
+              entry: (ctx, evt, meta) => {
+                const networkStatus = meta.state.value.network
+                const isOnline = networkStatus === 'online'
+                const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
+                console.log(nextEvt)
+                send({type: 'PARSE'})
+              },
               //entry: assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: {url: evt.url}}})),
               on: {
                 PARSE: {
@@ -133,13 +139,15 @@ const mainMachine = createMachine({
                   actions: ()=> console.log('update')
                 },
               },
-              entry: [
-                assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: {url: evt.url}}})),
-                //Change to invoked callback
-                send({ 
-                  type: (ctx, evt, meta)=> meta.state.value === 'online' ? 'PARSE' : 'UPDATE'
-                })
-              ]
+              //entry: assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: {url: evt.url}}})),
+              // invoke: {
+              //   src: (ctx, evt, meta)=> (send) => {
+              //     console.log(meta)
+              //     const isOnline = meta.state.value === 'online'
+              //     const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
+              //     send({ type: nextEvt })
+              //   }
+              // }
             },
             parsingArticle: {
               invoke: {
