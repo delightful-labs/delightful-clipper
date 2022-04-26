@@ -126,8 +126,6 @@ const mainMachine = createMachine({
               on: {
                 PARSE: {
                   target: 'parsingArticle',
-                  //@TODO: Pass id and URL
-                  actions: ()=> console.log('parse')
                 },
                 UPDATE: {
                   target: 'updatingDatabase',
@@ -160,14 +158,13 @@ const mainMachine = createMachine({
     
                   articleWithoutContent.html = `${article.title}.html`
     
-                  send({ type: 'SAVE', response: articleWithoutContent})
+                  send({ type: 'SAVE', response: articleWithoutContent, id: evt.id})
                 }
               },
               on: {
                 SAVE: { 
                   actions: [
-                    //@TODO: Change this so it adds to existing item instead of creating new one.
-                    //assign((ctx, evt)=> ({db: {...ctx.db, [uuidv4()]: evt.response}}))
+                    assign((ctx, evt)=> ({db: {...ctx.db, [evt.id]: evt.response}}))
                   ],
                   target: 'updatingDatabase'
                 }
@@ -195,7 +192,7 @@ const mainMachine = createMachine({
       }
     },
     network: {
-      initial: 'offline',
+      initial: 'online',
       states: {
         online: {},
         offline: {}
