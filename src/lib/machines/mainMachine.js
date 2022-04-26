@@ -1,5 +1,12 @@
 import { createMachine, assign, send } from 'xstate'
 import { v4 as uuidv4 } from 'uuid'
+import { browser } from '$app/env'
+
+let initialOnlineStatus = 'online'
+
+if (browser) {
+  initialOnlineStatus = navigator.onLine ? 'online' : 'offline'
+}
 
 const mainMachine = createMachine({
   id: 'main',
@@ -120,9 +127,6 @@ const mainMachine = createMachine({
               },
             },
             creatingEntry: {
-              //Create DB entry
-              //If online, go to parse;
-              //If not, go to go to updatingDb
               on: {
                 PARSE: {
                   target: 'parsingArticle',
@@ -192,10 +196,18 @@ const mainMachine = createMachine({
       }
     },
     network: {
-      initial: 'online',
+      initial: initialOnlineStatus,
       states: {
-        online: {},
-        offline: {}
+        online: {
+          on: {
+            OFFLINE: { target: 'offline' },
+          }
+        },
+        offline: {
+          on: {
+            ONLINE: { target: 'online' },
+          }
+        }
       }
     }
   }

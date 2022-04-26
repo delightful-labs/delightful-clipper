@@ -28,6 +28,8 @@
 
   $: if (browser) {
     send('IN_BROWSER')
+    window.addEventListener('offline', () => send('OFFLINE'))
+    window.addEventListener('online', () => send('ONLINE'))
   }
 
   const signin = () => send('AUTHORIZE')
