@@ -2,7 +2,7 @@
   import '../assets/global.css'
   import { browser } from '$app/env'
   import { userSettings, send, state } from '$lib/stores'
-  import ParseForm from '$components/ParseForm.svelte'
+  import ParseForm from '$lib/components/ParseForm.svelte'
   import SettingsPanel from '$lib/components/SettingsPanel.svelte'
 
   //$: console.log($state)

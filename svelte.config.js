@@ -5,13 +5,6 @@ import path from 'path'
 const config = {
 	kit: {
 		adapter: adapter(),
-    vite: {
-      resolve: {
-        alias: {
-          '$components': path.resolve('./src/lib/components'),
-        },
-      },
-    },
 	}
 };
 
