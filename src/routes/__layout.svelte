@@ -1,5 +1,5 @@
 <script>
-  import '../assets/global.css'
+  //import '../assets/global.css'
   import { browser } from '$app/env'
   import { userSettings, send, state } from '$lib/stores'
   import ParseForm from '$lib/components/ParseForm.svelte'
