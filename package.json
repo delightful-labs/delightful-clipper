@@ -17,11 +17,11 @@
     "article-parser": "^6.0.0",
     "ramda": "^0.28.0",
     "svelte": "^3.44.0",
-    "uuid": "^8.3.2",
-    "xstate": "^4.31.0"
+    "uuid": "^8.3.2"
   },
   "type": "module",
   "dependencies": {
-    "webnative": "^0.31.1"
+    "webnative": "^0.31.1",
+    "xstate": "^4.31.0"
   }
 }
