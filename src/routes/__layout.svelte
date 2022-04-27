@@ -4,6 +4,7 @@
   import { userSettings, send, state } from '$lib/stores'
   import ParseForm from '$lib/components/ParseForm.svelte'
   import SettingsPanel from '$lib/components/SettingsPanel.svelte'
+  import DetailsSummary from '$lib/components/DetailsSummary.svelte'
 
   $: if (browser) console.log($state)
 
@@ -37,10 +38,9 @@
 
 <header>
   <a href="/">Home</a>
-  <details>
-    <summary>Add</summary>
+  <DetailsSummary title={'Add'}>
     <ParseForm />
-  </details>
+  </DetailsSummary>
   <SettingsPanel />
 </header>
 

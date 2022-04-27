@@ -47,7 +47,7 @@
 {/if}
 
 <style>
-  article {
+  div {
     margin: 0 auto;
   }
 </style>
