@@ -5,6 +5,7 @@ export async function post({ params, request }) {
 
   const article = await extract(body.url)
   .catch((err) => {
+    console.log(err)
     return {
       status: 400,
       body: err

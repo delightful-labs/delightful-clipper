@@ -37,14 +37,13 @@
 </script>
 
 {#if article}
-  <article style:font-size="{$fontSize}px" style:width="{$contentWidth}vw">
-    <h1>{article.title}</h1>
+  <div style:font-size="{$fontSize}px" style:width="{$contentWidth}vw">
     {#await content}
       <p>loading...</p>
     {:then value}
       {@html value}
     {/await}
-  </article>
+  </div>
 {/if}
 
 <style>
