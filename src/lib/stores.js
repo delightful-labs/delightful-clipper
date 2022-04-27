@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store'
 import mainMachine from '$lib/machines/mainMachine'
-import { useMachine } from '@xstate/svelte/lib/fsm.js'
+import { useMachine } from '@xstate/svelte/'
 
 export const { state, send } = useMachine(mainMachine)
 

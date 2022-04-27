@@ -8,6 +8,24 @@ if (browser) {
   initialOnlineStatus = navigator.onLine ? 'online' : 'offline'
 }
 
+const htmlTemplate = (content) => `<html>
+  <head>
+    ${ content.title ? `<meta property="og:title" content="${content.title}" />` : ''}
+    ${ content.description ? `<meta property="og:description" content="${content.description}"/>` : ''}
+    ${ content.image ? `<meta property="og:image" content="${content.image}"/>` : ''}
+    ${ content.url ? `<meta property="og:url" content="${content.url}"/>` : ''}
+    ${ content.published ? `<meta property="article:published_time" content="${content.published}"/>` : ''}
+    ${ content.author ? `<meta property="article:author" content="${content.author}"/>` : ''}
+    <meta property="og:type" content="article"/>
+  </head>
+  <body>
+    <article>
+      <h1>${content.title}</h1>
+      ${content.content}
+    </article>
+  </body>
+</html>`
+
 const mainMachine = createMachine({
   id: 'main',
   type: 'parallel',
@@ -153,16 +171,18 @@ const mainMachine = createMachine({
                   })
               
                   const article = await response.json()
+
+                  console.log(htmlTemplate(article))
               
                   //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
               
-                  await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
+                  /*await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.html`), article.content, { publish: true })
               
                   let { content, ...articleWithoutContent } = article
     
                   articleWithoutContent.html = `${article.title}.html`
     
-                  send({ type: 'SAVE', response: articleWithoutContent, id: evt.id})
+                  send({ type: 'SAVE', response: articleWithoutContent, id: evt.id})*/
                 }
               },
               on: {

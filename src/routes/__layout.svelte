@@ -5,7 +5,7 @@
   import ParseForm from '$lib/components/ParseForm.svelte'
   import SettingsPanel from '$lib/components/SettingsPanel.svelte'
 
-  //$: console.log($state)
+  $: console.log($state)
 
   const initialiseUserSettingNumber = (settingTitle, settingStore) => {
     const storedSetting = localStorage[settingTitle]
