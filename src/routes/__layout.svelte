@@ -44,7 +44,6 @@
   <SettingsPanel />
 </header>
 
-<p>Status: {JSON.stringify($state?.value)}</p>
 {#if $state?.value === 'unauthorized'}
   <button on:click={signin}>Sign in with Fission</button>
 {/if}

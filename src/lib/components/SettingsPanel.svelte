@@ -1,5 +1,5 @@
 <script>
-  import { userSettings, send } from '$lib/stores'
+  import { userSettings, state, send } from '$lib/stores'
   import DetailsSummary from '$lib/components/DetailsSummary.svelte'
 
   const { contentWidth, fontSize } = userSettings
@@ -27,6 +27,7 @@ Also turn into component-->
   </div>
 
   <button on:click={eraseDb}>Erase Database</button>
+  <p>Status: {JSON.stringify($state?.value)}</p>
 </DetailsSummary>
 
 <style>
