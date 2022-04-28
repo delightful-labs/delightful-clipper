@@ -44,7 +44,7 @@
   <SettingsPanel />
 </header>
 
-{#if $state?.value === 'unauthorized'}
+{#if $state?.value.fileSystem === 'unauthorized'}
   <button on:click={signin}>Sign in with Fission</button>
 {/if}
 
