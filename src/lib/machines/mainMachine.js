@@ -173,12 +173,14 @@ const mainMachine = createMachine({
                   const article = await response.json()
               
                   //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
+
+                  const prepareFile = (x) => x.type === 'html' ? htmlTemplate(x) : x.file
               
-                  await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.html`), htmlTemplate(article), { publish: true })
+                  await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.${article.type}`), prepareFile(article), { publish: true })
               
                   let { content, ...articleWithoutContent } = article
     
-                  articleWithoutContent.html = `${article.title}.html`
+                  articleWithoutContent.file = `${article.title}.${article.type}`
     
                   send({ type: 'SAVE', response: articleWithoutContent, id: evt.id})
                 }

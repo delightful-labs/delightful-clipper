@@ -5,9 +5,6 @@
   import ParseForm from '$lib/components/ParseForm.svelte'
   import SettingsPanel from '$lib/components/SettingsPanel.svelte'
   import DetailsSummary from '$lib/components/DetailsSummary.svelte'
-  import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js'
-
-  $: if (browser) console.log(pdfjsLib)
 
   $: if (browser) console.log($state)
 

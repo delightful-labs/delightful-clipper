@@ -23,7 +23,7 @@
 
   $: if (browser && article && $state?.context.wn) {
     const getHtml = async () => {
-      const path = $state.context.wn.path.file('public', 'Web Pages', article.html)
+      const path = $state.context.wn.path.file('public', 'Web Pages', article.file)
 
       content = await $state.context.fs.cat(path).then((bytes) => {
         const text = new TextDecoder().decode(bytes)
