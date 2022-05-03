@@ -11,6 +11,8 @@
 <script>
   import { browser } from '$app/env'
   import { userSettings, state } from '$lib/stores'
+  import PdfViewer from '$lib/components/PdfViewer.svelte'
+
   export let uuid
   let article
   let content
@@ -25,8 +27,16 @@
     const getHtml = async () => {
       const path = $state.context.wn.path.file('public', 'Web Pages', article.file)
 
+      //@TODO: only textdecode if is HTML
       content = await $state.context.fs.cat(path).then((bytes) => {
-        const text = new TextDecoder().decode(bytes)
+        let text
+        console.log(bytes)
+
+        if (article.type === 'html') {
+          text = new TextDecoder().decode(bytes)
+        } else {
+          text = bytes
+        }
 
         return text
       })
@@ -41,7 +51,11 @@
     {#await content}
       <p>loading...</p>
     {:then value}
-      {@html value}
+      {#if article.type === 'html'}
+        {@html value}
+      {:else}
+        <PdfViewer file={value} />
+      {/if}
     {/await}
   </div>
 {/if}

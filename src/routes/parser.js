@@ -25,7 +25,10 @@ export async function post({ params, request }) {
   let article
 
   if (body.url.match( /\.pdf$/i) ) {
+    //@TODO use PromiseAll so both res and buffer can run at same time
     const pdf = await fetch(body.url)
+    const buffer = await pdf.arrayBuffer()
+    const pdfUint8 = new Uint8Array(buffer)
     const res = await pdfjsLib.getDocument(pdf).promise
       .catch(a => console.log('ERROR: ', a) )
     const meta = await res.getMetadata()
@@ -37,7 +40,7 @@ export async function post({ params, request }) {
     })(meta.info)
     //@TODO: turn into a function that returns the updated object.
     renamedMeta.url = body.url
-    renamedMeta.content = pdf
+    renamedMeta.content = pdfUint8
     renamedMeta.meta = meta.metadata
     renamedMeta.type = 'pdf'
     renamedMeta.published = formatPdfDate(meta.info.CreationDate)

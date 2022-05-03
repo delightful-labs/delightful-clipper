@@ -174,7 +174,7 @@ const mainMachine = createMachine({
               
                   //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
 
-                  const prepareFile = (x) => x.type === 'html' ? htmlTemplate(x) : x.file
+                  const prepareFile = (x) => x.type === 'html' ? htmlTemplate(x) : Uint8Array.from(Object.values(x.content))
               
                   await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.${article.type}`), prepareFile(article), { publish: true })
               
