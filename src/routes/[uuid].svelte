@@ -30,7 +30,6 @@
       //@TODO: only textdecode if is HTML
       content = await $state.context.fs.cat(path).then((bytes) => {
         let text
-        console.log(bytes)
 
         if (article.type === 'html') {
           text = new TextDecoder().decode(bytes)

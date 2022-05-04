@@ -6,7 +6,7 @@
   import SettingsPanel from '$lib/components/SettingsPanel.svelte'
   import DetailsSummary from '$lib/components/DetailsSummary.svelte'
 
-  $: if (browser) console.log($state)
+  //$: if (browser) console.log($state)
 
   const initialiseUserSettingNumber = (settingTitle, settingStore) => {
     const storedSetting = localStorage[settingTitle]

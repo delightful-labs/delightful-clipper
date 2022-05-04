@@ -1,20 +1,23 @@
 <script>
+  import PdfPage from './PdfPage.svelte'
   import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js'
   const pdfjsWorker = import('pdfjs-dist/build/pdf.worker.entry')
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
   export let file
+  let pdf
 
-  const pdf = async (f) => {
+  const getPdf = async (f) => {
     const res = await pdfjsLib.getDocument(f).promise
-    console.log(res)
+    pdf = res
   }
 
   $: if (file) {
-    console.log(file)
-    pdf(file.buffer)
+    getPdf(file.buffer)
   }
 </script>
 
 <p>It's a PDF</p>
+
+<PdfPage {pdf} />
