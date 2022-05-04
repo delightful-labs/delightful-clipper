@@ -5,6 +5,7 @@
   import ParseForm from '$lib/components/ParseForm.svelte'
   import SettingsPanel from '$lib/components/SettingsPanel.svelte'
   import DetailsSummary from '$lib/components/DetailsSummary.svelte'
+  import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
 
   //$: if (browser) console.log($state)
 
@@ -44,20 +45,35 @@
   <SettingsPanel />
 </header>
 
-{#if $state?.value.fileSystem === 'unauthorized'}
-  <button on:click={signin}>Sign in with Fission</button>
-{/if}
+<main>
+  {#if $state?.value.fileSystem === 'unauthorized'}
+    <button on:click={signin}>Sign in with Fission</button>
+  {/if}
 
-{#if $state.matches('fileSystem.initialized')}
-  <slot />
-{:else}
-  <p>Loading...</p>
-{/if}
+  {#if $state.matches('fileSystem.initialized')}
+    <slot />
+  {:else}
+    <div class="loading-wrapper">
+      <LoadingSpinner text={'Loading articles'} />
+    </div>
+  {/if}
+</main>
 
 <style>
   header {
     display: flex;
     justify-content: space-between;
-    align-self: center;
+    align-items: center;
+  }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .loading-wrapper {
+    display: grid;
+    flex: 1;
   }
 </style>

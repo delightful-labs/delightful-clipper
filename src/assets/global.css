@@ -63,6 +63,8 @@ html:focus-within {
 
 /* Set core body defaults */
 body {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
   text-rendering: optimizeSpeed;
   word-break: break-word;
