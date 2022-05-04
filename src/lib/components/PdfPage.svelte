@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
+  import { log } from 'xstate/lib/actions'
 
   export let pdf
   export let intersecting
@@ -22,10 +23,12 @@
     //always starts by fitting in browser viewport
     viewport = page.getViewport({ scale: 1 })
 
-    await page.render({
-      canvasContext: ctx,
-      viewport: viewport,
-    })
+    await page
+      .render({
+        canvasContext: ctx,
+        viewport: viewport,
+      })
+      .promise.catch((e) => console.log(e))
 
     loaded = true
   }

@@ -1,10 +1,7 @@
 <script>
   import PdfPage from '$lib/components/PdfPage.svelte'
   import IntersectionObserver from '$lib/components/IntersectionObserver.svelte'
-  import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.js'
-  const pdfjsWorker = import('pdfjs-dist/build/pdf.worker.entry')
-
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
+  import * as pdfjsLib from 'pdfjs-dist'
 
   export let file
   let pdf
@@ -16,7 +13,11 @@
   }
 
   const getPdf = async (f) => {
-    const res = await pdfjsLib.getDocument(f).promise
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdfWorker.js?worker'
+    //worker = new pdfjsLib.PDFWorker()
+    const res = await pdfjsLib.getDocument({
+      data: f,
+    }).promise
     pdf = res
   }
 

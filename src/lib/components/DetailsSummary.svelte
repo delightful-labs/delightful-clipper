@@ -19,6 +19,7 @@
     right: 50%;
     margin-left: -50vw;
     margin-right: -50vw;
+    z-index: 1;
   }
 
   @media (min-width: 1024px) {
