@@ -8,7 +8,12 @@
 
   export let file
   let pdf
-  let pages = 0
+  let pages
+  //@TODO: update averagePageSize when document loads?
+  let averagePageSize = {
+    width: 500,
+    height: 700,
+  }
 
   const getPdf = async (f) => {
     const res = await pdfjsLib.getDocument(f).promise
@@ -24,8 +29,10 @@
   }
 </script>
 
-{#each Array(pages) as _, index (index)}
-  <IntersectionObserver once={true} let:intersecting>
-    <PdfPage {pdf} {intersecting} pageNumber={index + 1} />
-  </IntersectionObserver>
-{/each}
+{#if pages}
+  {#each Array(pages) as _, index (index)}
+    <IntersectionObserver once={true} top={averagePageSize.height * 2} let:intersecting>
+      <PdfPage {pdf} {intersecting} pageNumber={index + 1} {averagePageSize} />
+    </IntersectionObserver>
+  {/each}
+{/if}

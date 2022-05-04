@@ -4,10 +4,11 @@
   export let pdf
   export let intersecting
   export let pageNumber
+  export let averagePageSize
   let canvas
   let ctx
   let page
-  let viewport
+  let viewport = averagePageSize
 
   onMount(() => {
     ctx = canvas.getContext('2d')
@@ -31,3 +32,9 @@
 </script>
 
 <canvas bind:this={canvas} width={viewport ? viewport.width : 0} height={viewport ? viewport.height : 0} />
+
+<style>
+  canvas {
+    max-width: 100%;
+  }
+</style>
