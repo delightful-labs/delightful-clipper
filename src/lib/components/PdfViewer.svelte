@@ -18,6 +18,4 @@
   }
 </script>
 
-<p>It's a PDF</p>
-
 <PdfPage {pdf} />
