@@ -2,6 +2,8 @@
   import { onMount } from 'svelte'
 
   export let pdf
+  export let intersecting
+  export let pageNumber
   let canvas
   let ctx
   let page
@@ -12,7 +14,7 @@
   })
 
   const getPage = async (pdf) => {
-    page = await pdf.getPage(1)
+    page = await pdf.getPage(pageNumber)
     //@TODO: do some math to make sure that canvas
     //always starts by fitting in browser viewport
     viewport = page.getViewport({ scale: 1 })
@@ -23,7 +25,7 @@
     })
   }
 
-  $: if (pdf?.getPage) {
+  $: if (pdf?.getPage && intersecting) {
     getPage(pdf)
   }
 </script>
