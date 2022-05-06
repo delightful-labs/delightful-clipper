@@ -13,8 +13,8 @@
   }
 
   const getPdf = async (f) => {
+    //@TODO: figure out how to properly load this.
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdfWorker.js?worker'
-    //worker = new pdfjsLib.PDFWorker()
     const res = await pdfjsLib.getDocument({
       data: f,
     }).promise

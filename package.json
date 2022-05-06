@@ -13,7 +13,7 @@
     "@sveltejs/adapter-netlify": "^1.0.0-next.51",
     "@sveltejs/adapter-static": "^1.0.0-next.29",
     "@sveltejs/kit": "next",
-    "@xstate/svelte": "^1.0.0",
+    "@xstate/svelte": "^2.0.0",
     "article-parser": "^6.0.0",
     "pdfjs-dist": "^2.13.216",
     "ramda": "^0.28.0",
