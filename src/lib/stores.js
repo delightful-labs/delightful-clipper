@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store'
 import mainMachine from '$lib/machines/mainMachine'
-import { useMachine } from '@xstate/svelte/'
+import { useMachine } from '$lib/useMachine'
 
 export const { state, send } = useMachine(mainMachine)
 
