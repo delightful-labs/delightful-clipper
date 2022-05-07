@@ -17,8 +17,8 @@
 <!--<a href="/add">Add Article</a>-->
 
 <!--TODO: show different states based on if loading, no articles, etc -->
-{#if $state.context?.db && !isEmpty($state.context.db)}
-  {#each Object.entries($state.context.db) as [uuid, article]}
+{#if $state.context?.db && !isEmpty($state.context.db.articles)}
+  {#each Object.entries($state.context.db.articles) as [uuid, article]}
     <a href="/{uuid}">
       <h2>{article.title ? article.title : article.url}</h2>
     </a>

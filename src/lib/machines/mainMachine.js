@@ -4,6 +4,11 @@ import { browser } from '$app/env'
 
 let initialOnlineStatus = 'online'
 
+const dbTemplate = {
+  tags: [],
+  articles: {}
+}
+
 if (browser) {
   initialOnlineStatus = navigator.onLine ? 'online' : 'offline'
 }
@@ -34,7 +39,7 @@ const mainMachine = createMachine({
     fs: undefined,
     wnState: undefined,
     dbFilePath: undefined,
-    db: {},
+    db: dbTemplate,
     error: undefined,
   },
   states: {
@@ -73,7 +78,7 @@ const mainMachine = createMachine({
             AUTH_CANCELLED: 'unauthorized',
           },
           invoke: {
-            src: (ctx, evt) => (send) => ctx.wn.initialise({ 
+            src: (ctx) => (send) => ctx.wn.initialise({ 
               permissions: {
                 app: {
                   name: 'Delightful Clipper',
@@ -151,7 +156,13 @@ const mainMachine = createMachine({
                 },
                 UPDATE: {
                   target: 'updatingDatabase',
-                  actions: assign((ctx, evt)=> ({db: {...ctx.db, [evt.id]: {url: evt.url}}}))
+                  actions: assign((ctx, evt)=> ({db: {
+                    ...ctx.db,
+                    articles: {
+                      ...ctx.db.articles,
+                      [evt.id]: {url: evt.url}
+                    }
+                  }}))
                 },
               },
               invoke: {
@@ -188,7 +199,12 @@ const mainMachine = createMachine({
               on: {
                 SAVE: { 
                   actions: [
-                    assign((ctx, evt)=> ({db: {...ctx.db, [evt.id]: evt.response}}))
+                    assign((ctx, evt)=> ({db: {
+                      ...ctx.db, 
+                      articles: {
+                        ...ctx.db.articles,
+                        [evt.id]: evt.response}
+                    }}))
                   ],
                   target: 'updatingDatabase'
                 }
@@ -204,7 +220,7 @@ const mainMachine = createMachine({
             },
             erasingDatabase: {
               invoke: {
-                src: (ctx) => ctx.fs.write(ctx.dbFilePath, {}, { publish: true }),
+                src: (ctx) => ctx.fs.write(ctx.dbFilePath, dbTemplate, { publish: true }),
                 onDone: {
                   target: 'idle'
                 }

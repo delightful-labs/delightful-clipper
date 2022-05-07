@@ -20,7 +20,7 @@
   const { contentWidth, fontSize } = userSettings
 
   $: if ($state?.context.db) {
-    article = $state.context.db[uuid]
+    article = $state.context.db.articles[uuid]
   }
 
   $: if (browser && article && $state?.context.wn) {
