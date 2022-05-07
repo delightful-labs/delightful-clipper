@@ -1,14 +1,17 @@
 import { readable } from 'svelte/store';
 import {
   interpret,
+  State,
+} from 'xstate'
+
+import type {
   EventObject,
   StateMachine,
-  State,
   InterpreterOptions,
   MachineOptions,
   StateConfig,
   Typestate
-} from 'xstate';
+} from 'xstate'
 
 interface UseMachineOptions<
   TContext extends object,
