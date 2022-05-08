@@ -10,7 +10,7 @@ export const fissionState = writable(undefined)
 export const wn = writable(undefined)
 
 //User defined settings
-export const userSettings = {
-  fontSize: writable <number>(20),
-  contentWidth: writable <number>(90)
-}
+export const userSettings = writable({
+  fontSize: 20,
+  contentWidth: 90
+})

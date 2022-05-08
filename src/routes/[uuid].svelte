@@ -17,8 +17,6 @@
   let article
   let content
 
-  const { contentWidth, fontSize } = userSettings
-
   $: if ($state?.context.db) {
     article = $state.context.db.articles[uuid]
   }
@@ -46,7 +44,7 @@
 </script>
 
 {#if article}
-  <div style:font-size="{$fontSize}px" style:width="{$contentWidth}vw">
+  <div style:font-size="{$userSettings.fontSize}px" style:width="{$userSettings.contentWidth}vw">
     {#await content}
       <p>loading...</p>
     {:then value}

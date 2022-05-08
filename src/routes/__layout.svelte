@@ -9,23 +9,17 @@
 
   $: if (browser) console.log($state)
 
-  const initialiseUserSettingNumber = (settingTitle, settingStore) => {
-    const storedSetting = localStorage[settingTitle]
-
-    if (storedSetting) {
-      settingStore.update(() => parseInt(storedSetting))
-    }
-
-    settingStore.subscribe((value) => {
-      localStorage[settingTitle] = String(value)
-    })
-  }
-
   // Anytime the store changes, update the local storage value.
   $: if (browser) {
-    for (const [key, value] of Object.entries(userSettings)) {
-      initialiseUserSettingNumber(key, value)
+    const storedSettings = localStorage.userSettings
+
+    if (storedSettings) {
+      userSettings.update(() => JSON.parse(storedSettings) )
     }
+
+    userSettings.subscribe((value) => {
+      localStorage.userSettings = JSON.stringify(value)
+    })
   }
 
   $: if (browser) {
