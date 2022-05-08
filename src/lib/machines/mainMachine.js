@@ -158,6 +158,7 @@ const mainMachine = createMachine({
                   target: 'updatingDatabase',
                   actions: assign((ctx, evt)=> ({db: {
                     ...ctx.db,
+                    tags: [...new Set([...ctx.db.tags,...evt.tags])],
                     articles: {
                       ...ctx.db.articles,
                       [evt.id]: {url: evt.url}
@@ -169,7 +170,12 @@ const mainMachine = createMachine({
                 src: (ctx, evt) => (send) => {
                   const isOnline = evt.networkStatus === 'online'
                   const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
-                  send({ type: nextEvt,  id: uuidv4(), url: evt.url})
+                  send({ 
+                    type: nextEvt,  
+                    id: uuidv4(), 
+                    url: evt.url,
+                    tags: evt.tags
+                  })
                 }
               }
             },
