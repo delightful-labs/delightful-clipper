@@ -157,7 +157,6 @@ const mainMachine = createMachine({
                 UPDATE: {
                   target: 'updatingDatabase',
                   actions: assign((ctx, evt)=> ({db: {
-                    ...ctx.db,
                     tags: [...new Set([...ctx.db.tags,...evt.tags])],
                     articles: {
                       ...ctx.db.articles,
@@ -199,14 +198,14 @@ const mainMachine = createMachine({
     
                   articleWithoutContent.file = `${article.title}.${article.type}`
     
-                  send({ type: 'SAVE', response: articleWithoutContent, id: evt.id})
+                  send({ type: 'SAVE', response: articleWithoutContent, id: evt.id, tags: evt.tags})
                 }
               },
               on: {
                 SAVE: { 
                   actions: [
                     assign((ctx, evt)=> ({db: {
-                      ...ctx.db, 
+                      tags: [...new Set([...ctx.db.tags,...evt.tags])],
                       articles: {
                         ...ctx.db.articles,
                         [evt.id]: evt.response}

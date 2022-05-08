@@ -7,7 +7,7 @@
   import DetailsSummary from '$lib/components/DetailsSummary.svelte'
   import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
 
-  $: if (browser) console.log($state.context)
+  $: if (browser) console.log($state)
 
   const initialiseUserSettingNumber = (settingTitle, settingStore) => {
     const storedSetting = localStorage[settingTitle]
