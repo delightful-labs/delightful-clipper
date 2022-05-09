@@ -18,14 +18,18 @@
     type: 'object',
     properties: {
       fontSize: {
+        title: 'Font Size',
         type: 'number',
         minimum: 10,
-        maximum: 48
+        maximum: 48,
+        component: 'range'
       },
       contentWidth: {
+        title: 'Content Width',
         type: 'number',
         minimum: 1,
-        maximum: 100
+        maximum: 100,
+        component: 'range'
       }
     }
   }
