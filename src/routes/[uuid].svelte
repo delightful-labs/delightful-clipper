@@ -12,6 +12,7 @@
   import { browser } from '$app/env'
   import { userSettings, state } from '$lib/stores'
   import PdfViewer from '$lib/components/PdfViewer.svelte'
+  import EpubViewer from '$lib/components/EpubViewer.svelte'
 
   export let uuid
   let article

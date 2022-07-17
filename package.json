@@ -23,6 +23,7 @@
     "@typescript-eslint/parser": "^5.10.1",
     "@xstate/svelte": "^1.0.0",
     "article-parser": "^6.0.0",
+    "epubjs": "^0.3.93",
     "eslint": "^8.12.0",
     "eslint-config-prettier": "^8.3.0",
     "eslint-plugin-svelte3": "^4.0.0",
