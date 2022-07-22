@@ -2,9 +2,7 @@
   import '../assets/global.css'
   import { browser } from '$app/env'
   import { userSettings, send, state } from '$lib/stores'
-  import ParseForm from '$lib/components/ParseForm.svelte'
-  import SettingsPanel from '$lib/components/SettingsPanel.svelte'
-  import DetailsSummary from '$lib/components/DetailsSummary.svelte'
+  import Header from '$lib/components/Header.svelte'
   import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
 
   $: if (browser) console.log($state)
@@ -31,13 +29,7 @@
   const signin = () => send('AUTHORIZE')
 </script>
 
-<header>
-  <a href="/">Home</a>
-  <DetailsSummary title={'Add'}>
-    <ParseForm />
-  </DetailsSummary>
-  <SettingsPanel />
-</header>
+<Header />
 
 <main>
   {#if $state?.value.fileSystem === 'unauthorized'}
@@ -54,12 +46,6 @@
 </main>
 
 <style>
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
   main {
     flex: 1;
     display: flex;
