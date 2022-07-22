@@ -3,8 +3,6 @@
   import Form from 'svelte-json-schema-to-form/Form.svelte'
   import DetailsSummary from '$lib/components/DetailsSummary.svelte'
 
-  const { contentWidth, fontSize } = userSettings
-
   //await $state.fs.write(dbFilePath, {}, { publish: true })
   const eraseDb = async () => {
     let text = 'Delete database?\nThis cannot be undone'
@@ -17,6 +15,12 @@
     title: 'user settings',
     type: 'object',
     properties: {
+      fontFamily: {
+        title: 'Font Family',
+        type: 'string',
+        enum: ['serif', 'sans-serif'],
+        component: 'select'
+      },
       fontSize: {
         title: 'Font Size',
         type: 'number',
@@ -42,17 +46,10 @@
   }
 </script>
 
-<!--TODO: line-height, font-family, margins/max-width, dark mode
+<!--TODO: line-height, font-family, dark mode
 Also turn into component-->
 <DetailsSummary title={'Settings'}>
   <Form {schema} data={$userSettings} {changeHandler} />
   <button on:click={eraseDb}>Erase Database</button>
   <p>Status: {JSON.stringify($state?.value)}</p>
 </DetailsSummary>
-
-<style>
-  .setting-container {
-    display: flex;
-    align-items: center;
-  }
-</style>

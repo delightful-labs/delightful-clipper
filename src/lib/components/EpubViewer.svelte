@@ -3,31 +3,52 @@
   import { userSettings } from '$lib/stores'
 
   let rendered = false
+  let rendition
 
-  const book = epub.default("https://s3.amazonaws.com/epubjs/books/moby-dick/OPS/package.opf")
-  const rendition = book.renderTo("viewer", {
-    width: "100%",
-    height: "100%",
-    spread: 'none',
-  })
+  /**
+  * @type {FileList | null | undefined}
+  */
+  let files
 
-  rendition.themes.fontSize('32px')
-  rendition.display()
+  $: if (files) {
+    renderBook(files[0])
+  }
 
-  rendition.on("rendered", ()=> {
-    rendered = true
-  })
 
-  $: rendition.themes.fontSize($userSettings.fontSize + 'px')
+  const renderBook = (file) => {
+    const book = epub.default(file)
+    rendition = book.renderTo("viewer", {
+      manager: "continuous",
+      flow: "scrolled",
+      width: "100%",
+      height: "100%",
+      spread: 'none',
+    })
+
+    console.log(book)
+
+    rendition.themes.register("default", { "p": { "text-align": "inherit"}})
+    //rendition.themes.override('text-align', 'right', true)
+    rendition.themes.fontSize($userSettings.fontSize + 'px')
+    rendition.display()
+
+    //Can definitely use a state machine to help organize this.
+    rendition.on("rendered", ()=> {
+      rendered = true
+    })
+  }
+
+  //$: rendition.themes.fontSize($userSettings.fontSize + 'px')
 
   $: if ($userSettings.contentWidth && rendered) {
+    // Types are wrong. Both perameters are optional, but not in types.
     // @ts-ignore
     rendition.resize()
   }
 
-  console.log(rendition)
-
 </script>
+
+<input type="file" id="book" name="book" accept=".epub" bind:files>
 
 <button on:click={()=> rendition.prev()}>‹</button>
 <div class="wrapper">
@@ -40,13 +61,15 @@
 <button on:click={()=> rendition.next()}>›</button>
 
 <style>
-  #viewer {
-    
-  }
-
   .wrapper {
     flex: 1;
     display: flex;
     margin: 0 auto;
+  }
+
+  /* Override epubjs styles */
+  :global(.epub-container) {
+    overflow: auto !important;
+    width: 100% !important;
   }
 </style>
