@@ -15,10 +15,17 @@
     title: 'user settings',
     type: 'object',
     properties: {
+      lineHeight: {
+        title: 'Line Height',
+        type: 'number',
+        minimum: 5,
+        maximum: 25,
+        component: 'range'
+      },
       fontFamily: {
         title: 'Font Family',
         type: 'string',
-        enum: ['serif', 'sans-serif'],
+        enum: ['serif', 'sans-serif', 'Jost'],
         component: 'select'
       },
       fontSize: {
@@ -26,6 +33,14 @@
         type: 'number',
         minimum: 10,
         maximum: 48,
+        component: 'range'
+      },
+      fontWeight: {
+        title: 'Font Width',
+        type: 'number',
+        minimum: 100,
+        maximum: 900,
+        multipleOf: 100,
         component: 'range'
       },
       contentWidth: {

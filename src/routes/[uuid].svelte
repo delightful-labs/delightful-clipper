@@ -45,7 +45,13 @@
 </script>
 
 {#if article}
-  <div style:font-size="{$userSettings.fontSize}px" style:width="{$userSettings.contentWidth}vw">
+  <div 
+    style:font-size="{$userSettings.fontSize}px" 
+    style:width="{$userSettings.contentWidth}vw" 
+    style:font-family="{$userSettings.fontFamily}" 
+    style:font-weight="{$userSettings.fontWeight}" 
+    style:line-height="{$userSettings.lineHeight / 10}" 
+  >
     {#await content}
       <p>loading...</p>
     {:then value}
