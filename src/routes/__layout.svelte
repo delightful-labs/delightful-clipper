@@ -3,7 +3,7 @@
   import { browser } from '$app/env'
   import { userSettings, send, state } from '$lib/stores'
   //import ParseForm from '$lib/components/ParseForm.svelte'
-  //import SettingsPanel from '$lib/components/SettingsPanel.svelte'
+  import SettingsPanel from '$lib/components/SettingsPanel.svelte'
   import DetailsSummary from '$lib/components/DetailsSummary.svelte'
   import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
 
@@ -36,7 +36,7 @@
   <DetailsSummary title={'Add'}>
     <!--<ParseForm />-->
   </DetailsSummary>
-  <!--<SettingsPanel />-->
+  <SettingsPanel />
 </header>
 
 <main>
