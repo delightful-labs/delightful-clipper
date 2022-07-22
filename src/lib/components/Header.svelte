@@ -7,7 +7,7 @@
   let lastY = 0
   let hideHeader = true
 
-  const handleScroll = (yPos) => {
+  const handleScroll = (/** @type {number} */ yPos) => {
     hideHeader = yPos > lastY
     lastY = yPos
   }

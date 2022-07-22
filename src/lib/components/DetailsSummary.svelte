@@ -1,8 +1,15 @@
 <script>
-  export let title
+  import { clickOutside } from "$lib/utils/clickOutside"
+
+  export let title = ''
+  let opened = false
 </script>
 
-<details>
+<details 
+  bind:open={opened} 
+  use:clickOutside 
+  on:outclick={() => (opened = false)}
+>
   <summary>{title}</summary>
   <div class="details-content">
     <slot />
