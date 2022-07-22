@@ -1,6 +1,6 @@
 <script>
   import { userSettings, state, send } from '$lib/stores'
-  import Form from 'svelte-json-schema-to-form/Form.svelte'
+  import Form from 'svelte-json-schema-to-form/package/Form.svelte'
   import DetailsSummary from '$lib/components/DetailsSummary.svelte'
 
   //await $state.fs.write(dbFilePath, {}, { publish: true })
