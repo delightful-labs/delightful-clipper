@@ -121,3 +121,17 @@ code {
     scroll-behavior: auto !important;
   }
 }
+
+/* Typography */
+
+.flow * + * {
+  margin-top: 1rem;
+}
+
+.flow * + h2,
+.flow * + h3,
+.flow * + h4,
+.flow * + h5,
+.flow * + h6 {
+  margin-top: 2rem;
+}

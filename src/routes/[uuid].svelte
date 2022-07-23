@@ -46,6 +46,7 @@
 
 {#if article}
   <div 
+    class="content flow"
     style:font-size="{$userSettings.fontSize}px" 
     style:width="{$userSettings.contentWidth}vw" 
     style:font-family="{$userSettings.fontFamily}" 
@@ -65,7 +66,7 @@
 {/if}
 
 <style>
-  div {
+  .content {
     margin: 0 auto;
   }
 </style>
