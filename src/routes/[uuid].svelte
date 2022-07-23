@@ -65,8 +65,12 @@
   </div>
 {/if}
 
-<style>
+<style lang="scss">
   .content {
     margin: 0 auto;
+
+    :global {
+      @import './../assets/flow';
+    }
   }
 </style>
