@@ -1,76 +1,76 @@
 <script context="module">
-  export async function load({ params }) {
-    return {
-      props: {
-        uuid: params.uuid,
-      },
-    }
-  }
+	export async function load({ params }) {
+		return {
+			props: {
+				uuid: params.uuid
+			}
+		}
+	}
 </script>
 
 <script>
-  import { browser } from '$app/env'
-  import { userSettings, state } from '$lib/stores'
-  import PdfViewer from '$lib/components/PdfViewer.svelte'
-  import EpubViewer from '$lib/components/EpubViewer.svelte'
+	import { browser } from '$app/env'
+	import { userSettings, state } from '$lib/stores'
+	import PdfViewer from '$lib/components/PdfViewer.svelte'
+	import EpubViewer from '$lib/components/EpubViewer.svelte'
 
-  export let uuid
-  let article
-  let content
+	export let uuid
+	let article
+	let content
 
-  $: if ($state?.context.db) {
-    article = $state.context.db.articles[uuid]
-  }
+	$: if ($state?.context.db) {
+		article = $state.context.db.articles[uuid]
+	}
 
-  $: if (browser && article && $state?.context.wn) {
-    const getHtml = async () => {
-      const path = $state.context.wn.path.file('public', 'Web Pages', article.file)
+	$: if (browser && article && $state?.context.wn) {
+		const getHtml = async () => {
+			const path = $state.context.wn.path.file('public', 'Web Pages', article.file)
 
-      //@TODO: only textdecode if is HTML
-      content = await $state.context.fs.cat(path).then((bytes) => {
-        let text
+			//@TODO: only textdecode if is HTML
+			content = await $state.context.fs.cat(path).then((bytes) => {
+				let text
 
-        if (article.type === 'html') {
-          text = new TextDecoder().decode(bytes)
-        } else {
-          text = bytes
-        }
+				if (article.type === 'html') {
+					text = new TextDecoder().decode(bytes)
+				} else {
+					text = bytes
+				}
 
-        return text
-      })
-    }
+				return text
+			})
+		}
 
-    getHtml()
-  }
+		getHtml()
+	}
 </script>
 
 {#if article}
-  <div 
-    class="content flow"
-    style:font-size="{$userSettings.fontSize}px" 
-    style:width="{$userSettings.contentWidth}vw" 
-    style:font-family="{$userSettings.fontFamily}" 
-    style:font-weight="{$userSettings.fontWeight}" 
-    style:line-height="{$userSettings.lineHeight / 10}" 
-  >
-    {#await content}
-      <p>loading...</p>
-    {:then value}
-      {#if article.type === 'html'}
-        {@html value}
-      {:else}
-        <PdfViewer file={value} />
-      {/if}
-    {/await}
-  </div>
+	<div
+		class="content flow"
+		style:font-size="{$userSettings.fontSize}px"
+		style:width="{$userSettings.contentWidth}vw"
+		style:font-family={$userSettings.fontFamily}
+		style:font-weight={$userSettings.fontWeight}
+		style:line-height={$userSettings.lineHeight / 10}
+	>
+		{#await content}
+			<p>loading...</p>
+		{:then value}
+			{#if article.type === 'html'}
+				{@html value}
+			{:else}
+				<PdfViewer file={value} />
+			{/if}
+		{/await}
+	</div>
 {/if}
 
 <style lang="scss">
-  .content {
-    margin: 0 auto;
+	.content {
+		margin: 0 auto;
 
-    :global {
-      @import '../lib/assets/flow';
-    }
-  }
+		:global {
+			@import '../lib/assets/flow';
+		}
+	}
 </style>
