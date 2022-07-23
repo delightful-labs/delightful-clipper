@@ -87,14 +87,6 @@ picture {
   display: block;
 }
 
-/* Inherit fonts for inputs and buttons */
-input,
-button,
-textarea,
-select {
-  font: inherit;
-}
-
 /* Make pre scroll */
 pre {
   max-width: 100%;
@@ -119,4 +111,62 @@ code {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Input overrides */
+
+summary {
+  user-select: none;
+}
+
+summary,
+label,
+input,
+textarea,
+select {
+  font-family: monospace;
+}
+
+input {
+  border: 2px solid;
+  background: transparent;
+  color: inherit;
+  width: 100%;
+}
+
+input[type="file" i]::-webkit-file-upload-button {
+  appearance: none;
+  border: 2px solid;
+  background: transparent;
+  color: inherit;
+  font-family: monospace;
+}
+
+input[type="file" i]::-webkit-file-upload-button:hover,
+input[type="file" i]::-webkit-file-upload-button:focus {
+  color: #262626;
+  background-color: var(--color__actionable);
+  border-color: var(--color__actionable);
+}
+
+button {
+  appearance: none;
+  border: 2px solid;
+  background: transparent;
+  color: inherit;
+  font-family: monospace;
+}
+
+button:hover,
+button:focus {
+  color: #262626;
+  background-color: var(--color__actionable);
+  border-color: var(--color__actionable);
+}
+
+select {
+  border: 2px solid;
+  background: var(--color__background);
+  color: inherit;
+  font-family: monospace;
 }
