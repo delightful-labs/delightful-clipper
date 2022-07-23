@@ -70,7 +70,7 @@
     margin: 0 auto;
 
     :global {
-      @import './../assets/flow';
+      @import '../lib/assets/flow';
     }
   }
 </style>
