@@ -146,6 +146,17 @@ const mainMachine = createMachine({
                 },
                 SAVE_ARTICLE: {
                   target: 'creatingEntry'
+                },
+                UPLOAD_FILE: {
+                  target: 'uploadingFile'
+                }
+              },
+            },
+            uploadingFile: {
+              invoke: {
+                src: (ctx, evt) => ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', evt.file.name), evt.file, { publish: true }),
+                onDone: {
+                  target: 'idle'
                 }
               },
             },
@@ -181,6 +192,7 @@ const mainMachine = createMachine({
             parsingArticle: {
               invoke: {
                 src: (ctx, evt) => async (send) => {
+                  // Send request to serverless function to load article.
                   let response = await fetch('/parser', {
                     method: 'post',
                     body: JSON.stringify({ url: evt.url }),

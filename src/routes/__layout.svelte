@@ -4,6 +4,7 @@
   import { userSettings, send, state } from '$lib/stores'
   import Header from '$lib/components/Header.svelte'
   import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
+  import FileUploader from '$lib/components/FileUploader.svelte'
 
   $: if (browser) console.log($state)
 
@@ -32,6 +33,7 @@
 <Header />
 
 <main>
+  <FileUploader />
   {#if $state?.value.fileSystem === 'unauthorized'}
     <button on:click={signin}>Sign in with Fission</button>
   {/if}

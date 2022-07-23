@@ -142,6 +142,10 @@ input[type="file" i]::-webkit-file-upload-button {
   font-family: monospace;
 }
 
+input[type="file"] {
+  border: 0;
+}
+
 input[type="file" i]::-webkit-file-upload-button:hover,
 input[type="file" i]::-webkit-file-upload-button:focus {
   color: #262626;
