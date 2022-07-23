@@ -1,6 +1,7 @@
 <script>
   import * as epub from 'epubjs'
   import { userSettings } from '$lib/stores'
+  import { browser } from '$app/env'
 
   let rendered = false
   let rendition
@@ -14,12 +15,21 @@
     renderBook(files[0])
   }
 
+  /**
+  * @type {string}
+  */
+  let css
+
+  $: if (browser) {
+    css = new URL('../assets/flow.css', import.meta.url).href
+  }
+
 
   const renderBook = (file) => {
     const book = epub.default(file)
     rendition = book.renderTo("viewer", {
-      manager: "continuous",
-      flow: "scrolled",
+      // manager: "continuous",
+      // flow: "scrolled",
       width: "100%",
       height: "100%",
       spread: 'none',
@@ -27,7 +37,7 @@
 
     console.log(book)
 
-    rendition.themes.register("default", { "p": { "text-align": "inherit"}})
+    rendition.themes.register("default", css)
     //rendition.themes.override('text-align', 'right', true)
     rendition.themes.fontSize($userSettings.fontSize + 'px')
     rendition.display()
