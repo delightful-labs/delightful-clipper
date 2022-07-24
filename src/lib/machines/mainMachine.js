@@ -1,5 +1,6 @@
 import { createMachine, assign, send } from 'xstate'
 import { v4 as uuidv4 } from 'uuid'
+import uploadFile from '$lib/utils/uploadFile'
 import { browser } from '$app/env'
 
 let initialOnlineStatus = 'online'
@@ -154,31 +155,7 @@ const mainMachine = createMachine({
             },
             uploadingFile: {
               invoke: {
-                src: async (ctx, evt) => {
-
-                  const path = ctx.wn.path.file('public', 'Web Pages', evt.file.name)
-
-                  await ctx.fs.write(
-                    path,
-                    evt.file,
-                    { publish: true }
-                  )
-
-                  const prettyPath = ctx.wn.path.combine(
-                    ctx.wn.path.directory(ctx.wn.path.Branch.Pretty),
-                    ctx.wn.path.removeBranch(path)
-                  )
-
-                  const rootCid = await ctx.fs.root.put()
-
-                  const prettyIpfsPath = `/ipfs/${rootCid}/${ctx.wn.path.toPosix(prettyPath)}`
-
-                  const ipfs = await ctx.wn.ipfs.get()
-
-                  const stats = await ipfs.files.stat(prettyIpfsPath)
-
-                  return stats.cid.toString()
-                },
+                src: async (ctx, evt) => uploadFile(evt.files, ctx.fs),
                 onDone: {
                   target: 'idle',
                   actions: [

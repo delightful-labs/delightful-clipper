@@ -1,23 +1,22 @@
 <script>
-	import { state, send } from '$lib/stores'
+	import { send } from '$lib/stores'
 
 	/**
 	 * @type {FileList | null | undefined}
 	 */
 	let files
 
-	$: if (files) {
-		console.log(files[0])
-	}
-
-	const upload = (file) =>
+	/**
+	 * @param {FileList | null | undefined} files
+	 */
+	const upload = (files) =>
 		send({
 			type: 'UPLOAD_FILE',
-			file: file
+			files: files
 		})
 </script>
 
-<form on:submit|preventDefault={() => upload(files[0])}>
+<form on:submit|preventDefault={() => upload(files)}>
 	<input required type="file" id="book" name="book" accept=".epub" bind:files />
 	<button>Save File</button>
 </form>
