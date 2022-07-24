@@ -154,7 +154,11 @@ const mainMachine = createMachine({
             },
             uploadingFile: {
               invoke: {
-                src: (ctx, evt) => ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', evt.file.name), evt.file, { publish: true }),
+                src: (ctx, evt) => ctx.fs.write(
+                  ctx.wn.path.file('public', 'Web Pages', evt.file.name),
+                  evt.file, 
+                  { publish: true }
+                ),
                 onDone: {
                   target: 'idle'
                 }
