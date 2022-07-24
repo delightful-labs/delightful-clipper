@@ -1,21 +1,29 @@
 <script>
 	import { state, send } from '$lib/stores'
 	import { browser } from '$app/env'
-	import { trim, isEmpty } from 'ramda'
+	import { trim } from 'ramda'
 	import InputTags from '$lib/components/InputTags.svelte'
 	import FormWrapper from '$lib/components/FormWrapper.svelte'
 
 	let regexUrl =
 		/^(?:(?:(?:https?|ftp):)?\/\/)(?:\S+(?::\S*)?@)?(?:(?!(?:10|127)(?:\.\d{1,3}){3})(?!(?:169\.254|192\.168)(?:\.\d{1,3}){2})(?!172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?:[1-9]\d?|1\d\d|2[01]\d|22[0-3])(?:\.(?:1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(?:(?:[a-z0-9\u00a1-\uffff][a-z0-9\u00a1-\uffff_-]{0,62})?[a-z0-9\u00a1-\uffff]\.)+(?:[a-z\u00a1-\uffff]{2,}\.?))(?::\d{2,5})?(?:[/?#]\S*)?$/i
 
-	export let url =
-		'https://www.smashingmagazine.com/2022/05/resilience-flexibility-immediacy-headless-systems/'
-	//export let url = 'https://archive.org/download/whygoduseddlmood00torr_1/whygoduseddlmood00torr_1.pdf'
+	export let url = ''
 	let clipboard = ''
 
+	/**
+	 * @type {any[] | undefined}
+	 */
 	let tagList = []
+
+	/**
+	 * @type {never[]}
+	 */
 	let currentTags = []
 
+	/**
+	 * @param {string} url
+	 */
 	const parseArticle = (url) =>
 		send({
 			type: 'SAVE_ARTICLE',
