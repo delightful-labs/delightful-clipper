@@ -155,7 +155,7 @@ const mainMachine = createMachine({
             },
             uploadingFile: {
               invoke: {
-                src: async (ctx, evt) => uploadFile(evt.files, ctx.fs),
+                src: async (ctx, evt) => uploadFile(evt.files, ctx.fs, ctx.wn),
                 onDone: {
                   target: 'idle',
                   actions: [
