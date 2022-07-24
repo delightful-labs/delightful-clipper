@@ -15,12 +15,12 @@ if (browser) {
 
 const htmlTemplate = (content) => `<html>
   <head>
-    ${ content.title ? `<meta property="og:title" content="${content.title}" />` : ''}
-    ${ content.description ? `<meta property="og:description" content="${content.description}"/>` : ''}
-    ${ content.image ? `<meta property="og:image" content="${content.image}"/>` : ''}
-    ${ content.url ? `<meta property="og:url" content="${content.url}"/>` : ''}
-    ${ content.published ? `<meta property="article:published_time" content="${content.published}"/>` : ''}
-    ${ content.author ? `<meta property="article:author" content="${content.author}"/>` : ''}
+    ${content.title ? `<meta property="og:title" content="${content.title}" />` : ''}
+    ${content.description ? `<meta property="og:description" content="${content.description}"/>` : ''}
+    ${content.image ? `<meta property="og:image" content="${content.image}"/>` : ''}
+    ${content.url ? `<meta property="og:url" content="${content.url}"/>` : ''}
+    ${content.published ? `<meta property="article:published_time" content="${content.published}"/>` : ''}
+    ${content.author ? `<meta property="article:author" content="${content.author}"/>` : ''}
     <meta property="og:type" content="article"/>
   </head>
   <body>
@@ -52,7 +52,7 @@ const mainMachine = createMachine({
         loadingWn: {
           invoke: {
             id: 'loadWn',
-            src: () =>  import('webnative'),
+            src: () => import('webnative'),
             onDone: {
               target: 'initializingWn',
               actions: [
@@ -78,7 +78,7 @@ const mainMachine = createMachine({
             AUTH_CANCELLED: 'unauthorized',
           },
           invoke: {
-            src: (ctx) => (send) => ctx.wn.initialise({ 
+            src: (ctx) => (send) => ctx.wn.initialise({
               permissions: {
                 app: {
                   name: 'Delightful Clipper',
@@ -90,13 +90,13 @@ const mainMachine = createMachine({
                 },
               },
             }).then(a => {
-              send({type: a.scenario, state: a})
+              send({ type: a.scenario, state: a })
             })
             //@TODO: add catch for errors
           },
           exit: assign({
-            wnState: (ctx, evt) =>  evt.state,
-            fs: (ctx, evt) =>  evt.state.fs, 
+            wnState: (ctx, evt) => evt.state,
+            fs: (ctx, evt) => evt.state.fs,
           })
         },
         checkingForDb: {
@@ -154,13 +154,36 @@ const mainMachine = createMachine({
             },
             uploadingFile: {
               invoke: {
-                src: (ctx, evt) => ctx.fs.write(
-                  ctx.wn.path.file('public', 'Web Pages', evt.file.name),
-                  evt.file, 
-                  { publish: true }
-                ),
+                src: async (ctx, evt) => {
+
+                  const path = ctx.wn.path.file('public', 'Web Pages', evt.file.name)
+
+                  await ctx.fs.write(
+                    path,
+                    evt.file,
+                    { publish: true }
+                  )
+
+                  const prettyPath = ctx.wn.path.combine(
+                    ctx.wn.path.directory(ctx.wn.path.Branch.Pretty),
+                    ctx.wn.path.removeBranch(path)
+                  )
+
+                  const rootCid = await ctx.fs.root.put()
+
+                  const prettyIpfsPath = `/ipfs/${rootCid}/${ctx.wn.path.toPosix(prettyPath)}`
+
+                  const ipfs = await ctx.wn.ipfs.get()
+
+                  const stats = await ipfs.files.stat(prettyIpfsPath)
+
+                  return stats.cid.toString()
+                },
                 onDone: {
-                  target: 'idle'
+                  target: 'idle',
+                  actions: [
+                    (ctx, evt) => console.log(evt.data),
+                  ]
                 }
               },
             },
@@ -171,22 +194,24 @@ const mainMachine = createMachine({
                 },
                 UPDATE: {
                   target: 'updatingDatabase',
-                  actions: assign((ctx, evt)=> ({db: {
-                    tags: [...new Set([...ctx.db.tags,...evt.tags])],
-                    articles: {
-                      ...ctx.db.articles,
-                      [evt.id]: {url: evt.url}
+                  actions: assign((ctx, evt) => ({
+                    db: {
+                      tags: [...new Set([...ctx.db.tags, ...evt.tags])],
+                      articles: {
+                        ...ctx.db.articles,
+                        [evt.id]: { url: evt.url }
+                      }
                     }
-                  }}))
+                  }))
                 },
               },
               invoke: {
                 src: (ctx, evt) => (send) => {
                   const isOnline = evt.networkStatus === 'online'
                   const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
-                  send({ 
-                    type: nextEvt,  
-                    id: uuidv4(), 
+                  send({
+                    type: nextEvt,
+                    id: uuidv4(),
                     url: evt.url,
                     tags: evt.tags
                   })
@@ -201,31 +226,34 @@ const mainMachine = createMachine({
                     method: 'post',
                     body: JSON.stringify({ url: evt.url }),
                   })
-              
+
                   const article = await response.json()
-              
+
                   //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
 
                   const prepareFile = (x) => x.type === 'html' ? htmlTemplate(x) : Uint8Array.from(Object.values(x.content))
-              
+
                   await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.${article.type}`), prepareFile(article), { publish: true })
-              
+
                   let { content, ...articleWithoutContent } = article
-    
+
                   articleWithoutContent.file = `${article.title}.${article.type}`
-    
-                  send({ type: 'SAVE', response: articleWithoutContent, id: evt.id, tags: evt.tags})
+
+                  send({ type: 'SAVE', response: articleWithoutContent, id: evt.id, tags: evt.tags })
                 }
               },
               on: {
-                SAVE: { 
+                SAVE: {
                   actions: [
-                    assign((ctx, evt)=> ({db: {
-                      tags: [...new Set([...ctx.db.tags,...evt.tags])],
-                      articles: {
-                        ...ctx.db.articles,
-                        [evt.id]: evt.response}
-                    }}))
+                    assign((ctx, evt) => ({
+                      db: {
+                        tags: [...new Set([...ctx.db.tags, ...evt.tags])],
+                        articles: {
+                          ...ctx.db.articles,
+                          [evt.id]: evt.response
+                        }
+                      }
+                    }))
                   ],
                   target: 'updatingDatabase'
                 }
