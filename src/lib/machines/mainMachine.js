@@ -1,6 +1,7 @@
 import { createMachine, assign, send } from 'xstate'
 import { v4 as uuidv4 } from 'uuid'
 import uploadFile from '$lib/utils/uploadFile'
+import getMetadataEpub from '$lib/utils/getMetadataEpub'
 import { browser } from '$app/env'
 
 let initialOnlineStatus = 'online'
@@ -155,7 +156,18 @@ const mainMachine = createMachine({
             },
             uploadingFile: {
               invoke: {
-                src: async (ctx, evt) => uploadFile(evt.files, ctx.fs, ctx.wn),
+                src: (ctx, evt) => uploadFile(evt.files, ctx.fs, ctx.wn),
+                onDone: {
+                  target: 'gettingMetadata',
+                  actions: [
+                    (ctx, evt) => console.log(evt.data),
+                  ]
+                }
+              },
+            },
+            gettingMetadata: {
+              invoke: {
+                src: (ctx, evt) => getMetadataEpub(evt.file),
                 onDone: {
                   target: 'idle',
                   actions: [
@@ -221,6 +233,7 @@ const mainMachine = createMachine({
               },
               on: {
                 SAVE: {
+                  //@TODO: Move to top level savingEntry state so can be used by file uploader
                   actions: [
                     assign((ctx, evt) => ({
                       db: {
