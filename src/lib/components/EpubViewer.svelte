@@ -19,7 +19,6 @@
 	 * @type {string}
 	 */
 	let css
-	let css2
 
 	$: if (browser) {
 		css = new URL('../assets/flow.css', import.meta.url).href
