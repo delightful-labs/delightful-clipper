@@ -89,7 +89,7 @@ const mainMachine = createMachine({
                   private: [ctx.wn.path.directory('Web Pages')],
                   public: [ctx.wn.path.directory('Web Pages')],
                 },
-              },
+              }
             }).then(a => {
               send({ type: a.scenario, state: a })
             })

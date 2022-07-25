@@ -1,61 +1,72 @@
 <script>
-  import '../lib/assets/global.css'
-  import { browser } from '$app/env'
-  import { userSettings, send, state } from '$lib/stores'
-  import Header from '$lib/components/Header.svelte'
-  import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
-  import FileUploader from '$lib/components/FileUploader.svelte'
+	import '../lib/assets/global.css'
+	import { browser } from '$app/env'
+	import { userSettings, send, state, log } from '$lib/stores'
+	import Header from '$lib/components/Header.svelte'
+	import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
+	import FileUploader from '$lib/components/FileUploader.svelte'
+	import Add from './add.svelte'
 
-  $: if (browser) console.log($state)
+	$: if (browser) {
+		console.log($state)
+		const date = new Date()
+		$log = [
+			...$log,
+			{
+				title: $state?.value?.fileSystem,
+				time: date.toLocaleTimeString()
+			}
+		]
+	}
 
-  // Anytime the store changes, update the local storage value.
-  $: if (browser) {
-    const storedSettings = localStorage.userSettings
+	// Anytime the store changes, update the local storage value.
+	$: if (browser) {
+		const storedSettings = localStorage.userSettings
 
-    if (storedSettings) {
-      userSettings.update(() => JSON.parse(storedSettings) )
-    }
+		if (storedSettings) {
+			userSettings.update(() => JSON.parse(storedSettings))
+		}
 
-    userSettings.subscribe((value) => {
-      localStorage.userSettings = JSON.stringify(value)
-    })
-  }
+		userSettings.subscribe((value) => {
+			localStorage.userSettings = JSON.stringify(value)
+		})
+	}
 
-  $: if (browser) {
-    send('IN_BROWSER')
-    window.addEventListener('offline', () => send('OFFLINE'))
-    window.addEventListener('online', () => send('ONLINE'))
-  }
+	$: if (browser) {
+		send('IN_BROWSER')
+		window.addEventListener('offline', () => send('OFFLINE'))
+		window.addEventListener('online', () => send('ONLINE'))
+	}
 
-  const signin = () => send('AUTHORIZE')
+	const signin = () => send('AUTHORIZE')
 </script>
 
 <Header />
 
 <main>
-  <FileUploader />
-  {#if $state?.value.fileSystem === 'unauthorized'}
-    <button on:click={signin}>Sign in with Fission</button>
-  {/if}
+	<FileUploader />
+	{#if $state?.value.fileSystem === 'unauthorized'}
+		<button on:click={signin}>Sign in with Fission</button>
+	{/if}
 
-  {#if $state.matches('fileSystem.initialized')}
-    <slot />
-  {:else}
-    <div class="loading-wrapper">
-      <LoadingSpinner text={'Loading articles'} />
-    </div>
-  {/if}
+	{#if $state.matches('fileSystem.initialized')}
+		<slot />
+	{:else}
+		<div class="loading-wrapper">
+			<LoadingSpinner text={'Loading articles'} />
+		</div>
+	{/if}
 </main>
 
 <style>
-  main {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-  }
+	main {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
 
-  .loading-wrapper {
-    display: grid;
-    flex: 1;
-  }
+	.loading-wrapper {
+		display: grid;
+		flex: 1;
+	}
 </style>

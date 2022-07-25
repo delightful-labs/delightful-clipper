@@ -2,6 +2,7 @@
 	import ParseForm from '$lib/components/ParseForm.svelte'
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte'
 	import DetailsSummary from '$lib/components/DetailsSummary.svelte'
+	import { log } from '$lib/stores'
 
 	let y = 0
 	let lastY = 0
@@ -21,6 +22,13 @@
 	<a href="/">Home</a>
 	<DetailsSummary title={'Add'}>
 		<ParseForm />
+	</DetailsSummary>
+	<DetailsSummary title={'Log'}>
+		<ol>
+			{#each $log as entry}
+				<li>{entry.time} | {entry.title}</li>
+			{/each}
+		</ol>
 	</DetailsSummary>
 	<SettingsPanel />
 </header>
