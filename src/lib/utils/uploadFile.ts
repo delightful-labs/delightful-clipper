@@ -1,7 +1,8 @@
 import type FileSystem from 'webnative/fs/filesystem'
+import * as wn from 'webnative'
 
 //Takes in a file to upload, returns a CiD
-export default async function uploadFile(files: FileList, fs: FileSystem, wn: any) {
+export default async function uploadFile(files: FileList, fs: FileSystem) {
 
   const file = files[0]
 
