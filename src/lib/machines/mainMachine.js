@@ -150,7 +150,8 @@ const mainMachine = createMachine({
                   target: 'creatingEntry'
                 },
                 UPLOAD_FILE: {
-                  target: 'uploadingFile'
+                  //target: 'uploadingFile'
+                  target: 'gettingMetadata'
                 }
               },
             },
@@ -167,7 +168,7 @@ const mainMachine = createMachine({
             },
             gettingMetadata: {
               invoke: {
-                src: (ctx, evt) => getMetadataEpub(evt.file),
+                src: (ctx, evt) => getMetadataEpub(evt.files[0]),
                 onDone: {
                   target: 'idle',
                   actions: [
