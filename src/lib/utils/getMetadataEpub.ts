@@ -24,6 +24,7 @@ const filterKeys = (obj: object, keys_to_keep: string[]): object => Object.fromE
 )
 
 const getMetadataEpub = async (file: ArrayBuffer, cid: string) => {
+  console.log(file)
   const book = epub.default(file)
   const metadata = await book.loaded.metadata
 

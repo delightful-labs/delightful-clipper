@@ -164,9 +164,20 @@ const mainMachine = createMachine({
             },
             gettingMetadata: {
               invoke: {
-                src: (ctx, evt) => getMetadataEpub(evt.file, evt.cid),
+                src: (ctx, evt) => getMetadataEpub(evt.data.file, evt.data.cid),
                 onDone: {
-                  target: 'savingEntry'
+                  target: 'updatingDatabase',
+                  actions: [
+                    assign((ctx, evt) => ({
+                      db: {
+                        tags: [...new Set([...ctx.db.tags, ...evt.data.tags])],
+                        articles: {
+                          ...ctx.db.articles,
+                          [evt.data.id]: evt.data.response
+                        }
+                      }
+                    })),
+                  ]
                 }
               },
             },
@@ -239,22 +250,6 @@ const mainMachine = createMachine({
                       }
                     }))
                   ],
-                  target: 'updatingDatabase'
-                }
-              }
-            },
-            savingEntry: {
-              invoke: {
-                src: assign((ctx, evt) => ({
-                  db: {
-                    tags: [...new Set([...ctx.db.tags, ...evt.tags])],
-                    articles: {
-                      ...ctx.db.articles,
-                      [evt.id]: evt.response
-                    }
-                  }
-                })),
-                onDone: {
                   target: 'updatingDatabase'
                 }
               }

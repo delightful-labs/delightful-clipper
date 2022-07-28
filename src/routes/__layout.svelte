@@ -8,7 +8,7 @@
 	import Add from './add.svelte'
 
 	$: if (browser) {
-		console.log($state)
+		console.log($state.event.type)
 		const date = new Date()
 		$log = [
 			...$log,
