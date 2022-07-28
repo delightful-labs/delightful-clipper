@@ -19,16 +19,34 @@ const blueprint = {
 
 const keys_to_keep = Object.values(blueprint)
 
-const filterKeys = list => Object.fromEntries(
-  keys_to_keep.map(k => [k, list[k]])
+const filterKeys = (obj: object, keys_to_keep: string[]): object => Object.fromEntries(
+  keys_to_keep.map(k => [k, obj[k]])
 )
 
-const getMetadataEpub = async (file: File) => {
+const getMetadataEpub = async (file: ArrayBuffer, cid: string) => {
   const book = epub.default(file)
   const metadata = await book.loaded.metadata
+
   const newData = renameKeys(blueprint, metadata)
-  const simplifiedData = filterKeys(newData)
-  return simplifiedData
+  const simplifiedData = filterKeys(newData, keys_to_keep)
+
+  //@TODO: Do this in an immutable way
+  if (simplifiedData.published) {
+    const date = new Date(simplifiedData.published)
+    const formattedDate = date.toISOString()
+    simplifiedData.published = formattedDate
+  }
+
+  //@TODO: Do this in an immutable way
+  simplifiedData.type = 'epub'
+  simplifiedData.tags = []
+  simplifiedData.file = file.name
+
+  return {
+    response: simplifiedData,
+    id: cid,
+    tags: []
+  }
 }
 
 export default getMetadataEpub

@@ -150,8 +150,7 @@ const mainMachine = createMachine({
                   target: 'creatingEntry'
                 },
                 UPLOAD_FILE: {
-                  //target: 'uploadingFile'
-                  target: 'gettingMetadata'
+                  target: 'uploadingFile'
                 }
               },
             },
@@ -160,20 +159,14 @@ const mainMachine = createMachine({
                 src: (ctx, evt) => uploadFile(evt.files, ctx.fs, ctx.wn),
                 onDone: {
                   target: 'gettingMetadata',
-                  actions: [
-                    (ctx, evt) => console.log(evt.data),
-                  ]
                 }
               },
             },
             gettingMetadata: {
               invoke: {
-                src: (ctx, evt) => getMetadataEpub(evt.files[0]),
+                src: (ctx, evt) => getMetadataEpub(evt.file, evt.cid),
                 onDone: {
-                  target: 'idle',
-                  actions: [
-                    (ctx, evt) => console.log(evt.data),
-                  ]
+                  target: 'savingEntry'
                 }
               },
             },
@@ -246,6 +239,22 @@ const mainMachine = createMachine({
                       }
                     }))
                   ],
+                  target: 'updatingDatabase'
+                }
+              }
+            },
+            savingEntry: {
+              invoke: {
+                src: assign((ctx, evt) => ({
+                  db: {
+                    tags: [...new Set([...ctx.db.tags, ...evt.tags])],
+                    articles: {
+                      ...ctx.db.articles,
+                      [evt.id]: evt.response
+                    }
+                  }
+                })),
+                onDone: {
                   target: 'updatingDatabase'
                 }
               }

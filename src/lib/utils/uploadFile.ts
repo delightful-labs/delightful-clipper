@@ -27,10 +27,7 @@ export default async function uploadFile(files: FileList, fs: FileSystem, wn: an
   const stats = await ipfs.files.stat(prettyIpfsPath)
 
   return {
-    entry: {
-      cid: stats.cid.toString(),
-      file: file.name
-    },
+    cid: stats.cid.toString(),
     file: file
   }
 }
