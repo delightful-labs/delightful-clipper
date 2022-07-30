@@ -2,6 +2,8 @@
 	import ParseForm from '$lib/components/ParseForm.svelte'
 	import SettingsPanel from '$lib/components/SettingsPanel.svelte'
 	import DetailsSummary from '$lib/components/DetailsSummary.svelte'
+	import FileUploader from '$lib/components/FileUploader.svelte'
+
 	import { log } from '$lib/stores'
 
 	let y = 0
@@ -21,7 +23,10 @@
 <header style:transform="translateY({hideHeader ? '-100%' : '0'})">
 	<a href="/">Home</a>
 	<DetailsSummary title={'Add'}>
-		<ParseForm />
+		<div class="add-wrapper">
+			<FileUploader />
+			<ParseForm />
+		</div>
 	</DetailsSummary>
 	<DetailsSummary title={'Log'}>
 		<ol>
@@ -45,6 +50,11 @@
 		transition: 400ms;
 		border-bottom: 2px solid;
 		z-index: 100;
+	}
+
+	.add-wrapper {
+		display: flex;
+		flex-wrap: wrap;
 	}
 
 	header :global(.details-content) {
