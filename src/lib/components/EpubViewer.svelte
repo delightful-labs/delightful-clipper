@@ -9,10 +9,10 @@
 	/**
 	 * @type {FileList | null | undefined}
 	 */
-	let files
+	export let file
 
-	$: if (files) {
-		renderBook(files[0])
+	$: if (file) {
+		renderBook(file)
 	}
 
 	/**
@@ -25,7 +25,7 @@
 	}
 
 	const renderBook = (file) => {
-		const book = epub.default(file)
+		const book = epub.default(file.buffer)
 		rendition = book.renderTo('viewer', {
 			manager: 'continuous',
 			flow: 'scrolled',
@@ -33,8 +33,6 @@
 			height: '100%',
 			spread: 'none'
 		})
-
-		console.log(book)
 
 		rendition.themes.register('default', css)
 		//rendition.themes.override('text-align', 'right', true)
@@ -70,19 +68,19 @@
 	}
 </script>
 
-<input type="file" id="book" name="book" accept=".epub" bind:files />
-
-<button on:click={() => rendition.prev()}>‹</button>
 <div class="wrapper">
 	<div id="viewer" style:width="{$userSettings.contentWidth}vw" />
 </div>
-<button on:click={() => rendition.next()}>›</button>
 
 <style>
 	.wrapper {
-		flex: 1;
 		display: flex;
 		margin: 0 auto;
+		min-height: 400px;
+	}
+
+	#viewer {
+		min-height: 400px;
 	}
 
 	/* Override epubjs styles */

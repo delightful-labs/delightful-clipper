@@ -58,8 +58,11 @@
 		{:then value}
 			{#if article.type === 'html'}
 				{@html value}
-			{:else}
+			{:else if article.type === 'html'}
 				<PdfViewer file={value} />
+			{:else}
+				<p>Epub</p>
+				<EpubViewer file={value} />
 			{/if}
 		{/await}
 	</div>
@@ -68,6 +71,7 @@
 <style lang="scss">
 	.content {
 		margin: 0 auto;
+		flex: 1;
 
 		:global {
 			@import '../lib/assets/flow';
