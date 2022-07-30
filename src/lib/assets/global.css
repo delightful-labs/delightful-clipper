@@ -161,6 +161,10 @@ button {
   font-family: monospace;
 }
 
+button:disabled {
+  opacity: 0.4;
+}
+
 button:hover,
 button:focus {
   color: #262626;

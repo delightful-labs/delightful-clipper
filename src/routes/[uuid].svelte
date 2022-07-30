@@ -61,7 +61,6 @@
 			{:else if article.type === 'html'}
 				<PdfViewer file={value} />
 			{:else}
-				<p>Epub</p>
 				<EpubViewer file={value} />
 			{/if}
 		{/await}

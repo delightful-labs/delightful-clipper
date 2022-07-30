@@ -33,264 +33,274 @@ const htmlTemplate = (content) => `<html>
   </body>
 </html>`
 
-const mainMachine = createMachine({
-  id: 'main',
-  type: 'parallel',
-  context: {
-    wn: null,
-    fs: undefined,
-    wnState: undefined,
-    dbFilePath: undefined,
-    db: dbTemplate,
-    error: undefined,
-  },
-  states: {
-    fileSystem: {
-      initial: 'uninitialized',
-      states: {
-        uninitialized: {
-          on: { IN_BROWSER: 'loadingWn' }
-        },
-        loadingWn: {
-          invoke: {
-            id: 'loadWn',
-            src: () => import('webnative'),
-            onDone: {
-              target: 'initializingWn',
-              actions: [
-                assign({
-                  wn: (ctx, evt) => evt.data,
-                  dbFilePath: (ctx, evt) => evt.data.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json'),
-                })
-              ]
-            },
-            onError: {
-              target: 'failure',
-              actions: [
-                assign({ error: (ctx, evt) => evt.data })
-              ]
-            }
+const mainMachine = createMachine(
+  {
+    id: 'main',
+    type: 'parallel',
+    context: {
+      wn: null,
+      fs: undefined,
+      wnState: undefined,
+      dbFilePath: undefined,
+      db: dbTemplate,
+      error: undefined,
+    },
+    states: {
+      fileSystem: {
+        initial: 'uninitialized',
+        states: {
+          uninitialized: {
+            on: { IN_BROWSER: 'loadingWn' }
           },
-        },
-        initializingWn: {
-          on: {
-            CONTINUATION: 'checkingForDb',
-            AUTH_SUCCEEDED: 'checkingForDb',
-            NOT_AUTHORISED: 'unauthorized',
-            AUTH_CANCELLED: 'unauthorized',
-          },
-          invoke: {
-            src: (ctx) => (send) => ctx.wn.initialise({
-              permissions: {
-                app: {
-                  name: 'Delightful Clipper',
-                  creator: 'Delightful Labs',
-                },
-                fs: {
-                  private: [ctx.wn.path.directory('Web Pages')],
-                  public: [ctx.wn.path.directory('Web Pages')],
-                },
+          loadingWn: {
+            invoke: {
+              id: 'loadWn',
+              src: () => import('webnative'),
+              onDone: {
+                target: 'initializingWn',
+                actions: [
+                  assign({
+                    wn: (ctx, evt) => evt.data,
+                    dbFilePath: (ctx, evt) => evt.data.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json'),
+                  })
+                ]
+              },
+              onError: {
+                target: 'failure',
+                actions: [
+                  assign({ error: (ctx, evt) => evt.data })
+                ]
               }
-            }).then(a => {
-              send({ type: a.scenario, state: a })
+            },
+          },
+          initializingWn: {
+            on: {
+              CONTINUATION: 'checkingForDb',
+              AUTH_SUCCEEDED: 'checkingForDb',
+              NOT_AUTHORISED: 'unauthorized',
+              AUTH_CANCELLED: 'unauthorized',
+            },
+            invoke: {
+              src: (ctx) => (send) => ctx.wn.initialise({
+                permissions: {
+                  app: {
+                    name: 'Delightful Clipper',
+                    creator: 'Delightful Labs',
+                  },
+                  fs: {
+                    private: [ctx.wn.path.directory('Web Pages')],
+                    public: [ctx.wn.path.directory('Web Pages')],
+                  },
+                }
+              }).then(a => {
+                send({ type: a.scenario, state: a })
+              })
+              //@TODO: add catch for errors
+            },
+            exit: assign({
+              wnState: (ctx, evt) => evt.state,
+              fs: (ctx, evt) => evt.state.fs,
             })
-            //@TODO: add catch for errors
           },
-          exit: assign({
-            wnState: (ctx, evt) => evt.state,
-            fs: (ctx, evt) => evt.state.fs,
-          })
-        },
-        checkingForDb: {
-          on: {
-            FOUND_DB: {
-              target: 'loadingDb'
-            },
-            NO_DB: {
-              target: 'initialized'
-            }
-          },
-          invoke: {
-            src: (ctx) => (send) => ctx.fs.exists(ctx.dbFilePath)
-              .then(e => send(e ? 'FOUND_DB' : 'NO_DB'))
-          }
-        },
-        loadingDb: {
-          invoke: {
-            src: (ctx) => ctx.fs.cat(ctx.dbFilePath),
-            onDone: {
-              actions: assign({
-                db: (ctx, evt) => evt.data
-              }),
-              target: 'initialized'
-            }
-          }
-        },
-        unauthorized: {
-          on: {
-            'AUTHORIZE': {
-              target: 'authorizing'
-            }
-          }
-        },
-        authorizing: {
-          entry: (ctx) => {
-            ctx.wn.redirectToLobby(ctx.wnState.permissions)
-          }
-        },
-        initialized: {
-          initial: 'idle',
-          states: {
-            idle: {
-              on: {
-                ERASE_DATABASE: {
-                  target: 'erasingDatabase'
-                },
-                SAVE_ARTICLE: {
-                  target: 'creatingEntry'
-                },
-                UPLOAD_FILE: {
-                  target: 'uploadingFile'
-                }
+          checkingForDb: {
+            on: {
+              FOUND_DB: {
+                target: 'loadingDb'
               },
-            },
-            uploadingFile: {
-              invoke: {
-                src: (ctx, evt) => uploadFile(evt.files, ctx.fs, ctx.wn),
-                onDone: {
-                  target: 'gettingMetadata',
-                }
-              },
-            },
-            gettingMetadata: {
-              invoke: {
-                src: (ctx, evt) => getMetadataEpub(evt.data.file, evt.data.cid),
-                onDone: {
-                  target: 'updatingDatabase',
-                  actions: [
-                    assign((ctx, evt) => ({
-                      db: {
-                        tags: [...new Set([...ctx.db.tags, ...evt.data.tags])],
-                        articles: {
-                          ...ctx.db.articles,
-                          [evt.data.id]: evt.data.response
-                        }
-                      }
-                    })),
-                  ]
-                }
-              },
-            },
-            creatingEntry: {
-              on: {
-                PARSE: {
-                  target: 'parsingArticle',
-                },
-                UPDATE: {
-                  target: 'updatingDatabase',
-                  actions: assign((ctx, evt) => ({
-                    db: {
-                      tags: [...new Set([...ctx.db.tags, ...evt.tags])],
-                      articles: {
-                        ...ctx.db.articles,
-                        [evt.id]: { url: evt.url }
-                      }
-                    }
-                  }))
-                },
-              },
-              invoke: {
-                src: (ctx, evt) => (send) => {
-                  const isOnline = evt.networkStatus === 'online'
-                  const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
-                  send({
-                    type: nextEvt,
-                    id: uuidv4(),
-                    url: evt.url,
-                    tags: evt.tags
-                  })
-                }
+              NO_DB: {
+                target: 'initialized'
               }
             },
-            parsingArticle: {
-              invoke: {
-                src: (ctx, evt) => async (send) => {
-                  // Send request to serverless function to load article.
-                  let response = await fetch('/parser', {
-                    method: 'post',
-                    body: JSON.stringify({ url: evt.url }),
-                  })
-
-                  const article = await response.json()
-
-                  //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
-
-                  const prepareFile = (x) => x.type === 'html' ? htmlTemplate(x) : Uint8Array.from(Object.values(x.content))
-
-                  await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.${article.type}`), prepareFile(article), { publish: true })
-
-                  let { content, ...articleWithoutContent } = article
-
-                  articleWithoutContent.file = `${article.title}.${article.type}`
-
-                  send({ type: 'SAVE', response: articleWithoutContent, id: evt.id, tags: evt.tags })
-                }
+            invoke: {
+              src: (ctx) => (send) => ctx.fs.exists(ctx.dbFilePath)
+                .then(e => send(e ? 'FOUND_DB' : 'NO_DB'))
+            }
+          },
+          loadingDb: {
+            invoke: {
+              src: (ctx) => ctx.fs.cat(ctx.dbFilePath),
+              onDone: {
+                actions: assign({
+                  db: (ctx, evt) => evt.data
+                }),
+                target: 'initialized'
+              }
+            }
+          },
+          unauthorized: {
+            on: {
+              'AUTHORIZE': {
+                target: 'authorizing'
+              }
+            }
+          },
+          authorizing: {
+            entry: (ctx) => {
+              ctx.wn.redirectToLobby(ctx.wnState.permissions)
+            }
+          },
+          initialized: {
+            initial: 'idle',
+            states: {
+              idle: {
+                on: {
+                  ERASE_DATABASE: {
+                    target: 'erasingDatabase'
+                  },
+                  SAVE_ARTICLE: {
+                    target: 'creatingEntry'
+                  },
+                  UPLOAD_FILE: {
+                    target: 'uploadingFile'
+                  }
+                },
               },
-              on: {
-                SAVE: {
-                  //@TODO: Move to top level savingEntry state so can be used by file uploader
-                  actions: [
-                    assign((ctx, evt) => ({
+              uploadingFile: {
+                invoke: {
+                  src: (ctx, evt) => uploadFile(evt.files, ctx.fs, ctx.wn),
+                  onDone: [
+                    { target: 'gettingEpubMetadata', cond: 'isEpub' }
+                  ]
+                },
+              },
+              gettingEpubMetadata: {
+                invoke: {
+                  src: (ctx, evt) => getMetadataEpub(evt.data.file, evt.data.cid),
+                  onDone: {
+                    target: 'updatingDatabase',
+                    actions: [
+                      assign((ctx, evt) => ({
+                        db: {
+                          tags: [...new Set([...ctx.db.tags, ...evt.data.tags])],
+                          articles: {
+                            ...ctx.db.articles,
+                            [evt.data.id]: evt.data.response
+                          }
+                        }
+                      })),
+                    ]
+                  }
+                },
+              },
+              creatingEntry: {
+                on: {
+                  PARSE: {
+                    target: 'parsingArticle',
+                  },
+                  UPDATE: {
+                    target: 'updatingDatabase',
+                    actions: assign((ctx, evt) => ({
                       db: {
                         tags: [...new Set([...ctx.db.tags, ...evt.tags])],
                         articles: {
                           ...ctx.db.articles,
-                          [evt.id]: evt.response
+                          [evt.id]: { url: evt.url }
                         }
                       }
                     }))
-                  ],
-                  target: 'updatingDatabase'
+                  },
+                },
+                invoke: {
+                  src: (ctx, evt) => (send) => {
+                    const isOnline = evt.networkStatus === 'online'
+                    const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
+                    send({
+                      type: nextEvt,
+                      id: uuidv4(), //What to do with this? I am using CIDs for epub uploads.
+                      url: evt.url,
+                      tags: evt.tags
+                    })
+                  }
                 }
+              },
+              parsingArticle: {
+                invoke: {
+                  src: (ctx, evt) => async (send) => {
+                    // Send request to serverless function to load article.
+                    let response = await fetch('/parser', {
+                      method: 'post',
+                      body: JSON.stringify({ url: evt.url }),
+                    })
+
+                    const article = await response.json()
+
+                    //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
+
+                    const prepareFile = (x) => x.type === 'html' ? htmlTemplate(x) : Uint8Array.from(Object.values(x.content))
+
+                    await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.${article.type}`), prepareFile(article), { publish: true })
+
+                    let { content, ...articleWithoutContent } = article
+
+                    articleWithoutContent.file = `${article.title}.${article.type}`
+
+                    send({ type: 'SAVE', response: articleWithoutContent, id: evt.id, tags: evt.tags })
+                  }
+                },
+                on: {
+                  SAVE: {
+                    //@TODO: Move to top level savingEntry state so can be used by file uploader
+                    actions: [
+                      assign((ctx, evt) => ({
+                        db: {
+                          tags: [...new Set([...ctx.db.tags, ...evt.tags])],
+                          articles: {
+                            ...ctx.db.articles,
+                            [evt.id]: evt.response
+                          }
+                        }
+                      }))
+                    ],
+                    target: 'updatingDatabase'
+                  }
+                }
+              },
+              updatingDatabase: {
+                invoke: {
+                  src: (ctx) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
+                  onDone: {
+                    target: 'idle'
+                  }
+                },
+              },
+              erasingDatabase: {
+                invoke: {
+                  src: (ctx) => ctx.fs.write(ctx.dbFilePath, dbTemplate, { publish: true }),
+                  onDone: {
+                    target: 'idle'
+                  }
+                },
               }
-            },
-            updatingDatabase: {
-              invoke: {
-                src: (ctx) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
-                onDone: {
-                  target: 'idle'
-                }
-              },
-            },
-            erasingDatabase: {
-              invoke: {
-                src: (ctx) => ctx.fs.write(ctx.dbFilePath, dbTemplate, { publish: true }),
-                onDone: {
-                  target: 'idle'
-                }
-              },
             }
-          }
-        },
-        failure: {}
-      }
-    },
-    network: {
-      initial: initialOnlineStatus,
-      states: {
-        online: {
-          on: {
-            OFFLINE: { target: 'offline' },
-          }
-        },
-        offline: {
-          on: {
-            ONLINE: { target: 'online' },
+          },
+          failure: {}
+        }
+      },
+      network: {
+        initial: initialOnlineStatus,
+        states: {
+          online: {
+            on: {
+              OFFLINE: { target: 'offline' },
+            }
+          },
+          offline: {
+            on: {
+              ONLINE: { target: 'online' },
+            }
           }
         }
       }
+    },
+  },
+  //Settings object
+  {
+    guards: {
+      isEpub: (ctx, evt) => {
+        return evt.data.file.type === 'application/epub+zip'
+      }
     }
   }
-})
+)
 
 export default mainMachine
