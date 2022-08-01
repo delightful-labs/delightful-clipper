@@ -15,7 +15,7 @@
     }
   ],
   "background_color": "#ffffff",
-  "display": "standalone",
+  "display": "fullscreen",
   "scope": "/",
   "theme_color": "#000000",
   "description": "Zero data, local first web clipper",
