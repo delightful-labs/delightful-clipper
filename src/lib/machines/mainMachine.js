@@ -152,6 +152,11 @@ const mainMachine = createMachine(
                   },
                   UPLOAD_FILE: {
                     target: 'uploadingFile'
+                  },
+                  UPDATE_POSITION: {
+                    actions: [
+                      (ctx, evt) => console.log(evt)
+                    ]
                   }
                 },
               },

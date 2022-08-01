@@ -44,15 +44,15 @@
 	}
 </script>
 
-{#if article}
-	<div
-		class="content flow"
-		style:font-size="{$userSettings.fontSize}px"
-		style:width="{$userSettings.contentWidth}vw"
-		style:font-family={$userSettings.fontFamily}
-		style:font-weight={$userSettings.fontWeight}
-		style:line-height={$userSettings.lineHeight / 10}
-	>
+<div
+	class="content flow"
+	style:font-size="{$userSettings.fontSize}px"
+	style:width="{$userSettings.contentWidth}vw"
+	style:font-family={$userSettings.fontFamily}
+	style:font-weight={$userSettings.fontWeight}
+	style:line-height={$userSettings.lineHeight / 10}
+>
+	{#if article}
 		{#await content}
 			<p>loading...</p>
 		{:then value}
@@ -64,8 +64,8 @@
 				<EpubViewer file={value} />
 			{/if}
 		{/await}
-	</div>
-{/if}
+	{/if}
+</div>
 
 <style lang="scss">
 	.content {
