@@ -11,8 +11,9 @@
 		var section = book.spine.get(item)
 
 		if (section) {
-			section.render(book.load.bind(book)).then(function (html) {
-				content = html
+			section.load(book.load.bind(book)).then(function (html) {
+				const text = html.getElementsByTagName('body')[0].innerHTML
+				content = text
 			})
 		}
 		return section
