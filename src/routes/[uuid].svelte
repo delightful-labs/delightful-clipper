@@ -14,7 +14,7 @@
 	import PdfViewer from '$lib/components/PdfViewer.svelte'
 	import EpubViewer from '$lib/components/EpubViewer.svelte'
 
-	export let uuid
+	export let uuid = ''
 	let article
 	let content
 
@@ -61,7 +61,13 @@
 			{:else if article.type === 'html'}
 				<PdfViewer file={value} />
 			{:else}
-				<EpubViewer file={value} />
+				<EpubViewer
+					file={value}
+					id={uuid}
+					currentSectionIndex={article?.readingPosition?.section
+						? article?.readingPosition?.section
+						: 2}
+				/>
 			{/if}
 		{/await}
 	{/if}
