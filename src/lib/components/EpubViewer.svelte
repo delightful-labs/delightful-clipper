@@ -33,6 +33,15 @@
 		display(currentSectionIndex)
 	}
 
+	const updatePosition = (/** @type {number} */ pos) => {
+		const newPos = currentSectionIndex + pos
+		console.log(newPos)
+		send({
+			type: 'UPDATE_POSITION',
+			data: { currentSection: newPos, id: id }
+		})
+	}
+
 	$: if (file) {
 		loadBook(file)
 	}
@@ -40,14 +49,10 @@
 	$: if (book) {
 		display(currentSectionIndex)
 	}
+
+	$: console.log(currentSectionIndex)
 </script>
 
-<button on:click={() => currentSectionIndex--}>Prev</button>
+<button on:click={() => updatePosition(-1)} disabled={currentSectionIndex == 0}>Prev</button>
 {@html content}
-<button
-	on:click={() =>
-		send({
-			type: 'UPDATE_POSITION',
-			data: { currentSection: currentSectionIndex + 1, id: id }
-		})}>Next</button
->
+<button on:click={() => updatePosition(1)}>Next</button>

@@ -1,9 +1,11 @@
 import { createMachine, assign, send } from 'xstate'
-import { produce } from 'immer'
+import { produce, setAutoFreeze } from 'immer'
 import { v4 as uuidv4 } from 'uuid'
 import uploadFile from '$lib/utils/uploadFile'
 import getMetadataEpub from '$lib/utils/getMetadataEpub'
 import { browser } from '$app/env'
+
+setAutoFreeze(false)
 
 let initialOnlineStatus = 'online'
 
