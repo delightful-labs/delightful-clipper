@@ -1,5 +1,5 @@
-import { createMachine, send, assign as xstateAssign } from 'xstate'
-import { assign, createUpdater } from '@xstate/immer'
+import { createMachine, assign, send } from 'xstate'
+import { produce } from 'immer'
 import { v4 as uuidv4 } from 'uuid'
 import uploadFile from '$lib/utils/uploadFile'
 import getMetadataEpub from '$lib/utils/getMetadataEpub'
@@ -60,7 +60,7 @@ const mainMachine = createMachine(
               onDone: {
                 target: 'initializingWn',
                 actions: [
-                  xstateAssign({
+                  assign({
                     wn: (ctx, evt) => evt.data,
                     dbFilePath: (ctx, evt) => evt.data.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json'),
                   })
@@ -69,7 +69,7 @@ const mainMachine = createMachine(
               onError: {
                 target: 'failure',
                 actions: [
-                  xstateAssign({ error: (ctx, evt) => evt.data })
+                  assign({ error: (ctx, evt) => evt.data })
                 ]
               }
             },
@@ -98,7 +98,7 @@ const mainMachine = createMachine(
               })
               //@TODO: add catch for errors
             },
-            exit: xstateAssign({
+            exit: assign({
               wnState: (ctx, evt) => evt.state,
               fs: (ctx, evt) => evt.state.fs,
             })
@@ -121,7 +121,7 @@ const mainMachine = createMachine(
             invoke: {
               src: (ctx) => ctx.fs.cat(ctx.dbFilePath),
               onDone: {
-                actions: xstateAssign({
+                actions: assign({
                   db: (ctx, evt) => evt.data
                 }),
                 target: 'initialized'
@@ -155,25 +155,10 @@ const mainMachine = createMachine(
                     target: 'uploadingFile'
                   },
                   UPDATE_POSITION: {
-                    actions: [
-                      (ctx, evt) => console.log(evt),
-                      xstateAssign((ctx, evt) => ({
-                        db: {
-                          ...ctx.db,
-                          articles: {
-                            ...ctx.db.articles,
-                            [evt.data.id]: {
-                              ...ctx.db.articles[evt.data.id],
-                              readingPosition: {
-                                percentage: 0,
-                                section: evt.data.currentSection
-                              }
-                            }
-                          }
-                        }
-                      })),
-                    ],
-                    target: 'updatingDatabase',
+                    actions: assign((ctx, evt) => produce(ctx, d => {
+                      d.db.articles[evt.data.id].readingPosition.section = evt.data.currentSection
+                    })),
+                    target: 'updatingDatabase'
                   }
                 },
               },
@@ -191,7 +176,7 @@ const mainMachine = createMachine(
                   onDone: {
                     target: 'updatingDatabase',
                     actions: [
-                      xstateAssign((ctx, evt) => ({
+                      assign((ctx, evt) => ({
                         db: {
                           tags: [...new Set([...ctx.db.tags, ...evt.data.tags])],
                           articles: {
@@ -211,7 +196,7 @@ const mainMachine = createMachine(
                   },
                   UPDATE: {
                     target: 'updatingDatabase',
-                    actions: xstateAssign((ctx, evt) => ({
+                    actions: assign((ctx, evt) => ({
                       db: {
                         tags: [...new Set([...ctx.db.tags, ...evt.tags])],
                         articles: {
@@ -263,7 +248,7 @@ const mainMachine = createMachine(
                   SAVE: {
                     //@TODO: Move to top level savingEntry state so can be used by file uploader
                     actions: [
-                      xstateAssign((ctx, evt) => ({
+                      assign((ctx, evt) => ({
                         db: {
                           tags: [...new Set([...ctx.db.tags, ...evt.tags])],
                           articles: {
