@@ -42,6 +42,10 @@ const getMetadataEpub = async (file: ArrayBuffer, cid: string) => {
   simplifiedData.type = 'epub'
   simplifiedData.tags = []
   simplifiedData.file = file.name
+  simplifiedData.readingPosition = {
+    section: 0,
+    percentage: 0
+  }
 
   return {
     response: simplifiedData,

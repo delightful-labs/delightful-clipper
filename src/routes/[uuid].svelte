@@ -66,7 +66,7 @@
 					id={uuid}
 					currentSectionIndex={article?.readingPosition?.section
 						? article?.readingPosition?.section
-						: 2}
+						: 0}
 				/>
 			{/if}
 		{/await}
