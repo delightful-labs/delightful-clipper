@@ -42,6 +42,8 @@
 
 		getHtml()
 	}
+
+	$: console.log(article)
 </script>
 
 <div
@@ -67,6 +69,7 @@
 					currentSectionIndex={article?.readingPosition?.section
 						? article?.readingPosition?.section
 						: 0}
+					scrollPosition={article.readingPosition.percentage}
 				/>
 			{/if}
 		{/await}
