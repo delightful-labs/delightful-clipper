@@ -161,6 +161,13 @@ const mainMachine = createMachine(
                       d.db.articles[evt.data.id].readingPosition.section = evt.data.currentSection
                     })),
                     target: 'updatingDatabase'
+                  },
+                  UPDATE_SCROLL: {
+                    //actions: (ctx, evt) => console.log(evt)
+                    target: 'updatingDatabase',
+                    actions: assign((ctx, evt) => produce(ctx, d => {
+                      d.db.articles[evt.data.id].readingPosition.percentage = evt.data.currentPercentage
+                    })),
                   }
                 },
               },
@@ -242,6 +249,7 @@ const mainMachine = createMachine(
                     let { content, ...articleWithoutContent } = article
 
                     articleWithoutContent.file = `${article.title}.${article.type}`
+                    articleWithoutContent.readingPosition = { section: 0, percentage: 0 }
 
                     send({ type: 'SAVE', response: articleWithoutContent, id: evt.id, tags: evt.tags })
                   }

@@ -2,11 +2,14 @@
 	import * as epub from 'epubjs'
 	import { send } from '$lib/stores'
 
+	console.log(send)
+
 	let content = ''
 	let book
 
 	export let file
 	export let currentSectionIndex = 0
+	export let scrollPosition = 0
 	export let id = ''
 
 	const display = (item) => {
@@ -35,7 +38,6 @@
 
 	const updatePosition = (/** @type {number} */ pos) => {
 		const newPos = currentSectionIndex + pos
-		console.log(newPos)
 		send({
 			type: 'UPDATE_POSITION',
 			data: { currentSection: newPos, id: id }
@@ -50,8 +52,23 @@
 		display(currentSectionIndex)
 	}
 
-	$: console.log(currentSectionIndex)
+	let timeoutId
+
+	const updateScrollPosition = (/** @type {number} */ pos) => {
+		if (timeoutId) clearTimeout(timeoutId)
+		timeoutId = setTimeout(function () {
+			send({
+				type: 'UPDATE_SCROLL',
+				data: { currentPercentage: scrollPosition, id: id }
+			})
+		}, 2000)
+	}
+
+	$: console.log(scrollPosition)
+	$: updateScrollPosition(scrollPosition)
 </script>
+
+<svelte:window bind:scrollY={scrollPosition} />
 
 <button on:click={() => updatePosition(-1)} disabled={currentSectionIndex == 0}>Prev</button>
 {@html content}
