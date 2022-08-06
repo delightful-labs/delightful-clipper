@@ -1,20 +1,8 @@
-# create-svelte
+## Introduction
 
-Everything you need to build a Svelte project, powered by [`create-svelte`](https://github.com/sveltejs/kit/tree/master/packages/create-svelte).
+This is a project to create a web clipper that stores web clippings on IPFS via WnFS and allows you to read them later. It currently supports clipping web pages and PDFs and allows uploading of ePub files. It is a work in progress and is constantly being updated to the main branch, so things might break if used.
 
-## Creating a project
-
-If you're seeing this, you've probably already done this step. Congrats!
-
-```bash
-# create a new project in the current directory
-npm init svelte@next
-
-# create a new project in my-app
-npm init svelte@next my-app
-```
-
-> Note: the `@next` is temporary
+It uses Svelte as the frontend library and XState to control state.
 
 ## Developing
 
