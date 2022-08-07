@@ -1,23 +1,20 @@
 <script>
 	import * as epub from 'epubjs'
-	import { send } from '$lib/stores'
-
-	console.log(send)
+	import { send, readingPosition } from '$lib/stores'
 
 	let content = ''
 	let book
 
 	export let file
 	export let currentSectionIndex = 0
-	export let scrollPosition = 0
 	export let id = ''
 
-	const display = (item) => {
+	const display = async (item) => {
 		var section = book.spine.get(item)
 
 		if (section) {
 			section.render(book.load.bind(book)).then(function (html) {
-				const text = html.match(/<body>(.|\n)*?<\/body>/)
+				const text = html.match(/<body(.|\n)*?<\/body>/)
 				if (text) {
 					content = text[0]
 				} else {
@@ -33,7 +30,13 @@
 
 		await book.loaded.navigation
 
-		display(currentSectionIndex)
+		await display(currentSectionIndex)
+		console.log('loaded section')
+		if($readingPosition !== window.scrollY) {
+			setTimeout(function () {
+				window.scrollTo(0, $readingPosition)
+			}, 100)
+		}
 	}
 
 	const updatePosition = (/** @type {number} */ pos) => {
@@ -52,23 +55,30 @@
 		display(currentSectionIndex)
 	}
 
+	/**
+	* @type {NodeJS.Timeout | undefined}
+	*/
 	let timeoutId
 
 	const updateScrollPosition = (/** @type {number} */ pos) => {
-		if (timeoutId) clearTimeout(timeoutId)
-		timeoutId = setTimeout(function () {
-			send({
-				type: 'UPDATE_SCROLL',
-				data: { currentPercentage: scrollPosition, id: id }
-			})
-		}, 2000)
+    console.log(pos)
+		if ($readingPosition !== pos) {
+			if (timeoutId) clearTimeout(timeoutId)
+			timeoutId = setTimeout(function () {
+				send({
+					type: 'UPDATE_SCROLL',
+					data: { currentPercentage: pos, id: id }
+				})
+
+			}, 2000)
+		}
 	}
 
-	$: console.log(scrollPosition)
-	$: updateScrollPosition(scrollPosition)
-</script>
+	window.addEventListener('scroll', (e) => {
+		updateScrollPosition(window.scrollY)
+	})
 
-<svelte:window bind:scrollY={scrollPosition} />
+</script>
 
 <button on:click={() => updatePosition(-1)} disabled={currentSectionIndex == 0}>Prev</button>
 {@html content}

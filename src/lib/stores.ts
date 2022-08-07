@@ -4,6 +4,7 @@ import { useMachine } from '$lib/useMachine'
 
 export const { state, send } = useMachine(mainMachine)
 export const log = writable([])
+export const readingPosition = writable(0)
 
 //User defined settings
 export const userSettings = writable({

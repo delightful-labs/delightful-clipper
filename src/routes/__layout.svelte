@@ -6,7 +6,7 @@
 	import LoadingSpinner from '$lib/components/LoadingSpinner.svelte'
 
 	$: if (browser) {
-		console.log($state)
+		//console.log($state)
 		const date = new Date()
 		$log = [
 			...$log,

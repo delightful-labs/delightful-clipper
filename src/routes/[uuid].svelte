@@ -10,7 +10,7 @@
 
 <script>
 	import { browser } from '$app/env'
-	import { userSettings, state } from '$lib/stores'
+	import { userSettings, state, readingPosition } from '$lib/stores'
 	import PdfViewer from '$lib/components/PdfViewer.svelte'
 	import EpubViewer from '$lib/components/EpubViewer.svelte'
 
@@ -21,6 +21,12 @@
 	$: if ($state?.context.db) {
 		article = $state.context.db.articles[uuid]
 	}
+
+    $: if (article) {
+        if ($readingPosition !== article.readingPosition.percentage) {
+            $readingPosition = article.readingPosition.percentage
+        }
+    }
 
 	$: if (browser && article && $state?.context.wn) {
 		const getHtml = async () => {
@@ -42,8 +48,6 @@
 
 		getHtml()
 	}
-
-	$: console.log(article)
 </script>
 
 <div
@@ -69,7 +73,6 @@
 					currentSectionIndex={article?.readingPosition?.section
 						? article?.readingPosition?.section
 						: 0}
-					scrollPosition={article.readingPosition.percentage}
 				/>
 			{/if}
 		{/await}
