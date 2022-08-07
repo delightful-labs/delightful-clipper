@@ -15,10 +15,9 @@
 		lastY = yPos
 	}
 
-	$: handleScroll(y)
 </script>
 
-<svelte:window bind:scrollY={y} />
+<svelte:window bind:scrollY={y} on:scroll|trusted={handleScroll(y)}/>
 
 <header style:transform="translateY({hideHeader ? '-100%' : '0'})">
 	<a href="/">Home</a>

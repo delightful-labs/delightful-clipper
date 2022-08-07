@@ -8,6 +8,7 @@
 	export let file
 	export let currentSectionIndex = 0
 	export let id = ''
+  export let ypos = 0
 
   /**
   * @type {NodeJS.Timeout | undefined}
@@ -53,7 +54,7 @@
 		
 		if($readingPosition !== window.scrollY) {
 			setTimeout(function () {
-				window.scrollTo(0, $readingPosition * document.body.scrollHeight)
+        ypos = $readingPosition * document.body.scrollHeight
 			}, 100)
 		}
 	}
@@ -73,12 +74,9 @@
 	$: if (book) {
 		display(currentSectionIndex)
 	}
-
-	window.addEventListener('scroll', (e) => {
-		updateScrollPosition(window.scrollY)
-	})
-
 </script>
+
+<svelte:window bind:scrollY={ypos} on:scroll={updateScrollPosition(ypos)} />
 
 <button on:click={() => updatePosition(-1)} disabled={currentSectionIndex == 0}>Prev</button>
 {@html content}
