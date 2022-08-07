@@ -9,6 +9,24 @@
 	export let currentSectionIndex = 0
 	export let id = ''
 
+  /**
+  * @type {NodeJS.Timeout | undefined}
+  */
+  let timeoutId
+
+  const updateScrollPosition = (/** @type {number} */ pos) => {
+    if ($readingPosition !== pos) {
+      if (timeoutId) clearTimeout(timeoutId)
+      const percentage = pos / document.body.scrollHeight
+      timeoutId = setTimeout(function () {
+        send({
+          type: 'UPDATE_SCROLL',
+          data: { currentPercentage: percentage, id: id }
+        })
+      }, 2000)
+    }
+  }
+
 	const display = async (item) => {
 		var section = book.spine.get(item)
 
@@ -22,6 +40,7 @@
 				}
 			})
 		}
+    
 		return section
 	}
 
@@ -31,10 +50,10 @@
 		await book.loaded.navigation
 
 		await display(currentSectionIndex)
-		console.log('loaded section')
+		
 		if($readingPosition !== window.scrollY) {
 			setTimeout(function () {
-				window.scrollTo(0, $readingPosition)
+				window.scrollTo(0, $readingPosition * document.body.scrollHeight)
 			}, 100)
 		}
 	}
@@ -53,25 +72,6 @@
 
 	$: if (book) {
 		display(currentSectionIndex)
-	}
-
-	/**
-	* @type {NodeJS.Timeout | undefined}
-	*/
-	let timeoutId
-
-	const updateScrollPosition = (/** @type {number} */ pos) => {
-    console.log(pos)
-		if ($readingPosition !== pos) {
-			if (timeoutId) clearTimeout(timeoutId)
-			timeoutId = setTimeout(function () {
-				send({
-					type: 'UPDATE_SCROLL',
-					data: { currentPercentage: pos, id: id }
-				})
-
-			}, 2000)
-		}
 	}
 
 	window.addEventListener('scroll', (e) => {
