@@ -1,7 +1,7 @@
 <script>
 	import * as epub from 'epubjs'
 	import { send, readingPosition } from '$lib/stores'
-  import { onMount } from 'svelte'
+	import { onMount } from 'svelte'
 
 	let content = ''
 	let book
@@ -9,25 +9,25 @@
 	export let file
 	export let currentSectionIndex = 0
 	export let id = ''
-  export let ypos = 0
+	export let ypos = 0
 
-  /**
-  * @type {NodeJS.Timeout | undefined}
-  */
-  let timeoutId
+	/**
+	 * @type {NodeJS.Timeout | undefined}
+	 */
+	let timeoutId
 
-  const updateScrollPosition = (/** @type {number} */ pos) => {
-    if ($readingPosition !== pos) {
-      if (timeoutId) clearTimeout(timeoutId)
-      const percentage = pos / document.body.scrollHeight
-      timeoutId = setTimeout(function () {
-        send({
-          type: 'UPDATE_SCROLL',
-          data: { currentPercentage: percentage, id: id }
-        })
-      }, 2000)
-    }
-  }
+	const updateScrollPosition = (/** @type {number} */ pos) => {
+		if ($readingPosition !== pos) {
+			if (timeoutId) clearTimeout(timeoutId)
+			const percentage = pos / document.body.scrollHeight
+			timeoutId = setTimeout(function () {
+				send({
+					type: 'UPDATE_SCROLL',
+					data: { currentPercentage: percentage, id: id }
+				})
+			}, 2000)
+		}
+	}
 
 	const display = async (item) => {
 		var section = book.spine.get(item)
@@ -42,7 +42,15 @@
 				}
 			})
 		}
-    
+
+		//Could split out into a function
+		const savedPos = $readingPosition * document.body.scrollHeight
+		if (savedPos !== ypos) {
+			setTimeout(function () {
+				ypos = savedPos
+			}, 100)
+		}
+
 		return section
 	}
 
@@ -52,15 +60,6 @@
 		await book.loaded.navigation
 
 		await display(currentSectionIndex)
-
-    //@TODO: Move to display section function.
-    //Might them be able remove timeout
-    const savedPos = $readingPosition * document.body.scrollHeight
-		if(savedPos !== ypos) {
-			setTimeout(function () {
-        ypos = savedPos
-			}, 100)
-		}
 	}
 
 	const updatePosition = (/** @type {number} */ pos) => {
@@ -71,9 +70,10 @@
 		})
 	}
 
-  onMount(()=> loadBook(file))
+	onMount(() => loadBook(file))
 
-  //@TODO: Make a part of onMount.
+	//@TODO: Make a part of onMount?
+	//Or not because it needs to run each time the section changes
 	$: if (book) {
 		display(currentSectionIndex)
 	}
