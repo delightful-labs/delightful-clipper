@@ -1,6 +1,7 @@
 <script>
 	import * as epub from 'epubjs'
 	import { send, readingPosition } from '$lib/stores'
+  import { onMount } from 'svelte'
 
 	let content = ''
 	let book
@@ -51,10 +52,13 @@
 		await book.loaded.navigation
 
 		await display(currentSectionIndex)
-		
-		if($readingPosition !== window.scrollY) {
+
+    //@TODO: Move to display section function.
+    //Might them be able remove timeout
+    const savedPos = $readingPosition * document.body.scrollHeight
+		if(savedPos !== ypos) {
 			setTimeout(function () {
-        ypos = $readingPosition * document.body.scrollHeight
+        ypos = savedPos
 			}, 100)
 		}
 	}
@@ -67,10 +71,9 @@
 		})
 	}
 
-	$: if (file) {
-		loadBook(file)
-	}
+  onMount(()=> loadBook(file))
 
+  //@TODO: Make a part of onMount.
 	$: if (book) {
 		display(currentSectionIndex)
 	}

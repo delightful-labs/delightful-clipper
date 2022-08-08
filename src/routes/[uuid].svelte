@@ -66,7 +66,7 @@
 				{@html value}
 			{:else if article.type === 'html'}
 				<PdfViewer file={value} />
-			{:else}
+			{:else if article.type === 'epub' && value}
 				<EpubViewer
 					file={value}
 					id={uuid}
