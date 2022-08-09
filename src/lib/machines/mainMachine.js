@@ -158,7 +158,10 @@ const mainMachine = createMachine(
                   },
                   UPDATE_POSITION: {
                     actions: assign((ctx, evt) => produce(ctx, d => {
-                      d.db.articles[evt.data.id].readingPosition.section = evt.data.currentSection
+                      d.db.articles[evt.data.id].readingPosition = {
+                        section: evt.data.currentSection,
+                        percentage: 0
+                      }
                     })),
                     target: 'updatingDatabase'
                   },
