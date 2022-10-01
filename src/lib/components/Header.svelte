@@ -8,16 +8,17 @@
 
 	let y = 0
 	let lastY = 0
-	let hideHeader = true
+	let hideHeader = false
 
 	const handleScroll = (/** @type {number} */ yPos) => {
+		console.log('last:', lastY)
+		console.log('current: ', y)
 		hideHeader = yPos > lastY
 		lastY = yPos
 	}
-
 </script>
 
-<svelte:window bind:scrollY={y} on:scroll|trusted={handleScroll(y)}/>
+<svelte:window bind:scrollY={y} on:scroll|trusted={handleScroll(y)} />
 
 <header style:transform="translateY({hideHeader ? '-100%' : '0'})">
 	<a href="/">Home</a>
