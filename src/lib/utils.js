@@ -22,6 +22,7 @@ export const getFirstKeyMatch = (arr, obj) => {
   return first
 }
 
+//@TODO: Create a type for this
 /**
  * Filters out only the desired meta tags and renames them
  * @param {*} obj
@@ -44,6 +45,7 @@ export const getFirstKeyMatch = (arr, obj) => {
     mimeType: '',
     isRead: false,
     isArchived: false,
+    //@TODO: Add date
     dateAdded: '',
     wordCount: 0,
     fileName: '',
