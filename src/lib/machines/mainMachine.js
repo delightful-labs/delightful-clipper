@@ -1,326 +1,79 @@
-import { createMachine, assign, send } from 'xstate'
-import { produce, setAutoFreeze } from 'immer'
-import { v4 as uuidv4 } from 'uuid'
-import uploadFile from '$lib/utils/uploadFile'
-import getMetadataEpub from '$lib/utils/getMetadataEpub'
-import { browser } from '$app/env'
+import { createMachine, interpret, assign } from 'xstate'
+import * as webnative from 'webnative'
 
-setAutoFreeze(false)
+/**
+ * @typedef { import('webnative/fs/index').default } FileSystem
+ */
 
-let initialOnlineStatus = 'online'
-
-const dbTemplate = {
-  tags: [],
-  articles: {}
-}
-
-if (browser) {
-  initialOnlineStatus = navigator.onLine ? 'online' : 'offline'
-}
-
-const htmlTemplate = (content) => `<html>
-  <head>
-    ${content.title ? `<meta property="og:title" content="${content.title}" />` : ''}
-    ${content.description ? `<meta property="og:description" content="${content.description}"/>` : ''}
-    ${content.image ? `<meta property="og:image" content="${content.image}"/>` : ''}
-    ${content.url ? `<meta property="og:url" content="${content.url}"/>` : ''}
-    ${content.published ? `<meta property="article:published_time" content="${content.published}"/>` : ''}
-    ${content.author ? `<meta property="article:author" content="${content.author}"/>` : ''}
-    <meta property="og:type" content="article"/>
-  </head>
-  <body>
-    <article>
-      <h1>${content.title}</h1>
-      ${content.content}
-    </article>
-  </body>
-</html>`
-
-const mainMachine = createMachine(
-  {
-    id: 'main',
-    type: 'parallel',
-    context: {
-      wn: null,
-      fs: undefined,
-      wnState: undefined,
-      dbFilePath: undefined,
-      db: dbTemplate,
-      error: undefined,
-    },
-    states: {
-      fileSystem: {
-        initial: 'uninitialized',
-        states: {
-          uninitialized: {
-            on: { IN_BROWSER: 'loadingWn' }
-          },
-          loadingWn: {
-            invoke: {
-              id: 'loadWn',
-              src: () => import('webnative'),
-              onDone: {
-                target: 'initializingWn',
-                actions: [
-                  assign({
-                    wn: (ctx, evt) => evt.data,
-                    dbFilePath: (ctx, evt) => evt.data.path.file('private', 'Apps', 'Delightful Labs', 'Delightful Clipper', 'db.json'),
-                  })
-                ]
-              },
-              onError: {
-                target: 'failure',
-                actions: [
-                  assign({ error: (ctx, evt) => evt.data })
-                ]
-              }
-            },
-          },
-          initializingWn: {
-            on: {
-              CONTINUATION: 'checkingForDb',
-              AUTH_SUCCEEDED: 'checkingForDb',
-              NOT_AUTHORISED: 'unauthorized',
-              AUTH_CANCELLED: 'unauthorized',
-            },
-            invoke: {
-              src: (ctx) => (send) => ctx.wn.initialise({
-                permissions: {
-                  app: {
-                    name: 'Delightful Clipper',
-                    creator: 'Delightful Labs',
-                  },
-                  fs: {
-                    private: [ctx.wn.path.directory('Web Pages')],
-                    public: [ctx.wn.path.directory('Web Pages')],
-                  },
-                }
-              }).then(a => {
-                send({ type: a.scenario, state: a })
-              })
-              //@TODO: add catch for errors
-            },
-            exit: assign({
-              wnState: (ctx, evt) => evt.state,
-              fs: (ctx, evt) => evt.state.fs,
+const mainMachine = createMachine({
+  predictableActionArguments: true,
+  id: 'main',
+  context: {
+    username: '',
+    error: '',
+    backupCreated: false,
+    /**
+     * @type null | FileSystem
+     */
+    fs: null
+  },
+  initial: 'unitialized',
+  states: {
+    unitialized: {
+      invoke: {
+        // I don't use wnfs because it will load in worker.s
+        src: ()=> webnative.app({ useWnfs: false }),
+        onDone: [
+          {
+            cond: (ctx, evt) => evt.data.scenario == webnative.AppScenario.Authed,
+            target: 'authenticated',
+            actions: assign({ 
+              username: (ctx, evt) => evt.data.username,
+              fs: (ctx, evt) => evt.data.fs
             })
           },
-          checkingForDb: {
-            on: {
-              FOUND_DB: {
-                target: 'loadingDb'
-              },
-              NO_DB: {
-                target: 'initialized'
-              }
-            },
-            invoke: {
-              src: (ctx) => (send) => ctx.fs.exists(ctx.dbFilePath)
-                .then(e => send(e ? 'FOUND_DB' : 'NO_DB'))
-            }
-          },
-          loadingDb: {
-            invoke: {
-              src: (ctx) => ctx.fs.cat(ctx.dbFilePath),
-              onDone: {
-                actions: assign({
-                  db: (ctx, evt) => evt.data
-                }),
-                target: 'initialized'
-              }
-            }
-          },
-          unauthorized: {
-            on: {
-              'AUTHORIZE': {
-                target: 'authorizing'
-              }
-            }
-          },
-          authorizing: {
-            entry: (ctx) => {
-              ctx.wn.redirectToLobby(ctx.wnState.permissions)
-            }
-          },
-          initialized: {
-            initial: 'idle',
-            states: {
-              idle: {
-                on: {
-                  ERASE_DATABASE: {
-                    target: 'erasingDatabase'
-                  },
-                  SAVE_ARTICLE: {
-                    target: 'creatingEntry'
-                  },
-                  UPLOAD_FILE: {
-                    target: 'uploadingFile'
-                  },
-                  UPDATE_POSITION: {
-                    actions: assign((ctx, evt) => produce(ctx, d => {
-                      d.db.articles[evt.data.id].readingPosition = {
-                        section: evt.data.currentSection,
-                        percentage: 0
-                      }
-                    })),
-                    target: 'updatingDatabase'
-                  },
-                  UPDATE_SCROLL: {
-                    //actions: (ctx, evt) => console.log(evt)
-                    target: 'updatingDatabase',
-                    actions: assign((ctx, evt) => produce(ctx, d => {
-                      d.db.articles[evt.data.id].readingPosition.percentage = evt.data.currentPercentage
-                    })),
-                  }
-                },
-              },
-              uploadingFile: {
-                invoke: {
-                  src: (ctx, evt) => uploadFile(evt.files, ctx.fs, ctx.wn),
-                  onDone: [
-                    { target: 'gettingEpubMetadata', cond: 'isEpub' }
-                  ]
-                },
-              },
-              gettingEpubMetadata: {
-                invoke: {
-                  src: (ctx, evt) => getMetadataEpub(evt.data.file, evt.data.cid),
-                  onDone: {
-                    target: 'updatingDatabase',
-                    actions: [
-                      assign((ctx, evt) => ({
-                        db: {
-                          tags: [...new Set([...ctx.db.tags, ...evt.data.tags])],
-                          articles: {
-                            ...ctx.db.articles,
-                            [evt.data.id]: evt.data.response
-                          }
-                        }
-                      })),
-                    ]
-                  }
-                },
-              },
-              creatingEntry: {
-                on: {
-                  PARSE: {
-                    target: 'parsingArticle',
-                  },
-                  UPDATE: {
-                    target: 'updatingDatabase',
-                    actions: assign((ctx, evt) => ({
-                      db: {
-                        tags: [...new Set([...ctx.db.tags, ...evt.tags])],
-                        articles: {
-                          ...ctx.db.articles,
-                          [evt.id]: { url: evt.url }
-                        }
-                      }
-                    }))
-                  },
-                },
-                invoke: {
-                  src: (ctx, evt) => (send) => {
-                    const isOnline = evt.networkStatus === 'online'
-                    const nextEvt = isOnline ? 'PARSE' : 'UPDATE'
-                    send({
-                      type: nextEvt,
-                      id: uuidv4(), //What to do with this? I am using CIDs for epub uploads.
-                      url: evt.url,
-                      tags: evt.tags
-                    })
-                  }
-                }
-              },
-              parsingArticle: {
-                invoke: {
-                  src: (ctx, evt) => async (send) => {
-                    // Send request to serverless function to load article.
-                    let response = await fetch('/parser', {
-                      method: 'post',
-                      body: JSON.stringify({ url: evt.url }),
-                    })
-
-                    const article = await response.json()
-
-                    //console.log([...json.content.matchAll(/<img [^>]*src="([^"]*)"[^>]*>/gm)])
-
-                    const prepareFile = (x) => x.type === 'html' ? htmlTemplate(x) : Uint8Array.from(Object.values(x.content))
-
-                    await ctx.fs.write(ctx.wn.path.file('public', 'Web Pages', `${article.title}.${article.type}`), prepareFile(article), { publish: true })
-
-                    let { content, ...articleWithoutContent } = article
-
-                    articleWithoutContent.file = `${article.title}.${article.type}`
-                    articleWithoutContent.readingPosition = { section: 0, percentage: 0 }
-
-                    send({ type: 'SAVE', response: articleWithoutContent, id: evt.id, tags: evt.tags })
-                  }
-                },
-                on: {
-                  SAVE: {
-                    //@TODO: Move to top level savingEntry state so can be used by file uploader
-                    actions: [
-                      assign((ctx, evt) => ({
-                        db: {
-                          tags: [...new Set([...ctx.db.tags, ...evt.tags])],
-                          articles: {
-                            ...ctx.db.articles,
-                            [evt.id]: evt.response
-                          }
-                        }
-                      }))
-                    ],
-                    target: 'updatingDatabase'
-                  }
-                }
-              },
-              updatingDatabase: {
-                invoke: {
-                  src: (ctx) => ctx.fs.write(ctx.dbFilePath, ctx.db, { publish: true }),
-                  onDone: {
-                    target: 'idle'
-                  }
-                },
-              },
-              erasingDatabase: {
-                invoke: {
-                  src: (ctx) => ctx.fs.write(ctx.dbFilePath, dbTemplate, { publish: true }),
-                  onDone: {
-                    target: 'idle'
-                  }
-                },
-              }
-            }
-          },
-          failure: {}
-        }
-      },
-      network: {
-        initial: initialOnlineStatus,
-        states: {
-          online: {
-            on: {
-              OFFLINE: { target: 'offline' },
-            }
-          },
-          offline: {
-            on: {
-              ONLINE: { target: 'online' },
-            }
+          {
+            cond: (ctx, evt) => evt.data.scenario == webnative.AppScenario.NotAuthed,
+            target: 'unauthenticated'
           }
+        ],
+        onError: [
+          {
+            cond: (ctx, evt) => evt.data == webnative.InitialisationError.InsecureContext,
+            actions: assign({ error: 'Insecure context'}),
+            target: 'has_error'
+          },
+          {
+            cond: (ctx, evt) => evt.data == webnative.InitialisationError.UnsupportedBrowser,
+            actions: assign({ error: 'Unsupported browser'}),
+            target: 'has_error'
+          }
+        ]
+      }
+    },
+    authenticated: {
+
+    },
+    registering: {
+      on: {
+        REGISTRATION_CANCELLED: {
+          target: 'unauthenticated'
+        },
+        REGISTRATION_SUCCEEDED: {
+          target: 'authenticated'
         }
       }
     },
-  },
-  //Settings object
-  {
-    guards: {
-      isEpub: (ctx, evt) => {
-        return evt.data.file.type === 'application/epub+zip'
+    unauthenticated: {
+      on: {
+        REGISTER: {
+          target: 'registering'
+        }
       }
-    }
+    },
+    // Only for fatal errors that can't be recovered from, like unsupported browser.
+    has_error: {}
   }
-)
+})
 
-export default mainMachine
+export const mainService = interpret(mainMachine).start()

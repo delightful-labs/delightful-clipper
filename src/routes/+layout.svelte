@@ -1,0 +1,33 @@
+<script>
+  import { mainService } from '$lib/machines/mainMachine'
+  import { useSelector } from '@xstate/svelte'
+  import RegistrationForm from '$components/RegistrationForm.svelte'
+
+  const error = useSelector(mainService, (state) => state.context.error)
+  
+  const userState = useSelector(mainService, (state) => state.value)
+</script>
+
+{#if $error}
+  <p>Error: {$error}</p>
+{/if}
+
+<!--@TODO: Move auth stuff to separate component-->
+{#if $userState === 'unauthenticated'}
+  <button 
+    on:click={()=> mainService.send({ type: 'REGISTER'})}
+    disabled={!$mainService.can({type: 'REGISTER'})}
+  >Register</button>
+
+  <p>If you are a new user, you can register.</p>
+  <p>If you are an existing user, you can use the device or browser where you are signed in to find the instructions on how to connect this device.</p>
+{/if}
+
+<!--@TODO: Registration could easily be a page instead of a component-->
+{#if $userState === 'registering'}
+  <RegistrationForm />
+{/if}
+
+
+<p>{JSON.stringify($mainService.value)}</p>
+<slot />
