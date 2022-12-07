@@ -3,6 +3,8 @@ import { waitFor } from 'xstate/lib/waitFor'
 import { json } from '@sveltejs/kit'
 import ogs from 'open-graph-scraper'
 import { extractMainContent, processWebpageMetadata } from '$lib/utils'
+import { assign as immerAssign } from '@xstate/immer'
+//@TODO: Refactor uses of XState assign to use Immer?
 
 
 export async function POST({ request }) {
@@ -47,14 +49,14 @@ export async function POST({ request }) {
           src: (ctx) => extractMainContent(ctx.body, ctx.article.locale),
           onDone: {
             target: 'done',
-            actions: assign({ body: (_, evt) => evt.data })
+            actions: immerAssign((ctx, evt) => {
+              ctx.article._rawBody = evt.data.body
+              ctx.article.wordCount = evt.data.wordCount
+            })
           }
         }
       },
-      preserveHtmlMetaTags: {},
-      getWordCount: {},
       addingMimeTypeToArticle: {}, //Use Immer
-      addingHtmltoArticle: {}, // Use Immer
       done: {}
     }
   })
@@ -65,5 +67,5 @@ export async function POST({ request }) {
 
   //console.log(response.headers['content-type'])
 
-  return json(doneState.context.body)
+  return json(doneState.context.article)
 }

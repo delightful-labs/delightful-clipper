@@ -16,6 +16,7 @@
 		"@sveltejs/adapter-auto": "next",
 		"@sveltejs/kit": "next",
 		"@vitejs/plugin-basic-ssl": "^0.1.2",
+		"@xstate/immer": "^0.3.1",
 		"@xstate/svelte": "^2.0.0",
 		"events": "^3.3.0",
 		"immer": "^9.0.16",

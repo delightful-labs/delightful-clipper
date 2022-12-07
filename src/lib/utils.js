@@ -45,45 +45,58 @@ export const getFirstKeyMatch = (arr, obj) => {
     isRead: false,
     isArchived: false,
     dateAdded: '',
-    wordCount: '',
+    wordCount: 0,
     fileName: '',
     readPercentage: {}, //??
+    _rawBody: ''
   }
 
   return results
 }
 
 /**
+ * 
+ * @param {string} lang 
+ * @param {string} meta 
+ * @param {string} title 
+ * @param {string} content 
+ * @returns {string}
+ */
+const createHtmlFromTemplate = (lang, meta, title, content) => `
+  <!DOCTYPE html>
+  <html lang="${lang}">
+    <head>
+      ${meta}
+      <title>${title}</title>
+    </head>
+    <body>
+      ${content}
+    </body>
+  </html>
+`
+
+/**
  * Extracts the main section of the webpage provided.
  * @param {string} webpageText 
  * @param {string} lang
- * @returns {Promise<string>}
  */
 export const extractMainContent = async (webpageText, lang) => {
-  /**
-   * 
-   * @param {string} lang 
-   * @param {string} meta 
-   * @param {string} title 
-   * @param {string} content 
-   * @returns {string}
-   */
-  const createHtmlFromTemplate = (lang, meta, title, content) => `
-    <!DOCTYPE html>
-    <html lang="${lang}">
-      <head>
-        ${meta}
-        <title>${title}</title>
-      </head>
-      <body>
-        ${content}
-      </body>
-    </html>
-  `
   const doc = new DOMParser().parseFromString(webpageText, 'text/html')
   const meta = doc.getElementsByTagName('meta')
   const article = new Readability(doc, { serializer: el => el }).parse()
   const allowedTags = sanitize.defaults.allowedTags.concat([ 'img', 'details', 'summary', 'svg' ])
   const clean = article && sanitize(article?.content, { allowedTags: allowedTags})
-  return clean ? createHtmlFromTemplate(lang, meta.join(''), article ? article.title : '', clean) : ''
+  //@TODO: add newline after meta.join
+  const combined = clean ? createHtmlFromTemplate(lang, meta.join(''), article ? article.title : '', clean) : ''
+  return { body: combined,  wordCount: getWordCount(article?.textContent)}
+}
+
+/**
+ * Gets the numbers of words in a string
+ * @param {*} text 
+ * @returns {number}
+ */
+export const getWordCount = (text) => {
+  const words = text.trim().split(/\s+/g).length
+  return words
 }
