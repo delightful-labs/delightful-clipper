@@ -1,5 +1,7 @@
 import { createMachine, interpret, assign } from 'xstate'
 import * as wn from 'webnative'
+import { v4 as uuidv4 } from 'uuid'
+import jsonata from 'jsonata'
 
 const articleTemplate = {
   title: 'Noosphere, a protocol for thought',
@@ -15,11 +17,23 @@ const articleTemplate2 = {
   tags: ['TfT']
 }
 
+/**
+ * 
+ * @param {string} url 
+ */
+const createArticleEntry = async (url) => {
+  return {
+    url: url,
+    id: uuidv4()
+  }
+}
+
 const fileSystemMachine = createMachine({
   context: {
-    db: [articleTemplate, articleTemplate2],
+    db: [],
     dbPath: wn.path.file('private', 'db.json'),
-    fs: null
+    fs: null,
+    url: ''
   },
   initial: 'settingUpFs',
   id: 'fs',
@@ -60,10 +74,40 @@ const fileSystemMachine = createMachine({
       // @TODO: Load DB if it exists
     },
     ready: {
-      on: {
-        SAVE_ARTICLE: {
-
-        }
+      initial: 'idle',
+      states: {
+        idle: {
+          on: {
+            SAVE_ARTICLE: {
+              target: 'checkingIfArticleIsDuplicate',
+              actions: assign({ url: (_, evt) => evt.data.url })
+            }
+          }
+        },
+        //1. √ Check if URL already exists using JSONATA
+        //2. √ Update DB context
+        //3. Save DB context to WNFS
+        //4. Done
+        checkingIfArticleIsDuplicate: {
+          invoke: {
+            src: async (ctx) => await jsonata(`url="${ctx.url}"`).evaluate(ctx.db),
+            onDone: [
+              { 
+                cond: (_, evt) => evt.data,
+                target: 'articleAlreadyExists'
+              },
+              { 
+                cond: (_, evt) => !evt.data,
+                target: 'savingArticle',
+                actions: assign({ db: (ctx) => [...ctx.db, createArticleEntry(ctx.url) ] })
+              }
+            ],
+            onError: {} //@TODO: handle error
+          }
+        },
+        savingArticle: {},
+        //@TODO: What to do with this state?
+        articleAlreadyExists: {}
       }
     },
     error: {}

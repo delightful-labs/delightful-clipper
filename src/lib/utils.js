@@ -45,6 +45,7 @@ export const getFirstKeyMatch = (arr, obj) => {
     mimeType: '',
     isRead: false,
     isArchived: false,
+    tags: [],
     //@TODO: Add date
     dateAdded: '',
     wordCount: 0,

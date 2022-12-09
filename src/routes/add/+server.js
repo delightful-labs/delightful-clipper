@@ -6,6 +6,8 @@ import { extractMainContent, processWebpageMetadata } from '$lib/utils'
 import { assign as immerAssign } from '@xstate/immer'
 //@TODO: Refactor uses of XState assign to use Immer?
 
+//@TODO: Change name of route to fetchArticle?
+
 export async function POST({ request }) {
   const fetchArticleMachine = createMachine({
     predictableActionArguments: true,
