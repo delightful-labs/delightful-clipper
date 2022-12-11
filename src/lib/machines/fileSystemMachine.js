@@ -1,4 +1,4 @@
-import { createMachine, interpret, assign } from 'xstate'
+import { createMachine, interpret, assign, send } from 'xstate'
 import * as wn from 'webnative'
 import { v4 as uuidv4 } from 'uuid'
 import jsonata from 'jsonata'
@@ -21,10 +21,12 @@ const articleTemplate2 = {
  * 
  * @param {string} url 
  */
+//@TODO: make this complete to type
 const createArticleEntry = (url) => {
   return {
     url: url,
-    id: uuidv4()
+    id: uuidv4(),
+    fileName: ''
   }
 }
 
@@ -33,11 +35,21 @@ const fileSystemMachine = createMachine({
     db: [],
     dbPath: wn.path.file('private', 'db.json'),
     fs: null,
-    url: ''
+    url: '',
+    networkStatus: 'online'
   },
   initial: 'settingUpFs',
   id: 'fs',
-  //predictableActionArguments: true,
+  predictableActionArguments: true,
+  // need to keep track of network status.
+  // I might set it at a higher level and just repeat it here in context,
+  // Then I don't have to repeat the logic.
+  // Many different networks statuses:
+  // 1. Online
+  //    a. Unlimited
+  //    b. Datasaver + cellular -> automatic parsing might be turned off
+  //    c. Low power mode?
+  // 2. Offline
   states: {
     settingUpFs: {
       invoke: {
@@ -83,54 +95,89 @@ const fileSystemMachine = createMachine({
       }
     },
     ready: {
-      initial: 'idle',
+      type: 'parallel',
+      // It might be cleaner to make these states actors.
       states: {
-        idle: {
-          on: {
-            SAVE_ARTICLE: {
-              target: 'checkingIfArticleIsDuplicate',
-              //@TODO: trim unused whitespace
-              actions: assign({ url: (_, evt) => evt.data.url })
+        userActions: { 
+          initial: 'idle',
+          states: {
+            idle: {
+              on: {
+                SAVE_ARTICLE: {
+                  target: 'checkingIfArticleIsDuplicate',
+                  //@TODO: trim unused whitespace
+                  actions: assign({ url: (_, evt) => evt.data.url })
+                }
+              }
+            },
+            checkingIfArticleIsDuplicate: {
+              invoke: {
+                src: async (ctx) => await jsonata(`$boolean($[url = "${ctx.url}"])`).evaluate(ctx.db),
+                onDone: [
+                  { 
+                    cond: (_, evt) => evt.data,
+                    target: 'articleAlreadyExists'
+                  },
+                  { 
+                    cond: (_, evt) => !evt.data,
+                    target: 'savingArticle',
+                    actions: assign({ db: (ctx) => [...ctx.db, createArticleEntry(ctx.url) ] })
+                  }
+                ],
+                onError: {} //@TODO: handle error
+              }
+            },
+            savingArticle: {
+              invoke: {
+                src: (ctx) => ctx.fs.write(ctx.dbPath, ctx.db),
+                onDone: {
+                  target: 'publishing'
+                },
+                onError: {} //@TODO: handle error
+              }
+            },
+            publishing: {
+              invoke: {
+                src: (ctx) => ctx.fs.publish(),
+                onDone: {
+                  target: 'idle',
+                  actions: send('CHECK_FOR_UNPARSED_ARTICLE')
+                },
+                onError: {} //@TODO: handle error
+              }
+            },
+            //@TODO: What to do with this state?
+            articleAlreadyExists: {
+              entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
+              after: {
+                // after 1 second, transition to yellow
+                500: { target: 'idle' }
+              }
             }
           }
         },
-        checkingIfArticleIsDuplicate: {
-          invoke: {
-            src: async (ctx) => await jsonata(`url="${ctx.url}"`).evaluate(ctx.db),
-            onDone: [
-              { 
-                cond: (_, evt) => evt.data,
-                target: 'articleAlreadyExists'
-              },
-              { 
-                cond: (_, evt) => !evt.data,
-                target: 'savingArticle',
-                actions: assign({ db: (ctx) => [...ctx.db, createArticleEntry(ctx.url) ] })
+        automaticActions: {
+          initial: 'idle',
+          states: {
+            idle: {
+              on: {
+                CHECK_FOR_UNPARSED_ARTICLE: {
+                  target: 'checkingForUnparsedArticle'
+                }
               }
-            ],
-            onError: {} //@TODO: handle error
-          }
-        },
-        savingArticle: {
-          invoke: {
-            src: (ctx) => ctx.fs.write(ctx.dbPath, ctx.db),
-            onDone: {
-              target: 'publishing'
             },
-            onError: {} //@TODO: handle error
-          }
-        },
-        publishing: {
-          invoke: {
-            src: (ctx) => ctx.fs.publish(),
-            onDone: {
-              target: 'idle'
+            checkingForUnparsedArticle: {
+              invoke: {
+                src: async (ctx) => await jsonata(`$$[fileName=""][0]`).evaluate(ctx.db),
+                onDone: {
+                  actions: (ctx, evt) => console.log(evt.data)
+                },
+                onError: {}
+              }
             },
-            onError: {} //@TODO: handle error
+            parsingArticle: {}
           }
-        },
-        //@TODO: What to do with this state?
-        articleAlreadyExists: {}
+        }
       }
     },
     error: {}
