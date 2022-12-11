@@ -64,7 +64,7 @@
   <input type="submit" />
 </form>-->
 
-<form on:submit|preventDefault={() => handleSubmit()}>
+<!--<form on:submit|preventDefault={() => handleSubmit()}>
   <label for="query">Query</label>
   <input 
     id="query" 
@@ -72,14 +72,14 @@
     bind:value={query} 
   />
   <input type="submit" />
-</form>
+</form>-->
 
 
 {#if articles}
   <ul>
     {#each articles as article}
       <li>
-        <h2>{article.title}</h2>
+        <h2>{article.title || article.url}</h2>
       </li>
     {/each}
   </ul>

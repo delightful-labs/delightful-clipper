@@ -21,7 +21,7 @@ const articleTemplate2 = {
  * 
  * @param {string} url 
  */
-const createArticleEntry = async (url) => {
+const createArticleEntry = (url) => {
   return {
     url: url,
     id: uuidv4()
@@ -37,7 +37,7 @@ const fileSystemMachine = createMachine({
   },
   initial: 'settingUpFs',
   id: 'fs',
-  predictableActionArguments: true,
+  //predictableActionArguments: true,
   states: {
     settingUpFs: {
       invoke: {
@@ -66,12 +66,21 @@ const fileSystemMachine = createMachine({
           }
         ],
         onError: {
-          actions: (c,e) => console.log(e)
+          actions: (c,e) => console.log(e) //@TODO: handle error
         }
       }
     },
     loadingDb: {
-      // @TODO: Load DB if it exists
+      invoke: {
+        src: (ctx) => ctx.fs.get(ctx.dbPath),
+        onDone: {
+          actions: assign({ db: (_, evt) => evt.data.content }),
+          target: 'ready'
+        },
+        onError: {
+          actions: (_, evt) => console.log(evt)
+        } //@TODO: handle error
+      }
     },
     ready: {
       initial: 'idle',
@@ -80,14 +89,11 @@ const fileSystemMachine = createMachine({
           on: {
             SAVE_ARTICLE: {
               target: 'checkingIfArticleIsDuplicate',
+              //@TODO: trim unused whitespace
               actions: assign({ url: (_, evt) => evt.data.url })
             }
           }
         },
-        //1. √ Check if URL already exists using JSONATA
-        //2. √ Update DB context
-        //3. Save DB context to WNFS
-        //4. Done
         checkingIfArticleIsDuplicate: {
           invoke: {
             src: async (ctx) => await jsonata(`url="${ctx.url}"`).evaluate(ctx.db),
@@ -105,7 +111,24 @@ const fileSystemMachine = createMachine({
             onError: {} //@TODO: handle error
           }
         },
-        savingArticle: {},
+        savingArticle: {
+          invoke: {
+            src: (ctx) => ctx.fs.write(ctx.dbPath, ctx.db),
+            onDone: {
+              target: 'publishing'
+            },
+            onError: {} //@TODO: handle error
+          }
+        },
+        publishing: {
+          invoke: {
+            src: (ctx) => ctx.fs.publish(),
+            onDone: {
+              target: 'idle'
+            },
+            onError: {} //@TODO: handle error
+          }
+        },
         //@TODO: What to do with this state?
         articleAlreadyExists: {}
       }
