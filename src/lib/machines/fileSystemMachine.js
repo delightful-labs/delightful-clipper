@@ -120,14 +120,17 @@ const fileSystemMachine = createMachine({
                   },
                   { 
                     cond: (_, evt) => !evt.data,
-                    target: 'savingArticle',
+                    target: 'updatingDatabase',
                     actions: assign({ db: (ctx) => [...ctx.db, createArticleEntry(ctx.url) ] })
                   }
                 ],
                 onError: {} //@TODO: handle error
               }
             },
-            savingArticle: {
+            //@todo: updatingDatabase & publishing are functions that automaticActions could also use.
+            //How to keep them from stepping on each other?
+            //Maybe an event bus?
+            updatingDatabase: {
               invoke: {
                 src: (ctx) => ctx.fs.write(ctx.dbPath, ctx.db),
                 onDone: {
@@ -169,13 +172,28 @@ const fileSystemMachine = createMachine({
             checkingForUnparsedArticle: {
               invoke: {
                 src: async (ctx) => await jsonata(`$$[fileName=""][0]`).evaluate(ctx.db),
-                onDone: {
-                  actions: (ctx, evt) => console.log(evt.data)
-                },
+                onDone: [
+                  {
+                    cond: (_, evt) => evt.data,
+                    target: 'parsingArticle'
+                  },
+                  {
+                    cond: (_, evt) => !evt.data,
+                    target: 'idle'
+                  }
+                ],
                 onError: {}
               }
             },
-            parsingArticle: {}
+            parsingArticle: {
+              invoke: {
+                src: (_, evt) => fetch('/add', { method: 'post', body: JSON.stringify({url: evt.data.url})}),
+                onDone: {
+                  actions: (_, evt) => console.log(evt)
+                }
+              }
+              //entry: (ctx, evt) => console.log(evt)
+            }
           }
         }
       }
