@@ -186,17 +186,19 @@ const fileSystemMachine = createMachine({
                 onError: {}
               }
             },
+            //@TODO: make this an actor and combine with machine from /add/+server.js.
+            // /add/+server.js can just become a proxy for fetching.
             parsingArticle: {
               invoke: {
                 src: (_, evt) => fetch('/add', { method: 'post', body: JSON.stringify({url: evt.data.url})}).then(res => res.json()),
                 onDone: {
-                  //actions: (_, evt) => console.log(evt.data)
                   target: 'savingArticleText'
-                }
+                },
+                onError: {} // @TODO: handle error
               }
             },
             // @TODO: What to do with the article object?
-            // Pass it along through transiations?
+            // Pass it along through transitions?
             // Save it to context? (If I did this, it would make sense if this was an invoked macine that receive the fs as a parameter)
             savingArticleText: {
               invoke: {
@@ -214,7 +216,9 @@ const fileSystemMachine = createMachine({
               // 1. Main image
               // 2. Article images
               // 3. Other media? (videos, audio)
-            }
+            },
+            updateDbWithArticle: {},
+            saveDbToWnfs: {}
           }
         }
       }

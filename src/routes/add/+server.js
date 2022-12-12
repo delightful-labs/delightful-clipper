@@ -9,7 +9,9 @@ import { assign as immerAssign } from '@xstate/immer'
 //@TODO: Change name of route to fetchArticle?
 
 export async function POST({ request }) {
-  const fetchArticleMachine = createMachine({
+  const fetchArticleMachine = 
+/** @xstate-layout N4IgpgJg5mDOIC5QAoC2BDAxgCwJYDswBKAOhgBdyCoApWAe3wDEAne1AJTAEcBXOcgGIIjMCQIA3egGsxaLHkKkKVfLQbM2nHv1jkEk+pnRVGAbQAMAXUtXEoAA71YuU-nsgAHogBMADgAWEgB2AEY-YIA2HwDIgIBmUIsAVgCAGhAAT0Rw0JIAqOSATnjgvyKA0OTknwBfWoz5HAJiMjBKajpGVnYuPgFBMBY2FhIHABsTADN6FlQSJsVWlU6NHu1+vQN8KWM3W1sPJxc3D28EIot8vz8fIsjAnwtoop8M7IQ-POSLX59k0JFZLRO7JeqNDDNJQkKbtKFQYSicQ7GRySFLUiw8jw7a7Ey4czWQ5IEDHVwE9wk86RFIkPzFAIpKq3ZLBIrvHL3EjVIqvYLxV4BHyRIrgkCLFqYuGKBFDEZjSbkGZzBboyUw6XUXFGfGEmzWI7OcmMM6IAIA-KlGpJZJ+eL+Pwci6Rbl2+K2tl+SLxBJ1BritXQsCecgsLCqKAAWXQBAAwoxyGB8EIRIRkVJZKqFOrg6Hw9Ro3GE0n9IY9hSDgaSWTTlTEEU2SQklUHra-CkLMEnYCXTy+QKYsLRWL8PQIHAPBKlIaThTTQgALShJ0Ll2-dcbzfBMVT5btCNdTS9HQCGfGymgc4FbuNoGJGmFUICwI7wOtLHws+1y9myohe7lD48SRGUDyRN2QIkBYwEBBUwFfACfoQtmQYhmGmARoW+DxsmJZfnOdYIMEwIkA2kSsmyoSwYkbxZJyyRQTBDZJJUkShGUr4oa0qZgPhJqEaEoTCiQbFhDcpSxBYPi0R8PjhNyTHPhYNxSQE9T1EAA */
+createMachine({
     predictableActionArguments: true,
     context: {
       url: '',
