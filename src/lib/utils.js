@@ -27,35 +27,19 @@ export const getFirstKeyMatch = (arr, obj) => {
  * Filters out only the desired meta tags and renames them
  * @param {*} obj
  */
-  export const processWebpageMetadata = (obj) => {
-  const results = {
-    author: getFirstKeyMatch(['articleAuthor', 'author'], obj) || '', //author, articleAuthor, articleTag (used by NYT) / Medium uses articleAuthor as url and author as string of name
-    title: obj.ogTitle || '',
-    datePublished: getFirstKeyMatch(['articlePublishedTime', 'ogDate'], obj) || '',
-    dateModified: obj.articleModifiedTime || '',
-    description: obj.ogDescription || '',
-    image: obj.ogImage || {},
-    locale: obj.ogLocale || '',
-    url: getFirstKeyMatch(['requestUrl', 'ogUrl'], obj) || '',
-    //Possibles
-    siteName: obj.ogSiteName || '',
-    type: obj.ogType || '',
-    video: obj.ogVideo || '',
-    // My stuff
-    mimeType: '',
-    isRead: false,
-    isArchived: false,
-    tags: [],
-    //@TODO: Add date
-    dateAdded: '',
-    wordCount: 0,
-    fileName: '',
-    readPercentage: {}, //??
-    _rawBody: ''
-  }
-
-  return results
-}
+export const processWebpageMetadata = (obj) => ({
+  author: getFirstKeyMatch(['articleAuthor', 'author'], obj), //author, articleAuthor, articleTag (used by NYT) / Medium uses articleAuthor as url and author as string of name
+  title: obj.ogTitle,
+  datePublished: getFirstKeyMatch(['articlePublishedTime', 'ogDate'], obj),
+  dateModified: obj.articleModifiedTime,
+  description: obj.ogDescription,
+  image: obj.ogImage,
+  locale: obj.ogLocale,
+  url: getFirstKeyMatch(['requestUrl', 'ogUrl'], obj),
+  siteName: obj.ogSiteName,
+  type: obj.ogType,
+  video: obj.ogVideo
+})
 
 /**
  * 
