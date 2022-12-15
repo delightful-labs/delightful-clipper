@@ -5,9 +5,6 @@
 
   //const myWorker = new FileWorker()
 
-  //$: console.log( $fileSystemService )
-  //const db = $fileSystemService.context.db
-
   let query = "$$['protocols' in tags]"
   let url = 'https://subconscious.substack.com/p/noosphere-a-protocol-for-thought'
   let articles = $fileSystemService.context.db
@@ -28,19 +25,13 @@
     let results = jsonata(query).evaluate(db)
     articles = returnResults(results)
   }
-
-  const getResponse = async (url) => {
-    const test = await fetch('/add', { method: 'post', body: JSON.stringify({url: url})})
-    const res = await test.json()
-    console.log(res)
-  }
 </script>
 
 <p>{ JSON.stringify( $fileSystemService.value ) }</p>
 
 <h1>All Articles</h1>
 
-<!--@TODO: check if URL is valid and automatically trim whitespace-->
+<!--@TODO: check if URL is valid and automatically trim whitespace. Whitespace trim could actually be done on backend-->
 <form on:submit|preventDefault={() => fileSystemService.send({type: 'SAVE_ARTICLE', data: { url: url }})}>
   <label for="url">URL</label>
   <input 
@@ -52,18 +43,6 @@
   <input type="submit" />
 </form>
 
-
-<!--<form on:submit|preventDefault={() => getResponse(url)}>
-  <label for="url">URL</label>
-  <input 
-    id="url" 
-    type="url"
-    bind:value={url} 
-    required={true}
-  />
-  <input type="submit" />
-</form>-->
-
 <!--<form on:submit|preventDefault={() => handleSubmit()}>
   <label for="query">Query</label>
   <input 
@@ -73,7 +52,6 @@
   />
   <input type="submit" />
 </form>-->
-
 
 {#if articles}
   <ul>

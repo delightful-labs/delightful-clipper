@@ -9,7 +9,6 @@ import jsonata from 'jsonata'
  * @typedef { import('webnative/path').FilePath} FilePath
  */
 
-
 /**
  * 
  * @param {string} url 
@@ -106,6 +105,8 @@ const fileSystemMachine = createMachine({
                 SAVE_ARTICLE: {
                   target: 'checkingIfArticleIsDuplicate',
                   //@TODO: trim unused whitespace
+                  //Might be able to do this with Zod
+                  //And verify that it is a valid URL
                   actions: assign({ url: (_, evt) => evt.data.url })
                 }
               }
