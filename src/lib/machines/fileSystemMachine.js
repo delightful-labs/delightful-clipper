@@ -3,25 +3,19 @@ import * as wn from 'webnative'
 import { v4 as uuidv4 } from 'uuid'
 import jsonata from 'jsonata'
 
-const articleTemplate = {
-  title: 'Noosphere, a protocol for thought',
-  url: 'https://subconscious.substack.com/p/noosphere-a-protocol-for-thought',
-  image: '',
-  tags: ['TfT', 'protocols']
-}
+/**
+ * @typedef { import('webnative/fs/index').default } FileSystem
+ * @typedef { import('$lib/schemas/Article').Article } Article
+ * @typedef { import('webnative/path').FilePath} FilePath
+ */
 
-const articleTemplate2 = {
-  title: 'Wiki as a Commons',
-  url: 'https://subconscious.substack.com/p/wiki-as-a-commons',
-  image: '',
-  tags: ['TfT']
-}
 
 /**
  * 
  * @param {string} url 
  */
 //@TODO: make this complete to type
+// Can use Zod schema and parse
 const createArticleEntry = (url) => {
   return {
     url: url,
@@ -32,10 +26,16 @@ const createArticleEntry = (url) => {
 
 const fileSystemMachine = createMachine({
   context: {
+    /** @type {Article[]} */
     db: [],
+    /** @type {FilePath} */
     dbPath: wn.path.file('private', 'db.json'),
+    /** @type {FileSystem|null} */
     fs: null,
+    /** @type {string} */
     url: '',
+    /** @type {string} */
+    //@TODO: change to enum of possible states
     networkStatus: 'online'
   },
   initial: 'settingUpFs',
