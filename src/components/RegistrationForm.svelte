@@ -15,7 +15,7 @@
       input: {
         target: 'idle',
         actions: [
-          assign({username: /** @param {InputEvent & { target: HTMLInputElement }} evt */ (ctx, evt) => evt.target.value}),
+          assign({username: /** @param {InputEvent & { target: HTMLInputElement }} evt */ (_, evt) => evt.target.value}),
           actions.cancel('debounce'),
           actions.send({type: 'CHECK_USERNAME'}, { delay: 1000, id: 'debounce' }),
         ]

@@ -25,6 +25,8 @@
     let results = jsonata(query).evaluate(db)
     articles = returnResults(results)
   }
+
+  $: console.log($fileSystemService.value)
 </script>
 
 <p>{ JSON.stringify( $fileSystemService.value ) }</p>
@@ -42,6 +44,8 @@
   />
   <input type="submit" />
 </form>
+
+<button on:click={() => fileSystemService.send({type: 'ERASE_DATABASE'})}>Erase Database</button>
 
 <!--<form on:submit|preventDefault={() => handleSubmit()}>
   <label for="query">Query</label>

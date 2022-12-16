@@ -2,6 +2,7 @@ import { createMachine, interpret, assign, send } from 'xstate'
 import * as wn from 'webnative'
 import { v4 as uuidv4 } from 'uuid'
 import jsonata from 'jsonata'
+import Article from '$lib/schemas/Article'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
@@ -10,29 +11,24 @@ import jsonata from 'jsonata'
  */
 
 /**
- * 
+ * Creates a new article object.
  * @param {string} url 
+ * @returns Article
  */
-//@TODO: make this complete to type
-// Can use Zod schema and parse
-const createArticleEntry = (url) => {
-  return {
-    url: url,
-    id: uuidv4(),
-    fileName: ''
-  }
-}
+const createArticleEntry = (url) => Article.parse({
+  dateAdded: new Date().toISOString(),
+  id: uuidv4(),
+  url: url
+})
 
 const fileSystemMachine = createMachine({
   context: {
-    /** @type {Article[]} */
+    /** @type {Array<Article>} */
     db: [],
     /** @type {FilePath} */
     dbPath: wn.path.file('private', 'db.json'),
     /** @type {FileSystem|null} */
     fs: null,
-    /** @type {string} */
-    url: '',
     /** @type {string} */
     //@TODO: change to enum of possible states
     networkStatus: 'online'
@@ -85,7 +81,7 @@ const fileSystemMachine = createMachine({
       invoke: {
         src: (ctx) => ctx.fs.get(ctx.dbPath),
         onDone: {
-          actions: assign({ db: (_, evt) => evt.data.content }),
+          actions: assign({ db: (_, evt) => JSON.parse(evt.data.content) }),
           target: 'ready'
         },
         onError: {
@@ -102,19 +98,41 @@ const fileSystemMachine = createMachine({
           states: {
             idle: {
               on: {
-                SAVE_ARTICLE: {
-                  target: 'checkingIfArticleIsDuplicate',
+                SAVE_ARTICLE: [
+                    // @TODO: I broke this. Needs to be reworked. Might be best to create an article saving machine or function to invoke.
+                    { 
+                      cond: (ctx, evt) => jsonata(`$boolean($[url = "${evt.data.url}"])`).evaluate(ctx.db),
+                      target: 'updatingDatabase',
+                      // actions: async (ctx, evt) => {
+                      //   const test = await jsonata(`$boolean($[url = "${evt.data.url}"])`).evaluate(ctx.db)
+                      //   console.log(test)
+                      // }
+                      actions: (ctx,evt,meta) => console.log(meta)
+                      //actions: (ctx, evt) => console.log(jsonata(`$boolean($[url = "${evt.data.url}"])`).evaluate(ctx.db))
+                      //actions: assign({ db: (ctx) => [...ctx.db, createArticleEntry(evt.data.) ] })
+                    },
+                    { 
+                      target: 'articleAlreadyExists',
+                      actions: (ctx,evt,meta) => console.log(meta)
+                    },
+                  //target: 'checkingIfArticleIsDuplicate',
                   //@TODO: trim unused whitespace
                   //Might be able to do this with Zod
                   //And verify that it is a valid URL
-                  actions: assign({ url: (_, evt) => evt.data.url })
+                  //@TODO: I think I can just pass this in event instead of saving to context...
+                  //actions: assign({ url: (_, evt) => evt.data.url })
+                ],
+                ERASE_DATABASE: {
+                  target: 'updatingDatabase',
+                  actions: assign({ db: []})
                 }
               }
             },
             checkingIfArticleIsDuplicate: {
               invoke: {
-                src: async (ctx) => await jsonata(`$boolean($[url = "${ctx.url}"])`).evaluate(ctx.db),
+                src: async (ctx, evt) => await jsonata(`$boolean($[url = "${evt.data.url}"])`).evaluate(ctx.db),
                 onDone: [
+                  //{ actions: (_, evt) => console.log(evt.data)}
                   { 
                     cond: (_, evt) => evt.data,
                     target: 'articleAlreadyExists'
@@ -122,7 +140,7 @@ const fileSystemMachine = createMachine({
                   { 
                     cond: (_, evt) => !evt.data,
                     target: 'updatingDatabase',
-                    actions: assign({ db: (ctx) => [...ctx.db, createArticleEntry(ctx.url) ] })
+                    actions: (_, evt) => console.log(evt.data)//assign({ db: (ctx) => [...ctx.db, createArticleEntry(evt.data.) ] })
                   }
                 ],
                 onError: {} //@TODO: handle error
@@ -134,16 +152,7 @@ const fileSystemMachine = createMachine({
             //@TODO: can add { publish: true } to fs.write to skip publishing step!
             updatingDatabase: {
               invoke: {
-                src: (ctx) => ctx.fs.write(ctx.dbPath, ctx.db),
-                onDone: {
-                  target: 'publishing'
-                },
-                onError: {} //@TODO: handle error
-              }
-            },
-            publishing: {
-              invoke: {
-                src: (ctx) => ctx.fs.publish(),
+                src: (ctx) => ctx.fs.write(ctx.dbPath, JSON.stringify(ctx.db), { publish: true }),
                 onDone: {
                   target: 'idle',
                   actions: send('CHECK_FOR_UNPARSED_ARTICLE')
@@ -153,11 +162,11 @@ const fileSystemMachine = createMachine({
             },
             //@TODO: What to do with this state?
             articleAlreadyExists: {
-              entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
-              after: {
-                // after 1 second, transition to yellow
-                500: { target: 'idle' }
-              }
+              // entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
+              // after: {
+              //   // after 1 second, transition to yellow
+              //   500: { target: 'idle' }
+              // }
             }
           }
         },

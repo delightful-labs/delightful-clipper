@@ -25,26 +25,26 @@ const mainMachine = createMachine({
         src: ()=> webnative.app({ useWnfs: false }),
         onDone: [
           {
-            cond: (ctx, evt) => evt.data.scenario == webnative.AppScenario.Authed,
+            cond: (_, evt) => evt.data.scenario == webnative.AppScenario.Authed,
             target: 'authenticated',
             actions: assign({ 
-              username: (ctx, evt) => evt.data.username,
-              fs: (ctx, evt) => evt.data.fs
+              username: (_, evt) => evt.data.username,
+              fs: (_, evt) => evt.data.fs
             })
           },
           {
-            cond: (ctx, evt) => evt.data.scenario == webnative.AppScenario.NotAuthed,
+            cond: (_, evt) => evt.data.scenario == webnative.AppScenario.NotAuthed,
             target: 'unauthenticated'
           }
         ],
         onError: [
           {
-            cond: (ctx, evt) => evt.data == webnative.InitialisationError.InsecureContext,
+            cond: (_, evt) => evt.data == webnative.InitialisationError.InsecureContext,
             actions: assign({ error: 'Insecure context'}),
             target: 'has_error'
           },
           {
-            cond: (ctx, evt) => evt.data == webnative.InitialisationError.UnsupportedBrowser,
+            cond: (_, evt) => evt.data == webnative.InitialisationError.UnsupportedBrowser,
             actions: assign({ error: 'Unsupported browser'}),
             target: 'has_error'
           }

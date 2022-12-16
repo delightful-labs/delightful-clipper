@@ -1,5 +1,10 @@
 import { createMachine } from 'xstate'
 import * as wn from 'webnative'
+
+/**
+ * @param { import('$lib/schemas/Article') } article
+ * @param { import('webnative/fs/index').default } fs
+ */
 const articleParserMachine = (article, fs) => createMachine({
   context: {
     fs: fs,
