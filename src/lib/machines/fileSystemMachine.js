@@ -102,6 +102,8 @@ const fileSystemMachine = createMachine({
                   //@TODO: need to send back logical events to show visual updates to user. And clear the form on success.
                   //@TODO: trim URL of whitespace
                   //@TODO: also need to remove UTM and other tracking stuff.
+                  //BUT --- there may be sometimes you want URL parameters as part of the URL, such as saving something from a web app.
+                  //Will probably need to make it an option to save search parameters or not.
                   { 
                     cond: (ctx, evt) => jsonata(`url = "${evt.data.url}"`).evaluate(ctx.db),
                     target: 'articleAlreadyExists'                     
