@@ -99,7 +99,9 @@ const fileSystemMachine = createMachine({
             idle: {
               on: {
                 SAVE_ARTICLE: [
+                  //@TODO: need to send back logical events to show visual updates to user. And clear the form on success.
                   //@TODO: trim URL of whitespace
+                  //@TODO: also need to remove UTM and other tracking stuff.
                   { 
                     cond: (ctx, evt) => jsonata(`url = "${evt.data.url}"`).evaluate(ctx.db),
                     target: 'articleAlreadyExists'                     
@@ -115,24 +117,6 @@ const fileSystemMachine = createMachine({
                 }
               }
             },
-            checkingIfArticleIsDuplicate: {
-              invoke: {
-                src: async (ctx, evt) => await jsonata(`$boolean($[url = "${evt.data.url}"])`).evaluate(ctx.db),
-                onDone: [
-                  //{ actions: (_, evt) => console.log(evt.data)}
-                  { 
-                    cond: (_, evt) => evt.data,
-                    target: 'articleAlreadyExists'
-                  },
-                  { 
-                    cond: (_, evt) => !evt.data,
-                    target: 'updatingDatabase',
-                    actions: (_, evt) => console.log(evt.data)//assign({ db: (ctx) => [...ctx.db, createArticleEntry(evt.data.) ] })
-                  }
-                ],
-                onError: {} //@TODO: handle error
-              }
-            },
             //@todo: updatingDatabase & publishing are functions that automaticActions could also use.
             //How to keep them from stepping on each other?
             //Maybe an event bus?
@@ -142,13 +126,14 @@ const fileSystemMachine = createMachine({
                 src: (ctx) => ctx.fs.write(ctx.dbPath, JSON.stringify(ctx.db), { publish: true }),
                 onDone: {
                   target: 'idle',
-                  actions: send('CHECK_FOR_UNPARSED_ARTICLE')
+                  //actions: send('CHECK_FOR_UNPARSED_ARTICLE')
                 },
                 onError: {} //@TODO: handle error
               }
             },
             //@TODO: What to do with this state?
             articleAlreadyExists: {
+              //@TODO: Add tags to existing entry, if they exist
               // entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
               // after: {
               //   // after 1 second, transition to yellow
