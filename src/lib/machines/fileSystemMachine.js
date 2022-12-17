@@ -12,10 +12,10 @@ import Article from '$lib/schemas/Article'
 
 /**
  * Creates a new article object.
- * @param {string} url 
- * @returns Article
+ * @param {string} url
+ * @returns {Article|undefined}
  */
-const createArticleEntry = (url) => Article.parse({
+const createArticleEntry =  (url) => Article.parse({
   dateAdded: new Date().toISOString(),
   id: uuidv4(),
   url: url
@@ -99,28 +99,15 @@ const fileSystemMachine = createMachine({
             idle: {
               on: {
                 SAVE_ARTICLE: [
-                    // @TODO: I broke this. Needs to be reworked. Might be best to create an article saving machine or function to invoke.
-                    { 
-                      cond: (ctx, evt) => jsonata(`$boolean($[url = "${evt.data.url}"])`).evaluate(ctx.db),
-                      target: 'updatingDatabase',
-                      // actions: async (ctx, evt) => {
-                      //   const test = await jsonata(`$boolean($[url = "${evt.data.url}"])`).evaluate(ctx.db)
-                      //   console.log(test)
-                      // }
-                      actions: (ctx,evt,meta) => console.log(meta)
-                      //actions: (ctx, evt) => console.log(jsonata(`$boolean($[url = "${evt.data.url}"])`).evaluate(ctx.db))
-                      //actions: assign({ db: (ctx) => [...ctx.db, createArticleEntry(evt.data.) ] })
-                    },
-                    { 
-                      target: 'articleAlreadyExists',
-                      actions: (ctx,evt,meta) => console.log(meta)
-                    },
-                  //target: 'checkingIfArticleIsDuplicate',
-                  //@TODO: trim unused whitespace
-                  //Might be able to do this with Zod
-                  //And verify that it is a valid URL
-                  //@TODO: I think I can just pass this in event instead of saving to context...
-                  //actions: assign({ url: (_, evt) => evt.data.url })
+                  //@TODO: trim URL of whitespace
+                  { 
+                    cond: (ctx, evt) => jsonata(`url = "${evt.data.url}"`).evaluate(ctx.db),
+                    target: 'articleAlreadyExists'                     
+                  },
+                  { 
+                    target: 'updatingDatabase',
+                    actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url) ] })
+                  },
                 ],
                 ERASE_DATABASE: {
                   target: 'updatingDatabase',
