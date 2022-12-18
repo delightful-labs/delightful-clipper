@@ -49,8 +49,7 @@ export const processWebpageMetadata = (obj) => ({
  * @param {string} content 
  * @returns {string}
  */
-const createHtmlFromTemplate = (lang, meta, title, content) => `
-  <!DOCTYPE html>
+const createHtmlFromTemplate = (lang, meta, title, content) => `<!DOCTYPE html>
   <html lang="${lang}">
     <head>
       ${meta}
@@ -59,8 +58,18 @@ const createHtmlFromTemplate = (lang, meta, title, content) => `
     <body>
       ${content}
     </body>
-  </html>
-`
+  </html>`
+
+/**
+ * 
+ * @param {string} text 
+ */
+export const prepareHtml = (text) => {
+  //const doc = new DOMParser().parseFromString(text, 'text/html')
+  const allowedTags = sanitize.defaults.allowedTags.concat([ 'img', 'details', 'summary', 'svg' ])
+  const clean = sanitize(text, { allowedTags: allowedTags})
+  console.log(clean)
+}
 
 /**
  * Extracts the main section of the webpage provided.
@@ -69,13 +78,15 @@ const createHtmlFromTemplate = (lang, meta, title, content) => `
  */
 export const extractMainContent = async (webpageText, lang) => {
   const doc = new DOMParser().parseFromString(webpageText, 'text/html')
+  let scrapedMeta = {}
   const meta = doc.getElementsByTagName('meta')
-  const article = new Readability(doc, { serializer: el => el }).parse()
-  const allowedTags = sanitize.defaults.allowedTags.concat([ 'img', 'details', 'summary', 'svg' ])
-  const clean = article && sanitize(article?.content, { allowedTags: allowedTags})
-  //@TODO: add newline after meta.join
-  const combined = clean ? createHtmlFromTemplate(lang, meta.join(''), article ? article.title : '', clean) : ''
-  return { body: combined,  wordCount: getWordCount(article?.textContent)}
+  meta.forEach(a => scrapedMeta[a.getAttribute('property') || a.getAttribute('name')] = a.getAttribute('content'))
+  console.log(scrapedMeta)
+  // const article = new Readability(doc, { serializer: el => el }).parse()
+  // const allowedTags = sanitize.defaults.allowedTags.concat([ 'img', 'details', 'summary', 'svg' ])
+  // const clean = article && sanitize(article?.content, { allowedTags: allowedTags})
+  // const combined = clean ? createHtmlFromTemplate(lang, meta.join('\n'), article ? article.title : '', clean) : ''
+  // return { body: combined,  wordCount: getWordCount(article?.textContent)}
 }
 
 /**

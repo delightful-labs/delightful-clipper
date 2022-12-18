@@ -1,6 +1,3 @@
-import ogs from 'open-graph-scraper'
-//const res = await  ogs({ url: req.url, downloadLimit: 2000000 })
-
 /**
  * @param { import('@sveltejs/kit').RequestEvent } request
  */

@@ -1,7 +1,8 @@
-import { createMachine } from 'xstate'
+import { createMachine, assign } from 'xstate'
 import * as wn from 'webnative'
 import { assign as immerAssign } from '@xstate/immer'
-import { extractMainContent, processWebpageMetadata } from '$lib/utils'
+import { extractMainContent, processWebpageMetadata, prepareHtml } from '$lib/utils'
+import ogs from 'open-graph-scraper'
 
 /**
  * @param { import('$lib/schemas/Article').Article } article
@@ -36,9 +37,28 @@ const articleParserMachine = (article, fs) => createMachine({
         onError: {} // @TODO: handle error
       }
     },
-    readingHtmlText: {},
+    readingHtmlText: {
+      invoke: {
+        src: (_, evt) => evt.data.text(),
+        onDone: {
+          actions: assign({ articleText: (_, evt) => evt.data }),
+          target: 'parsingMetadata'
+        }
+      }
+    },
     loadingFile: {},
-    parsingMetadata: {},
+    parsingMetadata: {
+      entry: async (ctx, evt) => console.log(await extractMainContent(evt.data, 'en'))
+      // invoke: {
+      //   src: (ctx, evt) => ,
+      //   onDone: {
+      //     actions: (ctx, evt) => console.log(prepareHtml(evt.data))
+      //   },
+      //   onError: {
+      //     actions: (ctx, evt) => console.error(evt.data)
+      //   }
+      // }
+    },
     extractingMainContent: {
       invoke: {
         src: (ctx) => extractMainContent(ctx.body, ctx.article.locale),
