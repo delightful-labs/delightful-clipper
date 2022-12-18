@@ -22,7 +22,7 @@ export const getFirstKeyMatch = (arr, obj) => {
   return first
 }
 
-//@TODO: Create a type for this
+
 /**
  * Filters out only the desired meta tags and renames them
  * @param {*} obj

@@ -1,5 +1,7 @@
 import { createMachine } from 'xstate'
 import * as wn from 'webnative'
+import { assign as immerAssign } from '@xstate/immer'
+import { extractMainContent, processWebpageMetadata } from '$lib/utils'
 
 /**
  * @param { import('$lib/schemas/Article') } article
@@ -8,23 +10,33 @@ import * as wn from 'webnative'
 const articleParserMachine = (article, fs) => createMachine({
   context: {
     fs: fs,
-    article: article
+    article: article,
+    articleText: ''
   },
   initial: 'parsingArticle',
   states: {
     parsingArticle: {
       invoke: {
-        src: (_, evt) => fetch('/add', { method: 'post', body: JSON.stringify({url: evt.data.url})}).then(res => res.json()),
+        src: (ctx) => fetch('/fetch-article', { method: 'post', body: JSON.stringify(ctx.article)}).then(res => res.json()),
         onDone: {
-          target: 'savingArticleText'
+          target: 'extractingMainContent'
         },
         onError: {} // @TODO: handle error
       }
     },
-    // @TODO: What to do with the article object?
-    // Pass it along through transitions?
-    // Save it to context? (If I did this, it would make sense if this was an invoked macine that receive the fs as a parameter)
-
+    extractingMainContent: {
+      invoke: {
+        src: (ctx) => extractMainContent(ctx.body, ctx.article.locale),
+        onDone: {
+          target: 'savingArticleText',
+          actions: immerAssign((ctx, evt) => {
+            ctx.article._rawBody = evt.data.body
+            ctx.article.wordCount = evt.data.wordCount
+            ctx.article.mimeType = ctx.response.headers['content-type']
+          })
+        }
+      }
+    },
     //@TODO: Probably should check with db after loaded article and have canonical URL to make sure that it doesn't already exist. 
     // That will fix the issue of URL shorteners producing multiple entries ---
     // i.e. I could save the same URL with a t.co and a bit.ly shortened URL and not even know it. 
