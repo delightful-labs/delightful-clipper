@@ -3,6 +3,7 @@ import * as wn from 'webnative'
 import { v4 as uuidv4 } from 'uuid'
 import jsonata from 'jsonata'
 import Article from '$lib/schemas/Article'
+import articleParserMachine from '$lib/machines/articleParserMachine'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
@@ -97,6 +98,7 @@ const fileSystemMachine = createMachine({
           initial: 'idle',
           states: {
             idle: {
+              entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
               on: {
                 SAVE_ARTICLE: [
                   //@TODO: need to send back logical events to show visual updates to user. And clear the form on success.
@@ -170,13 +172,12 @@ const fileSystemMachine = createMachine({
                 onError: {}
               }
             },
-            //@TODO: make this an actor and combine with machine from /add/+server.js.
-            // /add/+server.js can just become a proxy for fetching.
             parsingArticle: {
               invoke: {
-                src: (_, evt) => fetch('/add', { method: 'post', body: JSON.stringify({url: evt.data.url})}).then(res => res.json()),
+                src: (ctx, evt) => articleParserMachine(evt.data, ctx.fs),
                 onDone: {
-                  target: 'savingArticleText'
+                  //target: 'savingArticleText'
+                  actions: (_, evt) => console.log(evt)
                 },
                 onError: {} // @TODO: handle error
               }

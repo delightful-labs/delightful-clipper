@@ -4,7 +4,7 @@ import { assign as immerAssign } from '@xstate/immer'
 import { extractMainContent, processWebpageMetadata } from '$lib/utils'
 
 /**
- * @param { import('$lib/schemas/Article') } article
+ * @param { import('$lib/schemas/Article').Article } article
  * @param { import('webnative/fs/index').default } fs
  */
 const articleParserMachine = (article, fs) => createMachine({
@@ -13,25 +13,40 @@ const articleParserMachine = (article, fs) => createMachine({
     article: article,
     articleText: ''
   },
-  initial: 'parsingArticle',
+  initial: 'fetchingArticle',
   states: {
-    parsingArticle: {
+    fetchingArticle: {
       invoke: {
-        src: (ctx) => fetch('/fetch-article', { method: 'post', body: JSON.stringify(ctx.article)}).then(res => res.json()),
-        onDone: {
-          target: 'extractingMainContent'
-        },
+        src: (ctx) => fetch(
+          `/proxy?url=${encodeURI(ctx.article.url)}`, 
+          { method: 'get' })
+          .then(res => res.blob()
+        ),
+        onDone: [
+          { 
+            cond: (_, evt) => evt.data.type.match(/text\/html/),
+            target: 'readingHtmlText',
+            actions: (_,evt) => console.log('html')
+          },
+          {
+            target: 'loadingFile',
+            actions: (_,evt) => console.log('not html')
+          }
+        ],
         onError: {} // @TODO: handle error
       }
     },
+    readingHtmlText: {},
+    loadingFile: {},
+    parsingMetadata: {},
     extractingMainContent: {
       invoke: {
         src: (ctx) => extractMainContent(ctx.body, ctx.article.locale),
         onDone: {
           target: 'savingArticleText',
           actions: immerAssign((ctx, evt) => {
-            ctx.article._rawBody = evt.data.body
-            ctx.article.wordCount = evt.data.wordCount
+            ctx.articleText = evt.data.body
+            //ctx.article.wordCount = evt.data.wordCount
             ctx.article.mimeType = ctx.response.headers['content-type']
           })
         }
