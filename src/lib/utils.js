@@ -79,6 +79,7 @@ export const prepareHtml = (text) => {
 export const extractMainContent = async (webpageText, lang) => {
   const doc = new DOMParser().parseFromString(webpageText, 'text/html')
   let scrapedMeta = {}
+  //Filter out only the meta tags I want (og:, description, charset, author)
   const meta = doc.getElementsByTagName('meta')
   meta.forEach(a => scrapedMeta[a.getAttribute('property') || a.getAttribute('name')] = a.getAttribute('content'))
   console.log(scrapedMeta)
