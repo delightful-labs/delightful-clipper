@@ -26,7 +26,7 @@
     articles = returnResults(results)
   }
 
-  $: console.log($fileSystemService.context)
+  //$: console.log($fileSystemService.context)
 </script>
 
 <p>{ JSON.stringify( $fileSystemService.value ) }</p>

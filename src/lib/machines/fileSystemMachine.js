@@ -96,6 +96,9 @@ const fileSystemMachine = createMachine({
       states: {
         userActions: { 
           initial: 'idle',
+          on: {
+            SAVE_ARTICLE: {target: 'userActions.test'}
+          },
           states: {
             idle: {
               entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
@@ -106,19 +109,27 @@ const fileSystemMachine = createMachine({
                   //@TODO: also need to remove UTM and other tracking stuff.
                   //BUT --- there may be sometimes you want URL parameters as part of the URL, such as saving something from a web app.
                   //Will probably need to make it an option to save search parameters or not.
-                  { 
-                    cond: (ctx, evt) => jsonata(`url = "${evt.data.url}"`).evaluate(ctx.db),
-                    target: 'articleAlreadyExists'                     
-                  },
-                  { 
-                    target: 'updatingDatabase',
-                    actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url) ] })
-                  },
+
+                  // { 
+                  //   cond: (ctx, evt) => jsonata(`url = "${evt.data.url}"`).evaluate(ctx.db),
+                  //   target: 'articleAlreadyExists'                     
+                  // },
+                  // { 
+                  //   target: 'updatingDatabase',
+                  //   actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url) ] })
+                  // },
                 ],
                 ERASE_DATABASE: {
                   target: 'updatingDatabase',
                   actions: assign({ db: []})
                 }
+              }
+            },
+            test: {
+              invoke: {
+                src: (ctx, evt) => articleParserMachine(evt.data, ctx.fs),
+                onDone: {},
+                onError: {} // @TODO: handle error
               }
             },
             //@todo: updatingDatabase & publishing are functions that automaticActions could also use.

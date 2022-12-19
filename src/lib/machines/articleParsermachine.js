@@ -2,7 +2,6 @@ import { createMachine, assign } from 'xstate'
 import * as wn from 'webnative'
 import { assign as immerAssign } from '@xstate/immer'
 import { extractMainContent, processWebpageMetadata, prepareHtml } from '$lib/utils'
-import ogs from 'open-graph-scraper'
 
 /**
  * @param { import('$lib/schemas/Article').Article } article
