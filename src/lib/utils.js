@@ -28,17 +28,23 @@ export const getFirstKeyMatch = (arr, obj) => {
  * @param {*} obj
  */
 export const processWebpageMetadata = (obj) => ({
-  author: getFirstKeyMatch(['articleAuthor', 'author'], obj), //author, articleAuthor, articleTag (used by NYT) / Medium uses articleAuthor as url and author as string of name
-  title: obj.ogTitle,
-  datePublished: getFirstKeyMatch(['articlePublishedTime', 'ogDate'], obj),
-  dateModified: obj.articleModifiedTime,
-  description: obj.ogDescription,
-  image: obj.ogImage,
-  locale: obj.ogLocale,
-  url: getFirstKeyMatch(['requestUrl', 'ogUrl'], obj),
-  siteName: obj.ogSiteName,
-  type: obj.ogType,
-  video: obj.ogVideo
+  author: getFirstKeyMatch(['articleAuthor', 'author'], obj), //article:author, author, articleTag (used by NYT) / Medium uses articleAuthor as url and author as string of name
+  title: obj.ogTitle, //og:title, title, html title
+  datePublished: getFirstKeyMatch(['articlePublishedTime', 'ogDate'], obj), //article:published_time
+  dateModified: obj.articleModifiedTime, //article:modified_time, og:updated_time
+  description: obj.ogDescription, //og:description, description
+  image: obj.ogImage, //og:image, image, first image in article
+  imageAlt: '', //og:image:alt
+  locale: obj.ogLocale, //og:locale, html lang tag
+  url: getFirstKeyMatch(['requestUrl', 'ogUrl'], obj), //og:url, url, original url from request
+  siteName: obj.ogSiteName, //og:site_name
+  type: obj.ogType, //og:type, type, content-type
+  video: obj.ogVideo, //og:video (url string)
+  videoType: '', //og:video:type
+  //copyright??
+  //article:content_tier??
+  //byl??,
+  //theme-color?? Could do some fun design stuff with this
 })
 
 /**
