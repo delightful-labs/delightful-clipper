@@ -26,11 +26,11 @@ const articleParserMachine = (article, fs) => createMachine({
           { 
             cond: (_, evt) => evt.data.type.match(/text\/html/),
             target: 'readingHtmlText',
-            actions: (_,evt) => console.log('html')
+            //actions: (_,evt) => console.log('html')
           },
           {
             target: 'loadingFile',
-            actions: (_,evt) => console.log('not html')
+            //actions: (_,evt) => console.log('not html')
           }
         ],
         onError: {} // @TODO: handle error
@@ -47,7 +47,7 @@ const articleParserMachine = (article, fs) => createMachine({
     },
     loadingFile: {},
     parsingMetadata: {
-      entry: async (ctx, evt) => console.log(await extractMainContent(evt.data, 'en'))
+      entry: async (ctx, evt) => await extractMainContent(evt.data)
       // invoke: {
       //   src: (ctx, evt) => ,
       //   onDone: {

@@ -1,6 +1,7 @@
 import sanitize from 'sanitize-html'
 import { Readability } from '@mozilla/readability'
 import { DOMParser } from 'linkedom'
+import { readJsonConfigFile } from 'typescript'
 
 /**
  * Takes an array of strings and an object and returns tthe first key found.
@@ -8,43 +9,55 @@ import { DOMParser } from 'linkedom'
  * @param {*} obj 
  * @returns {string|undefined}
  */
-export const getFirstKeyMatch = (arr, obj) => {
+export const getFirstKeyMatch = (arr, obj, i = 0) => {
   let first
-  
-  arr.every(string => {
-    if (obj[string]) {
+
+  for (const string of arr) {
+    if(!!obj[string]) {
       first = obj[string]
-      //If key is found, return `false` to exit the loop.
-      return false
+
+      break
     }
-  })
+  }
 
   return first
 }
 
+/**
+ * 
+ * @param {*} doc 
+ */
+const extractWebpageMetadata = (doc) => {
+  // let scrapedMeta = {}
+  //Filter out only the meta tags I want (og:, description, charset, author)
+  const meta = doc.getElementsByTagName('meta')
+
+  console.log(meta)
+  return meta.reduce((previousValue, currentItem) => {
+    console.log(currentItem)
+    return {...previousValue, [currentItem.getAttribute('property') || currentItem.getAttribute('name')]: currentItem.getAttribute('content')}
+  }, {})
+}
 
 /**
  * Filters out only the desired meta tags and renames them
  * @param {*} obj
  */
 export const processWebpageMetadata = (obj) => ({
-  author: getFirstKeyMatch(['articleAuthor', 'author'], obj), //article:author, author, articleTag (used by NYT) / Medium uses articleAuthor as url and author as string of name
-  title: obj.ogTitle, //og:title, title, html title
-  datePublished: getFirstKeyMatch(['articlePublishedTime', 'ogDate'], obj), //article:published_time
-  dateModified: obj.articleModifiedTime, //article:modified_time, og:updated_time
-  description: obj.ogDescription, //og:description, description
-  image: obj.ogImage, //og:image, image, first image in article
-  imageAlt: '', //og:image:alt
-  locale: obj.ogLocale, //og:locale, html lang tag
-  url: getFirstKeyMatch(['requestUrl', 'ogUrl'], obj), //og:url, url, original url from request
-  siteName: obj.ogSiteName, //og:site_name
-  type: obj.ogType, //og:type, type, content-type
-  video: obj.ogVideo, //og:video (url string)
-  videoType: '', //og:video:type
-  //copyright??
-  //article:content_tier??
-  //byl??,
-  //theme-color?? Could do some fun design stuff with this
+  author: getFirstKeyMatch(['article:author', 'author'], obj), //article:author, author, articleTag (used by NYT) / Medium uses articleAuthor as url and author as string of name
+  title: getFirstKeyMatch(['og:title', 'title'], obj), //If not, check html title
+  datePublished: getFirstKeyMatch(['article:published_time', 'og:date'], obj),
+  dateModified: getFirstKeyMatch(['article:modified_time', 'og:updated_time'], obj),
+  description: getFirstKeyMatch(['og:description', 'description'], obj),
+  image: getFirstKeyMatch(['og:description', 'description'], obj), //If not, get first image in article
+  imageAlt: getFirstKeyMatch(['og:image:alt'], obj),
+  locale: getFirstKeyMatch(['og:locale'], obj), //If not, check html lang tag
+  url: getFirstKeyMatch(['og:url', 'url'], obj), //If not, use original url from request
+  siteName: getFirstKeyMatch(['og:site_name'], obj),
+  type: getFirstKeyMatch(['og:type', 'ogUrl'], obj), //, type, content-type
+  video: getFirstKeyMatch(['og:video'], obj),
+  videoType: getFirstKeyMatch(['og:video:type'], obj),
+  themeColor: getFirstKeyMatch(['theme-color'], obj),
 })
 
 /**
@@ -79,17 +92,22 @@ export const prepareHtml = (text) => {
 
 /**
  * Extracts the main section of the webpage provided.
- * @param {string} webpageText 
- * @param {string} lang
+ * @param {string} webpageText
  */
-export const extractMainContent = async (webpageText, lang) => {
+export const extractMainContent = async (webpageText) => {
   const doc = new DOMParser().parseFromString(webpageText, 'text/html')
-  let scrapedMeta = {}
-  //Filter out only the meta tags I want (og:, description, charset, author)
-  const meta = doc.getElementsByTagName('meta')
-  meta.forEach(a => scrapedMeta[a.getAttribute('property') || a.getAttribute('name')] = a.getAttribute('content'))
-  console.log(scrapedMeta)
-  // const article = new Readability(doc, { serializer: el => el }).parse()
+  console.log(processWebpageMetadata(extractWebpageMetadata(doc)))
+  //console.log(extractWebpageMetadata(doc))
+  console.log('hi')
+
+  const t = Promise.resolve('foo')
+  const article = new Promise((res, rej) => {
+    try {
+      res(new Readability(doc, { serializer: el => el }).parse())
+    } catch(err) {
+      rej(err)
+    }
+  })
   // const allowedTags = sanitize.defaults.allowedTags.concat([ 'img', 'details', 'summary', 'svg' ])
   // const clean = article && sanitize(article?.content, { allowedTags: allowedTags})
   // const combined = clean ? createHtmlFromTemplate(lang, meta.join('\n'), article ? article.title : '', clean) : ''
