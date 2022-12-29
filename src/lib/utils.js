@@ -1,7 +1,11 @@
 import sanitize from 'sanitize-html'
 import { Readability } from '@mozilla/readability'
 import { DOMParser } from 'linkedom'
-import { readJsonConfigFile } from 'typescript'
+
+/**
+ * Linkedom DOM Document
+ * @typedef { import('linkedom/types/html/document').HTMLDocument } HTMLDocument
+ */
 
 /**
  * Takes an array of strings and an object and returns tthe first key found.
@@ -28,13 +32,10 @@ export const getFirstKeyMatch = (arr, obj, i = 0) => {
  * @param {*} doc 
  */
 const extractWebpageMetadata = (doc) => {
-  // let scrapedMeta = {}
   //Filter out only the meta tags I want (og:, description, charset, author)
   const meta = doc.getElementsByTagName('meta')
 
-  console.log(meta)
   return meta.reduce((previousValue, currentItem) => {
-    console.log(currentItem)
     return {...previousValue, [currentItem.getAttribute('property') || currentItem.getAttribute('name')]: currentItem.getAttribute('content')}
   }, {})
 }
@@ -91,25 +92,54 @@ export const prepareHtml = (text) => {
 }
 
 /**
- * Extracts the main section of the webpage provided.
- * @param {string} webpageText
+ * Uses readability to extract the main text of an HTML document
+ * @param {Document} doc 
+ * @returns 
  */
-export const extractMainContent = async (webpageText) => {
-  const doc = new DOMParser().parseFromString(webpageText, 'text/html')
-  console.log(processWebpageMetadata(extractWebpageMetadata(doc)))
-  //console.log(extractWebpageMetadata(doc))
-  console.log('hi')
+export const extractMainContent = (doc) => new Promise((res, rej) => {
+  try {
+    res(new Readability(doc, { serializer: el => el }).parse())
+  } catch(err) {
+    rej(err)
+  }
+})
 
-  const t = Promise.resolve('foo')
-  const article = new Promise((res, rej) => {
+/**
+ * Sanitizes an HTML string
+ * @param {string} doc 
+ */
+export const sanitizeHtml = (doc) => {
+  const allowedTags = sanitize.defaults.allowedTags.concat([ 'img', 'details', 'summary', 'svg' ])
+  return new Promise((res, rej) => {
     try {
-      res(new Readability(doc, { serializer: el => el }).parse())
+      res(sanitize(doc, { allowedTags: allowedTags}))
     } catch(err) {
       rej(err)
     }
   })
-  // const allowedTags = sanitize.defaults.allowedTags.concat([ 'img', 'details', 'summary', 'svg' ])
-  // const clean = article && sanitize(article?.content, { allowedTags: allowedTags})
+}
+
+/**
+ * Extracts the main section of the webpage provided.
+ * @param {string} webpageText
+ */
+export const parseWebArticle = async (webpageText) => {
+  /**
+   * @type {HTMLDocument}
+   */
+  const doc = new DOMParser().parseFromString(webpageText, 'text/html')
+  console.log(webpageText)
+  //I get the lang, text, title, and parsed html here.
+  //1. Language can be saved to article
+  //2. text can be used to calculate word count
+  //3. Title, use if none set on article from metadata
+  //3. HTML can be used to sanitize
+  //It makes sense to parse metadata first, then handle this new data
+  const test = await extractMainContent(/** @type {HTMLDocument & Document} */(doc))
+  console.log(test)
+
+  //console.log(processWebpageMetadata(extractWebpageMetadata(doc)))
+  
   // const combined = clean ? createHtmlFromTemplate(lang, meta.join('\n'), article ? article.title : '', clean) : ''
   // return { body: combined,  wordCount: getWordCount(article?.textContent)}
 }

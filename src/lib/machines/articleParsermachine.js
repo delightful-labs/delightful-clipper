@@ -1,7 +1,7 @@
 import { createMachine, assign } from 'xstate'
 import * as wn from 'webnative'
 import { assign as immerAssign } from '@xstate/immer'
-import { extractMainContent, processWebpageMetadata, prepareHtml } from '$lib/utils'
+import { extractMainContent, parseWebArticle } from '$lib/utils'
 
 /**
  * @param { import('$lib/schemas/Article').Article } article
@@ -26,6 +26,7 @@ const articleParserMachine = (article, fs) => createMachine({
           { 
             cond: (_, evt) => evt.data.type.match(/text\/html/),
             target: 'readingHtmlText',
+            // here I could assign to the context a new linkedDOM to reference as I go
             //actions: (_,evt) => console.log('html')
           },
           {
@@ -47,7 +48,7 @@ const articleParserMachine = (article, fs) => createMachine({
     },
     loadingFile: {},
     parsingMetadata: {
-      entry: async (ctx, evt) => await extractMainContent(evt.data)
+      entry: async (ctx, evt) => await parseWebArticle(evt.data)
       // invoke: {
       //   src: (ctx, evt) => ,
       //   onDone: {

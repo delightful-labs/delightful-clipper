@@ -110,7 +110,7 @@
 
   /**
    * Used to bind username input field
-   * @type null | HTMLInputElement
+   * @type {null|HTMLInputElement}
    */
   let field = null
 
