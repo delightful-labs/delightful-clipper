@@ -8,7 +8,7 @@ import { DOMParser } from 'linkedom'
  */
 
 /**
- * Takes an array of strings and an object and returns tthe first key found.
+ * Takes an array of strings and an object and returns the first key found.
  * @param {string[]} arr 
  * @param {*} obj 
  * @returns {string|undefined}
@@ -93,12 +93,24 @@ export const prepareHtml = (text) => {
 
 /**
  * Uses readability to extract the main text of an HTML document
+ * @typedef ReadabilityResponse
+ * @type {object}
+ * @property {string} title  article title
+ * @property {string} byline author metadata
+ * @property {string} dir content direction
+ * @property {string} content HTML of processed article content
+ * @property {string} textContent text content of the article (all HTML removed)
+ * @property {number} length length of an article, in characters
+ * @property {string} excerpt article description, or short excerpt from the content
+ * @property {string} siteName name of the site
+ * @property {string} lang content language
+ * 
  * @param {Document} doc 
- * @returns 
+ * @returns {Promise<null|ReadabilityResponse>}
  */
 export const extractMainContent = (doc) => new Promise((res, rej) => {
   try {
-    res(new Readability(doc, { serializer: el => el }).parse())
+    res(new Readability(doc).parse())
   } catch(err) {
     rej(err)
   }
@@ -107,6 +119,7 @@ export const extractMainContent = (doc) => new Promise((res, rej) => {
 /**
  * Sanitizes an HTML string
  * @param {string} doc 
+ * @returns {Promise<string>}
  */
 export const sanitizeHtml = (doc) => {
   const allowedTags = sanitize.defaults.allowedTags.concat([ 'img', 'details', 'summary', 'svg' ])
@@ -135,6 +148,7 @@ export const parseWebArticle = async (webpageText) => {
   //3. Title, use if none set on article from metadata
   //3. HTML can be used to sanitize
   //It makes sense to parse metadata first, then handle this new data
+  //Then the missing data can be set from this response
   const test = await extractMainContent(/** @type {HTMLDocument & Document} */(doc))
   console.log(test)
 
