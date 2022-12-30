@@ -33,8 +33,10 @@ export const getFirstKeyMatch = (arr, obj, i = 0) => {
  */
 const extractWebpageMetadata = (doc) => {
   //Filter out only the meta tags I want (og:, description, charset, author)
+  //@TODO: Might be able to do this with querySelectorAll
   const meta = doc.getElementsByTagName('meta')
 
+  //@TODO: Probably break this out into separate function
   return meta.reduce((previousValue, currentItem) => {
     return {...previousValue, [currentItem.getAttribute('property') || currentItem.getAttribute('name')]: currentItem.getAttribute('content')}
   }, {})
