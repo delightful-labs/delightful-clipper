@@ -2,16 +2,29 @@ import { createMachine, assign } from 'xstate'
 import * as wn from 'webnative'
 import { assign as immerAssign } from '@xstate/immer'
 import { extractMainContent, parseWebArticle } from '$lib/utils'
+import { DOMParser } from 'linkedom'
 
 /**
- * @param { import('$lib/schemas/Article').Article } article
- * @param { import('webnative/fs/index').default } fs
+ * @typedef { import('$lib/schemas/Article').Article } article
+ * @typedef { import('webnative/fs/index').default } fs
+ * @typedef { import('linkedom/types/html/document').HTMLDocument } HTMLDocument
+ */
+
+/**
+ * @param { article } article
+ * @param { fs } fs
  */
 const articleParserMachine = (article, fs) => createMachine({
   context: {
+    /** @type {fs} */
     fs: fs,
+    /** @type {article} */
     article: article,
-    articleText: ''
+    /** @type {string} */
+    articleText: '',
+    /** @type {null|HTMLDocument} */
+    dom: null,
+    htmlMetadata: null
   },
   initial: 'fetchingArticle',
   states: {
@@ -25,30 +38,33 @@ const articleParserMachine = (article, fs) => createMachine({
         onDone: [
           { 
             cond: (_, evt) => evt.data.type.match(/text\/html/),
-            target: 'readingHtmlText',
-            // here I could assign to the context a new linkedDOM to reference as I go
-            //actions: (_,evt) => console.log('html')
+            target: 'readingHtmlText'
           },
           {
             target: 'loadingFile',
             //actions: (_,evt) => console.log('not html')
           }
         ],
-        onError: {} // @TODO: handle error
+        onError: {
+          actions: (_, evt) => console.log(evt)
+        } // @TODO: handle error
       }
     },
     readingHtmlText: {
       invoke: {
         src: (_, evt) => evt.data.text(),
         onDone: {
-          actions: assign({ articleText: (_, evt) => evt.data }),
+          actions: assign({ 
+            articleText: (_, evt) => evt.data,
+            dom: (_, evt) =>  new DOMParser().parseFromString(evt.data, 'text/html')
+          }),
           target: 'parsingMetadata'
         }
       }
     },
     loadingFile: {},
     parsingMetadata: {
-      entry: async (ctx, evt) => await parseWebArticle(evt.data)
+      entry: async (ctx, evt) => console.log(ctx.dom)//await parseWebArticle(evt.data)
       // invoke: {
       //   src: (ctx, evt) => ,
       //   onDone: {

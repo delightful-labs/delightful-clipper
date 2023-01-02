@@ -1,10 +1,12 @@
 import sanitize from 'sanitize-html'
 import { Readability } from '@mozilla/readability'
 import { DOMParser } from 'linkedom'
+import { z } from 'zod'
 
 /**
  * Linkedom DOM Document
  * @typedef { import('linkedom/types/html/document').HTMLDocument } HTMLDocument
+ * @typedef { import('linkedom/types/interface/node-list').NodeList} NodeList
  */
 
 /**
@@ -28,12 +30,20 @@ export const getFirstKeyMatch = (arr, obj, i = 0) => {
 }
 
 /**
+ * Gets any HTML meta tags
+ * @param {HTMLDocument} doc 
+ * @returns NodeList
+ */
+//Filter out only the meta tags I want (og:, description, charset, author)
+//@TODO: Might be able to do this with querySelectorAll
+export const getMetadataHtml = (doc) => doc.getElementsByTagName('meta')
+
+/**
  * 
  * @param {*} doc 
  */
 const extractWebpageMetadata = (doc) => {
-  //Filter out only the meta tags I want (og:, description, charset, author)
-  //@TODO: Might be able to do this with querySelectorAll
+
   const meta = doc.getElementsByTagName('meta')
 
   //@TODO: Probably break this out into separate function
@@ -143,7 +153,6 @@ export const parseWebArticle = async (webpageText) => {
    * @type {HTMLDocument}
    */
   const doc = new DOMParser().parseFromString(webpageText, 'text/html')
-  console.log(webpageText)
   //I get the lang, text, title, and parsed html here.
   //1. Language can be saved to article
   //2. text can be used to calculate word count
@@ -152,7 +161,6 @@ export const parseWebArticle = async (webpageText) => {
   //It makes sense to parse metadata first, then handle this new data
   //Then the missing data can be set from this response
   const test = await extractMainContent(/** @type {HTMLDocument & Document} */(doc))
-  console.log(test)
 
   //console.log(processWebpageMetadata(extractWebpageMetadata(doc)))
   
@@ -169,3 +177,10 @@ export const getWordCount = (text) => {
   const words = text.trim().split(/\s+/g).length
   return words
 }
+
+/**
+ * Checks if the provided string is a valid URL
+ * @param {string} string 
+ * @returns {boolean}
+ */
+export const isUrl = (string) => z.string().url().safeParse(string).success
