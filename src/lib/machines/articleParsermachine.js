@@ -1,7 +1,7 @@
 import { createMachine, assign } from 'xstate'
 import * as wn from 'webnative'
 import { assign as immerAssign } from '@xstate/immer'
-import { extractMainContent, parseWebArticle } from '$lib/utils'
+import { extractMainContent, extractHtmlMetadata, processWebpageMetadata } from '$lib/utils'
 import { DOMParser } from 'linkedom'
 
 /**
@@ -24,6 +24,7 @@ const articleParserMachine = (article, fs) => createMachine({
     articleText: '',
     /** @type {null|HTMLDocument} */
     dom: null,
+    /** @type {null|NodeList} */
     htmlMetadata: null
   },
   initial: 'fetchingArticle',
@@ -64,16 +65,30 @@ const articleParserMachine = (article, fs) => createMachine({
     },
     loadingFile: {},
     parsingMetadata: {
-      entry: async (ctx, evt) => console.log(ctx.dom)//await parseWebArticle(evt.data)
-      // invoke: {
-      //   src: (ctx, evt) => ,
-      //   onDone: {
-      //     actions: (ctx, evt) => console.log(prepareHtml(evt.data))
-      //   },
-      //   onError: {
-      //     actions: (ctx, evt) => console.error(evt.data)
-      //   }
-      // }
+      invoke: {
+        src: (ctx, evt) => extractHtmlMetadata(ctx.dom),
+        onDone: {
+          target: 'creatingArticleObject',
+          actions: assign({ htmlMetadata: (_, evt) => evt.data })
+        },
+        onError: {
+          actions: (ctx, evt) => console.error(evt.data)
+        }
+      }
+    },
+    creatingArticleObject: {
+      invoke: {
+        src: (ctx, evt) => processWebpageMetadata(ctx.htmlMetadata),
+        onDone: {
+          //target: 'creatingArticleObject',
+          //actions: assign({ htmlMetadata: (_, evt) => evt.data })
+          //@TDOD: safeParse with zod and save to ctx as article.
+          actions: (ctx, evt) => console.log(evt.data)
+        },
+        onError: {
+          actions: (ctx, evt) => console.error(evt.data)
+        }
+      }
     },
     extractingMainContent: {
       invoke: {

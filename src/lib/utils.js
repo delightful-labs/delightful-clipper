@@ -36,27 +36,23 @@ export const getFirstKeyMatch = (arr, obj, i = 0) => {
  */
 //Filter out only the meta tags I want (og:, description, charset, author)
 //@TODO: Might be able to do this with querySelectorAll
-export const getMetadataHtml = (doc) => doc.getElementsByTagName('meta')
+//@TODO: handle when no meta is found?
+export const extractHtmlMetadata = async (doc) => doc.getElementsByTagName('meta')
 
 /**
- * 
- * @param {*} doc 
+ * Creates a JSON object from a nodeList of meta tags
+ * @param {NodeList} meta 
  */
-const extractWebpageMetadata = (doc) => {
-
-  const meta = doc.getElementsByTagName('meta')
-
-  //@TODO: Probably break this out into separate function
-  return meta.reduce((previousValue, currentItem) => {
-    return {...previousValue, [currentItem.getAttribute('property') || currentItem.getAttribute('name')]: currentItem.getAttribute('content')}
-  }, {})
-}
+//@TODO: Add return type
+export const createMetadataObject = (meta) => meta.reduce((previousValue, currentItem) => {
+  return {...previousValue, [currentItem.getAttribute('property') || currentItem.getAttribute('name')]: currentItem.getAttribute('content')}
+}, {})
 
 /**
  * Filters out only the desired meta tags and renames them
  * @param {*} obj
  */
-export const processWebpageMetadata = (obj) => ({
+export const filterWebpageMetadata = (obj) => ({
   author: getFirstKeyMatch(['article:author', 'author'], obj), //article:author, author, articleTag (used by NYT) / Medium uses articleAuthor as url and author as string of name
   title: getFirstKeyMatch(['og:title', 'title'], obj), //If not, check html title
   datePublished: getFirstKeyMatch(['article:published_time', 'og:date'], obj),
@@ -72,6 +68,16 @@ export const processWebpageMetadata = (obj) => ({
   videoType: getFirstKeyMatch(['og:video:type'], obj),
   themeColor: getFirstKeyMatch(['theme-color'], obj),
 })
+
+/**
+ * 
+ * @param {NodeList} nodeList 
+ */
+export const processWebpageMetadata = async (nodeList) => {
+  const obj = createMetadataObject(nodeList)
+  const filtered = filterWebpageMetadata(obj)
+  return filtered
+}
 
 /**
  * 
