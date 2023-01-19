@@ -30,6 +30,27 @@ export const getFirstKeyMatch = (arr, obj, i = 0) => {
 }
 
 /**
+ * Merges two objects
+ * @param {Object} source 
+ * @param {Object} target 
+ * @returns 
+ */
+//@todo: Add the ability to merge arrays.
+//(Maybe as an option?)
+export const deepMerge = (source, target) => {
+  //@todo: check if object is not empty
+  return Object.keys(source).reduce((r, k) => {
+    if (isObject(source[k])) {
+      console.log('it is an object: ', source[k])
+      r[k] = deepMerge(source[k], target[k]);
+      return r;
+    }
+    r[k] = !target[k] ? source[k] : target[k];
+    return r;
+  }, {});
+}
+
+/**
  * Gets any HTML meta tags
  * @param {HTMLDocument} doc 
  * @returns NodeList
@@ -190,3 +211,10 @@ export const getWordCount = (text) => {
  * @returns {boolean}
  */
 export const isUrl = (string) => z.string().url().safeParse(string).success
+
+/**
+ * Checks if the provided string is a real object (Not array or null)
+ * @param {*} obj 
+ * @returns {boolean}
+ */
+export const isObject = (obj) => typeof obj === 'object' && obj !== null && !Array.isArray(obj)

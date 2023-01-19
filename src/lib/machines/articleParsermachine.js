@@ -1,7 +1,7 @@
 import { createMachine, assign } from 'xstate'
 import * as wn from 'webnative'
 import { assign as immerAssign } from '@xstate/immer'
-import { extractMainContent, extractHtmlMetadata, processWebpageMetadata } from '$lib/utils'
+import { deepMerge, extractMainContent, extractHtmlMetadata, processWebpageMetadata } from '$lib/utils'
 import { DOMParser } from 'linkedom'
 
 /**
@@ -82,8 +82,8 @@ const articleParserMachine = (article, fs) => createMachine({
         onDone: {
           //target: 'creatingArticleObject',
           //actions: assign({ htmlMetadata: (_, evt) => evt.data })
-          //@TDOD: safeParse with zod and save to ctx as article.
-          actions: (ctx, evt) => console.log(evt.data)
+          //@TDOD: safeParse with zod and merge with existing ctx article.
+          actions: (ctx, evt) => console.log(deepMerge(ctx.article, evt.data))
         },
         onError: {
           actions: (ctx, evt) => console.error(evt.data)
