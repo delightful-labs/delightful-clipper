@@ -127,7 +127,7 @@ const fileSystemMachine = createMachine({
             },
             test: {
               invoke: {
-                src: (ctx, evt) => articleParserMachine(evt.data, ctx.fs),
+                src: (ctx, evt) => articleParserMachine(createArticleEntry(evt.data.url), ctx.fs),
                 onDone: {},
                 onError: {} // @TODO: handle error
               }

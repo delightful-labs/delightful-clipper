@@ -79,7 +79,7 @@ export const filterWebpageMetadata = (obj) => ({
   datePublished: getFirstKeyMatch(['article:published_time', 'og:date'], obj),
   dateModified: getFirstKeyMatch(['article:modified_time', 'og:updated_time'], obj),
   description: getFirstKeyMatch(['og:description', 'description'], obj),
-  image: getFirstKeyMatch(['og:description', 'description'], obj), //If not, get first image in article
+  image: getFirstKeyMatch(['og:image', 'image'], obj), //If not, get first image in article
   imageAlt: getFirstKeyMatch(['og:image:alt'], obj),
   locale: getFirstKeyMatch(['og:locale'], obj), //If not, check html lang tag
   url: getFirstKeyMatch(['og:url', 'url'], obj), //If not, use original url from request

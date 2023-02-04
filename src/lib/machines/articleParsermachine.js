@@ -1,7 +1,7 @@
 import { createMachine, assign } from 'xstate'
 import * as wn from 'webnative'
 import { assign as immerAssign } from '@xstate/immer'
-import { deepMerge, extractMainContent, extractHtmlMetadata, processWebpageMetadata } from '$lib/utils'
+import { deepMerge, extractMainContent, extractHtmlMetadata, processWebpageMetadata, getWordCount } from '$lib/utils'
 import { DOMParser } from 'linkedom'
 
 /**
@@ -27,6 +27,7 @@ const articleParserMachine = (article, fs) => createMachine({
     /** @type {null|NodeList} */
     htmlMetadata: null
   },
+  predictableActionArguments: true,
   initial: 'fetchingArticle',
   states: {
     fetchingArticle: {
@@ -80,10 +81,8 @@ const articleParserMachine = (article, fs) => createMachine({
       invoke: {
         src: (ctx, evt) => processWebpageMetadata(ctx.htmlMetadata),
         onDone: {
-          //target: 'creatingArticleObject',
-          //actions: assign({ htmlMetadata: (_, evt) => evt.data })
-          //@TDOD: safeParse with zod and merge with existing ctx article.
-          actions: (ctx, evt) => console.log(deepMerge(ctx.article, evt.data))
+          target: 'extractingMainContent',
+          actions: assign({article: (ctx, evt) =>  deepMerge(ctx.article, evt.data)})
         },
         onError: {
           actions: (ctx, evt) => console.error(evt.data)
@@ -92,14 +91,26 @@ const articleParserMachine = (article, fs) => createMachine({
     },
     extractingMainContent: {
       invoke: {
-        src: (ctx) => extractMainContent(ctx.body, ctx.article.locale),
+        src: (ctx) => extractMainContent(/** @type {HTMLDocument & Document} */(ctx.dom)),
         onDone: {
+          //actions: (ctx, evt) => console.log(evt)
+          //@todo: save data:
+          // 1. lang, title, and siteName directly from object
+          // 2. word count from textContent
+          // 3. HTML from content
+          // 4. merge this data with existing article object (deepMerge again?)
+          // 5. combine HTML with template
+          // 6. save html to IPFS
+          actions: assign({ 
+            article: (ctx, evt) => deepMerge(ctx.article, { siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
+            articleText: (_, evt) => evt.data.content
+          }),
           target: 'savingArticleText',
-          actions: immerAssign((ctx, evt) => {
-            ctx.articleText = evt.data.body
-            //ctx.article.wordCount = evt.data.wordCount
-            ctx.article.mimeType = ctx.response.headers['content-type']
-          })
+          // actions: immerAssign((ctx, evt) => {
+          //   ctx.articleText = evt.data.body
+          //   //ctx.article.wordCount = evt.data.wordCount
+          //   ctx.article.mimeType = ctx.response.headers['content-type']
+          // })
         }
       }
     },
@@ -107,16 +118,17 @@ const articleParserMachine = (article, fs) => createMachine({
     // That will fix the issue of URL shorteners producing multiple entries ---
     // i.e. I could save the same URL with a t.co and a bit.ly shortened URL and not even know it. 
     savingArticleText: {
-      invoke: {
-        src: (ctx, evt) => ctx.fs.write( wn.path.file('public', 'web-pages', encodeURIComponent(evt.data.url), 'index.html'), evt.data._rawBody, { publish: true }),
-        onDone: {
-          actions: (_, evt) => console.log(evt)
-          // Add fileName to object
-        },
-        onError: {
-          actions: (_, evt) => console.log(evt)
-        }
-      }
+      entry: (ctx) => console.log(ctx.article)
+      // invoke: {
+      //   src: (ctx, evt) => ctx.fs.write( wn.path.file('public', 'web-pages', encodeURIComponent(evt.data.url), 'index.html'), evt.data._rawBody, { publish: true }),
+      //   onDone: {
+      //     actions: (_, evt) => console.log(evt)
+      //     // Add fileName to object
+      //   },
+      //   onError: {
+      //     actions: (_, evt) => console.log(evt)
+      //   }
+      // }
     },
     savingImages: {
       // 1. Main image
