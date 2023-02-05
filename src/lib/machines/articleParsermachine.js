@@ -1,7 +1,7 @@
 import { createMachine, assign } from 'xstate'
 import * as wn from 'webnative'
 import { assign as immerAssign } from '@xstate/immer'
-import { deepMerge, extractMainContent, extractHtmlMetadata, processWebpageMetadata, getWordCount } from '$lib/utils'
+import { createHtmlFromTemplate, deepMerge, extractMainContent, extractHtmlMetadata, processWebpageMetadata, getWordCount } from '$lib/utils'
 import { DOMParser } from 'linkedom'
 
 /**
@@ -41,6 +41,7 @@ const articleParserMachine = (article, fs) => createMachine({
           { 
             cond: (_, evt) => evt.data.type.match(/text\/html/),
             target: 'readingHtmlText'
+            //@todo: action to use immer to set mimetype
           },
           {
             target: 'loadingFile',
@@ -95,22 +96,14 @@ const articleParserMachine = (article, fs) => createMachine({
         onDone: {
           //actions: (ctx, evt) => console.log(evt)
           //@todo: save data:
-          // 1. lang, title, and siteName directly from object
-          // 2. word count from textContent
-          // 3. HTML from content
-          // 4. merge this data with existing article object (deepMerge again?)
           // 5. combine HTML with template
           // 6. save html to IPFS
+          // 7. add fileName to article
           actions: assign({ 
             article: (ctx, evt) => deepMerge(ctx.article, { siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
             articleText: (_, evt) => evt.data.content
           }),
           target: 'savingArticleText',
-          // actions: immerAssign((ctx, evt) => {
-          //   ctx.articleText = evt.data.body
-          //   //ctx.article.wordCount = evt.data.wordCount
-          //   ctx.article.mimeType = ctx.response.headers['content-type']
-          // })
         }
       }
     },
@@ -118,7 +111,7 @@ const articleParserMachine = (article, fs) => createMachine({
     // That will fix the issue of URL shorteners producing multiple entries ---
     // i.e. I could save the same URL with a t.co and a bit.ly shortened URL and not even know it. 
     savingArticleText: {
-      entry: (ctx) => console.log(ctx.article)
+      entry: (ctx) => console.log(createHtmlFromTemplate(ctx.article.locale, ctx.htmlMetadata, ctx.article.title, ctx.articleText))
       // invoke: {
       //   src: (ctx, evt) => ctx.fs.write( wn.path.file('public', 'web-pages', encodeURIComponent(evt.data.url), 'index.html'), evt.data._rawBody, { publish: true }),
       //   onDone: {

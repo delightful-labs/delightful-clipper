@@ -103,12 +103,12 @@ export const processWebpageMetadata = async (nodeList) => {
 /**
  * 
  * @param {string} lang 
- * @param {string} meta 
+ * @param {NodeList|null} meta 
  * @param {string} title 
  * @param {string} content 
  * @returns {string}
  */
-const createHtmlFromTemplate = (lang, meta, title, content) => `<!DOCTYPE html>
+export const createHtmlFromTemplate = (lang, meta, title, content) => `<!DOCTYPE html>
   <html lang="${lang}">
     <head>
       ${meta}

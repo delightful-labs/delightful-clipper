@@ -30,6 +30,7 @@ const Article = z.object({
   mimeType: z.string().regex(isMimeType).or(emptyString),
   readPercentage: z.number().default(0),
   siteName: z.string().default(''),
+  title: z.string().default(''),
   tags: z.array(z.string()).default([]),
   type: z.string().default(''),
   url: z.string().url().trim().or(emptyString),
