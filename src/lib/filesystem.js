@@ -1,5 +1,5 @@
 import * as webnative from 'webnative'
 
-const test = webnative.app({ useWnfs: true })
+const test = webnative.program({ useWnfs: true })
 
 console.log(test)

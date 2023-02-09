@@ -9,7 +9,8 @@
     predictableActionArguments: true,
     context: {
       error: '',
-      username: ''
+      username: '',
+      authStrategy: $mainService.context.authStrategy
     },
     on: {
       input: {
@@ -30,14 +31,14 @@
       },
       checkingValidity: {
         invoke: {
-          src: (ctx, evt) => webnative.account.isUsernameValid(ctx.username),
+          src: (ctx) => ctx.authStrategy.isUsernameValid(ctx.username),
           onDone: [
             {
-              cond: (ctx, evt) => evt.data,
+              cond: (_, evt) => evt.data,
               target: 'checkingAvailability'
             },
             {
-              cond: (ctx, evt) => !evt.data,
+              cond: (_, evt) => !evt.data,
               target: 'invalid'
             }
           ],
@@ -46,14 +47,14 @@
       },
       checkingAvailability: {
         invoke: {
-          src: (ctx, evt) => webnative.account.isUsernameAvailable(ctx.username),
+          src: (ctx) => ctx.authStrategy.isUsernameAvailable(ctx.username),
           onDone: [
             {
-              cond: (ctx, evt) => evt.data,
+              cond: (_, evt) => evt.data,
               target: 'available'
             },
             {
-              cond: (ctx, evt) => !evt.data,
+              cond: (_, evt) => !evt.data,
               target: 'unavailable'
             }
           ],

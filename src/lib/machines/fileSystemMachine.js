@@ -49,10 +49,12 @@ const fileSystemMachine = createMachine({
   states: {
     settingUpFs: {
       invoke: {
-        src: () => wn.app({ useWnfs: true }),
+        src: () => wn.program({
+          namespace: { creator: "Delightful Labs", name: "Clipper" }
+        }),
         onDone: {
           target: 'checkingForDb',
-          actions: assign({fs: (_, evt) => evt.data.fs})
+          actions: assign({fs: (_, evt) => evt.data.session.fs})
         },
         onError: {
           actions: (_, evt) => console.log(evt),
