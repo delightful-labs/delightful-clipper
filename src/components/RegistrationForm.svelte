@@ -3,6 +3,7 @@
   import { useMachine } from '@xstate/svelte'
   import * as webnative from 'webnative'
   import { mainService } from '$lib/machines/mainMachine'
+  import { register } from '$lib/auth/registration'
 
   const registrationMachine =  createMachine({
     initial: 'idle',
@@ -10,6 +11,7 @@
     context: {
       error: '',
       username: '',
+      program: $mainService.context.program,
       authStrategy: $mainService.context.authStrategy
     },
     on: {
@@ -72,7 +74,7 @@
       },
       submitting: {
         invoke: {
-          src: (ctx, evt) => webnative.account.register({ username: ctx.username }),
+          src: (ctx, evt) => register(ctx.username, ctx.program.components),
           onDone: [
             {
               cond: (ctx, evt) => evt.data.success,

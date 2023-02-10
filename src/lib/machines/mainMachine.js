@@ -14,6 +14,7 @@ const mainMachine = createMachine({
     error: '',
     backupCreated: false,
     authStrategy: null,
+    program: null,
     /**
      * @type null | FileSystem
      */
@@ -44,7 +45,8 @@ const mainMachine = createMachine({
             cond: (_, evt) => !evt.data.session,
             target: 'unauthenticated',
             actions: assign({ 
-              authStrategy: (_, evt) => evt.data.auth
+              authStrategy: (_, evt) => evt.data.auth,
+              program: (_, evt) => evt.data
             })
           }
         ],
