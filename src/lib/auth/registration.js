@@ -7,7 +7,10 @@ import * as uint8arrays from 'uint8arrays'
  * @typedef {import('webnative/components').Components} Components
  * @typedef {import('webnative/components/auth/implementation').Implementation<Components>} AuthImplementation
  * @typedef {import('webnative/components/crypto/implementation').Implementation} CryptoImplementation
+ * @typedef {import('webnative/components/storage/implementation').Implementation} StorageImplementation
  */
+
+export const USERNAME_STORAGE_KEY = 'fullUsername'
 
 /**
  * 
@@ -15,29 +18,36 @@ import * as uint8arrays from 'uint8arrays'
  * @returns {Promise<string>}
  */
 export const createDID = async (crypto) => {
+
   const pubKey = await crypto.keystore.publicExchangeKey()
-  console.log(pubKey)
+
   const ksAlg = await crypto.keystore.getAlgorithm()
 
   return publicKeyToDid(crypto, pubKey, ksAlg)
 }
 
 /**
- * 
+ * Create a new DID for the user, which will be appended to their username, concatenated
+ * via a `#`, hashed and encoded to ensure uniqueness
  * @param {string} username 
  * @param {CryptoImplementation} crypto
  * @returns {Promise<string>}
  */
-export const prepareUsername = async (username, crypto) => {
+export const createFullUsername = async (username, crypto) => {
 
-  /**
-   * Create a new DID for the user, which will be appended to their username, concatenated
-   * via a `#`, hashed and encoded to ensure uniqueness
-   */
-  const did = createDID(crypto)
-  console.log(did)
+  const did = await createDID(crypto)
+
   const fullUsername = `${username}#${did}`
-  //await storage.setItem(USERNAME_STORAGE_KEY, fullUsername)
+
+  return fullUsername
+}
+
+/**
+ * 
+ * @param {string} fullUsername 
+ * @returns {Promise<string>}
+ */
+export const hashFullUsername = async (fullUsername) => {  
 
   const normalizedUsername = fullUsername.normalize('NFD')
 
@@ -52,14 +62,25 @@ export const prepareUsername = async (username, crypto) => {
 
 /**
  * 
- * @param {string} username 
- * @param {Components} programComponents
+ * @param {string} fullUsername 
+ * @param {StorageImplementation} storageImplementation
  */
-export const register = async (username, programComponents) => {
-  console.log(programComponents)
-  const hashedUsername = await prepareUsername(username, programComponents.crypto)
+export const setFullUserName = async (fullUsername, storageImplementation) => {
+  await storageImplementation.setItem(USERNAME_STORAGE_KEY, fullUsername)
+}
 
-  //const { success } = await programComponents.auth.register({ username: hashedUsername })
+/**
+ * 
+ * @param {string} fullUsername 
+ * @param {AuthImplementation} authImplementation
+ */
+export const register = async (fullUsername, authImplementation) => {
 
-  console.log(hashedUsername)
+  const hashedFullUsername = await hashFullUsername(fullUsername)
+
+  const { success } = await authImplementation.register({ username: hashedFullUsername })
+
+  console.log(success)
+
+  return success
 }
