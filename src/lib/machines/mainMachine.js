@@ -1,5 +1,6 @@
 import { createMachine, interpret, assign } from 'xstate'
 import * as webnative from 'webnative'
+import { dev } from '$app/environment'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
@@ -12,6 +13,8 @@ const mainMachine = createMachine({
     username: '',
     error: '',
     backupCreated: false,
+    authStrategy: null,
+    program: null,
     /**
      * @type null | FileSystem
      */
@@ -22,10 +25,16 @@ const mainMachine = createMachine({
     unitialized: {
       invoke: {
         // I don't use wnfs because it will load in worker.s
-        src: ()=> webnative.app({ useWnfs: false }),
+        src: ()=> webnative.program({ 
+          namespace: { creator: "Delightful Labs", name: "Clipper" },
+          fileSystem: {
+            loadImmediately: false
+          },
+          debug: dev
+        }),
         onDone: [
           {
-            cond: (_, evt) => evt.data.scenario == webnative.AppScenario.Authed,
+            cond: (_, evt) => evt.data.session,
             target: 'authenticated',
             actions: assign({ 
               username: (_, evt) => evt.data.username,
@@ -33,18 +42,22 @@ const mainMachine = createMachine({
             })
           },
           {
-            cond: (_, evt) => evt.data.scenario == webnative.AppScenario.NotAuthed,
-            target: 'unauthenticated'
+            cond: (_, evt) => !evt.data.session,
+            target: 'unauthenticated',
+            actions: assign({ 
+              authStrategy: (_, evt) => evt.data.auth,
+              program: (_, evt) => evt.data
+            })
           }
         ],
         onError: [
           {
-            cond: (_, evt) => evt.data == webnative.InitialisationError.InsecureContext,
+            cond: (_, evt) => evt.data == webnative.ProgramError.InsecureContext,
             actions: assign({ error: 'Insecure context'}),
             target: 'has_error'
           },
           {
-            cond: (_, evt) => evt.data == webnative.InitialisationError.UnsupportedBrowser,
+            cond: (_, evt) => evt.data == webnative.ProgramError.UnsupportedBrowser,
             actions: assign({ error: 'Unsupported browser'}),
             target: 'has_error'
           }

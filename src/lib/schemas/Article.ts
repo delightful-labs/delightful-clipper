@@ -6,8 +6,6 @@ const isLangTag = /[a-zA-Z]{1,8}(-[a-zA-Z0-9]{1,8})*/
 //From https://stackoverflow.com/questions/25201083/regex-to-match-and-validate-internet-media-type#answer-48046041regex allow
 const isMimeType = /(application|audio|font|example|image|message|model|multipart|text|video|x-(?:[0-9A-Za-z!#$%&'*+.^_`|~-]+))\/([0-9A-Za-z!#$%&'*+.^_`|~-]+)((?:[ \t]*;[ \t]*[0-9A-Za-z!#$%&'*+.^_`|~-]+=(?:[0-9A-Za-z!#$%&'*+.^_`|~-]+|\"(?:[^\"\\\\]|\\.)*\"))*)/
 
-const isNumberString = /\d+/
-
 const emptyString = z.literal('').default('')
 
 const Article = z.object({
@@ -18,12 +16,8 @@ const Article = z.object({
   description: z.string().default(''),
   fileName: z.string().default(''), // @TODO: Probably change to file path?
   id: z.string().uuid().or(emptyString),
-  image: z.object({ //@TODO: What about when saving this to WNFS?? Will be a file patch, then.
-    url: z.string().url(),
-    width: z.string().regex(isNumberString).or(emptyString),
-    height: z.string().regex(isNumberString).or(emptyString),
-    type: z.string().regex(isMimeType).or(emptyString)
-  }).nullable().default(null),
+  image: z.string().default(''), //@TODO: What about when saving this to WNFS?? Will be a file path, then.
+  imageAlt: z.string().default(''),
   isRead: z.boolean().default(false),
   isArchived: z.boolean().default(false),
   locale: z.string().regex(isLangTag).or(emptyString),

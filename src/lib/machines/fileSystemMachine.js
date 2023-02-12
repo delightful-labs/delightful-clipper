@@ -49,10 +49,12 @@ const fileSystemMachine = createMachine({
   states: {
     settingUpFs: {
       invoke: {
-        src: () => wn.app({ useWnfs: true }),
+        src: () => wn.program({
+          namespace: { creator: "Delightful Labs", name: "Clipper" }
+        }),
         onDone: {
           target: 'checkingForDb',
-          actions: assign({fs: (_, evt) => evt.data.fs})
+          actions: assign({fs: (_, evt) => evt.data.session.fs})
         },
         onError: {
           actions: (_, evt) => console.log(evt),
@@ -212,6 +214,24 @@ const fileSystemMachine = createMachine({
               // 1. Main image
               // 2. Article images
               // 3. Other media? (videos, audio)
+              // import { PublicFile } from "webnative/fs/v1/PublicFile"
+
+              // const tempFile = await PublicFile.create(
+              //   program.components.depot,
+              //   pictureBytes // the content
+              // )
+
+              // const cid = await tempFile.put()
+
+              // await fs.write(
+              //   webnative.path.file("public", "pictures", cid.toString()),
+              //   pictureBytes
+              // )
+
+              // // later
+              // await fs.read(
+              //   webnative.path.file("public", "pictures", cidString)
+              // )
             },
             updateDbWithArticle: {},
             saveDbToWnfs: {}
