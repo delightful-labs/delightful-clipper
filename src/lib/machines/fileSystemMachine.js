@@ -214,6 +214,24 @@ const fileSystemMachine = createMachine({
               // 1. Main image
               // 2. Article images
               // 3. Other media? (videos, audio)
+              // import { PublicFile } from "webnative/fs/v1/PublicFile"
+
+              // const tempFile = await PublicFile.create(
+              //   program.components.depot,
+              //   pictureBytes // the content
+              // )
+
+              // const cid = await tempFile.put()
+
+              // await fs.write(
+              //   webnative.path.file("public", "pictures", cid.toString()),
+              //   pictureBytes
+              // )
+
+              // // later
+              // await fs.read(
+              //   webnative.path.file("public", "pictures", cidString)
+              // )
             },
             updateDbWithArticle: {},
             saveDbToWnfs: {}
