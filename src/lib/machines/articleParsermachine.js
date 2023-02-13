@@ -40,8 +40,10 @@ const articleParserMachine = (article, fs) => createMachine({
         onDone: [
           { 
             cond: (_, evt) => evt.data.type.match(/text\/html/),
-            target: 'readingHtmlText'
-            //@todo: action to use immer to set mimetype
+            target: 'readingHtmlText',
+            actions: immerAssign((ctx, evt) => {
+              ctx.article.mimeType = evt.data.type
+            })
           },
           {
             target: 'loadingFile',
@@ -94,42 +96,19 @@ const articleParserMachine = (article, fs) => createMachine({
       invoke: {
         src: (ctx) => extractMainContent(/** @type {HTMLDocument & Document} */(ctx.dom)),
         onDone: {
-          //actions: (ctx, evt) => console.log(evt)
-          //@todo: save data:
-          // 5. combine HTML with template
-          // 6. save html to IPFS
-          // 7. add fileName to article
           actions: assign({ 
-            article: (ctx, evt) => deepMerge(ctx.article, { siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
+            //@todo: clean this up.
+            article: (ctx, evt) => deepMerge(ctx.article, { siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent), _file: createHtmlFromTemplate(ctx.article.locale, ctx.htmlMetadata, ctx.article.title, ctx.articleText)}),
             articleText: (_, evt) => evt.data.content
           }),
-          target: 'savingArticleText',
+          target: 'done',
         }
       }
     },
-    //@TODO: Probably should check with db after loaded article and have canonical URL to make sure that it doesn't already exist. 
-    // That will fix the issue of URL shorteners producing multiple entries ---
-    // i.e. I could save the same URL with a t.co and a bit.ly shortened URL and not even know it. 
-    savingArticleText: {
-      entry: (ctx) => console.log(createHtmlFromTemplate(ctx.article.locale, ctx.htmlMetadata, ctx.article.title, ctx.articleText))
-      // invoke: {
-      //   src: (ctx, evt) => ctx.fs.write( wn.path.file('public', 'web-pages', encodeURIComponent(evt.data.url), 'index.html'), evt.data._rawBody, { publish: true }),
-      //   onDone: {
-      //     actions: (_, evt) => console.log(evt)
-      //     // Add fileName to object
-      //   },
-      //   onError: {
-      //     actions: (_, evt) => console.log(evt)
-      //   }
-      // }
-    },
-    savingImages: {
-      // 1. Main image
-      // 2. Article images
-      // 3. Other media? (videos, audio)
-    },
-    updateDbWithArticle: {},
-    saveDbToWnfs: {}
+    done: {
+      entry: ()=> console.log('done'),
+      type: 'final'
+    }
   }
 })
 

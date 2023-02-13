@@ -29,6 +29,12 @@ export const getFirstKeyMatch = (arr, obj, i = 0) => {
   return first
 }
 
+function notEmpty(a, b) {
+  return !!a && a !== ''
+    ? a
+    : b
+}
+
 /**
  * Merges two objects
  * @param {Object} source 
@@ -39,14 +45,13 @@ export const getFirstKeyMatch = (arr, obj, i = 0) => {
 //(Maybe as an option?)
 export const deepMerge = (source, target) => {
   //@todo: check if object is not empty
-  return Object.keys(source).reduce((r, k) => {
-    if (isObject(source[k])) {
-      console.log('it is an object: ', source[k])
-      r[k] = deepMerge(source[k], target[k]);
-      return r;
+  return Object.keys(source).reduce((obj, key) => {
+    if (isObject(source[key])) {
+      obj[key] = deepMerge(source[key], target[key]);
+      return obj;
     }
-    r[k] = !target[k] ? source[k] : target[k];
-    return r;
+    obj[key] = !target[key] ? source[key] : target[key];
+    return obj;
   }, {});
 }
 
@@ -79,7 +84,7 @@ export const filterWebpageMetadata = (obj) => ({
   datePublished: getFirstKeyMatch(['article:published_time', 'og:date'], obj),
   dateModified: getFirstKeyMatch(['article:modified_time', 'og:updated_time'], obj),
   description: getFirstKeyMatch(['og:description', 'description'], obj),
-  image: getFirstKeyMatch(['og:image', 'image'], obj), //If not, get first image in article
+  _image: getFirstKeyMatch(['og:image', 'image'], obj), //If not, get first image in article
   imageAlt: getFirstKeyMatch(['og:image:alt'], obj),
   locale: getFirstKeyMatch(['og:locale'], obj), //If not, check html lang tag
   url: getFirstKeyMatch(['og:url', 'url'], obj), //If not, use original url from request

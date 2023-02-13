@@ -31,7 +31,7 @@
   //$: console.log($fileSystemService.context)
 </script>
 
-<!--<p>{ JSON.stringify( $fileSystemService.value ) }</p>-->
+<p>{ JSON.stringify( $fileSystemService.value ) }</p>
 
 <h1>All Articles</h1>
 
@@ -48,7 +48,7 @@
 
 
 <!--@TODO: check if URL is valid and automatically trim whitespace. Whitespace trim could actually be done on backend-->
-<!--<form on:submit|preventDefault={() => fileSystemService.send({type: 'SAVE_ARTICLE', data: { url: url }})}>
+<form on:submit|preventDefault={() => fileSystemService.send({type: 'SAVE_ARTICLE', data: { url: url }})}>
   <label for="url">URL</label>
   <input 
     id="url" 
@@ -59,7 +59,7 @@
   <input type="submit" />
 </form>
 
-<button on:click={() => fileSystemService.send({type: 'ERASE_DATABASE'})}>Erase Database</button>-->
+<!--<button on:click={() => fileSystemService.send({type: 'ERASE_DATABASE'})}>Erase Database</button>-->
 
 <!--<form on:submit|preventDefault={() => handleSubmit()}>
   <label for="query">Query</label>

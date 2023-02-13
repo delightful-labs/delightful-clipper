@@ -14,9 +14,9 @@ const Article = z.object({
   dateModified: z.string().datetime({ offset: true }).or(emptyString),
   datePublished: z.string().datetime({ offset: true }).or(emptyString),
   description: z.string().default(''),
-  fileName: z.string().default(''), // @TODO: Probably change to file path?
+  filePath: z.array(z.string()).default([]),
   id: z.string().uuid().or(emptyString),
-  image: z.string().default(''), //@TODO: What about when saving this to WNFS?? Will be a file path, then.
+  imagePath: z.array(z.string()).default([]),
   imageAlt: z.string().default(''),
   isRead: z.boolean().default(false),
   isArchived: z.boolean().default(false),
@@ -30,6 +30,8 @@ const Article = z.object({
   url: z.string().url().trim().or(emptyString),
   //video: z.string().url().or(emptyString), @TODO: figue out structure of this. Might be object like image.
   wordCount: z.number().default(0),
+  _image: z.string().default(''),
+  _file: z.string().default('')
 })
 
 export default Article
