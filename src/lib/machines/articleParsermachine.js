@@ -99,16 +99,31 @@ const articleParserMachine = (article, fs) => createMachine({
           actions: assign({ 
             //@todo: clean this up.
             //If I create a function out of it and invoke it, I can have it as the evt.data for the final state
-            article: (ctx, evt) => deepMerge(ctx.article, { siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent), _file: createHtmlFromTemplate(ctx.article.locale, ctx.htmlMetadata, ctx.article.title, ctx.articleText)}),
+            article: (ctx, evt) => deepMerge(ctx.article, { siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
             articleText: (_, evt) => evt.data.content
           }),
-          target: 'done',
+          target: 'compilingFromTemplate',
         }
       }
     },
-    done: {
+    compilingFromTemplate: {
+      invoke: {
+        src: async (ctx, evt) => {
+          const html = createHtmlFromTemplate(ctx.article.locale, ctx.htmlMetadata, ctx.article.title, ctx.articleText)
+          const completeArticle = ctx.article
+          completeArticle._file = html
+          return completeArticle
+        },
+        onDone: {
+          //target: 'done',
+          actions: () => console.log('It is finished')
+        }
+      },
       type: 'final'
-    }
+    },
+    // done: {
+    //   type: 'final'
+    // }
   }
 })
 
