@@ -134,6 +134,9 @@ const fileSystemMachine = createMachine({
                   actions: (_, evt) => console.log(evt)
                 },
                 onError: {} // @TODO: handle error
+              },
+              onDone: {
+                actions: (_, evt) => console.log(evt)
               }
             },
             //@todo: updatingDatabase & publishing are functions that automaticActions could also use.

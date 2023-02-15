@@ -70,17 +70,17 @@ export const setFullUserName = async (fullUsername, storageImplementation) => {
 }
 
 /**
- * 
- * @param {string} fullUsername 
+ * @todo: pass in only one componentent, since both share a parent
  * @param {AuthImplementation} authImplementation
+ * @param {StorageImplementation} storageImplementation
  */
-export const register = async (fullUsername, authImplementation) => {
+export const register = async (authImplementation, storageImplementation) => {
 
+  const fullUsername = await storageImplementation.getItem(USERNAME_STORAGE_KEY)
+  
   const hashedFullUsername = await hashFullUsername(fullUsername)
 
   const { success } = await authImplementation.register({ username: hashedFullUsername })
-
-  console.log(success)
 
   return success
 }

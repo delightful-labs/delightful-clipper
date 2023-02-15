@@ -11,7 +11,6 @@
     context: {
       error: '',
       username: '',
-      fullUsername: '',
       program: $mainService.context.program,
       authStrategy: $mainService.context.authStrategy
     },
@@ -37,8 +36,7 @@
           src: (ctx) => createFullUsername(ctx.username, ctx.program.components.crypto),
           onDone: {
             actions: [
-              (ctx, evt) => setFullUserName(evt.data, ctx.program.components.storage),
-              (_, evt) => assign({ fullUsername: evt.data})
+              (ctx, evt) => setFullUserName(evt.data, ctx.program.components.storage)
             ],
             target: 'available'
           }
@@ -87,7 +85,7 @@
       },
       submitting: {
         invoke: {
-          src: (ctx, evt) => register(ctx.fullUsername, ctx.program.components.auth),
+          src: (ctx, evt) => register(ctx.program.components.auth, ctx.program.components.storage),
           onDone: [
             {
               cond: (ctx, evt) => evt.data,
