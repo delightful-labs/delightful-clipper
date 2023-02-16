@@ -1,5 +1,4 @@
-import { createMachine, assign } from 'xstate'
-import * as wn from 'webnative'
+import { createMachine, assign, sendParent } from 'xstate'
 import { assign as immerAssign } from '@xstate/immer'
 import { createHtmlFromTemplate, deepMerge, extractMainContent, extractHtmlMetadata, processWebpageMetadata, getWordCount } from '$lib/utils'
 import { DOMParser } from 'linkedom'
@@ -109,21 +108,20 @@ const articleParserMachine = (article, fs) => createMachine({
     compilingFromTemplate: {
       invoke: {
         src: async (ctx, evt) => {
-          const html = createHtmlFromTemplate(ctx.article.locale, ctx.htmlMetadata, ctx.article.title, ctx.articleText)
+          const html = await createHtmlFromTemplate(ctx.article.locale, ctx.htmlMetadata, ctx.article.title, ctx.articleText)
           const completeArticle = ctx.article
           completeArticle._file = html
           return completeArticle
         },
         onDone: {
-          //target: 'done',
-          actions: () => console.log('It is finished')
+          actions: sendParent((_, evt) => ({type: 'PARSING_FINISHED', data: evt.data})),
+          target: 'done'
         }
-      },
-      type: 'final'
+      }
     },
-    // done: {
-    //   type: 'final'
-    // }
+    done: {
+      type: 'final'
+    }
   }
 })
 
