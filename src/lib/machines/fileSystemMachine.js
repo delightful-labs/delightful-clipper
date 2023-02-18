@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 import jsonata from 'jsonata'
 import Article from '$lib/schemas/Article'
 import articleParserMachine from '$lib/machines/articleParserMachine'
+import { writeToFileSystem, uint8ArrayToString } from '$lib/files'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
@@ -84,7 +85,7 @@ const fileSystemMachine = createMachine({
       invoke: {
         src: (ctx) => ctx.fs.get(ctx.dbPath),
         onDone: {
-          actions: assign({ db: (_, evt) => JSON.parse(evt.data.content) }),
+          actions: assign({ db: (_, evt) => JSON.parse(uint8ArrayToString(evt.data.content)) }),
           target: 'ready'
         },
         onError: {
@@ -98,9 +99,9 @@ const fileSystemMachine = createMachine({
       states: {
         userActions: { 
           initial: 'idle',
-          on: {
-            SAVE_ARTICLE: {target: 'userActions.test'}
-          },
+          // on: {
+          //   SAVE_ARTICLE: {target: 'userActions.test'}
+          // },
           states: {
             idle: {
               entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
@@ -116,10 +117,11 @@ const fileSystemMachine = createMachine({
                   //   cond: (ctx, evt) => jsonata(`url = "${evt.data.url}"`).evaluate(ctx.db),
                   //   target: 'articleAlreadyExists'                     
                   // },
-                  // { 
-                  //   target: 'updatingDatabase',
-                  //   actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url) ] })
-                  // },
+                  { 
+                    target: 'updatingDatabase',
+                    actions: ()=> console.log('does not exist')
+                    //actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url) ] })
+                  },
                 ],
                 ERASE_DATABASE: {
                   target: 'updatingDatabase',
@@ -147,7 +149,7 @@ const fileSystemMachine = createMachine({
             //@TODO: can add { publish: true } to fs.write to skip publishing step!
             updatingDatabase: {
               invoke: {
-                src: (ctx) => ctx.fs.write(ctx.dbPath, JSON.stringify(ctx.db), { publish: true }),
+                src: (ctx) => writeToFileSystem(ctx.dbPath, JSON.stringify(ctx.db), ctx.fs),
                 onDone: {
                   target: 'idle',
                   //actions: send('CHECK_FOR_UNPARSED_ARTICLE')

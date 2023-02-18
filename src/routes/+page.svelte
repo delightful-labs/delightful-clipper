@@ -59,7 +59,7 @@
   <input type="submit" />
 </form>
 
-<!--<button on:click={() => fileSystemService.send({type: 'ERASE_DATABASE'})}>Erase Database</button>-->
+<button on:click={() => fileSystemService.send({type: 'ERASE_DATABASE'})}>Erase Database</button>
 
 <!--<form on:submit|preventDefault={() => handleSubmit()}>
   <label for="query">Query</label>
