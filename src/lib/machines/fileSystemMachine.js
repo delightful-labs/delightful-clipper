@@ -112,15 +112,13 @@ const fileSystemMachine = createMachine({
                   //@TODO: also need to remove UTM and other tracking stuff.
                   //BUT --- there may be sometimes you want URL parameters as part of the URL, such as saving something from a web app.
                   //Will probably need to make it an option to save search parameters or not.
-
-                  // { 
-                  //   cond: (ctx, evt) => jsonata(`url = "${evt.data.url}"`).evaluate(ctx.db),
-                  //   target: 'articleAlreadyExists'                     
-                  // },
+                  { 
+                    cond: (ctx, evt) => jsonata(`url = "${evt.data.url}"`).evaluate(ctx.db),
+                    target: 'articleAlreadyExists'                     
+                  },
                   { 
                     target: 'updatingDatabase',
-                    actions: ()=> console.log('does not exist')
-                    //actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url) ] })
+                    actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url) ] })
                   },
                 ],
                 ERASE_DATABASE: {
@@ -152,7 +150,7 @@ const fileSystemMachine = createMachine({
                 src: (ctx) => writeToFileSystem(ctx.dbPath, JSON.stringify(ctx.db), ctx.fs),
                 onDone: {
                   target: 'idle',
-                  //actions: send('CHECK_FOR_UNPARSED_ARTICLE')
+                  actions: send('CHECK_FOR_UNPARSED_ARTICLE')
                 },
                 onError: {} //@TODO: handle error
               }
@@ -161,15 +159,14 @@ const fileSystemMachine = createMachine({
             articleAlreadyExists: {
               //@TODO: Add tags to existing entry, if they exist
               // entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
-              // after: {
-              //   // after 1 second, transition to yellow
-              //   500: { target: 'idle' }
-              // }
+              after: {
+                500: { target: 'idle' }
+              }
             }
           }
         },
         automaticActions: {
-          initial: 'idle',
+          initial: 'checkingForUnparsedArticle',
           states: {
             idle: {
               on: {
@@ -180,11 +177,12 @@ const fileSystemMachine = createMachine({
             },
             checkingForUnparsedArticle: {
               invoke: {
-                src: async (ctx) => await jsonata(`$$[fileName=""][0]`).evaluate(ctx.db),
+                src: async (ctx) => await jsonata(`$$[filePath=[]][0]`).evaluate(ctx.db),
                 onDone: [
                   {
                     cond: (_, evt) => evt.data,
-                    target: 'parsingArticle'
+                    target: 'parsingArticle',
+                    actions: (_, evt) => console.log(evt.data)
                   },
                   {
                     cond: (_, evt) => !evt.data,
@@ -199,9 +197,14 @@ const fileSystemMachine = createMachine({
                 src: (ctx, evt) => articleParserMachine(evt.data, ctx.fs),
                 onDone: {
                   //target: 'savingArticleText'
-                  actions: (_, evt) => console.log(evt)
+                  //actions: (_, evt) => console.log(evt)
                 },
                 onError: {} // @TODO: handle error
+              },
+              on: {
+                'PARSING_FINISHED': {
+                  actions: (ctx, evt) => console.log(evt)
+                }
               }
             },
             // @TODO: What to do with the article object?

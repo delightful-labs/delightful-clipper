@@ -9,7 +9,7 @@
   let url = 'https://subconscious.substack.com/p/noosphere-a-protocol-for-thought'
   let articles = []//$fileSystemService.context.db
 
-  //$: articles = $fileSystemService.context.db
+  $: articles = $fileSystemService.context.db
 
   const returnResults = (res) => {
     if (!res) {
@@ -22,8 +22,9 @@
   }
 
   const handleSubmit = () => {
-    let results = jsonata(query).evaluate(db)
-    articles = returnResults(results)
+    let results = jsonata(`$$[filePath=[]][0]`).evaluate(articles)
+    console.log(results)
+    //articles = returnResults(results)
   }
 
   let urlImage = "https://substackcdn.com/image/fetch/w_1200,h_600,c_limit,f_jpg,q_auto:good,fl_progressive:steep/https%3A%2F%2Fbucketeer-e05bbc84-baa3-437e-9518-adb32be77984.s3.amazonaws.com%2Fpublic%2Fimages%2Fcdc9a764-2694-4724-b215-5309455297d7_2792x1566.png"
@@ -61,7 +62,7 @@
 
 <button on:click={() => fileSystemService.send({type: 'ERASE_DATABASE'})}>Erase Database</button>
 
-<!--<form on:submit|preventDefault={() => handleSubmit()}>
+<form on:submit|preventDefault={() => handleSubmit()}>
   <label for="query">Query</label>
   <input 
     id="query" 
@@ -69,7 +70,7 @@
     bind:value={query} 
   />
   <input type="submit" />
-</form>-->
+</form>
 
 {#if articles}
   <ul>
