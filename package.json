@@ -20,7 +20,7 @@
 		"@xstate/svelte": "^2.0.0",
 		"events": "^3.3.0",
 		"immer": "^9.0.16",
-		"jsonata": "^1.8.6",
+		"jsonata": "^2.0.1",
 		"linkedom": "^0.14.21",
 		"open-graph-scraper": "^5.0.1",
 		"prettier": "^2.6.2",

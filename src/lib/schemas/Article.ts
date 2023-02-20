@@ -31,7 +31,8 @@ const Article = z.object({
   //video: z.string().url().or(emptyString), @TODO: figue out structure of this. Might be object like image.
   wordCount: z.number().default(0),
   _image: z.string().default(''),
-  _file: z.string().default('')
+  _file: z.string().default(''),
+  _index: z.number().optional().describe("Used to keep track of the article's location in the array")
 })
 
 export default Article

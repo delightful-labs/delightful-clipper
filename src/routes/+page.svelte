@@ -21,8 +21,8 @@
     }
   }
 
-  const handleSubmit = () => {
-    let results = jsonata(`$$[filePath=[]][0]`).evaluate(articles)
+  const handleSubmit = async () => {
+    let results = await jsonata(`$$#$i[filePath=[] and _file=''][0].$merge([$, {'_index':$i}])`).evaluate(articles)
     console.log(results)
     //articles = returnResults(results)
   }

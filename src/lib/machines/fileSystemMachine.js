@@ -1,4 +1,5 @@
 import { createMachine, interpret, assign, send } from 'xstate'
+import { assign as immerAssign } from '@xstate/immer'
 import * as wn from 'webnative'
 import { v4 as uuidv4 } from 'uuid'
 import jsonata from 'jsonata'
@@ -177,7 +178,7 @@ const fileSystemMachine = createMachine({
             },
             checkingForUnparsedArticle: {
               invoke: {
-                src: async (ctx) => await jsonata(`$$[filePath=[]][0]`).evaluate(ctx.db),
+                src: async (ctx) => await jsonata(`$$#$i[filePath=[] and _file=''][0].$merge([$, {'_index':$i}])`).evaluate(ctx.db),
                 onDone: [
                   {
                     cond: (_, evt) => evt.data,
@@ -195,15 +196,13 @@ const fileSystemMachine = createMachine({
             parsingArticle: {
               invoke: {
                 src: (ctx, evt) => articleParserMachine(evt.data, ctx.fs),
-                onDone: {
-                  //target: 'savingArticleText'
-                  //actions: (_, evt) => console.log(evt)
-                },
                 onError: {} // @TODO: handle error
               },
               on: {
                 'PARSING_FINISHED': {
-                  actions: (ctx, evt) => console.log(evt)
+                  actions: immerAssign((ctx, evt) => {
+                    ctx.db[evt.data._index] = evt.data
+                  })
                 }
               }
             },
