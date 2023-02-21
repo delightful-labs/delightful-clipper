@@ -2,6 +2,8 @@ import { createMachine, assign, sendParent } from 'xstate'
 import { assign as immerAssign } from '@xstate/immer'
 import { createHtmlFromTemplate, deepMerge, extractMainContent, extractHtmlMetadata, processWebpageMetadata, getWordCount } from '$lib/utils'
 import { DOMParser } from 'linkedom'
+import * as wn from 'webnative'
+import { writeToFileSystem } from '$lib/files'
 
 /**
  * @typedef { import('$lib/schemas/Article').Article } article
@@ -98,25 +100,24 @@ const articleParserMachine = (article, fs) => createMachine({
           actions: assign({ 
             //@todo: clean this up.
             //If I create a function out of it and invoke it, I can have it as the evt.data for the final state
-            article: (ctx, evt) => deepMerge(ctx.article, { siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
+            article: (ctx, evt) => deepMerge(ctx.article, { filePath: wn.path.file('public', 'web-pages', encodeURIComponent(evt.data.url), 'index.html'), siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
             articleText: (_, evt) => evt.data.content
           }),
-          target: 'compilingFromTemplate',
+          target: 'savingArticleText',
         }
       }
     },
-    compilingFromTemplate: {
+    savingArticleText: {
       invoke: {
         src: async (ctx, evt) => {
-          const html = await createHtmlFromTemplate(ctx.article.locale, ctx.htmlMetadata, ctx.article.title, ctx.articleText)
-          const completeArticle = ctx.article
-          completeArticle._file = html
-          return completeArticle
+          await writeToFileSystem(ctx.article.filePath, createHtmlFromTemplate(ctx.article.locale, ctx.htmlMetadata, ctx.article.title, ctx.articleText), ctx.fs)
+          return ctx.article
         },
         onDone: {
           actions: sendParent((_, evt) => ({type: 'PARSING_FINISHED', data: evt.data})),
           target: 'done'
-        }
+        },
+        onError: {} //@TODO: handle error
       }
     },
     done: {

@@ -187,7 +187,8 @@ const fileSystemMachine = createMachine({
                   },
                   {
                     cond: (_, evt) => !evt.data,
-                    target: 'idle'
+                    target: 'idle',
+                    actions: (_, evt) => console.log('no unparsed articles')
                   }
                 ],
                 onError: {}
@@ -200,24 +201,10 @@ const fileSystemMachine = createMachine({
               },
               on: {
                 'PARSING_FINISHED': {
+                  target: 'updatingDatabase',
                   actions: immerAssign((ctx, evt) => {
                     ctx.db[evt.data._index] = evt.data
                   })
-                }
-              }
-            },
-            // @TODO: What to do with the article object?
-            // Pass it along through transitions?
-            // Save it to context? (If I did this, it would make sense if this was an invoked macine that receive the fs as a parameter)
-            savingArticleText: {
-              invoke: {
-                src: (ctx, evt) => ctx.fs.write( wn.path.file('public', 'web-pages', encodeURIComponent(evt.data.url), 'index.html'), evt.data._rawBody, { publish: true }),
-                onDone: {
-                  actions: (_, evt) => console.log(evt)
-                  // Add fileName to object
-                },
-                onError: {
-                  actions: (_, evt) => console.log(evt)
                 }
               }
             },
@@ -244,8 +231,16 @@ const fileSystemMachine = createMachine({
               //   webnative.path.file("public", "pictures", cidString)
               // )
             },
-            updateDbWithArticle: {},
-            saveDbToWnfs: {}
+            updatingDatabase: {
+              invoke: {
+                src: (ctx) => writeToFileSystem(ctx.dbPath, JSON.stringify(ctx.db), ctx.fs),
+                onDone: {
+                  target: 'idle',
+                  actions: send('CHECK_FOR_UNPARSED_ARTICLE')
+                },
+                onError: {} //@TODO: handle error
+              }
+            },
           }
         }
       }
