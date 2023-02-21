@@ -76,7 +76,11 @@
   <ul>
     {#each articles as article}
       <li>
-        <h2>{article.title || article.url}</h2>
+        {#if article.title}
+          <a href={`/web-pages/${encodeURIComponent(article.url)}`}><h2>{article.title}</h2></a>
+        {:else}
+          <h2>{article.url}</h2>
+        {/if}
       </li>
     {/each}
   </ul>
