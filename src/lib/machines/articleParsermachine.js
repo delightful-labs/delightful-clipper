@@ -100,7 +100,7 @@ const articleParserMachine = (article, fs) => createMachine({
           actions: assign({ 
             //@todo: clean this up.
             //If I create a function out of it and invoke it, I can have it as the evt.data for the final state
-            article: (ctx, evt) => deepMerge(ctx.article, { filePath: wn.path.file('public', 'web-pages', encodeURIComponent(evt.data.url), 'index.html'), siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
+            article: (ctx, evt) => deepMerge(ctx.article, { filePath: wn.path.file('public', 'web-pages', encodeURIComponent(ctx.article.url), 'index.html'), siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
             articleText: (_, evt) => evt.data.content
           }),
           target: 'savingArticleText',

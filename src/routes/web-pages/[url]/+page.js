@@ -13,7 +13,5 @@ const loadDatabase = new Promise(res => {
 export async function load({ params }) {
   const db = await loadDatabase
   const article = await jsonata(`$$[url = "${params.url}"]`).evaluate(db)
-  return {
-    post: article
-  }
+  return article
 }
