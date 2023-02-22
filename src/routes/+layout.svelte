@@ -1,11 +1,26 @@
 <script>
+	import '../lib/assets/global.css'
   import { mainService } from '$lib/machines/mainMachine'
   import { useSelector } from '@xstate/svelte'
   import RegistrationForm from '$components/RegistrationForm.svelte'
+  import { userSettings } from '$lib/stores'
 
   const error = useSelector(mainService, (state) => state.context.error)
   
   const userState = useSelector(mainService, (state) => state.value)
+
+  // Anytime the store changes, update the local storage value.
+  $: {
+		const storedSettings = localStorage.userSettings
+
+		if (storedSettings) {
+			userSettings.update(() => JSON.parse(storedSettings))
+		}
+
+		userSettings.subscribe((value) => {
+			localStorage.userSettings = JSON.stringify(value)
+		})
+	}
 </script>
 
 {#if $error}
