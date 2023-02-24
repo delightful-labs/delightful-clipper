@@ -6,8 +6,12 @@
   //const myWorker = new FileWorker()
 
   let query = "$$['protocols' in tags]"
-  let url = 'https://subconscious.substack.com/p/noosphere-a-protocol-for-thought'
-  let articles = []//$fileSystemService.context.db
+
+  /**
+   * @typedef {import('$lib/schemas/Article').Article} Article
+   * @type {Article[]}
+   */
+  let articles = []
 
   $: articles = $fileSystemService.context.db
 
@@ -22,7 +26,7 @@
   }
 
   const handleSubmit = async () => {
-    let results = await jsonata(`$$#$i[filePath=[] and _file=''][0].$merge([$, {'_index':$i}])`).evaluate(articles)
+    let results = await jsonata(`$$[url = "https://getpocket.com/collections/is-it-time-to-quiet-quit-workplace-buzzwordsh"]`).evaluate(articles)
     console.log(results)
     //articles = returnResults(results)
   }
@@ -42,19 +46,6 @@
     id="url" 
     type="url"
     bind:value={urlImage} 
-    required={true}
-  />
-  <input type="submit" />
-</form>
-
-
-<!--@TODO: check if URL is valid and automatically trim whitespace. Whitespace trim could actually be done on backend-->
-<form on:submit|preventDefault={() => fileSystemService.send({type: 'SAVE_ARTICLE', data: { url: url }})}>
-  <label for="url">URL</label>
-  <input 
-    id="url" 
-    type="url"
-    bind:value={url} 
     required={true}
   />
   <input type="submit" />

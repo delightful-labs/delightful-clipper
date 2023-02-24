@@ -16,12 +16,14 @@ import { writeToFileSystem, uint8ArrayToString } from '$lib/files'
 /**
  * Creates a new article object.
  * @param {string} url
+ * @param {string[]|undefined} tags
  * @returns {Article|undefined}
  */
-const createArticleEntry =  (url) => Article.parse({
+const createArticleEntry =  (url, tags) => Article.parse({
   dateAdded: new Date().toISOString(),
   id: uuidv4(),
-  url: url
+  url: url,
+  tags: tags||[]
 })
 
 const fileSystemMachine = createMachine({
@@ -114,31 +116,18 @@ const fileSystemMachine = createMachine({
                   //BUT --- there may be sometimes you want URL parameters as part of the URL, such as saving something from a web app.
                   //Will probably need to make it an option to save search parameters or not.
                   { 
-                    cond: (ctx, evt) => jsonata(`url = "${evt.data.url}"`).evaluate(ctx.db),
-                    target: 'articleAlreadyExists'                     
+                    cond: (ctx, evt) => jsonata(`$$[url = "${evt.data.url}"]`).evaluate(ctx.db),
+                    target: 'articleAlreadyExists',
+                    actions: () => console.log('articleAlreadyExists')             
                   },
                   { 
                     target: 'updatingDatabase',
-                    actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url) ] })
+                    actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url, evt.data.tags) ] })
                   },
                 ],
                 ERASE_DATABASE: {
                   target: 'updatingDatabase',
                   actions: assign({ db: []})
-                }
-              }
-            },
-            test: {
-              invoke: {
-                src: (ctx, evt) => articleParserMachine(createArticleEntry(evt.data.url), ctx.fs),
-                onDone: {
-                  actions: (_, evt) => console.log(evt)
-                },
-                onError: {} // @TODO: handle error
-              },
-              on: {
-                'PARSING_FINISHED': {
-                  actions: (ctx, evt) => console.log(evt)
                 }
               }
             },
@@ -200,12 +189,24 @@ const fileSystemMachine = createMachine({
                 onError: {} // @TODO: handle error
               },
               on: {
-                'PARSING_FINISHED': {
-                  target: 'updatingDatabase',
-                  actions: immerAssign((ctx, evt) => {
-                    ctx.db[evt.data._index] = evt.data
-                  })
-                }
+                'PARSING_FINISHED': [
+                  //If URL already exists, discard the entry.
+                  //This can happen when a URL is added that is not canonical.
+                  //@todo: merge tags to existing entry.
+                  { 
+                    cond: (ctx, evt) => jsonata(`$$[url = "${evt.data.url}"]`).evaluate(ctx.db),
+                    target: 'updatingDatabase',
+                    actions: immerAssign((ctx, evt) => {
+                      ctx.db.splice(evt.data._index, 1)
+                    })           
+                  },
+                  { 
+                    target: 'updatingDatabase',
+                    actions: immerAssign((ctx, evt) => {
+                      ctx.db[evt.data._index] = evt.data
+                    })
+                  }
+                ]
               }
             },
             savingImages: {
@@ -241,6 +242,13 @@ const fileSystemMachine = createMachine({
                 onError: {} //@TODO: handle error
               }
             },
+            articleAlreadyExists: {
+              //@TODO: Add tags to existing entry, if they exist
+              // entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
+              after: {
+                500: { target: 'idle' }
+              }
+            }
           }
         }
       }
