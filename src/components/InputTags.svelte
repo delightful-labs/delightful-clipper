@@ -1,5 +1,8 @@
 <script>
   import Tags from "svelte-tags-input"
+  /**
+   * @type {String[]}
+   */
   export let tagList = []
   export let label = 'Tags'
   export let handleTagging
@@ -17,6 +20,7 @@
   bind:tags={tags}
   id={label}
   autoComplete={tagList} 
+  onlyUnique={true}
 />
 
 <style>

@@ -13,7 +13,7 @@
   /**
 	 * @type {string}
 	 */
-  let url = ''
+  let url = 'https://getpocket.com/explore/item/the-origins-of-12-silly-sounding-compound-words?utm_source=pocket-newtab'
 
 	/**
 	 * @type {string[]}
@@ -42,6 +42,8 @@
   $: if ($fileSystemService.context) {
     findTags($fileSystemService.context.db)
   }
+
+	$: console.log($fileSystemService.value?.ready)
 
 </script>
 

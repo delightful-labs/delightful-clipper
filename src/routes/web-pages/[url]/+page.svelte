@@ -1,7 +1,6 @@
 <script>
   import { fileSystemService } from '$lib/machines/fileSystemMachine'
   import { uint8ArrayToString } from '$lib/files'
-  import SettingsPanel from '$components/SettingsPanel.svelte'
   import { userSettings } from '$lib/stores'
 
   /** @type {import('./$types').PageData} */ 
@@ -22,8 +21,6 @@
     loadHtml($fileSystemService.context.fs)
   }
 </script>
-
-<SettingsPanel />
 
 <h1>{data.title}</h1>
 

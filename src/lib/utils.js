@@ -223,3 +223,11 @@ export const isUrl = (string) => z.string().url().safeParse(string).success
  * @returns {boolean}
  */
 export const isObject = (obj) => typeof obj === 'object' && obj !== null && !Array.isArray(obj)
+
+/**
+ * 
+ * @param {Array<*>} arr 
+ * @param  {...Array<*>} args 
+ * @returns 
+ */
+export const arrayUnion = (arr, ...args) => [...new Set(arr.concat(...args))]

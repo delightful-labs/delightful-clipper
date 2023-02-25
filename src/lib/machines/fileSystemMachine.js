@@ -6,6 +6,7 @@ import jsonata from 'jsonata'
 import Article from '$lib/schemas/Article'
 import articleParserMachine from '$lib/machines/articleParserMachine'
 import { writeToFileSystem, uint8ArrayToString } from '$lib/files'
+import { arrayUnion } from '$lib/utils'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
@@ -109,26 +110,51 @@ const fileSystemMachine = createMachine({
             idle: {
               entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
               on: {
-                SAVE_ARTICLE: [
+                SAVE_ARTICLE: {
                   //@TODO: need to send back logical events to show visual updates to user. And clear the form on success.
                   //@TODO: trim URL of whitespace
                   //@TODO: also need to remove UTM and other tracking stuff.
                   //BUT --- there may be sometimes you want URL parameters as part of the URL, such as saving something from a web app.
                   //Will probably need to make it an option to save search parameters or not.
-                  { 
-                    cond: (ctx, evt) => jsonata(`$$[url = "${evt.data.url}"]`).evaluate(ctx.db),
-                    target: 'articleAlreadyExists',
-                    actions: () => console.log('articleAlreadyExists')             
-                  },
-                  { 
-                    target: 'updatingDatabase',
-                    actions: assign({ db: (ctx, evt) => [...ctx.db, createArticleEntry(evt.data.url, evt.data.tags) ] })
-                  },
-                ],
+                  target: 'checkingIfAlreadyExists',
+                  actions: assign({ })
+                },
                 ERASE_DATABASE: {
                   target: 'updatingDatabase',
                   actions: assign({ db: []})
                 }
+              }
+            },
+            checkingIfAlreadyExists: {
+              invoke: {
+                src: async (ctx, evt) => {
+                  const existingArticle = await jsonata(`$$#$i[url = "${evt.data.url}"].$merge([$, {'_index':$i}])`).evaluate(ctx.db)
+
+                  console.log('Checking New Article')
+                  console.log('Existing: ', existingArticle)
+                  console.log('New: ', evt.data)
+
+                  return { existingArticle: existingArticle, article: evt.data}
+                },
+                onDone: [
+                  { 
+                    cond: (_, evt) => evt.data.existingArticle && evt.data.article.tags.length,
+                    target: 'updatingDatabase',
+                    actions: immerAssign((ctx, evt) => {
+                      ctx.db[evt.data.existingArticle._index].tags = arrayUnion(ctx.db[evt.data.existingArticle._index].tags, evt.data.article.tags)
+                    })           
+                  },
+                  { 
+                    cond: (_, evt) => evt.data.existingArticle,
+                    target: 'articleAlreadyExists',
+                  },
+                  { 
+                    target: 'updatingDatabase',
+                    actions: immerAssign((ctx, evt) => {
+                      ctx.db.push(createArticleEntry(evt.data.article.url, evt.data.article.tags))
+                    })
+                  }
+                ]
               }
             },
             //@todo: updatingDatabase & publishing are functions that automaticActions could also use.
@@ -189,21 +215,46 @@ const fileSystemMachine = createMachine({
                 onError: {} // @TODO: handle error
               },
               on: {
-                'PARSING_FINISHED': [
+                'PARSING_FINISHED': {
+                  target: 'checkingIfAlreadyExists'
+                }
+              }
+            },
+            checkingIfAlreadyExists: {
+              invoke: {
+                src: async (ctx, evt) => {
+                  const existingArticle = await jsonata(`$$#$i[url = "${evt.data.url}"].$merge([$, {'_index':$i}])`).evaluate(ctx.db)
+
+                  console.log('Checking Parsed Article')
+                  console.log('Existing: ', existingArticle)
+                  console.log('New: ', evt.data)
+
+                  return { existingArticle: existingArticle, article: evt.data}
+                },
+                onDone: [
                   //If URL already exists, discard the entry.
                   //This can happen when a URL is added that is not canonical.
                   //@todo: merge tags to existing entry.
                   { 
-                    cond: (ctx, evt) => jsonata(`$$[url = "${evt.data.url}"]`).evaluate(ctx.db),
+                    cond: (_, evt) => evt.data.existingArticle && evt.data.article.tags.length,
                     target: 'updatingDatabase',
                     actions: immerAssign((ctx, evt) => {
-                      ctx.db.splice(evt.data._index, 1)
+                      ctx.db[evt.data.existingArticle._index].tags = arrayUnion(ctx.db[evt.data.existingArticle._index].tags, evt.data.article.tags)
+                      ctx.db.splice(evt.data.article._index, 1)
+                    })           
+                  },
+                  { 
+                    cond: (_, evt) => evt.data.existingArticle,
+                    target: 'updatingDatabase',
+                    actions: immerAssign((ctx, evt) => {
+                      ctx.db.splice(evt.data.article._index, 1)
                     })           
                   },
                   { 
                     target: 'updatingDatabase',
                     actions: immerAssign((ctx, evt) => {
-                      ctx.db[evt.data._index] = evt.data
+                      //Save the article without the _index.
+                      ctx.db[evt.data.article._index] = (({ _index, ...rest }) => rest)(evt.data.article)
                     })
                   }
                 ]

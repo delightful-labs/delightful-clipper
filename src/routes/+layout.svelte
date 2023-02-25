@@ -4,8 +4,7 @@
   import { useSelector } from '@xstate/svelte'
   import RegistrationForm from '$components/RegistrationForm.svelte'
   import { userSettings } from '$lib/stores'
-
-  const error = useSelector(mainService, (state) => state.context.error)
+  import Header from '$components/Header.svelte'
   
   const userState = useSelector(mainService, (state) => state.value)
 
@@ -23,9 +22,7 @@
 	}
 </script>
 
-{#if $error}
-  <p>Error: {$error}</p>
-{/if}
+<Header />
 
 <!--@TODO: Move auth stuff to separate component-->
 {#if $userState === 'unauthenticated'}
@@ -43,6 +40,4 @@
   <RegistrationForm />
 {/if}
 
-
-<p>{JSON.stringify($mainService.value)}</p>
 <slot />
