@@ -225,7 +225,7 @@ export const isUrl = (string) => z.string().url().safeParse(string).success
 export const isObject = (obj) => typeof obj === 'object' && obj !== null && !Array.isArray(obj)
 
 /**
- * 
+ * Combines arrays into first array, removing duplicate items.
  * @param {Array<*>} arr 
  * @param  {...Array<*>} args 
  * @returns 
