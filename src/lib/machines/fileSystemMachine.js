@@ -130,10 +130,6 @@ const fileSystemMachine = createMachine({
                 src: async (ctx, evt) => {
                   const existingArticle = await jsonata(`$$#$i[url = "${evt.data.url}"].$merge([$, {'_index':$i}])`).evaluate(ctx.db)
 
-                  console.log('Checking New Article')
-                  console.log('Existing: ', existingArticle)
-                  console.log('New: ', evt.data)
-
                   return { existingArticle: existingArticle, article: evt.data}
                 },
                 onDone: [
@@ -223,11 +219,7 @@ const fileSystemMachine = createMachine({
             checkingIfAlreadyExists: {
               invoke: {
                 src: async (ctx, evt) => {
-                  const existingArticle = await jsonata(`$$#$i[url = "${evt.data.url}"].$merge([$, {'_index':$i}])`).evaluate(ctx.db)
-
-                  console.log('Checking Parsed Article')
-                  console.log('Existing: ', existingArticle)
-                  console.log('New: ', evt.data)
+                  const existingArticle = await jsonata(`$$#$i[url = "${evt.data.url}" and id != "${evt.data.id}"].$merge([$, {'_index':$i}])`).evaluate(ctx.db)
 
                   return { existingArticle: existingArticle, article: evt.data}
                 },

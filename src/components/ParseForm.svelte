@@ -13,7 +13,7 @@
   /**
 	 * @type {string}
 	 */
-  let url = 'https://getpocket.com/explore/item/the-origins-of-12-silly-sounding-compound-words?utm_source=pocket-newtab'
+  let url = ''
 
 	/**
 	 * @type {string[]}
