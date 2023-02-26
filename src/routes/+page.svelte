@@ -1,7 +1,7 @@
 <script>
   //import FileWorker from '$lib/filesystem?worker'
   import { fileSystemService } from '$lib/machines/fileSystemMachine'
-  import ClippingList from '$components/ClippingList.svelte';
+  import ClippingList from '$components/ClippingList.svelte'
 
   //const myWorker = new FileWorker()
 
@@ -14,8 +14,6 @@
   let articles = []
 
   $: articles = $fileSystemService.context.db
-
-  $: console.log(articles)
 
 </script>
 

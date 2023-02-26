@@ -2,17 +2,21 @@
   import ClippingListItem from '$components/ClippingListItem.svelte'
 
   /**
-   * @typedef {import('$lib/schemas/Article').Article} Article
-   * @type {Article[]}
+   * @type {import('$lib/schemas/Article').Article[]}
    */
   export let articles
+  
 </script>
 
-<ul>
-  {#each articles as article}
-    <ClippingListItem {article} />
-  {/each}
-</ul>
+{#if articles}
+  <ul>
+    {#each articles as article}
+      <ClippingListItem {article} />
+    {/each}
+  </ul>
+{:else}
+  <p>No articles found</p>
+{/if}
 
 <style>
   ul {
