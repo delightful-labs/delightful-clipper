@@ -1,6 +1,8 @@
-import { createMachine, interpret, assign } from 'xstate'
+import { createMachine, interpret, assign, spawn, send } from 'xstate'
+import { fromWebWorker } from '$lib/machine-helpers/from-web-worker'
 import * as webnative from 'webnative'
 import { dev } from '$app/environment'
+import FileWorker from '$lib/machines/fileSystemMachine?worker'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
@@ -14,11 +16,14 @@ const mainMachine = createMachine({
     error: '',
     backupCreated: false,
     authStrategy: null,
+    /** @type {Array<import('$lib/schemas/Article').Article>} */
+    db: [],
     program: null,
     /**
      * @type null | FileSystem
      */
-    fs: null
+    fs: null,
+    fileSystemService: null
   },
   initial: 'unitialized',
   states: {
@@ -65,7 +70,20 @@ const mainMachine = createMachine({
       }
     },
     authenticated: {
-
+      //Actor will send update event to parent whenever its state changes
+      invoke: {
+        id: 'fs',
+        src: fromWebWorker(() => new FileWorker()),
+      },
+      on: {
+        UPDATE_DATABASE: {
+          actions: assign({ db: (_, evt) => evt.data})
+        },
+        '*' : {
+          cond: (_, evt) => ['SAVE_ARTICLE', 'ERASE_DATABASE'].includes(evt.type),
+          actions: send((_, evt) => evt, { to: 'fs' })
+        }
+      }
     },
     registering: {
       on: {

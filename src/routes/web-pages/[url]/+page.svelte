@@ -1,5 +1,5 @@
 <script>
-  import { fileSystemService } from '$lib/machines/fileSystemMachine'
+  import { mainService } from '$lib/machines/mainMachine'
   import { uint8ArrayToString } from '$lib/files'
   import { userSettings } from '$lib/stores'
 
@@ -17,8 +17,8 @@
     html = uint8ArrayToString(test.content)
   }
 
-  $: if ($fileSystemService.context.fs) {
-    loadHtml($fileSystemService.context.fs)
+  $: if ($mainService.context.fs) {
+    loadHtml($mainService.context.fs)
   }
 </script>
 

@@ -1,6 +1,6 @@
 <script>
 	import InputTags from '$components/InputTags.svelte'
-  import { fileSystemService } from '$lib/machines/fileSystemMachine'
+  import { mainService } from '$lib/machines/mainMachine'
   import jsonata from 'jsonata'
 
   let form
@@ -28,7 +28,7 @@
 	}
 
   const handleSubmit = () => {
-    fileSystemService.send({type: 'SAVE_ARTICLE', data: { url: url, tags: currentTags }})
+    mainService.send({type: 'SAVE_ARTICLE', data: { url: url, tags: currentTags }})
   }
 
   /**
@@ -39,11 +39,11 @@
     tagList = await jsonata(`$distinct([tags])`).evaluate(db)
   }
 
-  $: if ($fileSystemService.context) {
-    findTags($fileSystemService.context.db)
-  }
+  // $: if ($fileSystemService.context) {
+  //   findTags($fileSystemService.context.db)
+  // }
 
-	$: console.log($fileSystemService.value?.ready)
+	//$: console.log($fileSystemService.value?.ready)
 
 </script>
 

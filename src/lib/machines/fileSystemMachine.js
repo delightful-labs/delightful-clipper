@@ -1,4 +1,4 @@
-import { createMachine, interpret, assign, send } from 'xstate'
+import { createMachine, interpret, assign, send, sendParent } from 'xstate'
 import { assign as immerAssign } from '@xstate/immer'
 import * as wn from 'webnative'
 import { v4 as uuidv4 } from 'uuid'
@@ -7,12 +7,15 @@ import Article from '$lib/schemas/Article'
 import articleParserMachine from '$lib/machines/articleParserMachine'
 import { writeToFileSystem, uint8ArrayToString } from '$lib/files'
 import { arrayUnion } from '$lib/utils'
+import { interpretInWebWorker } from '$lib/machine-helpers/from-web-worker'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
  * @typedef { import('$lib/schemas/Article').Article } Article
  * @typedef { import('webnative/path').FilePath} FilePath
  */
+
+console.log('worker')
 
 /**
  * Creates a new article object.
@@ -53,6 +56,7 @@ const fileSystemMachine = createMachine({
   // 2. Offline
   states: {
     settingUpFs: {
+      entry: ()=> console.log('here I am'),
       invoke: {
         src: () => wn.program({
           namespace: { creator: "Delightful Labs", name: "Clipper" }
@@ -103,9 +107,7 @@ const fileSystemMachine = createMachine({
       states: {
         userActions: { 
           initial: 'idle',
-          // on: {
-          //   SAVE_ARTICLE: {target: 'userActions.test'}
-          // },
+          entry: sendParent((ctx) => ({type: 'UPDATE_DATABASE', data: ctx.db})),
           states: {
             idle: {
               entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
@@ -162,7 +164,10 @@ const fileSystemMachine = createMachine({
                 src: (ctx) => writeToFileSystem(ctx.dbPath, JSON.stringify(ctx.db), ctx.fs),
                 onDone: {
                   target: 'idle',
-                  actions: send('CHECK_FOR_UNPARSED_ARTICLE')
+                  actions: [
+                    send('CHECK_FOR_UNPARSED_ARTICLE'),
+                    sendParent((ctx) => ({type: 'UPDATE_DATABASE', data: ctx.db})),
+                  ]
                 },
                 onError: {} //@TODO: handle error
               }
@@ -280,7 +285,10 @@ const fileSystemMachine = createMachine({
                 src: (ctx) => writeToFileSystem(ctx.dbPath, JSON.stringify(ctx.db), ctx.fs),
                 onDone: {
                   target: 'idle',
-                  actions: send('CHECK_FOR_UNPARSED_ARTICLE')
+                  actions: [
+                    send('CHECK_FOR_UNPARSED_ARTICLE'),
+                    sendParent((ctx) => ({type: 'UPDATE_DATABASE', data: ctx.db})),
+                  ]
                 },
                 onError: {} //@TODO: handle error
               }
@@ -300,6 +308,9 @@ const fileSystemMachine = createMachine({
   }
 })
 
+const service = interpretInWebWorker(fileSystemMachine)
+service.start()
+
 // Add functions to actions object.
 
-export const fileSystemService = interpret(fileSystemMachine).start()
+//export const fileSystemService = interpret(fileSystemMachine).start()

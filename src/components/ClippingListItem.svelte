@@ -20,6 +20,8 @@
 
 <style>
   li {
+    border-top: 1px solid;
     list-style: none;
+    padding: 2rem;
   }
 </style>

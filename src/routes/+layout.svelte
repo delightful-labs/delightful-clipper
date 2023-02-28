@@ -20,6 +20,8 @@
 			localStorage.userSettings = JSON.stringify(value)
 		})
 	}
+
+  $: if($mainService.context.db) console.log($mainService.context.db)
 </script>
 
 <Header />

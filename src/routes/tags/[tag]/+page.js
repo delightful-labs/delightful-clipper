@@ -1,8 +1,8 @@
-import { fileSystemService } from '$lib/machines/fileSystemMachine'
+import { mainService } from '$lib/machines/mainMachine'
 import jsonata from 'jsonata'
 
 const loadDatabase = new Promise(res => {
-  fileSystemService.subscribe(x => {
+  mainService.subscribe(x => {
     if (x.context.db.length) {
       res(x.context.db)
     }
