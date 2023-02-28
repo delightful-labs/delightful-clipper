@@ -118,12 +118,14 @@ const fileSystemMachine = createMachine({
                   //@TODO: also need to remove UTM and other tracking stuff.
                   //BUT --- there may be sometimes you want URL parameters as part of the URL, such as saving something from a web app.
                   //Will probably need to make it an option to save search parameters or not.
-                  target: 'checkingIfAlreadyExists',
-                  actions: assign({ })
+                  target: 'checkingIfAlreadyExists'
                 },
                 ERASE_DATABASE: {
                   target: 'updatingDatabase',
                   actions: assign({ db: []})
+                },
+                FETCH_CONTENT: {
+                  target: 'fetchingContent'
                 }
               }
             },
@@ -178,6 +180,19 @@ const fileSystemMachine = createMachine({
               // entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
               after: {
                 500: { target: 'idle' }
+              }
+            },
+            fetchingContent: {
+              invoke: {
+                src: (ctx, evt) => ctx.fs?.read(evt.data),
+                onDone: {
+                  actions: [
+                    ()=> console.log('finished'),
+                    sendParent((_, evt) => ({type: 'CONTENT_FETCHED', data: evt.data}))],
+                },
+                onError: {
+                  actions: (ctx, evt) => console.error(evt)
+                }
               }
             }
           }
