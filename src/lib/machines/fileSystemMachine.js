@@ -123,9 +123,6 @@ const fileSystemMachine = createMachine({
                 ERASE_DATABASE: {
                   target: 'updatingDatabase',
                   actions: assign({ db: []})
-                },
-                FETCH_CONTENT: {
-                  target: 'fetchingContent'
                 }
               }
             },
@@ -180,19 +177,6 @@ const fileSystemMachine = createMachine({
               // entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
               after: {
                 500: { target: 'idle' }
-              }
-            },
-            fetchingContent: {
-              invoke: {
-                src: (ctx, evt) => ctx.fs?.read(evt.data),
-                onDone: {
-                  actions: [
-                    ()=> console.log('finished'),
-                    sendParent((_, evt) => ({type: 'CONTENT_FETCHED', data: evt.data}))],
-                },
-                onError: {
-                  actions: (ctx, evt) => console.error(evt)
-                }
               }
             }
           }

@@ -12,11 +12,15 @@
 	 */
   let html
 
-  mainService.send({ type: 'FETCH_CONTENT', data: data.filePath })
-
-  $: if ($mainService.event.type === 'CONTENT_FETCHED') {
-    html = uint8ArrayToString($mainService.event.data)
+  const loadHtml = async (fs) => {
+    const test = await fs.get(data.filePath)
+    html = uint8ArrayToString(test.content)
   }
+
+  $: if ($mainService.context.fs) {
+    loadHtml($mainService.context.fs)
+  }
+  
 </script>
 
 <h1>{data.title}</h1>

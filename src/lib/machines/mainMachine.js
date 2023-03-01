@@ -32,9 +32,6 @@ const mainMachine = createMachine({
         // I don't use wnfs because it will load in worker.s
         src: ()=> webnative.program({ 
           namespace: { creator: "Delightful Labs", name: "Clipper" },
-          fileSystem: {
-            loadImmediately: false
-          },
           debug: dev
         }),
         onDone: [
@@ -43,7 +40,7 @@ const mainMachine = createMachine({
             target: 'authenticated',
             actions: assign({ 
               username: (_, evt) => evt.data.username,
-              fs: (_, evt) => evt.data.fs
+              fs: (_, evt) => evt.data.session.fs
             })
           },
           {
@@ -80,7 +77,7 @@ const mainMachine = createMachine({
           actions: assign({ db: (_, evt) => evt.data})
         },
         '*' : {
-          cond: (_, evt) => ['SAVE_ARTICLE', 'ERASE_DATABASE', 'FETCH_CONTENT'].includes(evt.type),
+          cond: (_, evt) => ['SAVE_ARTICLE', 'ERASE_DATABASE'].includes(evt.type),
           actions: send((_, evt) => evt, { to: 'fs' })
         }
       }
