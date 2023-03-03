@@ -1,0 +1,30 @@
+{
+  "short_name": "Clipper",
+  "name": "Delightful Clipper",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    },
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "background_color": "#ffffff",
+  "display": "fullscreen",
+  "scope": "/",
+  "theme_color": "#000000",
+  "description": "Zero data, local first web clipper",
+  "share_target": {
+    "action": "/add",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

@@ -1,12 +1,9 @@
 <script>
   import AccountLinkingConsumer from '$components/AccountLinkingConsumer.svelte'
   import { mainService } from '$lib/machines/mainMachine'
-
-  $: console.log($mainService.value)
 </script>
 
-<!--@TODO: only show if not registered-->
-
+<!--@todo: handle redirect after success-->
 {#if $mainService.value === 'unauthenticated'}
   <AccountLinkingConsumer />
 {/if}
