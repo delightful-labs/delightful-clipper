@@ -1,10 +1,9 @@
 import { sveltekit } from '@sveltejs/kit/vite'
 import { resolve } from 'path'
-import basicSsl from '@vitejs/plugin-basic-ssl'
 
 /** @type {import('vite').UserConfig} */
 const config = {
-	plugins: [sveltekit(), basicSsl()],
+	plugins: [sveltekit()],
 	resolve: {
     alias: {
       $components: resolve('./src/components')

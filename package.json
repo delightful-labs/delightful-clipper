@@ -15,7 +15,6 @@
 		"@mozilla/readability": "github:mozilla/readability",
 		"@sveltejs/adapter-auto": "next",
 		"@sveltejs/kit": "next",
-		"@vitejs/plugin-basic-ssl": "^0.1.2",
 		"@xstate/immer": "^0.3.1",
 		"@xstate/svelte": "^2.0.0",
 		"delightful-ui": "^0.0.3",
@@ -34,7 +33,7 @@
 		"typescript": "^4.7.4",
 		"uint8arrays": "^4.0.3",
 		"uuid": "^9.0.0",
-		"vite": "^3.1.0",
+		"vite": "^4.0.0",
 		"webnative": "^0.36.3",
 		"xstate": "^4.34.0",
 		"zod": "^3.20.2"
