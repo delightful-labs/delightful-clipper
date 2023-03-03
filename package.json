@@ -14,6 +14,7 @@
 	"devDependencies": {
 		"@mozilla/readability": "github:mozilla/readability",
 		"@sveltejs/adapter-auto": "next",
+		"@sveltejs/adapter-netlify": "^2.0.5",
 		"@sveltejs/kit": "next",
 		"@xstate/immer": "^0.3.1",
 		"@xstate/svelte": "^2.0.0",
