@@ -16,9 +16,11 @@
 <svelte:window bind:scrollY={y} on:scroll|trusted={handleScroll(y)} />
 
 <header style:transform="translateY({hideHeader ? '-100%' : '0'})">
-	<a href="/">Home</a>
-	<a href="/add">Add</a>
-	<SettingsPanel />
+	<ul>
+		<li><a href="/">Home</a></li>
+		<li><a href="/add">Add</a></li>
+		<li><SettingsPanel /></li>
+	</ul>
 </header>
 
 <style>
@@ -26,9 +28,6 @@
 		background-color: var(--color__background);
 		position: sticky;
 		top: 0;
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
 		min-height: 48px;
 		transition: 400ms;
 		border-bottom: 2px solid;
@@ -37,5 +36,13 @@
 
 	header :global(.details-content) {
 		border-bottom: 2px solid;
+	}
+
+	ul {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		list-style: none;
+		max-width: var(--width__app);
 	}
 </style>

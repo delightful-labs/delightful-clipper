@@ -5,20 +5,33 @@
    * @type {import('$lib/schemas/Article').Article[]}
    */
   export let articles
+
+  /**
+   * @type {string}
+   */
+  export let title = ''
   
 </script>
 
-{#if articles}
-  <ul>
-    {#each articles as article}
-      <ClippingListItem {article} />
-    {/each}
-  </ul>
-{:else}
-  <p>No articles found</p>
-{/if}
+<div class="clipping-list">
+  <h1>{title}</h1>
+  {#if articles.length}
+    <ul>
+      {#each articles as article}
+        <ClippingListItem {article} />
+      {/each}
+    </ul>
+  {:else}
+    <p>No articles found</p>
+  {/if}
+</div>
 
 <style>
+  .clipping-list {
+    max-width: var(--width__app);
+    margin: 0 auto;
+  }
+
   ul {
     margin: 0;
     padding: 0;

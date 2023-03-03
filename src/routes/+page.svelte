@@ -9,10 +9,4 @@
 
 </script>
 
-<h1>All Articles</h1>
-
-{#if articles}
-  <ClippingList {articles} />
-{:else}
-  <p>No articles found</p>
-{/if}
+<ClippingList {articles} title="All Articles" />

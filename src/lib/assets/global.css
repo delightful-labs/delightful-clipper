@@ -4,6 +4,7 @@
   --color__background: #fff;
   --color__actionable: #94ff47;
   --color__foreground: #262626;
+  --width__app: 90vw;
   accent-color: var(--color__actionable);
   overflow-x: hidden;
   color: var(--color__foreground);
@@ -104,6 +105,12 @@ code {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* App wrapper */
+.app-wrapper {
+  display: grid;
+  gap: 1rem;
 }
 
 /* Input overrides */

@@ -30,20 +30,24 @@
 
 <Header />
 
-<!--@TODO: Move auth stuff to separate component-->
-{#if $userState === 'unauthenticated'}
-  <button 
-    on:click={()=> mainService.send({ type: 'REGISTER'})}
-    disabled={!$mainService.can({type: 'REGISTER'})}
-  >Register</button>
+<main>
 
-  <p>If you are a new user, you can register.</p>
-  <p>If you are an existing user, you can use the device or browser where you are signed in to find the instructions on how to connect this device.</p>
-{/if}
+  <!--@TODO: Move auth stuff to separate component-->
+  {#if $userState === 'unauthenticated'}
+    <button 
+      on:click={()=> mainService.send({ type: 'REGISTER'})}
+      disabled={!$mainService.can({type: 'REGISTER'})}
+    >Register</button>
 
-<!--@TODO: Registration could easily be a page instead of a component-->
-{#if $userState === 'registering'}
-  <RegistrationForm />
-{/if}
+    <p>If you are a new user, you can register.</p>
+    <p>If you are an existing user, you can use the device or browser where you are signed in to find the instructions on how to connect this device.</p>
+  {:else if $userState === 'authenticated'}
+    <slot />
+  {/if}
 
-<slot />
+  <!--@TODO: Registration could easily be a page instead of a component-->
+  {#if $userState === 'registering'}
+    <RegistrationForm />
+  {/if}
+
+</main>
