@@ -1,5 +1,5 @@
 <script>
-  import { mainService } from '$lib/machines/mainMachine'
+  import { mainService } from '$lib/machines/main'
   import { uint8ArrayToString } from '$lib/files'
   import { userSettings } from '$lib/stores'
 

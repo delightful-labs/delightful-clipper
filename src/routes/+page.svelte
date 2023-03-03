@@ -1,5 +1,5 @@
 <script>
-  import { mainService } from '$lib/machines/mainMachine'
+  import { mainService } from '$lib/machines/main'
   import ClippingList from '$components/ClippingList.svelte'
 
   /** @type {import('$lib/schemas/Article').Article[]} */

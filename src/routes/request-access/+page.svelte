@@ -1,6 +1,6 @@
 <script>
   import AccountLinkingConsumer from '$components/AccountLinkingConsumer.svelte'
-  import { mainService } from '$lib/machines/mainMachine'
+  import { mainService } from '$lib/machines/main'
 </script>
 
 <!--@todo: handle redirect after success-->

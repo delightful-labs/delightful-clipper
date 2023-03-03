@@ -1,5 +1,5 @@
 <script>
-  import { mainService } from '$lib/machines/mainMachine'
+  import { mainService } from '$lib/machines/main'
   import { createMachine, assign, spawn } from 'xstate'
   import { useMachine } from '@xstate/svelte'
   import { createListenerMachine } from '$lib/auth/accountLinking'
