@@ -16,8 +16,8 @@
    * @param {import('webnative/fs/index').default} fs
    */
   const loadHtml = async (fs) => {
-    const test = await fs.get(data.filePath)
-    html = uint8ArrayToString(test.content)
+    const rawContent = await fs.get(data.filePath)
+    html = uint8ArrayToString(rawContent.content)
   }
 
   $: if ($mainService.context.fs) {
@@ -25,8 +25,6 @@
   }
 
 </script>
-
-<h1>{data.title}</h1>
 
 <div
 	class="content flow"
@@ -36,6 +34,9 @@
 	style:font-weight={$userSettings.fontWeight}
 	style:line-height={$userSettings.lineHeight / 10}
 >
+  <header>
+    <h1>{data.title}</h1>
+  </header>
   {@html html}
 </div>
 
