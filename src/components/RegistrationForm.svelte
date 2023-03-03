@@ -1,8 +1,7 @@
 <script>
   import { createMachine, actions, assign } from 'xstate'
   import { useMachine } from '@xstate/svelte'
-  import * as webnative from 'webnative'
-  import { mainService } from '$lib/machines/mainMachine'
+  import { mainService } from '$lib/machines/main'
   import { createFullUsername, setFullUserName, register } from '$lib/auth/registration'
 
   const registrationMachine =  createMachine({

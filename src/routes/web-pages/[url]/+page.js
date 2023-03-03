@@ -1,4 +1,4 @@
-import { mainService } from '$lib/machines/mainMachine'
+import { mainService } from '$lib/machines/main'
 import jsonata from 'jsonata'
 
 const loadDatabase = new Promise(res => {

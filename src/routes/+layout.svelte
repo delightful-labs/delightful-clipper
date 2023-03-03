@@ -1,6 +1,6 @@
 <script>
 	import '../lib/assets/global.css'
-  import { mainService } from '$lib/machines/mainMachine'
+  import { mainService } from '$lib/machines/main'
   import { useSelector } from '@xstate/svelte'
   import RegistrationForm from '$components/RegistrationForm.svelte'
   import { userSettings } from '$lib/stores'

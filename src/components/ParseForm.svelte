@@ -1,6 +1,6 @@
 <script>
 	import InputTags from '$components/InputTags.svelte'
-  import { mainService } from '$lib/machines/mainMachine'
+  import { mainService } from '$lib/machines/main'
   import jsonata from 'jsonata'
 
   let form

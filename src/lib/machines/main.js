@@ -2,7 +2,7 @@ import { createMachine, interpret, assign, spawn, send } from 'xstate'
 import { fromWebWorker } from '$lib/machine-helpers/from-web-worker'
 import * as webnative from 'webnative'
 import { dev } from '$app/environment'
-import FileWorker from '$lib/machines/fileSystemMachine?worker'
+import FileWorker from '$lib/machines/fileSystem?worker'
 import Username from '$lib/schemas/Username'
 import { setFullUserName } from '$lib/auth/registration'
 

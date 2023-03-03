@@ -1,5 +1,5 @@
 <script>
-  import { mainService } from '$lib/machines/mainMachine'
+  import { mainService } from '$lib/machines/main'
 	import AccountLinkingProducerForm from '$components/AccountLinkingProducerForm.svelte'
   import Username from '$lib/schemas/Username'
 

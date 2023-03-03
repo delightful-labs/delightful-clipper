@@ -3,7 +3,7 @@
   import { useMachine } from '@xstate/svelte'
   import { page } from '$app/stores'
   import { createListenerMachine } from '$lib/auth/accountLinking'
-  import { mainService } from '$lib/machines/mainMachine'
+  import { mainService } from '$lib/machines/main'
   import Username from '$lib/schemas/Username'
 
   const username = Username.parse({
