@@ -21,7 +21,7 @@
 		})
 	}
 
-  $: if($mainService.context.db) console.log($mainService.context.db)
+  $: console.log($mainService.context)
 </script>
 
 <Header />

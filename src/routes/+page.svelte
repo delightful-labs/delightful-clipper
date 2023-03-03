@@ -11,8 +11,6 @@
 
 <h1>All Articles</h1>
 
-<button on:click={() => mainService.send({type: 'ERASE_DATABASE'})}>Erase Database</button>
-
 {#if articles}
   <ClippingList {articles} />
 {:else}

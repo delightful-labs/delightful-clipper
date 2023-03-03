@@ -12,6 +12,9 @@
 	 */
   let html
 
+  /**
+   * @param {import('webnative/fs/index').default} fs
+   */
   const loadHtml = async (fs) => {
     const test = await fs.get(data.filePath)
     html = uint8ArrayToString(test.content)
@@ -20,7 +23,7 @@
   $: if ($mainService.context.fs) {
     loadHtml($mainService.context.fs)
   }
-  
+
 </script>
 
 <h1>{data.title}</h1>

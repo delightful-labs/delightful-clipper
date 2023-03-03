@@ -89,22 +89,13 @@
           onDone: [
             {
               cond: (ctx, evt) => evt.data,
-              target: 'bootstrappingFs'
+              target: 'success'
             },
             {
               cond: (ctx, evt) => !evt.data,
               target: 'error'
             }
           ],
-          onError: { target: 'error' }
-        }
-      },
-      bootstrappingFs: {
-        invoke: {
-          src: () => webnative.bootstrapRootFileSystem(),
-          onDone: {
-            target: 'success'
-          },
           onError: { target: 'error' }
         }
       },

@@ -3,6 +3,8 @@ import { fromWebWorker } from '$lib/machine-helpers/from-web-worker'
 import * as webnative from 'webnative'
 import { dev } from '$app/environment'
 import FileWorker from '$lib/machines/fileSystemMachine?worker'
+import Username from '$lib/schemas/Username'
+import { setFullUserName } from '$lib/auth/registration'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
@@ -12,7 +14,7 @@ const mainMachine = createMachine({
   predictableActionArguments: true,
   id: 'main',
   context: {
-    username: '',
+    username: Username.parse({}),
     error: '',
     backupCreated: false,
     authStrategy: null,
@@ -22,8 +24,7 @@ const mainMachine = createMachine({
     /**
      * @type null | FileSystem
      */
-    fs: null,
-    fileSystemService: null
+    fs: null
   },
   initial: 'unitialized',
   states: {
@@ -37,10 +38,11 @@ const mainMachine = createMachine({
         onDone: [
           {
             cond: (_, evt) => evt.data.session,
-            target: 'authenticated',
+            target: 'gettingUsername',
             actions: assign({ 
-              username: (_, evt) => evt.data.username,
-              fs: (_, evt) => evt.data.session.fs
+              fs: (_, evt) => evt.data.session.fs,
+              authStrategy: (_, evt) => evt.data.auth,
+              program: (_, evt) => evt.data
             })
           },
           {
@@ -66,6 +68,24 @@ const mainMachine = createMachine({
         ]
       }
     },
+    gettingUsername: {
+      invoke: {
+        src: (ctx) => ctx.program.components.storage.getItem('fullUsername'),
+        onDone: {
+          actions: assign({
+            username: (ctx, evt) => Username.parse({
+              full: evt.data,
+              hashed: ctx.program.session.username,
+              trimmed: evt.data.split('#')[0],
+            })
+          }),
+          target: 'authenticated'
+        },
+        onError: {
+          actions: (_, evt) => console.error(evt)
+        }
+      }
+    },
     authenticated: {
       //Actor will send update event to parent whenever its state changes
       invoke: {
@@ -88,7 +108,7 @@ const mainMachine = createMachine({
           target: 'unauthenticated'
         },
         REGISTRATION_SUCCEEDED: {
-          target: 'authenticated'
+          target: 'gettingUsername'
         }
       }
     },
@@ -96,6 +116,10 @@ const mainMachine = createMachine({
       on: {
         REGISTER: {
           target: 'registering'
+        },
+        ACCOUNT_LINKED: {
+          actions: (ctx, evt) => setFullUserName(evt.data, ctx.program.components.storage).then(x => console.log(x)),
+          target: 'unitialized'
         }
       }
     },

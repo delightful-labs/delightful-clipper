@@ -15,8 +15,6 @@ import { interpretInWebWorker } from '$lib/machine-helpers/from-web-worker'
  * @typedef { import('webnative/path').FilePath} FilePath
  */
 
-console.log('worker')
-
 /**
  * Creates a new article object.
  * @param {string} url
@@ -56,7 +54,6 @@ const fileSystemMachine = createMachine({
   // 2. Offline
   states: {
     settingUpFs: {
-      entry: ()=> console.log('here I am'),
       invoke: {
         src: () => wn.program({
           namespace: { creator: "Delightful Labs", name: "Clipper" }

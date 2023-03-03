@@ -2,11 +2,14 @@
   import { createMachine, assign, send as xSend, spawn } from 'xstate'
   import { useMachine } from '@xstate/svelte'
   import { page } from '$app/stores'
-  import * as webnative from 'webnative'
   import { createListenerMachine } from '$lib/auth/accountLinking'
   import { mainService } from '$lib/machines/mainMachine'
+  import Username from '$lib/schemas/Username'
 
-  const username = $page.url.searchParams.get('username') || ''
+  const username = Username.parse({
+    hashed: $page.url.searchParams.get('hashedUsername'),
+    full: $page.url.searchParams.get('username')
+  })//$page.url.searchParams.get('username') || '' hashedUsername
 
   const accountLinkingConsumerMachine = createMachine({
     initial: 'idle',
@@ -27,7 +30,7 @@
     },
     states: {
       idle: {
-        entry: assign({ listener: () => spawn(createListenerMachine(username, webnative.account.createConsumer), 'listener') })
+        entry: assign({ listener: () => spawn(createListenerMachine(username, $mainService.context.authStrategy.accountConsumer), 'listener') })
       },
       challenging: {
         on: {
@@ -45,11 +48,12 @@
         }
       },
       success: {
-        entry: () => mainService.send('REGISTRATION_SUCCEEDED'),
+        entry: () => mainService.send({type: 'ACCOUNT_LINKED', data: username.full}),
         type: 'final'
       },
       failure: {
-        type: 'final'
+        type: 'final',
+        entry: (_, evt) => console.log(evt)
       },
       cancelled: {
         type: 'final'

@@ -3,7 +3,7 @@ import { createMachine, assign, sendParent } from 'xstate'
 // @TODO: Setup `callback` and `returns` to be correct
 /**
  * Creates an XState machine that starts up a WNFS listener.
- * @param {string} username 
+ * @param {import('$lib/schemas/Username').Username} username 
  * @param {*} callback 
  * @returns function
  */
@@ -13,6 +13,7 @@ export const createListenerMachine = (username, callback) => createMachine({
   predictableActionArguments: true,
   context: {
     listener: null,
+    username: username
   },
   on: {
     CANCEL: {
@@ -31,7 +32,7 @@ export const createListenerMachine = (username, callback) => createMachine({
   states: {
     settingUp: {
       invoke: {
-        src: () => callback({ username: username }),
+        src: () => callback(username.hashed),
         onDone: {
           target: 'listening', 
           actions: assign({listener: (_, evt) => evt.data})
@@ -45,12 +46,14 @@ export const createListenerMachine = (username, callback) => createMachine({
       invoke: {
         src: (ctx) => (sendBack) => {
           if (ctx.listener) {
+            console.log('I am listening')
             ctx.listener.on('challenge', detail => {
               console.log('challenge')
               sendBack({type: 'CHALLENGE', data: detail})
             })
   
             ctx.listener.on('link', detail => {
+              console.log('linking')
               sendBack({ type: 'LINK', data: detail})
             })
 

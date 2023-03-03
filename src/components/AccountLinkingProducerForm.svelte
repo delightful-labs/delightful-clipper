@@ -1,13 +1,14 @@
 <script>
-  import { createMachine, assign, spawn, send as xSend } from 'xstate'
+  import { mainService } from '$lib/machines/mainMachine'
+  import { createMachine, assign, spawn } from 'xstate'
   import { useMachine } from '@xstate/svelte'
-  import * as webnative from 'webnative'
   import { createListenerMachine } from '$lib/auth/accountLinking'
   import { page } from '$app/stores'
+  import Username from '$lib/schemas/Username'
 
-  export let username = ''
+  export let username = Username.parse({})
   
-  const connectionLink = `${$page.url.origin}/request-access?username=${username}`
+  const connectionLink = `${$page.url.origin}/request-access?hashedUsername=${username.hashed}&username=${encodeURIComponent(username.full)}`
 
   const accountLinkingProducerMachine = createMachine({
     initial: 'idle',
@@ -22,7 +23,7 @@
     },
     states: {
       idle: {
-        entry: assign({ listener: () => spawn(createListenerMachine(username, webnative.account.createProducer), 'listener') }),
+        entry: assign({ listener: (ctx) => spawn(createListenerMachine(username, $mainService.context.authStrategy.accountProducer), 'listener') }),
         on: {
           CHALLENGE: {
             // Save the response for later use.
