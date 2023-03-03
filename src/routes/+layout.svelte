@@ -24,6 +24,10 @@
   $: console.log($mainService.context)
 </script>
 
+<svelte:head>
+	<title>Delightful Clipper</title>
+</svelte:head>
+
 <Header />
 
 <!--@TODO: Move auth stuff to separate component-->
