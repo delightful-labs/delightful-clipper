@@ -2,6 +2,8 @@
   import { mainService } from '$lib/machines/main'
   import { uint8ArrayToString } from '$lib/files'
   import { userSettings } from '$lib/stores'
+  import TagList from '$components/TagList.svelte'
+  import Meta from '$components/Meta.svelte'
 
   /** @type {import('./$types').PageData} */ 
   export let data
@@ -36,6 +38,9 @@
 >
   <header>
     <h1>{data.title}</h1>
+    <Meta>
+      <TagList tags={data.tags} />
+    </Meta>
   </header>
   {@html html}
 </div>

@@ -132,6 +132,7 @@ input {
   background: transparent;
   color: inherit;
   width: 100%;
+  min-height: 44px;
 }
 
 input[type="file" i]::-webkit-file-upload-button {
@@ -158,6 +159,7 @@ button {
   background: transparent;
   color: inherit;
   font-family: monospace;
+  min-height: 44px;
 }
 
 button:disabled {

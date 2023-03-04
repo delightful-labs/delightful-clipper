@@ -1,4 +1,8 @@
 <script>
+  import TagList from '$components/TagList.svelte'
+  import Meta from '$components/Meta.svelte'
+  import MetaItem from '$components/MetaItem.svelte'
+
   /**
    * @type {import('$lib/schemas/Article').Article}
    */
@@ -11,17 +15,26 @@
   {:else}
     <h2>{article.url}</h2>
   {/if}
-  <div>
-    {#each article.tags as tag}
-      <a href="/tags/{tag}">{tag}</a>
-    {/each}
-  </div>
+  <Meta>
+    {#if article.author}
+      <MetaItem title='Author'>
+        {article.author}
+      </MetaItem>
+    {/if}
+    {#if article.tags.length}
+      <MetaItem title='Tags'>
+        <TagList tags={article.tags} />
+      </MetaItem>
+    {/if}
+  </Meta>
 </li>
 
 <style>
   li {
     border-top: 1px solid;
     list-style: none;
-    padding: 2rem;
+    padding: 1rem 0;
+    display: grid;
+    gap: 1rem;
   }
 </style>
