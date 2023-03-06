@@ -33,6 +33,7 @@ const mainMachine = createMachine({
         // I don't use wnfs because it will load in worker.s
         src: ()=> webnative.program({ 
           namespace: { creator: "Delightful Labs", name: "Clipper" },
+          fileSystem: { loadImmediately: false },
           debug: dev
         }),
         onDone: [

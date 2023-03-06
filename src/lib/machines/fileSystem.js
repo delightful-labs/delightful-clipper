@@ -130,15 +130,14 @@ const fileSystemMachine = createMachine({
               invoke: {
                 src: async (ctx, evt) => {
                   const file = await ctx.fs.get(evt.data.filePath)
-                  //console.log(content)
-                  //console.log(uint8ArrayToString(content))
                   return { 
                     filePath: evt.data.filePath, 
                     content: uint8ArrayToString(file.content)
                   }
                 },
                 onDone: {
-                  actions: sendParent((_, evt) => ({ type: 'CONTENT_LOADED', data: evt.data }))
+                  actions: sendParent((_, evt) => ({ type: 'CONTENT_LOADED', data: evt.data })),
+                  target: 'idle'
                 }
               }
             },
