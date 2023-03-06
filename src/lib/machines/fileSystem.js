@@ -8,6 +8,7 @@ import articleParserMachine from '$lib/machines/articleParser'
 import { writeToFileSystem, uint8ArrayToString } from '$lib/files'
 import { arrayUnion } from '$lib/utils'
 import { interpretInWebWorker } from '$lib/machine-helpers/from-web-worker'
+import { uint8ArrayToString } from '$lib/files'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
@@ -117,9 +118,26 @@ const fileSystemMachine = createMachine({
                   //Will probably need to make it an option to save search parameters or not.
                   target: 'checkingIfAlreadyExists'
                 },
+                LOAD_CONTENT: {
+                  target: 'loadingContent'
+                },
                 ERASE_DATABASE: {
                   target: 'updatingDatabase',
                   actions: assign({ db: []})
+                }
+              }
+            },
+            loadingContent: {
+              invoke: {
+                src: async (ctx, evt) => {
+                  const content = await ctx.fs.get(evt.data.filePath)
+                  return { 
+                    filePath: evt.data.filePath, 
+                    content: content
+                  }
+                },
+                onDone: {
+                  actions: sendParent({ type: 'CONTENT_LOADED', data: evt.data })
                 }
               }
             },

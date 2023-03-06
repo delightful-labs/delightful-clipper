@@ -9,4 +9,6 @@
 
 </script>
 
-<ClippingList {articles} title="All Articles" />
+{#if $mainService.value === 'authenticated'}
+  <ClippingList {articles} title="All Articles" />
+{/if}

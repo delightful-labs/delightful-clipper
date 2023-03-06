@@ -97,7 +97,7 @@ const mainMachine = createMachine({
           actions: assign({ db: (_, evt) => evt.data})
         },
         '*' : {
-          cond: (_, evt) => ['SAVE_ARTICLE', 'ERASE_DATABASE'].includes(evt.type),
+          cond: (_, evt) => ['SAVE_ARTICLE', 'ERASE_DATABASE', 'LOAD_CONTENT'].includes(evt.type),
           actions: send((_, evt) => evt, { to: 'fs' })
         }
       }
