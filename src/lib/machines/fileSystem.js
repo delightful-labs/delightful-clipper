@@ -8,7 +8,7 @@ import articleParserMachine from '$lib/machines/articleParser'
 import { writeToFileSystem, uint8ArrayToString } from '$lib/files'
 import { arrayUnion } from '$lib/utils'
 import { interpretInWebWorker } from '$lib/machine-helpers/from-web-worker'
-import { uint8ArrayToString } from '$lib/files'
+import { uint8ArrayToString } from '$lib/files/index'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
