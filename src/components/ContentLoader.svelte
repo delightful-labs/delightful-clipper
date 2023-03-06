@@ -7,10 +7,12 @@
 
   const content = new Promise(res => {
     mainService.subscribe(x => {
-      console.log(x.event)
-      // if (x.context.db.length) {
-      //   //res(x.context.db)
-      // }
+    
+      if (x.event.type === 'CONTENT_LOADED') {
+        if (JSON.stringify(x.event.data.filePath) === JSON.stringify(filePath)) {
+          res(x.event.data.content)
+        }
+      }
     })
   })
 </script>

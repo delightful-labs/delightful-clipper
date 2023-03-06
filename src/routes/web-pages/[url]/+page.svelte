@@ -7,7 +7,7 @@
   import ContentLoader from '$components/ContentLoader.svelte'
 
   /** @type {import('./$types').PageData} */ 
-  export let article
+  export let data
 
   // /**
 	//  * @type {string}
@@ -18,7 +18,7 @@
   //  * @param {import('webnative/fs/index').default} fs
   //  */
   // const loadHtml = async (fs) => {
-  //   const rawContent = await fs.get(article.filePath)
+  //   const rawContent = await fs.get(data.filePath)
 
   //   if (rawContent) {
   //     html = uint8ArrayToString(rawContent.content)
@@ -42,12 +42,12 @@
 	style:line-height={$userSettings.lineHeight / 10}
 >
   <header>
-    <h1>{article.title}</h1>
+    <h1>{data.title}</h1>
     <Meta>
-      <TagList tags={article.tags} />
+      <TagList tags={data.tags} />
     </Meta>
   </header>
-  <ContentLoader filePath={article.filePath} />
+  <ContentLoader filePath={data.filePath} />
 </div>
 
 <style>
