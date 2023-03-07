@@ -11,7 +11,10 @@ const createToastMachine = (options) => createMachine({
   },
   on: {
     MOUSEOVER: {
-      actions: assign({ timeUsed: (ctx) => ctx.timeUsed + (Date.now() - ctx.timerStartTime) }),
+      actions: [
+        ()=> console.log('entered'),
+        assign({ timeUsed: (ctx) => ctx.timeUsed + (Date.now() - ctx.timerStartTime) })
+      ],
       target: 'hovering'
     },
     DISMISS: {
@@ -32,6 +35,7 @@ const createToastMachine = (options) => createMachine({
     hovering: {
       on: {
         MOUSELEAVE: {
+          actions: ()=> console.log('exited'),
           target: 'active'
         }
       }
