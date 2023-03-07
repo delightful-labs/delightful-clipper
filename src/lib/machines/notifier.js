@@ -3,8 +3,9 @@ import { assign, createMachine, spawn, send } from "xstate"
 const createToastMachine = (options) => createMachine({
   initial: "active",
   context: {
-    message: options.message || '',
-    type: options.type || ''
+    message: options?.message || '',
+    type: options?.type || '',
+    timeout: options?.timeout || 3600000,
   },
   on: {
     MOUSEOVER: {
@@ -45,7 +46,7 @@ const createToastMachine = (options) => createMachine({
 },
 {
   delays: {
-    TIMEOUT: options.timeout || 3600000 //One Hour
+    TIMEOUT: options?.timeout || 3600000 //One Hour
   }
 })
 
