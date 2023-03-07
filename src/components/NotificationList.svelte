@@ -14,8 +14,12 @@
 
 <style>
   ul {
+    padding: 0;
+    margin: 0;
     position: fixed;
     bottom: 0;
     left: 0;
+    display: grid;
+    gap: 1rem;
   }
 </style>
