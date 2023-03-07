@@ -1,7 +1,16 @@
 import { assign, createMachine, spawn, send } from "xstate"
 
-const createToastMachine = (ms) => createMachine({
+const createToastMachine = (options) => createMachine({
   initial: "active",
+  context: {
+    message: options.message || '',
+    type: options.type || ''
+  },
+  on: {
+    MOUSEOVER: {
+      target: 'hovering'
+    }
+  },
   states: {
     active: {
       after: {
@@ -11,7 +20,17 @@ const createToastMachine = (ms) => createMachine({
         }
       },
       on: {
-        DISMISS: "dismissing"
+        DISMISS: {
+          target: "inactive",
+          actions: ()=> console.log('Dismiss received')
+        }
+      }
+    },
+    hovering: {
+      on: {
+        MOUSELEAVE: {
+          target: 'active'
+        }
       }
     },
     dismissing: {
@@ -26,7 +45,7 @@ const createToastMachine = (ms) => createMachine({
 },
 {
   delays: {
-    TIMEOUT: ms
+    TIMEOUT: options.timeout || 3600000 //One Hour
   }
 })
 
@@ -43,7 +62,7 @@ export const notifierMachine = createMachine({
         NOTIFY: {
           actions: assign({
             toasts: (ctx) => {
-              return [...ctx.toasts, spawn(createToastMachine(5000))]
+              return [...ctx.toasts, spawn(createToastMachine({message: 'Something went wrong', type: 'warning', timeout: 2000}))]
             }
           })
         },

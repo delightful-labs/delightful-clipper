@@ -5,7 +5,7 @@
   import RegistrationForm from '$components/RegistrationForm.svelte'
   import { userSettings } from '$lib/stores'
   import Header from '$components/Header.svelte'
-  import Notification from '$components/Notification.svelte'
+  import NotificationList from '$components/NotificationList.svelte'
   
   const userState = useSelector(mainService, (state) => state.value)
 
@@ -54,13 +54,15 @@
   {/if}
 
 
-  {#if $notifications}
-    <ul>
-      {#each $notifications as notification}
-        <Notification {notification} />
-      {/each}
-    </ul>
-  {/if}
+  <NotificationList {notifications} />
 
   <button on:click={()=> mainService.send({ type: 'NOTIFY'})}>Notify</button>
 </main>
+
+<style>
+  button {
+    position: fixed;
+    bottom: 0;
+    right: 0;
+  }
+</style>
