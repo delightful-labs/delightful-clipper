@@ -10,6 +10,10 @@ const createToastMachine = (options) => createMachine({
   on: {
     MOUSEOVER: {
       target: 'hovering'
+    },
+    DISMISS: {
+      target: "inactive",
+      actions: ()=> console.log('Dismiss received')
     }
   },
   states: {
@@ -18,12 +22,6 @@ const createToastMachine = (options) => createMachine({
         TIMEOUT: {
           target: "inactive",
           actions: ()=> console.log('Dismissing')
-        }
-      },
-      on: {
-        DISMISS: {
-          target: "inactive",
-          actions: ()=> console.log('Dismiss received')
         }
       }
     },

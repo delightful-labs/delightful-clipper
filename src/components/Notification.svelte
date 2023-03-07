@@ -61,10 +61,10 @@
   }
 
   button {
-    --a: 90deg;
+    --a: 0deg;
     width: 44px;
     border-radius: 50%;
     background-image: conic-gradient(red, red var(--a), blue var(--a));
-    animation: a calc(var(--timer, 5000) * 1ms) linear infinite alternate;
+    animation: a calc(var(--timer, 5000) * 1ms) linear;
   }
 </style>
