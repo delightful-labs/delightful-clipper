@@ -6,9 +6,12 @@ const createToastMachine = (options) => createMachine({
     message: options?.message || '',
     type: options?.type || '',
     timeout: options?.timeout || 3600000,
+    timeUsed: 0,
+    timerStartTime: 0
   },
   on: {
     MOUSEOVER: {
+      actions: assign({ timeUsed: (ctx) => ctx.timeUsed + (Date.now() - ctx.timerStartTime) }),
       target: 'hovering'
     },
     DISMISS: {
@@ -18,6 +21,7 @@ const createToastMachine = (options) => createMachine({
   },
   states: {
     active: {
+      entry: assign({ timerStartTime: () => Date.now() }),
       after: {
         TIMEOUT: {
           target: "inactive",
@@ -44,7 +48,7 @@ const createToastMachine = (options) => createMachine({
 },
 {
   delays: {
-    TIMEOUT: options?.timeout || 3600000 //One Hour
+    TIMEOUT: (ctx) => (options?.timeout || 3600000) - ctx.timeUsed //One Hour
   }
 })
 

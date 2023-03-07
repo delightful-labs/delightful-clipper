@@ -1,6 +1,9 @@
 <script>
   import { fly } from 'svelte/transition'
 
+  /**
+   * @type {*}
+   */
   export let notification
 
   const types = {
@@ -46,6 +49,10 @@
 
   li {
     list-style: none;
+  }
+
+  li:hover button {
+    animation-play-state: paused;
   }
 
   .success {
