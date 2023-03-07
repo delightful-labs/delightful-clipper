@@ -5,6 +5,7 @@ import { dev } from '$app/environment'
 import FileWorker from '$lib/machines/fileSystem?worker'
 import Username from '$lib/schemas/Username'
 import { setFullUserName } from '$lib/auth/registration'
+import { notifierMachine } from '$lib/machines/notifier'
 
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
@@ -24,11 +25,18 @@ const mainMachine = createMachine({
     /**
      * @type null | FileSystem
      */
-    fs: null
+    fs: null,
+    notifier: null
   },
   initial: 'unitialized',
+  on: {
+    'NOTIFY': {
+      actions: send({ type: 'NOTIFY'}, { to: 'notifier' })
+    }
+  },
   states: {
     unitialized: {
+      entry: assign({ notifier: ()=> spawn(notifierMachine, 'notifier')}),
       invoke: {
         // I don't use wnfs because it will load in worker.s
         src: ()=> webnative.program({ 
