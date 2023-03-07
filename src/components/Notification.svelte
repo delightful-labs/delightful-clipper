@@ -48,9 +48,10 @@
   }
 
   li {
+    background-color: var(--color__background);
     font-family: monospace;
     list-style: none;
-    border: 1px solid;
+    border: 2px solid;
     padding: 0.5rem;
   }
 

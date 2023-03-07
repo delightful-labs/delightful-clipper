@@ -143,7 +143,13 @@ input:focus {
   border-color: var(--color__actionable);
 }
 
-input[type="file" i]::-webkit-file-upload-button {
+input[type="submit"]:hover,
+input[type="submit"]:focus {
+  color: #262626;
+  background-color: var(--color__actionable);
+}
+
+input[type="file"]::-webkit-file-upload-button {
   appearance: none;
   border: 2px solid;
   background: transparent;

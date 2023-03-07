@@ -11,15 +11,11 @@ const createToastMachine = (options) => createMachine({
   },
   on: {
     MOUSEOVER: {
-      actions: [
-        ()=> console.log('entered'),
-        assign({ timeUsed: (ctx) => ctx.timeUsed + (Date.now() - ctx.timerStartTime) })
-      ],
+      actions: assign({ timeUsed: (ctx) => ctx.timeUsed + (Date.now() - ctx.timerStartTime) }),
       target: 'hovering'
     },
     DISMISS: {
-      target: "inactive",
-      actions: ()=> console.log('Dismiss received')
+      target: "inactive"
     }
   },
   states: {
@@ -27,15 +23,13 @@ const createToastMachine = (options) => createMachine({
       entry: assign({ timerStartTime: () => Date.now() }),
       after: {
         TIMEOUT: {
-          target: "inactive",
-          actions: ()=> console.log('Dismissing')
+          target: "inactive"
         }
       }
     },
     hovering: {
       on: {
         MOUSELEAVE: {
-          actions: ()=> console.log('exited'),
           target: 'active'
         }
       }
@@ -64,7 +58,6 @@ export const notifierMachine = createMachine({
   },
   states: {
     active: {
-      entry: ()=> console.log('notifications system online'),
       on: {
         NOTIFY: {
           actions: assign({
