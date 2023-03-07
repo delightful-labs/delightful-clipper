@@ -135,6 +135,11 @@ input {
   min-height: 44px;
 }
 
+input:focus {
+  outline: none;
+  border-color: var(--color__actionable);
+}
+
 input[type="file" i]::-webkit-file-upload-button {
   appearance: none;
   border: 2px solid;

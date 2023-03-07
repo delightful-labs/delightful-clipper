@@ -162,17 +162,16 @@ const fileSystemMachine = createMachine({
                   },
                   { 
                     target: 'updatingDatabase',
-                    actions: immerAssign((ctx, evt) => {
-                      ctx.db.push(createArticleEntry(evt.data.article.url, evt.data.article.tags))
-                    })
+                    actions: [
+                      immerAssign((ctx, evt) => {
+                        ctx.db.push(createArticleEntry(evt.data.article.url, evt.data.article.tags))
+                      }),
+                      sendParent(() => ({type: 'ARTICLE_SAVED'}))
+                    ]
                   }
                 ]
               }
             },
-            //@todo: updatingDatabase & publishing are functions that automaticActions could also use.
-            //How to keep them from stepping on each other?
-            //Maybe an event bus?
-            //@TODO: can add { publish: true } to fs.write to skip publishing step!
             updatingDatabase: {
               invoke: {
                 src: (ctx) => writeToFileSystem(ctx.dbPath, JSON.stringify(ctx.db), ctx.fs),
@@ -188,8 +187,7 @@ const fileSystemMachine = createMachine({
             },
             //@TODO: What to do with this state?
             articleAlreadyExists: {
-              //@TODO: Add tags to existing entry, if they exist
-              // entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
+              entry: sendParent('ARTICLE_ALREADY_EXISTS'),
               after: {
                 500: { target: 'idle' }
               }
