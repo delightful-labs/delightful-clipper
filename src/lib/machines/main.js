@@ -31,7 +31,7 @@ const mainMachine = createMachine({
   initial: 'unitialized',
   on: {
     'NOTIFY': {
-      actions: send({ type: 'NOTIFY'}, { to: 'notifier' })
+      actions: send({ type: 'NOTIFY' }, { to: 'notifier' })
     }
   },
   states: {
@@ -104,6 +104,20 @@ const mainMachine = createMachine({
       on: {
         UPDATE_DATABASE: {
           actions: assign({ db: (_, evt) => evt.data})
+        },
+        ARTICLE_ALREADY_EXISTS: {
+          actions: send({ type: 'NOTIFY', data: { 
+            type: 'warning', 
+            timeout: 5000, 
+            message: 'Article Already Exists' 
+          }}, { to: 'notifier' })
+        },
+        ARTICLE_SAVED: {
+          actions: send({ type: 'NOTIFY', data: { 
+            type: 'success', 
+            timeout: 5000, 
+            message: 'Article Saved!' 
+          }}, { to: 'notifier' })
         },
         '*' : {
           cond: (_, evt) => ['SAVE_ARTICLE', 'ERASE_DATABASE', 'LOAD_CONTENT'].includes(evt.type),

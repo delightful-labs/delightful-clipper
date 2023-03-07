@@ -5,7 +5,8 @@
 
   const types = {
     warning: 'warning',
-    error: 'error'
+    error: 'error',
+    success: 'success'
   }
 
 </script>
@@ -26,6 +27,10 @@
 <style>
   li {
     list-style: none;
+  }
+
+  .success {
+    background-color: greenyellow;
   }
 
   .warning {

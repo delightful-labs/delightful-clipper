@@ -61,8 +61,8 @@ export const notifierMachine = createMachine({
       on: {
         NOTIFY: {
           actions: assign({
-            toasts: (ctx) => {
-              return [...ctx.toasts, spawn(createToastMachine({message: 'Something went wrong', type: 'warning', timeout: 2000}))]
+            toasts: (ctx, evt) => {
+              return [...ctx.toasts, spawn(createToastMachine(evt.data))]
             }
           })
         },
