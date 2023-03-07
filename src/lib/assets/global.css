@@ -4,6 +4,9 @@
   --color__background: #fff;
   --color__actionable: #94ff47;
   --color__foreground: #262626;
+  --color__warning: #f7df72;
+  --color__success: #bafa89;
+  --color__error: #f58978;
   --width__app: 90vw;
   accent-color: var(--color__actionable);
   overflow-x: hidden;

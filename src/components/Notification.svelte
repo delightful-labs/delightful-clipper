@@ -48,7 +48,10 @@
   }
 
   li {
+    font-family: monospace;
     list-style: none;
+    border: 1px solid;
+    padding: 0.5rem;
   }
 
   li:hover button {
@@ -56,22 +59,22 @@
   }
 
   .success {
-    background-color: greenyellow;
+    background-color: var(--color__success);
   }
 
   .warning {
-    background-color: darkkhaki;
+    background-color: var(--color__warning);
   }
 
   .error {
-    background-color: red;
+    background-color: var(--color__error);
   }
 
   button {
     --a: 0deg;
     width: 44px;
     border-radius: 50%;
-    background-image: conic-gradient(red, red var(--a), blue var(--a));
+    background-image: conic-gradient(rgba(0,0,0, .5), rgba(0,0,0, .5) var(--a), rgba(0,0,0, .2) var(--a));
     animation: a calc(var(--timer, 5000) * 1ms) linear;
   }
 </style>
