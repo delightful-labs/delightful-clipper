@@ -152,9 +152,12 @@ const fileSystemMachine = createMachine({
                   { 
                     cond: (_, evt) => evt.data.existingArticle && evt.data.article.tags.length,
                     target: 'updatingDatabase',
-                    actions: immerAssign((ctx, evt) => {
-                      ctx.db[evt.data.existingArticle._index].tags = arrayUnion(ctx.db[evt.data.existingArticle._index].tags, evt.data.article.tags)
-                    })           
+                    actions: [
+                      sendParent(() => ({type: 'ARTICLE_ALREADY_EXISTS'})),
+                      immerAssign((ctx, evt) => {
+                        ctx.db[evt.data.existingArticle._index].tags = arrayUnion(ctx.db[evt.data.existingArticle._index].tags, evt.data.article.tags)
+                      })
+                    ]           
                   },
                   { 
                     cond: (_, evt) => evt.data.existingArticle,

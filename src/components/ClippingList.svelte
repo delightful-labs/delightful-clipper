@@ -27,6 +27,10 @@
 </div>
 
 <style>
+  h1 {
+    font-size: var(--font-size__xl);
+  }
+
   .clipping-list {
     max-width: var(--width__app);
     margin: 0 auto;

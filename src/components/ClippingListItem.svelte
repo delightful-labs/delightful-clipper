@@ -8,6 +8,9 @@
    */
   export let article
 
+  //@todo: I might move this into Meta, so it doesn't have to be done each time.
+  //Meta could take a list of items to include.
+
   const filterEmpty = (obj)=>  Object.fromEntries(Object.entries(obj).filter(([_, v]) => v.length))
 
   let metadata = filterEmpty(pick(article, ['author', 'tags']))
@@ -24,6 +27,10 @@
 </li>
 
 <style>
+  h2 {
+    font-size: var(--font-size__lg);
+  }
+
   li {
     border-top: 1px solid;
     list-style: none;
