@@ -26,6 +26,7 @@
 
   .meta-item {
     outline: 1px solid;
+    outline-offset: -0.5px;
     padding: var(--spacing__xs);
     display: flex;
     gap: var(--spacing__xs);

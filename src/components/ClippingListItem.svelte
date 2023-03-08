@@ -8,8 +8,10 @@
    */
   export let article
 
-  let metadata = pick(article, ['tags', 'author'])
-  
+  const filterEmpty = (obj)=>  Object.fromEntries(Object.entries(obj).filter(([_, v]) => v.length))
+
+  let metadata = filterEmpty(pick(article, ['author', 'tags']))
+
 </script>
 
 <li>
