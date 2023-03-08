@@ -1,13 +1,18 @@
 <script>
 	import SettingsPanel from '$components/SettingsPanel.svelte'
+	import { afterNavigate } from "$app/navigation"
 
 	let y = 0
 	let lastY = 0
 	let hideHeader = false
 
+	afterNavigate(()=> {
+		y = 0
+		lastY = 0
+		hideHeader = false
+	})
+
 	const handleScroll = (/** @type {number} */ yPos) => {
-		console.log('last:', lastY)
-		console.log('current: ', y)
 		hideHeader = yPos > lastY
 		lastY = yPos
 	}

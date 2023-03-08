@@ -33,7 +33,7 @@
   li {
     border-top: 1px solid;
     list-style: none;
-    padding: var(--spacing__sm) 0;
+    padding: var(--spacing__md) 0;
     display: grid;
     gap: var(--spacing__sm);
   }

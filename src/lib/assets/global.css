@@ -10,6 +10,7 @@
   --width__app: 90vw;
   --spacing__xs: clamp(0.5rem, 1vw, 1rem);
   --spacing__sm: clamp(1rem, 2vw, 1.5rem);
+  --spacing__md: clamp(2rem, 4vw, 3rem);
 
   --font-family__secondary: monospace;
   --font-size__sm: 0.8rem;
