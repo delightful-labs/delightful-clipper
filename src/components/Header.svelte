@@ -1,5 +1,6 @@
 <script>
 	import SettingsPanel from '$components/SettingsPanel.svelte'
+	import FilterPanel from '$components/FilterPanel.svelte'
 	import { afterNavigate } from "$app/navigation"
 
 	let y = 0
@@ -24,6 +25,7 @@
 	<ul>
 		<li><a href="/">Home</a></li>
 		<li><a href="/add">Add</a></li>
+		<li><FilterPanel /></li>
 		<li><SettingsPanel /></li>
 	</ul>
 </header>
@@ -46,6 +48,7 @@
 	}
 
 	ul {
+		font-family: var(--font-family__secondary);
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -53,6 +56,15 @@
 		width: var(--width__app);
 		margin: 0 auto;
 		padding: 0;
+	}
+
+	ul :global(summary) {
+		text-decoration: underline;
+		text-decoration-color: var(--color__actionable);
+	}
+
+	ul :global(summary:hover) {
+		text-decoration-style: dashed;
 	}
 
 	@media all and (display-mode: fullscreen) {

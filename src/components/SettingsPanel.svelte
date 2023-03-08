@@ -61,8 +61,6 @@
 	}
 </script>
 
-<!--TODO: line-height, font-family, dark mode
-Also turn into component-->
 <Details title={'Settings'}>
 		<Form {schema} data={$userSettings} {changeHandler} />
 		<button on:click={() => eraseDb()}>Erase Database</button>
