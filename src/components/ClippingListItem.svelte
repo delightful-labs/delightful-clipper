@@ -1,12 +1,15 @@
 <script>
-  import TagList from '$components/TagList.svelte'
   import Meta from '$components/Meta.svelte'
-  import MetaItem from '$components/MetaItem.svelte'
-
+  
+  import { pick } from '$lib/utils'
+ 
   /**
    * @type {import('$lib/schemas/Article').Article}
    */
   export let article
+
+  let metadata = pick(article, ['tags', 'author'])
+  
 </script>
 
 <li>
@@ -15,18 +18,7 @@
   {:else}
     <h2>{article.url}</h2>
   {/if}
-  <Meta>
-    {#if article.author}
-      <MetaItem title='Author'>
-        {article.author}
-      </MetaItem>
-    {/if}
-    {#if article.tags.length}
-      <MetaItem title='Tags'>
-        <TagList tags={article.tags} />
-      </MetaItem>
-    {/if}
-  </Meta>
+  <Meta {metadata} />
 </li>
 
 <style>

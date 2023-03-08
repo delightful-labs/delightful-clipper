@@ -1,5 +1,16 @@
+<script>
+  import MetaItem from '$components/MetaItem.svelte'
+
+  /**
+   * @type {*}
+   */
+  export let metadata
+</script>
+
 <div class="meta">
-  <slot />
+  {#each Object.entries(metadata) as [title, content]}
+    <MetaItem {title} {content} />
+  {/each}
 </div>
 
 <style>

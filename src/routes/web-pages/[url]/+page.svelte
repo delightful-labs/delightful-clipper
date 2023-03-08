@@ -2,7 +2,6 @@
   //import { mainService } from '$lib/machines/main'
   //import { uint8ArrayToString } from '$lib/files'
   import { userSettings } from '$lib/stores'
-  import TagList from '$components/TagList.svelte'
   import Meta from '$components/Meta.svelte'
   import ContentLoader from '$components/ContentLoader.svelte'
 
@@ -43,9 +42,6 @@
 >
   <header>
     <h1>{data.title}</h1>
-    <Meta>
-      <TagList tags={data.tags} />
-    </Meta>
   </header>
   <ContentLoader filePath={data.filePath} />
 </div>

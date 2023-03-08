@@ -231,3 +231,11 @@ export const isObject = (obj) => typeof obj === 'object' && obj !== null && !Arr
  * @returns 
  */
 export const arrayUnion = (arr, ...args) => [...new Set(arr.concat(...args))]
+
+/**
+ * 
+ * @param {string[]} arr 
+ * @param {object} obj 
+ * @returns 
+ */
+export const pick = (obj, arr) => arr.filter(key => key in obj).reduce((obj2, key) => (obj2[key] = obj[key], obj2), {})

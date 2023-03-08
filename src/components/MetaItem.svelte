@@ -3,14 +3,21 @@
    * @type {string}
    */
   export let title = ''
+
+  /**
+   * @type {string|string[]}
+   */
+  export let content = ''
 </script>
 
-<div class="meta-item">
-  {#if title}
-    <strong>{title}:</strong>
-  {/if}
-  <slot />
-</div>
+{#if content.length || !content === ''}
+  <div class="meta-item">
+    {#if title}
+      <strong>{title}:</strong>
+    {/if}
+    {content}
+  </div>
+{/if}
 
 <style>
   strong {
