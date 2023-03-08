@@ -20,6 +20,6 @@
     bottom: 0;
     left: 0;
     display: grid;
-    gap: 0.5rem;
+    gap: var(--spacing__xs);
   }
 </style>

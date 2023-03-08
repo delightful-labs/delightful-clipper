@@ -33,8 +33,12 @@
   li {
     border-top: 1px solid;
     list-style: none;
-    padding: 1rem 0;
+    padding: var(--spacing__sm) 0;
     display: grid;
-    gap: 1rem;
+    gap: var(--spacing__sm);
+  }
+
+  li:has(.meta) {
+    padding-bottom: 0;
   }
 </style>

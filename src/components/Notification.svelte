@@ -49,10 +49,11 @@
 
   li {
     background-color: var(--color__background);
-    font-family: monospace;
+    font-family: var(--font-family__secondary);
     list-style: none;
+    color: #262626;
     border: 2px solid;
-    padding: 0.5rem;
+    padding: var(--spacing__xs);
   }
 
   li:hover button {

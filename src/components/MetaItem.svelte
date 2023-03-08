@@ -19,9 +19,11 @@
 
   .meta-item {
     outline: 1px solid;
-    padding: 0.5rem;
+    padding: var(--spacing__xs);
     display: flex;
-    gap: 0.5rem;
-    font-size: 0.8rem;
+    gap: var(--spacing__xs);
+    font-size: var(--font-size__sm);
+    font-family: var(--font-family__secondary);
+    background-color: var(--color__background);
   }
 </style>

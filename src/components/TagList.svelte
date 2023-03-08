@@ -17,7 +17,7 @@
   ul {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: var(--spacing__sm);
     padding: 0;
   }
 

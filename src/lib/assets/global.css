@@ -8,6 +8,11 @@
   --color__success: #bafa89;
   --color__error: #f58978;
   --width__app: 90vw;
+  --spacing__xs: clamp(0.5rem, 1vw, 1rem);
+  --spacing__sm: clamp(1rem, 2vw, 1.5rem);
+
+  --font-family__secondary: monospace;
+  --font-size__sm: 0.8rem;
   accent-color: var(--color__actionable);
   overflow-x: hidden;
   color: var(--color__foreground);
@@ -24,6 +29,10 @@
 a {
   color: inherit;
   text-decoration-color: var(--color__actionable);
+}
+
+a:hover {
+  text-decoration-style: dashed;
 }
 
 /* Box sizing rules */
@@ -113,7 +122,7 @@ code {
 /* App wrapper */
 .app-wrapper {
   display: grid;
-  gap: 1rem;
+  gap: var(--spacing__sm);
 }
 
 /* Input overrides */
@@ -127,7 +136,7 @@ label,
 input,
 textarea,
 select {
-  font-family: monospace;
+  font-family: var(--font-family__secondary);
 }
 
 input {
@@ -154,7 +163,7 @@ input[type="file"]::-webkit-file-upload-button {
   border: 2px solid;
   background: transparent;
   color: inherit;
-  font-family: monospace;
+  font-family: var(--font-family__secondary);
 }
 
 input[type="file"] {
@@ -172,7 +181,7 @@ button {
   border: 2px solid;
   background: transparent;
   color: inherit;
-  font-family: monospace;
+  font-family: var(--font-family__secondary);
   min-height: 44px;
 }
 
@@ -190,5 +199,5 @@ select {
   border: 2px solid;
   background: var(--color__background);
   color: inherit;
-  font-family: monospace;
+  font-family: var(--font-family__secondary);
 }
