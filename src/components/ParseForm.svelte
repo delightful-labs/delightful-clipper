@@ -19,14 +19,7 @@
 	/**
 	 * @type {string[]}
 	 */
-	let currentTags = []
-
-  /**
-   * @param {string[]} evt
-   */
-	const handleTagging = (evt) => {
-		currentTags = evt
-	}
+	let tags = []
 
   const handleSubmit = () => {
 		send({type: 'SAVE_ARTICLE'})
@@ -34,7 +27,7 @@
 
 	const clearData = () => {
 		url = ''
-		currentTags = []
+		tags = []
 	}
 
 	const saveArticleMachine =  createMachine({
@@ -45,7 +38,7 @@
 				on: {
 					SAVE_ARTICLE: {
 						target: 'saving',
-						actions: () => mainService.send({type: 'SAVE_ARTICLE', data: { url: url, tags: currentTags }})
+						actions: () => mainService.send({type: 'SAVE_ARTICLE', data: { url: url, tags: tags }})
 					}
 				},
 				meta: {
@@ -121,7 +114,7 @@
 		</div>
 
 		<div>
-			<InputTags {handleTagging} {tagList} />
+			<InputTags {tagList} {tags}/>
 		</div>
 
 		<input type="submit" value={Object.values($state.meta)[0]?.message} disabled={!$state.matches('idle')} />

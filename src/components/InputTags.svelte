@@ -5,14 +5,11 @@
    */
   export let tagList = []
   export let label = 'Tags'
-  export let handleTagging
 
   /**
-	 * @type {string[]}
-	 */
-  let tags = []
-
-  $: handleTagging(tags)
+   * @type {String[]}
+   */
+  export let tags = []
 </script>
 
 <label for={label}>{label}</label>
