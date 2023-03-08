@@ -1,14 +1,8 @@
 <script>
   import ParseForm from "$components/ParseForm.svelte"
+  import PageWrapper from "$components/PageWrapper.svelte"
 </script>
 
-<div>
+<PageWrapper>
   <ParseForm />
-</div>
-
-<style>
-  div {
-    margin: 0 auto;
-    max-width: var(--width__app);
-  }
-</style>
+</PageWrapper>

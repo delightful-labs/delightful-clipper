@@ -6,6 +6,7 @@
   import { userSettings } from '$lib/stores'
   import Header from '$components/Header.svelte'
   import NotificationList from '$components/NotificationList.svelte'
+  import PageWrapper from '$components/PageWrapper.svelte'
   
   const userState = useSelector(mainService, (state) => state.value)
 
@@ -24,7 +25,6 @@
 
   const notifications = useSelector(mainService, (state) => state.context.notifier.state.context.toasts)
 
-  $: console.log($notifications)
 </script>
 
 <svelte:head>
@@ -35,24 +35,25 @@
 
 <main>
 
-  <!--@TODO: Move auth stuff to separate component-->
-  {#if $userState === 'unauthenticated'}
-    <button 
-      on:click={()=> mainService.send({ type: 'REGISTER'})}
-      disabled={!$mainService.can({type: 'REGISTER'})}
-    >Register</button>
+  <PageWrapper>
+    <!--@TODO: Move auth stuff to separate component-->
+    {#if $userState === 'unauthenticated'}
+      <button 
+        on:click={()=> mainService.send({ type: 'REGISTER'})}
+        disabled={!$mainService.can({type: 'REGISTER'})}
+      >Register</button>
 
-    <p>If you are a new user, you can register.</p>
-    <p>If you are an existing user, you can use the device or browser where you are signed in to find the instructions on how to connect this device.</p>
-  {/if}
+      <p>If you are a new user, you can register.</p>
+      <p>If you are an existing user, you can use the device or browser where you are signed in to find the instructions on how to connect this device.</p>
+    {/if}
+
+    <!--@TODO: Registration could easily be a page instead of a component-->
+    {#if $userState === 'registering'}
+      <RegistrationForm />
+    {/if}
+  </PageWrapper>
 
   <slot />
-
-  <!--@TODO: Registration could easily be a page instead of a component-->
-  {#if $userState === 'registering'}
-    <RegistrationForm />
-  {/if}
-
 
   <NotificationList {notifications} />
 </main>

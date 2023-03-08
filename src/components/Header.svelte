@@ -37,6 +37,8 @@
 		transition: 400ms;
 		border-bottom: 2px solid;
 		z-index: 100;
+		display: flex;
+		align-items: center;
 	}
 
 	header :global(.details-content) {
@@ -48,6 +50,8 @@
 		justify-content: space-between;
 		align-items: center;
 		list-style: none;
-		max-width: var(--width__app);
+		width: var(--width__app);
+		margin: 0 auto;
+		padding: 0;
 	}
 </style>
