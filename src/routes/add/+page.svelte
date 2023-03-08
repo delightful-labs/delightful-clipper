@@ -2,4 +2,13 @@
   import ParseForm from "$components/ParseForm.svelte"
 </script>
 
-<ParseForm />
+<div>
+  <ParseForm />
+</div>
+
+<style>
+  div {
+    margin: 0 auto;
+    max-width: var(--width__app);
+  }
+</style>

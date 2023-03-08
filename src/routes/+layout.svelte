@@ -55,14 +55,4 @@
 
 
   <NotificationList {notifications} />
-
-  <button on:click={()=> mainService.send({ type: 'NOTIFY'})}>Notify</button>
 </main>
-
-<style>
-  button {
-    position: fixed;
-    bottom: 0;
-    right: 0;
-  }
-</style>
