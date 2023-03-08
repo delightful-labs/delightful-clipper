@@ -54,4 +54,10 @@
 		margin: 0 auto;
 		padding: 0;
 	}
+
+	@media all and (display-mode: fullscreen) {
+		ul {
+			padding-left: var(--sat);
+		}
+	}
 </style>
