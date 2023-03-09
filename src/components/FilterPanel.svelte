@@ -8,6 +8,10 @@
   let authors = []
   let form
 
+  let opened = false
+
+  let filtersApplied = false
+
   /**
    * @typedef {import('$lib/schemas/Article').Article} Article
    * @param {Article[]} db
@@ -39,10 +43,19 @@
     
     $filteredArticles = articles
   }
+
+  const handleChange = () => {
+    const formData = new FormData(form)
+
+    filtersApplied = Array.from(formData.keys()).length ? true : false
+  }
 </script>
 
-<Details title={'Filter'}>
-  <form on:submit|preventDefault={(e) => handleSubmit(e)} bind:this={form}>
+<Details title={'Filter'} bind:opened>
+  <form 
+    on:submit|preventDefault={(e) => handleSubmit(e)} bind:this={form}
+    on:change={() => handleChange()}
+  >
     <p>Tags</p>
     {#each tags as tag}
       <div>
@@ -58,7 +71,11 @@
       </div>
     {/each}
     <input type="reset" value="Reset Filters" on:click={()=> $filteredArticles = undefined}/>
-    <input type="submit" value="Show Results" />
+    {#if filtersApplied}
+      <input type="submit" value="Show Results" on:click={()=> opened = false}/>
+    {:else}
+      <button on:click|preventDefault={()=> opened = false}>Close</button>
+    {/if}
   </form>
 </Details>
 
