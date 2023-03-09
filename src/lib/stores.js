@@ -1,6 +1,8 @@
 import { writable } from 'svelte/store'
 
-//User defined settings
+/**
+ * User defined settings
+ */
 export const userSettings = writable({
   fontSize: 20,
   contentWidth: 90,
@@ -8,3 +10,5 @@ export const userSettings = writable({
   fontWeight: 500,
   lineHeight: 15
 })
+
+export const filteredArticles = writable(undefined)

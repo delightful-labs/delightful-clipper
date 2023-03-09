@@ -1,10 +1,12 @@
 <script>
 	import { mainService } from '$lib/machines/main'
+  import { filteredArticles } from '$lib/stores'
 	import { Details } from 'delightful-ui'
   import jsonata from 'jsonata'
 
   let tags = []
   let authors = []
+  let form
 
   /**
    * @typedef {import('$lib/schemas/Article').Article} Article
@@ -28,26 +30,47 @@
     findAuthors($mainService.context.db)
   }
 
-  const handleSubmit = () => {
-		
+  const handleSubmit = async (e) => {
+    const formData = new FormData(form)
+    const arr = []
+    formData.forEach((value, key) => arr.push(`'${value}' in ${key}`));
+    
+		const articles = await jsonata(`$[${arr.join(' and ')}][]`).evaluate($mainService.context.db)
+    
+    $filteredArticles = articles
   }
 </script>
 
 <Details title={'Filter'}>
-  <form on:submit|preventDefault={() => handleSubmit()}>
+  <form on:submit|preventDefault={(e) => handleSubmit(e)} bind:this={form}>
     <p>Tags</p>
     {#each tags as tag}
       <div>
-        <input type="checkbox" id={tag} name={tag}>
+        <input type="checkbox" id={tag} name='tags' value={tag}>
         <label for={tag}>{tag}</label>
       </div>
     {/each}
     <p>Authors</p>
     {#each authors as tag}
       <div>
-        <input type="checkbox" id={tag||'unknown'} name={tag||'unknown'}>
+        <input type="checkbox" id={tag||'unknown'} name='author' value={tag}>
         <label for={tag||'unknown'}>{tag||'unknown'}</label>
       </div>
     {/each}
+    <input type="reset" value="Reset Filters" on:click={()=> $filteredArticles = undefined}/>
+    <input type="submit" value="Show Results" />
   </form>
 </Details>
+
+<style>
+  div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  input[type="checkbox"] {
+    min-height: 20px;
+    width: auto;
+  }
+</style>
