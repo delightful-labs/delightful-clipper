@@ -3,6 +3,7 @@
 	import { userSettings } from '$lib/stores'
 	import Form from 'svelte-json-schema-to-form/package/Form.svelte'
 	import { Details } from 'delightful-ui'
+	import { beforeNavigate } from '$app/navigation'
 
 	const schema = {
 		title: 'user settings',
@@ -46,6 +47,10 @@
 		}
 	}
 
+	let opened = false
+
+	beforeNavigate(()=> opened = false)
+
 	const changeHandler = (e, path) => {
 		$userSettings = {
 			...$userSettings,
@@ -61,7 +66,7 @@
 	}
 </script>
 
-<Details title={'Settings'}>
+<Details title={'Settings'} bind:opened={opened} >
 		<Form {schema} data={$userSettings} {changeHandler} />
 		<button on:click={() => eraseDb()}>Erase Database</button>
 		<a href="/delegate-access">Connect another device</a>

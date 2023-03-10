@@ -123,6 +123,7 @@
   {#if $state.matches('idle') }
     <p>Scan the code on your other device to link your account</p>
     {@html qrcode}
+    <button on:click={()=> navigator.clipboard.writeText(connectionLink)}>Or Copy to Clipboard</button>
   {:else if $state.matches('challenging')}
     <form 
       autocomplete="off"
