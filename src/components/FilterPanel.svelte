@@ -49,6 +49,13 @@
 
     filtersApplied = Array.from(formData.keys()).length ? true : false
   }
+
+  const handleReset = () => {
+    $filteredArticles = undefined
+    filtersApplied = false
+  }
+
+  $: console.log($filteredArticles)
 </script>
 
 <Details title={'Filter'} bind:opened>
@@ -70,7 +77,7 @@
         <label for={tag||'unknown'}>{tag||'unknown'}</label>
       </div>
     {/each}
-    <input type="reset" value="Reset Filters" on:click={()=> $filteredArticles = undefined}/>
+    <input type="reset" value="Reset Filters" on:click={()=> handleReset()}/>
     {#if filtersApplied}
       <input type="submit" value="Show Results" on:click={()=> opened = false}/>
     {:else}
