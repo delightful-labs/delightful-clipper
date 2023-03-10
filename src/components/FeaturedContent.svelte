@@ -12,5 +12,7 @@
     text-align: center;
     display: grid;
     gap: var(--spacing__xs);
+    width: min(40rem, var(--width__app));
+    margin: 0 auto;
   }
 </style>
