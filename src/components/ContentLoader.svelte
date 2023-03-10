@@ -1,5 +1,6 @@
 <script>
   import { mainService } from "$lib/machines/main"
+  import { LoadingSpinner } from 'delightful-ui'
 
   export let filePath
 
@@ -17,7 +18,7 @@
 </script>
 
 {#await content}
-  <p>Loading</p>
+  <LoadingSpinner />
 {:then value} 
   {@html value}
 {/await}
