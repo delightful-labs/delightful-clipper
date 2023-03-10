@@ -114,8 +114,6 @@
 
   const { state, send } = useMachine(accountLinkingProducerMachine)
 
-  $: console.log($state)
-
 </script>
 
 <!--@TODO: Show initial state with URL and QR code-->

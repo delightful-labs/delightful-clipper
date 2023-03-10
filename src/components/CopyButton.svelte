@@ -1,5 +1,5 @@
 <script>
-  import { createMachine, assign, spawn } from 'xstate'
+  import { createMachine } from 'xstate'
   import { useMachine } from '@xstate/svelte'
 
   export let content = ''
@@ -30,7 +30,7 @@
                 target: 'copied'
               },
               onError: {
-                
+
               }
             }
           },
@@ -49,7 +49,6 @@
 
   const { state, send } = useMachine(copyMachine)
 
-  $: console.log($state.value)
 </script>
 
 {#if $state.matches('supported')}

@@ -1,7 +1,11 @@
 <script>
 	import SettingsPanel from '$components/SettingsPanel.svelte'
+	import DisplayPanel from '$components/DisplayPanel.svelte'
 	import FilterPanel from '$components/FilterPanel.svelte'
 	import { afterNavigate } from "$app/navigation"
+	import { page } from '$app/stores'
+
+	$: console.log($page)
 
 	let y = 0
 	let lastY = 0
@@ -25,7 +29,12 @@
 	<ul>
 		<li><a href="/">Home</a></li>
 		<li><a href="/add">Add</a></li>
-		<li><FilterPanel /></li>
+		{#if $page.route.id === '/'}
+			<li><FilterPanel /></li>
+		{/if}
+		{#if $page.route.id === '/web-pages/[url]'}
+			<li><DisplayPanel /></li>
+		{/if}
 		<li><SettingsPanel /></li>
 	</ul>
 </header>
