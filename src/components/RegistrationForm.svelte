@@ -130,8 +130,6 @@
 
 </script>
 
-<p>{$state.value}</p>
-
 <form 
   autocomplete="off"
   on:submit|preventDefault={e => send(e)}
