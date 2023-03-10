@@ -41,7 +41,7 @@
     
 		const articles = await jsonata(`$[${arr.join(' and ')}][]`).evaluate($mainService.context.db)
     
-    $filteredArticles = articles
+    $filteredArticles = articles || []
   }
 
   const handleChange = () => {

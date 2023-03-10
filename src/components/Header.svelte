@@ -66,10 +66,4 @@
 	ul :global(summary:hover) {
 		text-decoration-style: dashed;
 	}
-
-	@media all and (display-mode: fullscreen) {
-		ul {
-			padding-left: var(--sat);
-		}
-	}
 </style>

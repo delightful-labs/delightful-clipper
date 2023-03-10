@@ -7,15 +7,6 @@
   import Header from '$components/Header.svelte'
   import NotificationList from '$components/NotificationList.svelte'
   import PageWrapper from '$components/PageWrapper.svelte'
-
-  const safeAreas = {
-    top: getComputedStyle(document.documentElement).getPropertyValue("--sat"),
-    right: getComputedStyle(document.documentElement).getPropertyValue("--sar"),
-    bottom: getComputedStyle(document.documentElement).getPropertyValue("--sab"),
-    left: getComputedStyle(document.documentElement).getPropertyValue("--sal")
-  }
-
-  console.log(safeAreas)
   
   const userState = useSelector(mainService, (state) => state.value)
 

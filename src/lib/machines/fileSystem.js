@@ -63,7 +63,14 @@ const fileSystemMachine = createMachine({
           actions: assign({fs: (_, evt) => evt.data.session.fs})
         },
         onError: {
-          actions: (_, evt) => console.log(evt),
+          actions: sendParent((_, evt) => ({ 
+              type: 'NOTIFY', 
+              data: { 
+                type: 'error', 
+                timeout: 30000, 
+                message: evt.data 
+            }})
+          ),
           target: 'error'
         }
       }
@@ -214,12 +221,10 @@ const fileSystemMachine = createMachine({
                   {
                     cond: (_, evt) => evt.data,
                     target: 'parsingArticle',
-                    actions: (_, evt) => console.log(evt.data)
                   },
                   {
                     cond: (_, evt) => !evt.data,
                     target: 'idle',
-                    actions: (_, evt) => console.log('no unparsed articles')
                   }
                 ],
                 onError: {}

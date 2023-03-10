@@ -31,7 +31,7 @@ const mainMachine = createMachine({
   initial: 'unitialized',
   on: {
     'NOTIFY': {
-      actions: send({ type: 'NOTIFY' }, { to: 'notifier' })
+      actions: send((_, evt) => evt, { to: 'notifier' })
     }
   },
   states: {
