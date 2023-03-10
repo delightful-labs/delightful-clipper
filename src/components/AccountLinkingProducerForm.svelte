@@ -5,10 +5,37 @@
   import { createListenerMachine } from '$lib/auth/accountLinking'
   import { page } from '$app/stores'
   import Username from '$lib/schemas/Username'
+  import QRCode from 'qrcode-svg'
 
   export let username = Username.parse({})
   
   const connectionLink = `${$page.url.origin}/request-access?hashedUsername=${username.hashed}&username=${encodeURIComponent(username.full)}`
+
+  let color = getComputedStyle(document.body).getPropertyValue('--color__foreground')
+  let bg = getComputedStyle(document.body).getPropertyValue('--color__background')
+
+  let qrcode = new QRCode({
+    content: connectionLink,
+    color: color,
+    background: bg,
+    padding: 0,
+    container: "svg-viewbox",
+    join: true
+  }).svg()
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    color = getComputedStyle(document.body).getPropertyValue('--color__foreground')
+    bg = getComputedStyle(document.body).getPropertyValue('--color__background')
+
+    qrcode = new QRCode({
+      content: connectionLink,
+      color: color,
+      background: bg,
+      padding: 0,
+      container: "svg-viewbox",
+      join: true
+    }).svg()
+  })
 
   const accountLinkingProducerMachine = createMachine({
     initial: 'idle',
@@ -89,11 +116,9 @@
 
 </script>
 
-<p>{JSON.stringify($state.value)}</p>
-
 <!--@TODO: Show initial state with URL and QR code-->
 {#if $state.matches('idle') }
-  <p>{connectionLink}</p>
+  {@html qrcode}
 {:else if $state.matches('challenging')}
   <form 
     autocomplete="off"
