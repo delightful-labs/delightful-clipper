@@ -10,6 +10,10 @@
 
 </script>
 
-{#if $mainService.value === 'authenticated'}
-  <ClippingList articles={$filteredArticles || articles} title={$filteredArticles ? "Filter Results" : "All Articles"} />
+{#if $mainService.matches('authenticated') }
+  {#if $mainService.matches('authenticated.fsReady')}
+    <ClippingList articles={$filteredArticles || articles} title={$filteredArticles ? "Filter Results" : "All Articles"} />
+  {:else}
+    <p>Loading</p>
+  {/if}
 {/if}

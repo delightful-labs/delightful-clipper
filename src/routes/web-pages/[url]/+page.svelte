@@ -1,34 +1,10 @@
 <script>
-  //import { mainService } from '$lib/machines/main'
-  //import { uint8ArrayToString } from '$lib/files'
   import { userSettings } from '$lib/stores'
   import Meta from '$components/Meta.svelte'
   import ContentLoader from '$components/ContentLoader.svelte'
 
   /** @type {import('./$types').PageData} */ 
   export let data
-
-  // /**
-	//  * @type {string}
-	//  */
-  // let html
-
-  // /**
-  //  * @param {import('webnative/fs/index').default} fs
-  //  */
-  // const loadHtml = async (fs) => {
-  //   const rawContent = await fs.get(data.filePath)
-
-  //   if (rawContent) {
-  //     html = uint8ArrayToString(rawContent.content)
-  //   } else {
-  //     html = 'Content not processed yet'
-  //   }
-  // }
-
-  // $: if ($mainService.context.fs) {
-  //   loadHtml($mainService.context.fs)
-  // }
 
 </script>
 

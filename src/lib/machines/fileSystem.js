@@ -98,7 +98,10 @@ const fileSystemMachine = createMachine({
       invoke: {
         src: (ctx) => ctx.fs.get(ctx.dbPath),
         onDone: {
-          actions: assign({ db: (_, evt) => JSON.parse(uint8ArrayToString(evt.data.content)) }),
+          actions: [
+            assign({ db: (_, evt) => JSON.parse(uint8ArrayToString(evt.data.content)) }),
+            sendParent({ type: 'FILESYSTEM_INITIATED' })
+          ],
           target: 'ready'
         },
         onError: {

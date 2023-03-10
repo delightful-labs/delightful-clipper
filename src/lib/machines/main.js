@@ -101,27 +101,39 @@ const mainMachine = createMachine({
         id: 'fs',
         src: fromWebWorker(() => new FileWorker()),
       },
-      on: {
-        UPDATE_DATABASE: {
-          actions: assign({ db: (_, evt) => evt.data})
+      initial: 'settingUpFs',
+      states: {
+        settingUpFs: {
+          on: {
+            FILESYSTEM_INITIATED: {
+              target: 'fsReady'
+            }
+          }
         },
-        ARTICLE_ALREADY_EXISTS: {
-          actions: send({ type: 'NOTIFY', data: { 
-            type: 'warning', 
-            timeout: 5000, 
-            message: 'Article Already Exists' 
-          }}, { to: 'notifier' })
-        },
-        ARTICLE_SAVED: {
-          actions: send({ type: 'NOTIFY', data: { 
-            type: 'success', 
-            timeout: 5000, 
-            message: 'Article Saved!' 
-          }}, { to: 'notifier' })
-        },
-        '*' : {
-          cond: (_, evt) => ['SAVE_ARTICLE', 'ERASE_DATABASE', 'LOAD_CONTENT'].includes(evt.type),
-          actions: send((_, evt) => evt, { to: 'fs' })
+        fsReady: {
+          on: {
+            UPDATE_DATABASE: {
+              actions: assign({ db: (_, evt) => evt.data})
+            },
+            ARTICLE_ALREADY_EXISTS: {
+              actions: send({ type: 'NOTIFY', data: { 
+                type: 'warning', 
+                timeout: 5000, 
+                message: 'Article Already Exists' 
+              }}, { to: 'notifier' })
+            },
+            ARTICLE_SAVED: {
+              actions: send({ type: 'NOTIFY', data: { 
+                type: 'success', 
+                timeout: 5000, 
+                message: 'Article Saved!' 
+              }}, { to: 'notifier' })
+            },
+            '*' : {
+              cond: (_, evt) => ['SAVE_ARTICLE', 'ERASE_DATABASE', 'LOAD_CONTENT'].includes(evt.type),
+              actions: send((_, evt) => evt, { to: 'fs' })
+            }
+          }
         }
       }
     },
