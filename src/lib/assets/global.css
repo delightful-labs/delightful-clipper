@@ -127,6 +127,7 @@ code {
 .app-wrapper {
   display: grid;
   gap: var(--spacing__sm);
+  padding-bottom: var(--spacing__md);
 }
 
 /* Input overrides */

@@ -7,6 +7,7 @@
   import Username from '$lib/schemas/Username'
   import QRCode from 'qrcode-svg'
   import FeaturedContent from '$components/FeaturedContent.svelte'
+  import CopyButton from '$components/CopyButton.svelte'
 
   export let username = Username.parse({})
   
@@ -123,7 +124,9 @@
   {#if $state.matches('idle') }
     <p>Scan the code on your other device to link your account</p>
     {@html qrcode}
-    <button on:click={()=> navigator.clipboard.writeText(connectionLink)}>Or Copy to Clipboard</button>
+    <!--@todo: shop copy success status.
+    Might make a copy button machine.-->
+    <CopyButton content={connectionLink}/>
   {:else if $state.matches('challenging')}
     <form 
       autocomplete="off"
