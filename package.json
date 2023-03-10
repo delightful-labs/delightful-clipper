@@ -18,7 +18,7 @@
 		"@sveltejs/kit": "next",
 		"@xstate/immer": "^0.3.1",
 		"@xstate/svelte": "^2.0.0",
-		"delightful-ui": "^0.0.6",
+		"delightful-ui": "^0.0.7",
 		"events": "^3.3.0",
 		"immer": "^9.0.16",
 		"jsonata": "^2.0.1",
