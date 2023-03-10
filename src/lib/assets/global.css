@@ -15,6 +15,7 @@
   --font-family__secondary: monospace;
   --font-size__xl: clamp(2.4rem, 2vw + 2rem, 7rem);
   --font-size__lg: clamp(1.8rem, 2vw + 1rem, 5rem);
+  --font-size__md: clamp(1.5rem, 1vw + 1rem, 2rem);
   --font-size__sm: clamp(0.7rem, 1vw + 0.5rem, 1rem);
   accent-color: var(--color__actionable);
   overflow-x: hidden;

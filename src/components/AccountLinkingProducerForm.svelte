@@ -6,6 +6,7 @@
   import { page } from '$app/stores'
   import Username from '$lib/schemas/Username'
   import QRCode from 'qrcode-svg'
+  import FeaturedContent from '$components/FeaturedContent.svelte'
 
   export let username = Username.parse({})
   
@@ -117,34 +118,38 @@
 </script>
 
 <!--@TODO: Show initial state with URL and QR code-->
-{#if $state.matches('idle') }
-  {@html qrcode}
-{:else if $state.matches('challenging')}
-  <form 
-    autocomplete="off"
-    on:submit|preventDefault={e => send(e)}
-  >
-    <label for="pin">Enter the connection code from that device to approve this
-      connection.</label>
-    <input 
-      type="text" 
-      inputmode="numeric" 
-      pattern="\d*"
-      maxlength="6"
-      minlength="6"
-      required
-      id="pin" 
-      name="pin"
-      on:input={e => send(e)}
-    />
-    <p aria-live="polite">{$state.context.error}</p>
-    <input 
-      type="submit" 
-      value="Submit" 
-    />
-  </form>
 
-  <button on:click={()=> send({ type: 'CANCEL' })} >Cancel</button>
-{:else if $state.matches('success')}
-  <p>Success!</p>
-{/if}
+<FeaturedContent>
+  {#if $state.matches('idle') }
+    <p>Scan the code on your other device to link your account</p>
+    {@html qrcode}
+  {:else if $state.matches('challenging')}
+    <form 
+      autocomplete="off"
+      on:submit|preventDefault={e => send(e)}
+    >
+      <label for="pin">Enter the connection code from that device to approve this
+        connection.</label>
+      <input 
+        type="text" 
+        inputmode="numeric" 
+        pattern="\d*"
+        maxlength="6"
+        minlength="6"
+        required
+        id="pin" 
+        name="pin"
+        on:input={e => send(e)}
+      />
+      <p aria-live="polite">{$state.context.error}</p>
+      <input 
+        type="submit" 
+        value="Submit" 
+      />
+    </form>
+
+    <button on:click={()=> send({ type: 'CANCEL' })} >Cancel</button>
+  {:else if $state.matches('success')}
+    <p>Success!</p>
+  {/if}
+</FeaturedContent>
