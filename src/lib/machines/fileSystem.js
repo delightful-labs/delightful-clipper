@@ -28,6 +28,14 @@ const createArticleEntry =  (url, tags) => Article.parse({
   tags: tags||[]
 })
 
+const createErrorNotification = (evt) => ({ 
+  type: 'NOTIFY', 
+  data: { 
+    type: 'error', 
+    timeout: 30000, 
+    message: evt.data 
+}})
+
 const fileSystemMachine = createMachine({
   context: {
     /** @type {Array<Article>} */
@@ -63,14 +71,7 @@ const fileSystemMachine = createMachine({
           actions: assign({fs: (_, evt) => evt.data.session.fs})
         },
         onError: {
-          actions: sendParent((_, evt) => ({ 
-              type: 'NOTIFY', 
-              data: { 
-                type: 'error', 
-                timeout: 30000, 
-                message: evt.data 
-            }})
-          ),
+          actions: sendParent((_, evt) => createErrorNotification(evt)),
           target: 'error'
         }
       }
@@ -89,7 +90,7 @@ const fileSystemMachine = createMachine({
           }
         ],
         onError: {
-          actions: (c,e) => console.log(e) //@TODO: handle error
+          actions: sendParent((_, evt) => createErrorNotification(evt)),
         }
       }
     },
@@ -101,8 +102,8 @@ const fileSystemMachine = createMachine({
           target: 'ready'
         },
         onError: {
-          actions: (_, evt) => console.log(evt)
-        } //@TODO: handle error
+          actions: sendParent((_, evt) => createErrorNotification(evt))
+        }
       }
     },
     ready: {
@@ -192,7 +193,9 @@ const fileSystemMachine = createMachine({
                     sendParent((ctx) => ({type: 'UPDATE_DATABASE', data: ctx.db})),
                   ]
                 },
-                onError: {} //@TODO: handle error
+                onError: {
+                  actions: sendParent((_, evt) => createErrorNotification(evt))
+                }
               }
             },
             //@TODO: What to do with this state?
@@ -227,13 +230,17 @@ const fileSystemMachine = createMachine({
                     target: 'idle',
                   }
                 ],
-                onError: {}
+                onError: {
+                  actions: sendParent((_, evt) => createErrorNotification(evt))
+                }
               }
             },
             parsingArticle: {
               invoke: {
                 src: (ctx, evt) => articleParserMachine(evt.data, ctx.fs),
-                onError: {} // @TODO: handle error
+                onError: {
+                  actions: sendParent((_, evt) => createErrorNotification(evt))
+                }
               },
               on: {
                 'PARSING_FINISHED': {
@@ -310,7 +317,9 @@ const fileSystemMachine = createMachine({
                     sendParent((ctx) => ({type: 'UPDATE_DATABASE', data: ctx.db})),
                   ]
                 },
-                onError: {} //@TODO: handle error
+                onError: {
+                  actions: sendParent((_, evt) => createErrorNotification(evt))
+                }
               }
             },
             articleAlreadyExists: {
