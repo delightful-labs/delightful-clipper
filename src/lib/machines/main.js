@@ -130,7 +130,7 @@ const mainMachine = createMachine({
               }}, { to: 'notifier' })
             },
             '*' : {
-              cond: (_, evt) => ['SAVE_ARTICLE', 'ERASE_DATABASE', 'LOAD_CONTENT'].includes(evt.type),
+              cond: (_, evt) => ['DELETE_ARTICLE', 'SAVE_ARTICLE', 'ERASE_DATABASE', 'LOAD_CONTENT'].includes(evt.type),
               actions: send((_, evt) => evt, { to: 'fs' })
             }
           }

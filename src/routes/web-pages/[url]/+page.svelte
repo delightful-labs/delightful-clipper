@@ -23,7 +23,7 @@
 </div>
 
 <style>
-  div {
+  .flow {
     margin: 0 auto;
   }
 </style>

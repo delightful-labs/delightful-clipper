@@ -1,5 +1,6 @@
 <script>
   import Meta from '$components/Meta.svelte'
+  import { mainService } from '$lib/machines/main'
   
   import { pick } from '$lib/utils'
  
@@ -10,7 +11,6 @@
 
   //@todo: I might move this into Meta, so it doesn't have to be done each time.
   //Meta could take a list of items to include.
-
   const filterEmpty = (obj)=>  Object.fromEntries(Object.entries(obj).filter(([_, v]) => v.length))
 
   let metadata = filterEmpty(pick(article, ['author', 'tags']))
@@ -23,6 +23,7 @@
   {:else}
     <h2>{article.url}</h2>
   {/if}
+  <button on:click={()=> mainService.send({ type: 'DELETE_ARTICLE', data: { url: article.url } })}>Delete</button>
   <Meta {metadata} />
 </li>
 

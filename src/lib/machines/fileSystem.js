@@ -36,6 +36,12 @@ const createErrorNotification = (evt) => ({
     message: evt.data 
 }})
 
+/**
+ * @param {string} url 
+ * @param {Array<Article>} db 
+ */
+const getArticle = async (url, db) => await jsonata(`$$#$i[url = "${url}"].$merge([$, {'_index':$i}])`).evaluate(db)
+
 const fileSystemMachine = createMachine({
   context: {
     /** @type {Array<Article>} */
@@ -120,8 +126,10 @@ const fileSystemMachine = createMachine({
             idle: {
               entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
               on: {
+                DELETE_ARTICLE: {
+                  target: 'deletingArticle'
+                },
                 SAVE_ARTICLE: {
-                  //@TODO: need to send back logical events to show visual updates to user. And clear the form on success.
                   //@TODO: trim URL of whitespace
                   //@TODO: also need to remove UTM and other tracking stuff.
                   //BUT --- there may be sometimes you want URL parameters as part of the URL, such as saving something from a web app.
@@ -162,7 +170,7 @@ const fileSystemMachine = createMachine({
                 onDone: [
                   { 
                     cond: (_, evt) => evt.data.existingArticle && evt.data.article.tags.length,
-                    target: 'updatingDatabase',
+                    target: 'idle',
                     actions: [
                       sendParent(() => ({type: 'ARTICLE_ALREADY_EXISTS'})),
                       immerAssign((ctx, evt) => {
@@ -171,8 +179,9 @@ const fileSystemMachine = createMachine({
                     ]           
                   },
                   { 
+                    actions: sendParent(() => ({type: 'ARTICLE_ALREADY_EXISTS'})),
                     cond: (_, evt) => evt.data.existingArticle,
-                    target: 'articleAlreadyExists',
+                    target: 'idle',
                   },
                   { 
                     target: 'updatingDatabase',
@@ -184,6 +193,27 @@ const fileSystemMachine = createMachine({
                     ]
                   }
                 ]
+              }
+            },
+            deletingArticle: {
+              invoke: {
+                src: (ctx, evt) => getArticle(evt.data.url, ctx.db), //jsonata(`$$#$i[url = "${evt.data.url}"].$merge([$, {'_index':$i}])`).evaluate(ctx.db),
+                onDone: { 
+                  target: 'updatingDatabase',
+                  actions: [
+                    immerAssign((ctx, evt) => {
+                      ctx.db.splice(evt.data._index, 1)
+                    }),
+                    sendParent(() => ({ 
+                      type: 'NOTIFY', 
+                      data: { 
+                        type: 'success', 
+                        timeout: 5000, 
+                        message: 'Article Deleted' 
+                      }
+                    }))
+                  ]
+                }
               }
             },
             updatingDatabase: {
@@ -199,13 +229,6 @@ const fileSystemMachine = createMachine({
                 onError: {
                   actions: sendParent((_, evt) => createErrorNotification(evt))
                 }
-              }
-            },
-            //@TODO: What to do with this state?
-            articleAlreadyExists: {
-              entry: sendParent('ARTICLE_ALREADY_EXISTS'),
-              after: {
-                500: { target: 'idle' }
               }
             }
           }
