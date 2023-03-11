@@ -5,6 +5,14 @@
   import { mainService } from '$lib/machines/main'
   import jsonata from 'jsonata'
 
+	//@todo: use a zod schema that would fill in defaults
+	export let messages = {
+		idle: 'Save Article',
+		saving: 'Saving',
+		createdNew: 'Saved!',
+		updatedExisting: 'Already Exists'
+	}
+
 	//@todo: put this in context
 	/**
 	 * @type {string[]}
@@ -14,12 +22,17 @@
   /**
 	 * @type {string}
 	 */
-  let url = ''
+  export let url = ''
 
 	/**
 	 * @type {string[]}
 	 */
-	let tags = []
+	export let tags = []
+
+	/**
+	 * @type {'SAVE_ARTICLE'|'UPDATE_ARTICLE'}
+	 */
+	export let action = 'SAVE_ARTICLE'
 
   const handleSubmit = () => {
 		send({type: 'SAVE_ARTICLE'})
@@ -38,11 +51,11 @@
 				on: {
 					SAVE_ARTICLE: {
 						target: 'saving',
-						actions: () => mainService.send({type: 'SAVE_ARTICLE', data: { url: url, tags: tags }})
+						actions: () => mainService.send({type: action, data: { url: url, tags: tags }})
 					}
 				},
 				meta: {
-					message: 'Save Article'
+					message: messages.idle
 				}
 			},
 			saving: {
@@ -51,13 +64,19 @@
 						target: 'saved',
 						actions: ()=> clearData()
 					},
+					//@todo: separate the actions so that instead of
+					//ARTICLE_ALREADY_EXISTS it is something like NO_ACTION_TAKEN
 					ARTICLE_ALREADY_EXISTS: {
+						target: 'alreadyExists',
+						actions: ()=> clearData()
+					},
+					ARTICLE_UPDATED: {
 						target: 'alreadyExists',
 						actions: ()=> clearData()
 					}
 				},
 				meta: {
-					message: 'Saving'
+					message: messages.saving
 				}
 			},
 			saved: {
@@ -67,7 +86,7 @@
 					}
 				},
 				meta: {
-					message: 'Saved!'
+					message: messages.createdNew
 				}
 			},
 			alreadyExists: {
@@ -77,7 +96,7 @@
 					}
 				},
 				meta: {
-					message: 'Already Exists'
+					message: messages.updatedExisting
 				}
 			}
 		}
@@ -101,6 +120,10 @@
 		send({ type: 'ARTICLE_SAVED'})
   }
 
+	$: if ($mainService.event.type === 'ARTICLE_UPDATED') {
+		send({ type: 'ARTICLE_UPDATED'})
+  }
+
 	$: if ($mainService.event.type === 'ARTICLE_ALREADY_EXISTS') {
 		send({ type: 'ARTICLE_ALREADY_EXISTS'})
   }
@@ -108,7 +131,7 @@
 </script>
 
 <form on:submit|preventDefault={() => handleSubmit()}>
-		<div>
+		<div hidden={action !== 'SAVE_ARTICLE'}>
 			<label for="url">URL</label>
 			<input name="url" id="url" type="url" bind:value={url} required />
 		</div>
@@ -117,5 +140,7 @@
 			<InputTags {tagList} {tags}/>
 		</div>
 
+		<!-- @todo: if action is UPDATE_ARTICLE, 
+			disable if content has not actually been changed from initiial state -->
 		<input type="submit" value={Object.values($state.meta)[0]?.message} disabled={!$state.matches('idle')} />
 </form>

@@ -136,6 +136,9 @@ const fileSystemMachine = createMachine({
                   //Will probably need to make it an option to save search parameters or not.
                   target: 'checkingIfAlreadyExists'
                 },
+                UPDATE_ARTICLE: {
+                  target: 'updatingArticle'
+                },
                 LOAD_CONTENT: {
                   target: 'loadingContent'
                 },
@@ -195,9 +198,30 @@ const fileSystemMachine = createMachine({
                 ]
               }
             },
+            // @todo: for now this only updates tags.
+            // Change so that any content is replaced.
+            // To do that, ParseForm needs to take in the whole article.
+            updatingArticle: {
+              invoke: {
+                src: async (ctx, evt) => {
+                  const existingArticle = await getArticle(evt.data.url, ctx.db)
+
+                  return { existingArticle: existingArticle, article: evt.data}
+                },
+                onDone: { 
+                  target: 'updatingDatabase',
+                  actions: [
+                    immerAssign((ctx, evt) => {
+                      ctx.db[evt.data.existingArticle._index].tags = evt.data.article.tags
+                    }),
+                    sendParent(() => ({ type: 'ARTICLE_UPDATED' }))
+                  ]
+                }
+              }
+            },
             deletingArticle: {
               invoke: {
-                src: (ctx, evt) => getArticle(evt.data.url, ctx.db), //jsonata(`$$#$i[url = "${evt.data.url}"].$merge([$, {'_index':$i}])`).evaluate(ctx.db),
+                src: (ctx, evt) => getArticle(evt.data.url, ctx.db),
                 onDone: { 
                   target: 'updatingDatabase',
                   actions: [

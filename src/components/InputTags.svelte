@@ -41,4 +41,9 @@
     margin: 0 0 0 var(--spacing__xs) !important;
     font-family: var(--font-family__secondary) !important;
   }
+
+  :global(.svelte-tags-input-matchs) {
+    background-color: var(--color__background) !important;
+    margin: 0;
+  }
 </style>

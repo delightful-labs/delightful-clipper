@@ -1,6 +1,6 @@
 <script>
   import Meta from '$components/Meta.svelte'
-  import { mainService } from '$lib/machines/main'
+  import ArticleOptionsPanel from '$components/ArticleOptionsPanel.svelte'
   
   import { pick } from '$lib/utils'
  
@@ -23,7 +23,9 @@
   {:else}
     <h2>{article.url}</h2>
   {/if}
-  <button on:click={()=> mainService.send({ type: 'DELETE_ARTICLE', data: { url: article.url } })}>Delete</button>
+
+  <ArticleOptionsPanel url={article.url} tags={article.tags} />
+
   <Meta {metadata} />
 </li>
 
