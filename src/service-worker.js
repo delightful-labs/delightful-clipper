@@ -29,43 +29,34 @@ self.addEventListener('activate', (event) => {
  
   event.waitUntil(deleteOldCaches());
 });
- 
-self.addEventListener('fetch', function (event) {
-  console.log(event)
-  event.respondWith(
-    caches.match(event.request).then(function (response) {
-      return response || fetch(event.request);
-    }),
-  );
-});
 
-// self.addEventListener('fetch', (event) => {
-//   // ignore POST requests etc
-//   if (event.request.method !== 'GET') return;
+self.addEventListener('fetch', (event) => {
+  // ignore POST requests etc
+  if (event.request.method !== 'GET') return;
  
-//   async function respond() {
-//     const url = new URL(event.request.url);
-//     const cache = await caches.open(CACHE);
+  async function respond() {
+    const url = new URL(event.request.url);
+    const cache = await caches.open(CACHE);
  
-//     // `build`/`files` can always be served from the cache
-//     if (ASSETS.includes(url.pathname)) {
-//       return cache.match(event.request);
-//     }
+    // `build`/`files` can always be served from the cache
+    if (ASSETS.includes(url.pathname)) {
+      return cache.match(event.request);
+    }
  
-//     // for everything else, try the network first, but
-//     // fall back to the cache if we're offline
-//     try {
-//       const response = await fetch(event.request);
+    // for everything else, try the network first, but
+    // fall back to the cache if we're offline
+    try {
+      const response = await fetch(event.request);
  
-//       if (response.status === 200) {
-//         cache.put(event.request, response.clone());
-//       }
+      if (response.status === 200) {
+        cache.put(event.request, response.clone());
+      }
  
-//       return response;
-//     } catch {
-//       return cache.match(event.request);
-//     }
-//   }
+      return response;
+    } catch {
+      return cache.match(event.request);
+    }
+  }
  
-//   event.respondWith(respond());
-// });
+  event.respondWith(respond());
+});
