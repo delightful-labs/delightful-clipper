@@ -1,7 +1,6 @@
 <script>
 	import { createMachine } from 'xstate'
 	import { useMachine } from '@xstate/svelte'
-	import InputTags from '$components/InputTags.svelte'
   import { mainService } from '$lib/machines/main'
   import jsonata from 'jsonata'
 	import TagInput from './TagInput.svelte'
