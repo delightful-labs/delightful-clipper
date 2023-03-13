@@ -5,8 +5,6 @@
 	import { afterNavigate } from "$app/navigation"
 	import { page } from '$app/stores'
 
-	$: console.log($page)
-
 	let y = 0
 	let lastY = 0
 	let hideHeader = false

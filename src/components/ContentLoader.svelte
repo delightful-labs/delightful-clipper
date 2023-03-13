@@ -20,5 +20,7 @@
 {#await content}
   <LoadingSpinner />
 {:then value} 
+  <slot name="before-content" />
   {@html value}
+  <slot name="after-content" />
 {/await}

@@ -113,7 +113,6 @@
   }
 
   $: if ($mainService.context) {
-		console.log('finding tags')
     findTags($mainService.context.db)
   }
 
@@ -128,8 +127,6 @@
 	$: if ($mainService.event.type === 'ARTICLE_ALREADY_EXISTS') {
 		send({ type: 'ARTICLE_ALREADY_EXISTS'})
   }
-
-	$: console.log(tags)
 
 </script>
 

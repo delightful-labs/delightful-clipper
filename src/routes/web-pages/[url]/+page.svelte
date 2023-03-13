@@ -2,6 +2,7 @@
   import { userSettings } from '$lib/stores'
   import Meta from '$components/Meta.svelte'
   import ContentLoader from '$components/ContentLoader.svelte'
+  import Sentinel from '$components/Sentinel.svelte'
 
   /** @type {import('./$types').PageData} */ 
   export let data
@@ -19,7 +20,10 @@
   <header>
     <h1>{data.title}</h1>
   </header>
-  <ContentLoader filePath={data.filePath} />
+
+  <ContentLoader filePath={data.filePath}>
+    <Sentinel on:intersecting={()=> console.log('page ended')} slot="after-content" />
+  </ContentLoader>
 </div>
 
 <style>
