@@ -1,9 +1,10 @@
 <script>
-	import { createMachine, actions, assign } from 'xstate'
+	import { createMachine } from 'xstate'
 	import { useMachine } from '@xstate/svelte'
 	import InputTags from '$components/InputTags.svelte'
   import { mainService } from '$lib/machines/main'
   import jsonata from 'jsonata'
+	import TagInput from './TagInput.svelte'
 
 	//@todo: use a zod schema that would fill in defaults
 	export let messages = {
@@ -113,6 +114,7 @@
   }
 
   $: if ($mainService.context) {
+		console.log('finding tags')
     findTags($mainService.context.db)
   }
 
@@ -128,6 +130,8 @@
 		send({ type: 'ARTICLE_ALREADY_EXISTS'})
   }
 
+	$: console.log(tags)
+
 </script>
 
 <form on:submit|preventDefault={() => handleSubmit()}>
@@ -137,10 +141,14 @@
 		</div>
 
 		<div>
-			<InputTags {tagList} {tags}/>
+			<TagInput {tagList} bind:tags={tags}/>
 		</div>
 
 		<!-- @todo: if action is UPDATE_ARTICLE, 
 			disable if content has not actually been changed from initiial state -->
 		<input type="submit" value={Object.values($state.meta)[0]?.message} disabled={!$state.matches('idle')} />
 </form>
+
+
+
+
