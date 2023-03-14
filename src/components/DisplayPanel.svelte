@@ -16,8 +16,12 @@
 	// }
 
 	const fonts = {
-		'serif': {},
-		'sans-serif': {},
+		'serif': {
+			axes: []
+		},
+		'sans-serif': {
+			axes: []
+		},
 		'Jost': {
 			file: '../Jost-VariableFont_wght.ttf',
 			name: 'Jost',
@@ -73,7 +77,7 @@
 				type: 'number',
 				minimum: 100,
 				maximum: 900,
-				multipleOf: font.axes && font.axes?.includes('wght') ? 1 : 100,
+				multipleOf: font.axes.includes('wght') ? 1 : 100,
 				component: 'range'
 			},
 			contentWidth: {
