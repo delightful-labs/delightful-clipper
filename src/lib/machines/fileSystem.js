@@ -12,7 +12,7 @@ import { interpretInWebWorker } from '$lib/machine-helpers/from-web-worker'
 /**
  * @typedef { import('webnative/fs/index').default } FileSystem
  * @typedef { import('$lib/schemas/Article').Article } Article
- * @typedef { import('webnative/path').FilePath} FilePath
+ * @typedef { import('webnative/path/index').FilePath<*> } FilePath
  */
 
 /**

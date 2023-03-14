@@ -1,17 +1,26 @@
 <script>
   import MetaItem from '$components/MetaItem.svelte'
+  import { pick } from '$lib/utils'
 
-  /**
-   * @type {*}
-   */
-  export let metadata
+  /** @type {import('$lib/schemas/Article').Article} */
+  export let article
 
-  const entries = Object.entries(metadata)
+  /** @type {string[]} */
+  export let properties = []
+
+  /** @type {*} */
+  let metadata = []
+
+  /** @param {object} obj */
+  const filterEmpty = (obj)=>  Object.fromEntries(Object.entries(obj).filter(([_, v]) => v.length))
+
+  $: metadata = Object.entries(filterEmpty(pick(article, properties)))
+
 </script>
 
-{#if entries.length}
+{#if metadata.length}
   <div class="meta">
-    {#each entries as [title, content]}
+    {#each metadata as [title, content]}
       <MetaItem {title} {content} />
     {/each}
   </div>

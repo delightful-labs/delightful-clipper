@@ -2,6 +2,9 @@
   import { mainService } from "$lib/machines/main"
   import { LoadingSpinner } from 'delightful-ui'
 
+  /**
+   * @type {import('webnative/path/index').FilePath<*>}
+   */
   export let filePath
 
   const content = new Promise(res => {
