@@ -73,7 +73,7 @@
 				type: 'number',
 				minimum: 100,
 				maximum: 900,
-				multipleOf: font.axes.includes('wght') ? 1 : 100,
+				multipleOf: font.axes && font.axes.includes('wght') ? 1 : 100,
 				component: 'range'
 			},
 			contentWidth: {
