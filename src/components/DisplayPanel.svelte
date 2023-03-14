@@ -7,14 +7,11 @@
 
 	const myFont = new Font(`Jost`)
 
-	//console.log(myFont)
-
 	myFont.src = "../Jost-Italic-VariableFont_wght.ttf"
 
 	let fontSupportsWght = false
 
 	myFont.onload = evt => {
-		//console.log(evt.de)
 		var fontAxes = evt.detail.font.opentype.tables.fvar.getSupportedAxes()
 		
 		fontSupportsWght = fontAxes.includes('wght')

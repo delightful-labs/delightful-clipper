@@ -5,7 +5,11 @@ import preprocess from 'svelte-preprocess'
 const config = {
 	preprocess: preprocess(),
 	kit: {
-		adapter: adapter()
+		adapter: adapter(),
+		version: {
+      name: Date.now().toString(), // default to timestamp
+      pollInterval: 60_000 // default to checking once a minute
+    }
 	}
 };
 

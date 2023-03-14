@@ -8,6 +8,13 @@
   import NotificationList from '$components/NotificationList.svelte'
   import PageWrapper from '$components/PageWrapper.svelte'
   import FeaturedContent from '$components/FeaturedContent.svelte'
+  import { updated } from '$app/stores';
+
+  updated.subscribe(async (value) => {
+    if (value) {
+      window.location.reload()
+    }
+  })
   
   const userState = useSelector(mainService, (state) => state.value)
 
