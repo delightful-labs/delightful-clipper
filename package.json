@@ -22,6 +22,7 @@
 		"events": "^3.3.0",
 		"immer": "^9.0.16",
 		"jsonata": "^2.0.1",
+		"lib-font": "^2.4.0",
 		"linkedom": "^0.14.21",
 		"open-graph-scraper": "^5.0.1",
 		"prettier": "^2.6.2",

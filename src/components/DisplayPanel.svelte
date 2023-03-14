@@ -3,6 +3,49 @@
 	import Form from 'svelte-json-schema-to-form/package/Form.svelte'
 	import { Details } from 'delightful-ui'
 	import { beforeNavigate } from '$app/navigation'
+	import { Font } from 'lib-font'
+
+	const myFont = new Font(`Jost`)
+
+	//console.log(myFont)
+
+	myFont.src = "../Jost-Italic-VariableFont_wght.ttf"
+
+	let fontSupportsWght = false
+
+	myFont.onload = evt => {
+		//console.log(evt.de)
+		var fontAxes = evt.detail.font.opentype.tables.fvar.getSupportedAxes()
+		
+		fontSupportsWght = fontAxes.includes('wght')
+	}
+
+	const fonts = {
+		'serif': {},
+		'sans-serif': {},
+		'Jost': {
+			file: '../Jost-Italic-VariableFont_wght.ttf',
+			name: 'Jost',
+			type: 'truetype'
+		},
+		'Beseley': {
+			file: '../Besley-Italic-VariableFont_wght.ttf',
+			name: 'Besley',
+			type: 'truetype'
+		}
+	}
+
+	let font = fonts[$userSettings.fontFamily]
+
+	$: font = fonts[$userSettings.fontFamily]
+
+	$: if (font.file) {
+		const seclectFont = new FontFace(font.name, `url('${font.file}')`)
+
+		seclectFont.load().then(function(loaded_face) {
+			document.fonts.add(loaded_face)
+		}).catch(e => console.error(e))
+	}
 
 	const schema = {
 		title: 'user settings',
@@ -18,7 +61,7 @@
 			fontFamily: {
 				title: 'Font Family',
 				type: 'string',
-				enum: ['serif', 'sans-serif', 'Jost'],
+				enum: Object.keys(fonts),
 				component: 'select'
 			},
 			fontSize: {
