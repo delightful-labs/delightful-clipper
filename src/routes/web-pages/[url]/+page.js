@@ -1,6 +1,8 @@
 import { mainService } from '$lib/machines/main'
 import jsonata from 'jsonata'
 
+export let prerender = false
+
 /** @type {import('./$types').PageLoad} */
 export async function load({ params }) {
   const loadDatabase = new Promise(res => {

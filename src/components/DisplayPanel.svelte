@@ -5,30 +5,30 @@
 	import { beforeNavigate } from '$app/navigation'
 	import { Font } from 'lib-font'
 
-	const myFont = new Font(`Jost`)
+	// const myFont = new Font(`Jost`)
 
-	myFont.src = "../Jost-Italic-VariableFont_wght.ttf"
+	// myFont.src = "../Besley-VariableFont_wght.ttf"
 
-	let fontSupportsWght = false
-
-	myFont.onload = evt => {
-		var fontAxes = evt.detail.font.opentype.tables.fvar.getSupportedAxes()
+	// myFont.onload = evt => {
+	// 	var fontAxes = evt.detail.font
 		
-		fontSupportsWght = fontAxes.includes('wght')
-	}
+	// 	console.log(fontAxes)
+	// }
 
 	const fonts = {
 		'serif': {},
 		'sans-serif': {},
 		'Jost': {
-			file: '../Jost-Italic-VariableFont_wght.ttf',
+			file: '../Jost-VariableFont_wght.ttf',
 			name: 'Jost',
-			type: 'truetype'
+			type: 'truetype',
+			axes: [ 'wght' ]
 		},
-		'Beseley': {
-			file: '../Besley-Italic-VariableFont_wght.ttf',
+		'Besley': {
+			file: '../Besley-VariableFont_wght.ttf',
 			name: 'Besley',
-			type: 'truetype'
+			type: 'truetype',
+			axes: [ 'wght' ]
 		}
 	}
 
@@ -37,7 +37,7 @@
 	$: font = fonts[$userSettings.fontFamily]
 
 	$: if (font.file) {
-		const seclectFont = new FontFace(font.name, `url('${font.file}')`)
+		const seclectFont = new FontFace(font.name, `url('${font.file}')`, { display: 'swap' })
 
 		seclectFont.load().then(function(loaded_face) {
 			document.fonts.add(loaded_face)
@@ -73,7 +73,7 @@
 				type: 'number',
 				minimum: 100,
 				maximum: 900,
-				multipleOf: 100,
+				multipleOf: font.axes.includes('wght') ? 1 : 100,
 				component: 'range'
 			},
 			contentWidth: {
@@ -99,5 +99,5 @@
 </script>
 
 <Details title={'Display'} bind:opened={opened} >
-		<Form {schema} data={$userSettings} {changeHandler} />
+	<Form {schema} data={$userSettings} {changeHandler} />
 </Details>

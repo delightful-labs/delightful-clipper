@@ -21,6 +21,7 @@
 	style:font-family={$userSettings.fontFamily}
 	style:font-weight={$userSettings.fontWeight}
 	style:line-height={$userSettings.lineHeight / 10}
+  style:font-variation-settings="'wght' {$userSettings.fontWeight}"
 >
   <ContentLoader filePath={data.filePath}>
     <Sentinel on:intersecting={()=> console.log('page ended')} slot="after-content" />
