@@ -26,8 +26,12 @@
   </ContentLoader>
 </div>
 
-<style>
+<style lang="scss">
   .flow {
     margin: 0 auto;
+
+    :global {
+			@import '../../../lib/assets/flow';
+		}
   }
 </style>
