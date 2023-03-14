@@ -40,15 +40,13 @@
 
 	$: font = fonts[$userSettings.fontFamily]
 
-	$: if (font.file) {
+	$: if (font?.file) {
 		const seclectFont = new FontFace(font.name, `url('${font.file}')`, { display: 'swap' })
 
 		seclectFont.load().then(function(loaded_face) {
 			document.fonts.add(loaded_face)
 		}).catch(e => console.error(e))
 	}
-
-	$: console.log(font.axes)
 
 	let schema = {
 		title: 'user settings',
