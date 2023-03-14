@@ -48,6 +48,8 @@
 		}).catch(e => console.error(e))
 	}
 
+	$: console.log(font.axes)
+
 	let schema = {
 		title: 'user settings',
 		type: 'object',
@@ -77,7 +79,7 @@
 				type: 'number',
 				minimum: 100,
 				maximum: 900,
-				multipleOf: font.axes.includes('wght') ? 1 : 100,
+				multipleOf: 1,
 				component: 'range'
 			},
 			contentWidth: {
