@@ -44,7 +44,7 @@
 		}).catch(e => console.error(e))
 	}
 
-	const schema = {
+	let schema = {
 		title: 'user settings',
 		type: 'object',
 		properties: {
@@ -73,7 +73,7 @@
 				type: 'number',
 				minimum: 100,
 				maximum: 900,
-				multipleOf: font.axes && font.axes.includes('wght') ? 1 : 100,
+				multipleOf: font.axes && font?.axes.includes('wght') ? 1 : 100,
 				component: 'range'
 			},
 			contentWidth: {
@@ -85,6 +85,8 @@
 			}
 		}
 	}
+
+	$: if(font) schema = schema
 
 	let opened = false
 
