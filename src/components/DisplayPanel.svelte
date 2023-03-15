@@ -36,8 +36,6 @@
 		}
 	}
 
-	let font = fonts[$userSettings.fontFamily]
-
 	$: font = fonts[$userSettings.fontFamily]
 
 	$: if (font?.file) {
@@ -48,7 +46,7 @@
 		}).catch(e => console.error(e))
 	}
 
-	let schema = {
+	const createSchema = (font) => ({
 		title: 'user settings',
 		type: 'object',
 		properties: {
@@ -77,7 +75,7 @@
 				type: 'number',
 				minimum: 100,
 				maximum: 900,
-				multipleOf: 1,
+				multipleOf: font.axes.includes('wght') ? 1 : 100,
 				component: 'range'
 			},
 			contentWidth: {
@@ -88,9 +86,9 @@
 				component: 'range'
 			}
 		}
-	}
+	})
 
-	$: if(font) schema = schema
+	$: schema = createSchema(font)
 
 	let opened = false
 
@@ -105,5 +103,5 @@
 </script>
 
 <Details title={'Display'} bind:opened={opened} >
-	<Form {schema} data={$userSettings} {changeHandler} />
+	<Form schema={schema} data={$userSettings} {changeHandler} />
 </Details>
