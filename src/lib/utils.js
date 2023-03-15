@@ -116,7 +116,7 @@ export const processWebpageMetadata = async (nodeList) => {
 export const createHtmlFromTemplate = (lang, meta, title, content) => `<!DOCTYPE html>
   <html lang="${lang}">
     <head>
-      ${meta}
+      ${meta?.join('')}
       <title>${title}</title>
     </head>
     <body>
