@@ -11,6 +11,9 @@
 
 <header>
   <h1>{data.title}</h1>
+  {#if data.description}
+    <p>{data.description}</p>
+  {/if}
   <Meta article={data} properties={['author', 'tags']} />
 </header>
 
@@ -29,6 +32,11 @@
 </div>
 
 <style lang="scss">
+  header {
+    width: var(--width__app);
+    margin: 0 auto;
+  }
+
   .flow {
     margin: 0 auto;
 

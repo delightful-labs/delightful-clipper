@@ -16,6 +16,10 @@
     <h2>{article.url}</h2>
   {/if}
 
+  {#if article.description}
+    <p>{article.description}</p>
+  {/if}
+
   <ArticleOptionsPanel url={article.url} tags={article.tags} />
 
   <Meta {article} properties={['author', 'tags']}/>
