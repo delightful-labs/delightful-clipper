@@ -9,8 +9,6 @@
 
   $: articles = $mainService.context.db
 
-  $: console.log(articles)
-
 </script>
 
 {#if $mainService.matches('authenticated') }

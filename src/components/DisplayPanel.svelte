@@ -3,11 +3,11 @@
 	import Form from 'svelte-json-schema-to-form/package/Form.svelte'
 	import { Details } from 'delightful-ui'
 	import { beforeNavigate } from '$app/navigation'
-	import { Font } from 'lib-font'
+	// import { Font } from 'lib-font'
 
-	// const myFont = new Font(`Jost`)
+	// const myFont = new Font(`Helvetica`)
 
-	// myFont.src = "../Besley-VariableFont_wght.ttf"
+	// myFont.src = "../Jost-VariableFont_wght.ttf"
 
 	// myFont.onload = evt => {
 	// 	var fontAxes = evt.detail.font
@@ -15,24 +15,41 @@
 	// 	console.log(fontAxes)
 	// }
 
+	// @todo: create zod for this
 	const fonts = {
 		'serif': {
-			axes: []
+			axes: [],
+			weight: {
+				min: 400,
+				max: 700
+			}
 		},
 		'sans-serif': {
-			axes: []
+			axes: [],
+			weight: {
+				min: 400,
+				max: 700
+			}
 		},
 		'Jost': {
 			file: '../Jost-VariableFont_wght.ttf',
 			name: 'Jost',
 			type: 'truetype',
-			axes: [ 'wght' ]
+			axes: [ 'wght' ],
+			weight: {
+				min: 100,
+				max: 900
+			}
 		},
 		'Besley': {
 			file: '../Besley-VariableFont_wght.ttf',
 			name: 'Besley',
 			type: 'truetype',
-			axes: [ 'wght' ]
+			axes: [ 'wght' ],
+			weight: {
+				min: 400,
+				max: 900
+			}
 		}
 	}
 
@@ -73,8 +90,8 @@
 			fontWeight: {
 				title: 'Font Width',
 				type: 'number',
-				minimum: 100,
-				maximum: 900,
+				minimum: font.weight.min,
+				maximum: font.weight.max,
 				multipleOf: font.axes.includes('wght') ? 1 : 100,
 				component: 'range'
 			},
