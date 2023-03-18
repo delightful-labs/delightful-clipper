@@ -16,7 +16,7 @@ const Article = z.object({
   description: z.string().default(''),
   filePath: z.object({
     file: z.array(z.string()).default([])
-  }).optional(),
+  }).default({}),
   id: z.string().uuid().or(emptyString),
   imagePath: z.array(z.string()).default([]),
   imageAlt: z.string().default(''),

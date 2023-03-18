@@ -28,12 +28,17 @@ const createArticleEntry =  (url, tags) => Article.parse({
   tags: tags||[]
 })
 
-const createErrorNotification = (evt) => ({ 
+/**
+ * 
+ * @param {string} message 
+ * @returns {*}
+ */
+const createErrorNotification = (message) => ({ 
   type: 'NOTIFY', 
   data: { 
     type: 'error', 
     timeout: 30000, 
-    message: evt.data 
+    message: message 
 }})
 
 /**
@@ -77,7 +82,7 @@ const fileSystemMachine = createMachine({
           actions: assign({fs: (_, evt) => evt.data.session.fs})
         },
         onError: {
-          actions: sendParent((_, evt) => createErrorNotification(evt)),
+          actions: sendParent((_, evt) => createErrorNotification(evt.data)),
           target: 'error'
         }
       }
@@ -96,7 +101,7 @@ const fileSystemMachine = createMachine({
           }
         ],
         onError: {
-          actions: sendParent((_, evt) => createErrorNotification(evt)),
+          actions: sendParent((_, evt) => createErrorNotification(evt.data)),
         }
       }
     },
@@ -271,19 +276,19 @@ const fileSystemMachine = createMachine({
             },
             checkingForUnparsedArticle: {
               invoke: {
-                src: async (ctx) => await jsonata(`$$#$i[filePath=[] and _file=''][0].$merge([$, {'_index':$i}])`).evaluate(ctx.db),
+                src: async (ctx) => await jsonata(`$$#$i[filePath.file=[] and _file=''][0].$merge([$, {'_index':$i}])`).evaluate(ctx.db),
                 onDone: [
                   {
                     cond: (_, evt) => evt.data,
-                    target: 'parsingArticle',
+                    target: 'parsingArticle'
                   },
                   {
                     cond: (_, evt) => !evt.data,
-                    target: 'idle',
+                    target: 'idle'
                   }
                 ],
                 onError: {
-                  actions: sendParent((_, evt) => createErrorNotification(evt))
+                  actions: sendParent((_, evt) => createErrorNotification(evt.data.message))
                 }
               }
             },
@@ -291,7 +296,7 @@ const fileSystemMachine = createMachine({
               invoke: {
                 src: (ctx, evt) => articleParserMachine(evt.data, ctx.fs),
                 onError: {
-                  actions: sendParent((_, evt) => createErrorNotification(evt))
+                  actions: sendParent((_, evt) => createErrorNotification(evt.data))
                 }
               },
               on: {
@@ -370,7 +375,7 @@ const fileSystemMachine = createMachine({
                   ]
                 },
                 onError: {
-                  actions: sendParent((_, evt) => createErrorNotification(evt))
+                  actions: sendParent((_, evt) => createErrorNotification(evt.data))
                 }
               }
             },

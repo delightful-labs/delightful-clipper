@@ -1,6 +1,5 @@
 import sanitize from 'sanitize-html'
 import { Readability } from '@mozilla/readability'
-import { DOMParser } from 'linkedom'
 import { z } from 'zod'
 
 /**
@@ -29,16 +28,10 @@ export const getFirstKeyMatch = (arr, obj, i = 0) => {
   return first
 }
 
-function notEmpty(a, b) {
-  return !!a && a !== ''
-    ? a
-    : b
-}
-
 /**
  * Merges two objects
- * @param {Object} source 
- * @param {Object} target 
+ * @param {*} source 
+ * @param {*} target 
  * @returns 
  */
 //@todo: Add the ability to merge arrays.
@@ -46,13 +39,15 @@ function notEmpty(a, b) {
 export const deepMerge = (source, target) => {
   //@todo: check if object is not empty
   return Object.keys(source).reduce((obj, key) => {
-    if (isObject(source[key])) {
-      obj[key] = deepMerge(source[key], target[key]);
-      return obj;
-    }
-    obj[key] = !target[key] ? source[key] : target[key];
-    return obj;
-  }, {});
+    // if (isObject(source[key])) {
+    //   obj[key] = deepMerge(source[key], target[key])
+    //   return obj;
+    // }
+
+    obj[key] = !target[key] ? source[key] : target[key]
+
+    return obj
+  }, {})
 }
 
 /**
@@ -125,17 +120,6 @@ export const createHtmlFromTemplate = (lang, meta, title, content) => `<!DOCTYPE
   </html>`
 
 /**
- * 
- * @param {string} text 
- */
-export const prepareHtml = (text) => {
-  //const doc = new DOMParser().parseFromString(text, 'text/html')
-  const allowedTags = sanitize.defaults.allowedTags.concat([ 'img', 'details', 'summary', 'svg' ])
-  const clean = sanitize(text, { allowedTags: allowedTags})
-  console.log(clean)
-}
-
-/**
  * Uses readability to extract the main text of an HTML document
  * @typedef ReadabilityResponse
  * @type {object}
@@ -152,9 +136,24 @@ export const prepareHtml = (text) => {
  * @param {Document} doc 
  * @returns {Promise<null|ReadabilityResponse>}
  */
-export const extractMainContent = (doc) => new Promise((res, rej) => {
+export const extractMainContent = (doc, url) => new Promise((res, rej) => {
   try {
-    res(new Readability(doc).parse())
+    res(new Readability(doc, { 
+      serializer: el => {
+        // Replaces relative URLs in media with absolute ones.
+        [...el.querySelectorAll('image, img, video, audio')].forEach(el => {
+          
+          const src = el.getAttribute('src')
+
+          if (!src.match(/^http/)) {
+            el.setAttribute('src', url + src)
+          }
+          
+        })
+        
+        return el.innerHTML
+      }
+    }).parse())
   } catch(err) {
     rej(err)
   }
@@ -174,30 +173,6 @@ export const sanitizeHtml = (doc) => {
       rej(err)
     }
   })
-}
-
-/**
- * Extracts the main section of the webpage provided.
- * @param {string} webpageText
- */
-export const parseWebArticle = async (webpageText) => {
-  /**
-   * @type {HTMLDocument}
-   */
-  const doc = new DOMParser().parseFromString(webpageText, 'text/html')
-  //I get the lang, text, title, and parsed html here.
-  //1. Language can be saved to article
-  //2. text can be used to calculate word count
-  //3. Title, use if none set on article from metadata
-  //3. HTML can be used to sanitize
-  //It makes sense to parse metadata first, then handle this new data
-  //Then the missing data can be set from this response
-  const test = await extractMainContent(/** @type {HTMLDocument & Document} */(doc))
-
-  //console.log(processWebpageMetadata(extractWebpageMetadata(doc)))
-  
-  // const combined = clean ? createHtmlFromTemplate(lang, meta.join('\n'), article ? article.title : '', clean) : ''
-  // return { body: combined,  wordCount: getWordCount(article?.textContent)}
 }
 
 /**

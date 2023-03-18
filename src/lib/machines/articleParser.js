@@ -62,7 +62,8 @@ const articleParserMachine = (article, fs) => createMachine({
         onDone: {
           actions: assign({ 
             articleText: (_, evt) => evt.data,
-            dom: (_, evt) =>  new DOMParser().parseFromString(evt.data, 'text/html')
+            // @todo: fix really hokey adding of base that fixes relative urls
+            dom: (ctx, evt) =>  new DOMParser().parseFromString(evt.data.replace("<head>", `<head><base href="${ctx.article.url}">`), 'text/html')
           }),
           target: 'parsingMetadata'
         }
@@ -95,11 +96,11 @@ const articleParserMachine = (article, fs) => createMachine({
     },
     extractingMainContent: {
       invoke: {
-        src: (ctx) => extractMainContent(/** @type {HTMLDocument & Document} */(ctx.dom)),
+        src: (ctx) => extractMainContent(/** @type {HTMLDocument & Document} */(ctx.dom), ctx.article.url),
         onDone: {
           actions: assign({ 
-            //@todo: clean this up.
-            //If I create a function out of it and invoke it, I can have it as the evt.data for the final state
+            // @todo: clean this up.
+            // If I create a function out of it and invoke it, I can have it as the evt.data for the final state
             article: (ctx, evt) => deepMerge(ctx.article, { filePath: wn.path.file('public', 'web-pages', encodeURIComponent(ctx.article.url), 'index.html'), siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
             articleText: (_, evt) => evt.data.content
           }),
