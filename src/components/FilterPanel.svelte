@@ -55,7 +55,6 @@
     filtersApplied = false
   }
 
-  $: console.log($filteredArticles)
 </script>
 
 <Details title={'Filter'} bind:opened>

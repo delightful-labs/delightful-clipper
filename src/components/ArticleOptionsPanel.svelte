@@ -27,7 +27,7 @@
     />
     <hr />
     <h3>Delete Article</h3>
-    <button on:click={()=> mainService.send({ type: 'DELETE_ARTICLE', data: { url: article.url } })}>Delete Article</button>
+    <button on:click={()=> mainService.send({ type: 'DELETE_ARTICLE', data: { url: url } })}>Delete Article</button>
   </div>
 </Details>
 

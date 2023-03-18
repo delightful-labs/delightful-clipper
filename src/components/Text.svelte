@@ -28,7 +28,7 @@
   /**
    * @type {string[]|undefined}
    */
-  export let list
+  export let list = undefined
 
   /**
    * @type {boolean}

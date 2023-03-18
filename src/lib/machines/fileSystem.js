@@ -212,7 +212,9 @@ const fileSystemMachine = createMachine({
                   target: 'updatingDatabase',
                   actions: [
                     immerAssign((ctx, evt) => {
-                      ctx.db[evt.data.existingArticle._index].tags = evt.data.article.tags
+                      const update = {...ctx.db[evt.data.existingArticle._index], ...evt.data.article}
+                      const parsedUpdate = Article.parse(update)
+                      ctx.db[evt.data.existingArticle._index] = parsedUpdate
                     }),
                     sendParent(() => ({ type: 'ARTICLE_UPDATED' }))
                   ]

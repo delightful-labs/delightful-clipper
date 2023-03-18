@@ -72,7 +72,6 @@
 					},
 					ARTICLE_UPDATED: {
 						target: 'alreadyExists',
-						actions: ()=> clearData()
 					}
 				},
 				meta: {
@@ -133,7 +132,7 @@
 <form on:submit|preventDefault={() => handleSubmit()}>
 		<div hidden={action !== 'SAVE_ARTICLE'}>
 			<label for="url">URL</label>
-			<input name="url" id="url" type="url" bind:value={url} required />
+			<input name="url" id="url" type="url" bind:value={url} required={action === 'SAVE_ARTICLE'} />
 		</div>
 
 		<div>

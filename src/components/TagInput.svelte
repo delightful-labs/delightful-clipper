@@ -25,34 +25,37 @@
   const handleDelete = (text) => {
     tags = tags.filter(x => x !== text)
   }
-  
+
 </script>
 
-<div>
-  <Text name='tags' value={tags.join(', ')} hidden={true}/>
-  <div class="tag-list">
-    {#each tags as tag}
-      <div class='tag'>
-        <span class="tag-text">
-          {tag}
-        </span>
-        <button on:click|preventDefault={()=> handleDelete(tag)}>
-          <ScreenReaderText>Delete</ScreenReaderText>
-          <span>X</span>
-        </button>
-      </div>
-    {/each}
-    <form on:submit|preventDefault={(e)=> handleSubmit(e)}>
-      <ScreenReaderText>
-        <label for='tag'>Tags</label>
-      </ScreenReaderText>
-      <Text name='tag' list={tagList} style='width: auto;' placeholder="Add tag" />
-      <ScreenReaderText>
-        <input type="submit" value="Add Tags" />
-      </ScreenReaderText>
-    </form>
+{#if tags}
+  <div>
+    <Text name='tags' value={tags.join(', ')} hidden={true}/>
+    <div class="tag-list">
+      {#each tags as tag}
+        <div class='tag'>
+          <span class="tag-text">
+            {tag}
+          </span>
+          <button on:click|preventDefault={()=> handleDelete(tag)}>
+            <ScreenReaderText>Delete</ScreenReaderText>
+            <span>X</span>
+          </button>
+        </div>
+      {/each}
+      <form on:submit|preventDefault={(e)=> handleSubmit(e)}>
+        <ScreenReaderText>
+          <label for='tag'>Tags</label>
+        </ScreenReaderText>
+        <Text name='tag' list={tagList} style='width: auto;' placeholder="Add tag" />
+        <ScreenReaderText>
+          <input type="submit" value="Add Tags" />
+        </ScreenReaderText>
+      </form>
+    </div>
   </div>
-</div>
+{/if}
+
 
 <style>
   .tag {

@@ -14,7 +14,9 @@ const Article = z.object({
   dateModified: z.string().datetime({ offset: true }).or(emptyString),
   datePublished: z.string().datetime({ offset: true }).or(emptyString),
   description: z.string().default(''),
-  filePath: z.array(z.string()).default([]),
+  filePath: z.object({
+    file: z.array(z.string()).default([])
+  }).optional(),
   id: z.string().uuid().or(emptyString),
   imagePath: z.array(z.string()).default([]),
   imageAlt: z.string().default(''),
