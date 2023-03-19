@@ -1,5 +1,12 @@
 import { z } from 'zod'
 
+const TextQuoteSelector = z.object({
+  type: z.literal('TextQuoteSelector').default('TextQuoteSelector'),
+  exact: z.string(),
+  prefix: z.string(),
+  suffix: z.string()
+})
+
 const Annotation = z.object({
   '@context': z.literal('http://www.w3.org/ns/anno.jsonld').default('http://www.w3.org/ns/anno.jsonld'),
   id: z.string().url().default(''),
@@ -21,7 +28,10 @@ const Annotation = z.object({
     'replying',
     'tagging'
   ]).optional(),
-  target: z.string().url().default(''),
+  target: z.object({
+    source: z.string().url(),
+    selector: TextQuoteSelector,
+  }).or(z.string().url().default('')),
   body: z.object({
     type: z.literal('TextualBody').default('TextualBody'),
     value: z.string().default(''),
