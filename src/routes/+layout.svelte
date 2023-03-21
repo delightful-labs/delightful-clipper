@@ -2,12 +2,9 @@
 	import '../lib/assets/global.css'
   import { mainService } from '$lib/machines/main'
   import { useSelector } from '@xstate/svelte'
-  import RegistrationForm from '$components/RegistrationForm.svelte'
   import { userSettings } from '$lib/stores'
   import Header from '$components/Header.svelte'
   import NotificationList from '$components/NotificationList.svelte'
-  import PageWrapper from '$components/PageWrapper.svelte'
-  import FeaturedContent from '$components/FeaturedContent.svelte'
   import { updated } from '$app/stores';
 
   updated.subscribe(async (value) => {
@@ -42,28 +39,6 @@
 <Header />
 
 <main>
-
-  <PageWrapper>
-    <!--@TODO: Move auth stuff to separate component-->
-    
-      {#if $userState === 'unauthenticated'}
-        <FeaturedContent>
-          <p>If you are a new user, you can register.</p>
-          <p>If you are an existing user, you can use the device or browser where you are signed in to find the instructions on how to connect this device.</p>
-          <button 
-            on:click={()=> mainService.send({ type: 'REGISTER'})}
-            disabled={!$mainService.can({type: 'REGISTER'})}
-          >Register</button>
-        </FeaturedContent>
-      {/if}
-
-      <!--@TODO: Registration could easily be a page instead of a component-->
-      {#if $userState === 'registering'}
-        <FeaturedContent>
-          <RegistrationForm />
-        </FeaturedContent>
-      {/if}
-  </PageWrapper>
 
   <slot />
 

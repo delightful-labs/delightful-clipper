@@ -84,14 +84,14 @@
       },
       submitting: {
         invoke: {
-          src: (ctx, evt) => register(ctx.program.components.auth, ctx.program.components.storage),
+          src: (ctx) => register(ctx.program.components.auth, ctx.program.components.storage),
           onDone: [
             {
-              cond: (ctx, evt) => evt.data,
+              cond: (_, evt) => evt.data,
               target: 'success'
             },
             {
-              cond: (ctx, evt) => !evt.data,
+              cond: (_, evt) => !evt.data,
               target: 'error'
             }
           ],
@@ -99,9 +99,6 @@
         }
       },
       success: {
-        //@TODO: Add success message
-        //And allow users to dismiss.
-        //And send username to mainService
         entry: () => mainService.send('REGISTRATION_SUCCEEDED')
       },
       error: {
@@ -145,7 +142,7 @@
   />
   <input 
     type="submit" 
-    value="Register" 
+    value={$state.value === 'submitting' ? 'Registering' : 'Register'}
     disabled={$state.value !== 'available'} 
   />
   <p>{$state.context.error}</p>

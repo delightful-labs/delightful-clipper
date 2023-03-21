@@ -144,20 +144,10 @@ const mainMachine = createMachine({
         }
       }
     },
-    registering: {
-      on: {
-        REGISTRATION_CANCELLED: {
-          target: 'unauthenticated'
-        },
-        REGISTRATION_SUCCEEDED: {
-          target: 'gettingUsername'
-        }
-      }
-    },
     unauthenticated: {
       on: {
-        REGISTER: {
-          target: 'registering'
+        REGISTRATION_SUCCEEDED: {
+          target: 'gettingUsername'
         },
         ACCOUNT_LINKED: {
           actions: (ctx, evt) => setFullUserName(evt.data, ctx.program.components.storage).then(x => console.log(x)),
