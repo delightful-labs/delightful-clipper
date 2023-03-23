@@ -5,6 +5,7 @@
   import Sentinel from '$components/Sentinel.svelte'
   import { useMachine } from '@xstate/svelte'
   import textSelectionMachine from '$lib/machines/textSelection'
+	import { mainService } from '$lib/machines/main'
 
   /** @type {import('./$types').PageData} */ 
   export let data
@@ -12,10 +13,41 @@
   const { state, send } = useMachine(textSelectionMachine)
 
   document.addEventListener("selectionchange", () => {
+    console.log(window.getSelection()?.toString())
     send({ type: 'selectionchange', data: { selection: window.getSelection() }})
   })
 
+  /** @type {number} */
+  let ypos = 0
+
+  /**
+	 * @type {NodeJS.Timeout | undefined}
+	 */
+	let timeoutId
+
+  /**
+   * 
+   * @param {number} pos
+   */
+  const updateScrollPosition = (pos) => {
+    if (timeoutId) clearTimeout(timeoutId)
+    const percentage = pos / document.body.scrollHeight
+    if (percentage !== data.readPercentage) {
+      timeoutId = setTimeout(function () {
+        mainService.send({type: 'UPDATE_ARTICLE', data: { url: data.url, readPercentage: percentage }})
+      }, 2000)
+    }
+  }
+
+  const setInitialYPos = () => {
+    setTimeout(()=> {
+			ypos = data.readPercentage * document.body.scrollHeight
+		}, 100)
+  }
+
 </script>
+
+<svelte:window bind:scrollY={ypos} on:scroll={()=> updateScrollPosition(ypos)} />
 
 <header>
   <h1>{data.title}</h1>
@@ -34,7 +66,7 @@
 	style:line-height={$userSettings.lineHeight / 10}
   style:font-variation-settings="'wght' {$userSettings.fontWeight}"
 >
-  <ContentLoader filePath={data.filePath}>
+  <ContentLoader filePath={data.filePath} on:loaded={setInitialYPos}>
     <Sentinel on:intersecting={()=> console.log('page ended')} slot="after-content" />
   </ContentLoader>
 </div>

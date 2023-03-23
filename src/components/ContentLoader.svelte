@@ -1,4 +1,5 @@
 <script>
+  import { createEventDispatcher } from 'svelte'
   import { mainService } from "$lib/machines/main"
   import { LoadingSpinner } from 'delightful-ui'
 
@@ -7,11 +8,14 @@
    */
   export let filePath
 
+  const dispatch = createEventDispatcher()
+
   const content = new Promise(res => {
     mainService.subscribe(x => {
       if (x.event.type === 'CONTENT_LOADED') {
         if (JSON.stringify(x.event.data.filePath) === JSON.stringify(filePath)) {
           res(x.event.data.content)
+          dispatch('loaded')
         }
       }
     })
