@@ -129,13 +129,13 @@ const mainMachine = createMachine({
                 message: 'Article Saved!' 
               }}, { to: 'notifier' })
             },
-            ARTICLE_UPDATED: {
-              actions: send({ type: 'NOTIFY', data: { 
-                type: 'success', 
-                timeout: 5000, 
-                message: 'Article Updated!' 
-              }}, { to: 'notifier' })
-            },
+            // ARTICLE_UPDATED: {
+            //   actions: send({ type: 'NOTIFY', data: { 
+            //     type: 'success', 
+            //     timeout: 5000, 
+            //     message: 'Article Updated!' 
+            //   }}, { to: 'notifier' })
+            // },
             '*' : {
               cond: (_, evt) => ['DELETE_ARTICLE', 'SAVE_ARTICLE', 'UPDATE_ARTICLE', 'ERASE_DATABASE', 'LOAD_CONTENT'].includes(evt.type),
               actions: send((_, evt) => evt, { to: 'fs' })
