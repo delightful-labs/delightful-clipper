@@ -5,17 +5,20 @@
   import Sentinel from '$components/Sentinel.svelte'
   import { useMachine } from '@xstate/svelte'
   import textSelectionMachine from '$lib/machines/textSelection'
+  import rssFeedFetcherMachine from '$lib/machines/rssFeedFetcher'
 	import { mainService } from '$lib/machines/main'
 
   /** @type {import('./$types').PageData} */ 
   export let data
 
-  const { state, send } = useMachine(textSelectionMachine)
+  const { state, send } = useMachine(rssFeedFetcherMachine)
 
-  document.addEventListener("selectionchange", () => {
-    console.log(window.getSelection()?.toString())
-    send({ type: 'selectionchange', data: { selection: window.getSelection() }})
-  })
+  // const { state, send } = useMachine(textSelectionMachine)
+
+  // document.addEventListener("selectionchange", () => {
+  //   console.log(window.getSelection()?.toString())
+  //   send({ type: 'selectionchange', data: { selection: window.getSelection() }})
+  // })
 
   /** @type {number} */
   let ypos = 0

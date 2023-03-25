@@ -6,6 +6,7 @@ const RssFeed = z.object({
   image: z.string().url().default(''),
   dateLastFetched: z.string().datetime(),
   dateAdded: z.string().datetime(),
+  automaticTags: z.array(z.string()).default([])
 })
 
 export default RssFeed

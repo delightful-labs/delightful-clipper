@@ -57,7 +57,8 @@ const fileSystemMachine = createMachine({
     fs: null,
     /** @type {string} */
     //@TODO: change to enum of possible states
-    networkStatus: 'online'
+    networkStatus: 'online',
+    unsavedArticles: []
   },
   initial: 'settingUpFs',
   id: 'fs',
@@ -127,19 +128,26 @@ const fileSystemMachine = createMachine({
         userActions: { 
           initial: 'idle',
           entry: sendParent((ctx) => ({type: 'UPDATE_DATABASE', data: ctx.db})),
+          on: {
+            SAVE_ARTICLE: {
+              //@TODO: trim URL of whitespace
+              //@TODO: also need to remove UTM and other tracking stuff.
+              //BUT --- there may be sometimes you want URL parameters as part of the URL, such as saving something from a web app.
+              //Will probably need to make it an option to save search parameters or not.
+              actions: [
+                immerAssign((ctx, evt) => {
+                  ctx.unsavedArticles.push(evt.data)
+                }),
+                send('CHECK_FOR_UNSAVED_ARTICLE')
+              ]
+            },
+          },
           states: {
             idle: {
               entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
               on: {
                 DELETE_ARTICLE: {
                   target: 'deletingArticle'
-                },
-                SAVE_ARTICLE: {
-                  //@TODO: trim URL of whitespace
-                  //@TODO: also need to remove UTM and other tracking stuff.
-                  //BUT --- there may be sometimes you want URL parameters as part of the URL, such as saving something from a web app.
-                  //Will probably need to make it an option to save search parameters or not.
-                  target: 'checkingIfAlreadyExists'
                 },
                 UPDATE_ARTICLE: {
                   target: 'updatingArticle'
@@ -168,44 +176,6 @@ const fileSystemMachine = createMachine({
                 }
               }
             },
-            checkingIfAlreadyExists: {
-              invoke: {
-                src: async (ctx, evt) => {
-                  const existingArticle = await jsonata(`$$#$i[url = "${evt.data.url}"].$merge([$, {'_index':$i}])`).evaluate(ctx.db)
-
-                  return { existingArticle: existingArticle, article: evt.data}
-                },
-                onDone: [
-                  { 
-                    cond: (_, evt) => evt.data.existingArticle && evt.data.article.tags.length,
-                    target: 'idle',
-                    actions: [
-                      sendParent(() => ({type: 'ARTICLE_ALREADY_EXISTS'})),
-                      immerAssign((ctx, evt) => {
-                        ctx.db[evt.data.existingArticle._index].tags = arrayUnion(ctx.db[evt.data.existingArticle._index].tags, evt.data.article.tags)
-                      })
-                    ]           
-                  },
-                  { 
-                    actions: sendParent(() => ({type: 'ARTICLE_ALREADY_EXISTS'})),
-                    cond: (_, evt) => evt.data.existingArticle,
-                    target: 'idle',
-                  },
-                  { 
-                    target: 'updatingDatabase',
-                    actions: [
-                      immerAssign((ctx, evt) => {
-                        ctx.db.push(createArticleEntry(evt.data.article.url, evt.data.article.tags))
-                      }),
-                      sendParent(() => ({type: 'ARTICLE_SAVED'}))
-                    ]
-                  }
-                ]
-              }
-            },
-            // @todo: for now this only updates tags.
-            // Change so that any content is replaced.
-            // To do that, ParseForm needs to take in the whole article.
             updatingArticle: {
               invoke: {
                 src: async (ctx, evt) => {
@@ -265,13 +235,71 @@ const fileSystemMachine = createMachine({
           }
         },
         automaticActions: {
-          initial: 'checkingForUnparsedArticle',
+          initial: 'checkingForUnsavedArticle',
           states: {
             idle: {
               on: {
                 CHECK_FOR_UNPARSED_ARTICLE: {
                   target: 'checkingForUnparsedArticle'
+                },
+                CHECK_FOR_UNSAVED_ARTICLE: {
+                  target: 'checkingForUnsavedArticle'
                 }
+              }
+            },
+            checkingForUnsavedArticle: {
+              always: [
+                {
+                  cond: (ctx) => ctx.unsavedArticles.length > 0,
+                  target: 'checkingIfUnsavedArticleAlreadyExists',
+                  actions: (ctx)=> console.log(ctx.unsavedArticles)
+                },
+                {
+                  target: 'checkingForUnparsedArticle',
+                  actions: (ctx)=> console.log('No articles to save')
+                }
+              ]
+            },
+            checkingIfUnsavedArticleAlreadyExists: {
+              invoke: {
+                src: async (ctx) => {
+                  const existingArticle = await jsonata(`$$#$i[url = "${ctx.unsavedArticles[0].url}"].$merge([$, {'_index':$i}])`).evaluate(ctx.db)
+
+                  return { existingArticle: existingArticle, article: ctx.unsavedArticles[0]}
+                },
+                onDone: [
+                  { 
+                    cond: (_, evt) => evt.data.existingArticle && evt.data.article.tags.length,
+                    target: 'idle',
+                    actions: [
+                      sendParent(() => ({type: 'ARTICLE_ALREADY_EXISTS'})),
+                      immerAssign((ctx, evt) => {
+                        ctx.unsavedArticles.shift()
+                        ctx.db[evt.data.existingArticle._index].tags = arrayUnion(ctx.db[evt.data.existingArticle._index].tags, evt.data.article.tags)
+                      })
+                    ]           
+                  },
+                  { 
+                    actions: [
+                      sendParent(() => ({type: 'ARTICLE_ALREADY_EXISTS'})),
+                      immerAssign((ctx, evt) => {
+                        ctx.unsavedArticles.shift()
+                      })
+                    ],
+                    cond: (_, evt) => evt.data.existingArticle,
+                    target: 'idle',
+                  },
+                  { 
+                    target: 'updatingDatabase',
+                    actions: [
+                      immerAssign((ctx, evt) => {
+                        ctx.unsavedArticles.shift()
+                        ctx.db.push(createArticleEntry(evt.data.article.url, evt.data.article.tags))
+                      }),
+                      sendParent(() => ({type: 'ARTICLE_SAVED'}))
+                    ]
+                  }
+                ]
               }
             },
             checkingForUnparsedArticle: {
@@ -368,9 +396,8 @@ const fileSystemMachine = createMachine({
               invoke: {
                 src: (ctx) => writeToFileSystem(ctx.dbPath, JSON.stringify(ctx.db), ctx.fs),
                 onDone: {
-                  target: 'idle',
+                  target: 'checkingForUnsavedArticle',
                   actions: [
-                    send('CHECK_FOR_UNPARSED_ARTICLE'),
                     sendParent((ctx) => ({type: 'UPDATE_DATABASE', data: ctx.db})),
                   ]
                 },
@@ -396,7 +423,3 @@ const fileSystemMachine = createMachine({
 
 const service = interpretInWebWorker(fileSystemMachine)
 service.start()
-
-// Add functions to actions object.
-
-//export const fileSystemService = interpret(fileSystemMachine).start()
