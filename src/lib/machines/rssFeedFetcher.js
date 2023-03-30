@@ -35,7 +35,31 @@ const rssFeedFetcherMachine = createMachine({
 
     },
     checkingFeed: {
-      entry: (ctx, evt, meta) => console.log(meta)
+      entry: (ctx) => {
+        
+        const exampleFetchedDate = "2023-02-20T09:00:21.000Z"
+
+        const fetchedDate = new Date(exampleFetchedDate)
+
+        const items = ctx.feed.item
+
+        const newItems = items.reduce(
+          (x, y) => {
+            const pubdate = new Date(y.pubDate)
+
+            if (pubdate > fetchedDate) {
+              x.push({ url: y.link })
+            }
+
+            return x
+          }, 
+          []
+        )
+
+        // @todo: send event back to parent with new items,
+        // though right now this is not actually being spawned by a parent
+        console.log(newItems)
+      }
     }
 
     // Parse
