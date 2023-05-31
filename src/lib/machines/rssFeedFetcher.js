@@ -37,6 +37,8 @@ const rssFeedFetcherMachine = createMachine({
     checkingFeed: {
       entry: (ctx) => {
         
+        // @todo: use real date.
+        // @todo: handle if dateLastFetched is undefined --- get all items
         const exampleFetchedDate = "2023-02-20T09:00:21.000Z"
 
         const fetchedDate = new Date(exampleFetchedDate)

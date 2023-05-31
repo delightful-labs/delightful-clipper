@@ -10,6 +10,10 @@
 </script>
 
 <li>
+  {#if article._image}
+    <img src="{article._image}" alt="{article.imageAlt}" />
+  {/if}
+
   {#if article.title}
     <a href={`/web-pages/${encodeURIComponent(article.url)}`}><h2>{article.title}</h2></a>
   {:else}
@@ -20,9 +24,11 @@
     <p>{article.description}</p>
   {/if}
 
-  <ArticleOptionsPanel url={article.url} tags={article.tags} />
+  <footer>
+    <ArticleOptionsPanel url={article.url} tags={article.tags} />
 
-  <Meta {article} properties={['author', 'tags']}/>
+    <Meta {article} properties={['author', 'tags']}/>
+  </footer>
 </li>
 
 <style>
@@ -36,9 +42,26 @@
     padding: var(--spacing__md) 0;
     display: grid;
     gap: var(--spacing__sm);
+    grid-auto-columns: max-content;
+    grid-template-columns: 1fr;
+  }
+
+  li:has(img) {
+    grid-template-columns: max-content 1fr;
   }
 
   li:has(.meta) {
     padding-bottom: 0;
+  }
+
+  img {
+    grid-row: span 2;
+    max-width: 200px;
+  }
+
+  footer {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: var(--spacing__xs);
   }
 </style>

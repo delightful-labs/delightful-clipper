@@ -58,7 +58,9 @@ const fileSystemMachine = createMachine({
     /** @type {string} */
     //@TODO: change to enum of possible states
     networkStatus: 'online',
-    unsavedArticles: []
+    unsavedArticles: [],
+    feedsPath: wn.path.file('private', 'feeds.json'),
+    feeds: []
   },
   initial: 'settingUpFs',
   id: 'fs',
@@ -244,6 +246,38 @@ const fileSystemMachine = createMachine({
                 },
                 CHECK_FOR_UNSAVED_ARTICLE: {
                   target: 'checkingForUnsavedArticle'
+                }
+              }
+            },
+            checkingForRssFeedsList: {
+              invoke: {
+                src: (ctx) => ctx.fs.exists(ctx.feedsPath),
+                onDone: [
+                  { 
+                    cond: (_, evt) => !evt.data,
+                    target: 'checkingForUnsavedArticle'
+                  },
+                  { 
+                    cond: (_, evt) => evt.data,
+                    target: 'loadingRssFeedsList'
+                  }
+                ],
+                onError: {
+                  actions: sendParent((_, evt) => createErrorNotification(evt.data)),
+                }
+              }
+            },
+            loadingRssFeedsList: {
+              invoke: {
+                src: (ctx) => ctx.fs.get(ctx.dbPath),
+                onDone: {
+                  actions: [
+                    assign({ db: (_, evt) => JSON.parse(uint8ArrayToString(evt.data.content)) }),
+                  ],
+                  target: 'checkingForUnsavedArticle'
+                },
+                onError: {
+                  actions: sendParent((_, evt) => createErrorNotification(evt))
                 }
               }
             },
