@@ -20,7 +20,7 @@
     on:mouseenter={() => notification.send("MOUSEOVER")}
     on:mouseleave={() => notification.send("MOUSELEAVE")}
     class={types[$notification.context.type]}
-    transition:fly="{{delay: 250, duration: 300, x: 100, y: 500, opacity: 0.5}}" 
+    transition:fly|global="{{delay: 250, duration: 300, x: 100, y: 500, opacity: 0.5}}" 
   >
     {$notification.context.message} 
     <button 
