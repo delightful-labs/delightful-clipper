@@ -31,7 +31,7 @@
 		"qrcode-svg": "^1.1.0",
 		"sanitize-html": "^2.7.3",
 		"sass": "^1.59.2",
-		"svelte": "^3.44.0",
+		"svelte": "4.0.0-next.0",
 		"svelte-check": "^2.7.1",
 		"svelte-json-schema-to-form": "https://github.com/delightful-labs/svelte-json-schema-to-form.git",
 		"svelte-preprocess": "^5.0.1",

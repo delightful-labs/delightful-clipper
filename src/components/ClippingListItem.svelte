@@ -10,25 +10,29 @@
 </script>
 
 <li>
-  {#if article._image}
-    <img src="{article._image}" alt="{article.imageAlt}" />
-  {/if}
+  <div class="wrapper">
 
-  {#if article.title}
-    <a href={`/web-pages/${encodeURIComponent(article.url)}`}><h2>{article.title}</h2></a>
-  {:else}
-    <h2>{article.url}</h2>
-  {/if}
+    {#if article._image}
+      <img src="{article._image}" alt="{article.imageAlt}" />
+    {/if}
 
-  {#if article.description}
-    <p>{article.description}</p>
-  {/if}
+    {#if article.title}
+      <a href={`/web-pages/${encodeURIComponent(article.url)}`}><h2>{article.title}</h2></a>
+    {:else}
+      <h2>{article.url}</h2>
+    {/if}
 
-  <footer>
-    <ArticleOptionsPanel url={article.url} tags={article.tags} />
+    {#if article.description}
+      <p>{article.description}</p>
+    {/if}
 
-    <Meta {article} properties={['author', 'tags']}/>
-  </footer>
+    <footer>
+      <ArticleOptionsPanel url={article.url} tags={article.tags} />
+
+      <Meta {article} properties={['author', 'tags']}/>
+    </footer>
+
+  </div>
 </li>
 
 <style>
@@ -37,8 +41,12 @@
   }
 
   li {
-    border-top: 1px solid;
+    container-type: inline-size;
     list-style: none;
+  }
+
+  .wrapper {
+    border-top: 1px solid;
     padding: var(--spacing__md) 0;
     display: grid;
     gap: var(--spacing__sm);
@@ -46,9 +54,12 @@
     grid-template-columns: 1fr;
   }
 
-  li:has(img) {
-    grid-template-columns: max-content 1fr;
+  @container (min-width: 300px) {
+    .wrapper:has(img) {
+      grid-template-columns: max-content 1fr;
+    }
   }
+  
 
   li:has(.meta) {
     padding-bottom: 0;
