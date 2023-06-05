@@ -54,7 +54,7 @@
     grid-template-columns: 1fr;
   }
 
-  @container (min-width: 300px) {
+  @container (min-width: 400px) {
     .wrapper:has(img) {
       grid-template-columns: max-content 1fr;
     }

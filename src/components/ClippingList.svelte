@@ -34,10 +34,19 @@
   .clipping-list {
     max-width: var(--width__app);
     margin: 0 auto;
+    container-type: inline-size;
   }
 
   ul {
     margin: 0;
     padding: 0;
+    display: grid;
   }
+
+  @container (min-width: 700px) {
+    ul {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+
 </style>
