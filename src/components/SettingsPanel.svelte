@@ -15,7 +15,7 @@
 	}
 </script>
 
-<Details title={'Settings'} bind:opened={opened} >
+<Details title={'Settings'} bind:opened={opened} positionAbsolutely={true} >
 		<button on:click={() => eraseDb()}>Erase Database</button>
 		<a href="/delegate-access">Connect another device</a>
 </Details>

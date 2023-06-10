@@ -33,7 +33,6 @@
 
 <style>
   div {
-    width: var(--width__app);
     display: grid;
     gap: var(--spacing__sm);
     padding: var(--spacing__sm);

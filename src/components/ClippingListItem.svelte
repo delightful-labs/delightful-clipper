@@ -61,7 +61,7 @@
   }
   
 
-  li:has(.meta) {
+  li:has(.meta) .wrapper {
     padding-bottom: 0;
   }
 

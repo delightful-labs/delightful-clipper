@@ -57,7 +57,7 @@
 
 </script>
 
-<Details title={'Filter'} bind:opened>
+<Details title={'Filter'} positionAbsolutely={true} bind:opened>
   <form 
     on:submit|preventDefault={(e) => handleSubmit(e)} bind:this={form}
     on:change={() => handleChange()}
