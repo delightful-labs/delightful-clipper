@@ -2,12 +2,12 @@ import { createMachine, assign, sendParent } from 'xstate'
 import { assign as immerAssign } from '@xstate/immer'
 import { createHtmlFromTemplate, deepMerge, extractMainContent, extractHtmlMetadata, processWebpageMetadata, getWordCount } from '$lib/utils'
 import { DOMParser } from 'linkedom'
-import * as wn from 'webnative'
+import * as odd from '@oddjs/odd'
 import { writeToFileSystem } from '$lib/files'
 
 /**
  * @typedef { import('$lib/schemas/Article').Article } article
- * @typedef { import('webnative/fs/index').default } fs
+ * @typedef { import('@oddjs/odd/fs/index').default } fs
  * @typedef { import('linkedom/types/html/document').HTMLDocument } HTMLDocument
  */
 
@@ -101,7 +101,7 @@ const articleParserMachine = (article, fs) => createMachine({
           actions: assign({ 
             // @todo: clean this up.
             // If I create a function out of it and invoke it, I can have it as the evt.data for the final state
-            article: (ctx, evt) => deepMerge(ctx.article, { filePath: wn.path.file('public', 'web-pages', encodeURIComponent(ctx.article.url), 'index.html'), siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
+            article: (ctx, evt) => deepMerge(ctx.article, { filePath: odd.path.file('public', 'web-pages', encodeURIComponent(ctx.article.url), 'index.html'), siteName: evt.data.siteName, locale: evt.data.lang, title: evt.data.title, wordCount: getWordCount(evt.data.textContent)}),
             articleText: (_, evt) => evt.data.content
           }),
           target: 'savingArticleText',

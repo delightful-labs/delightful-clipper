@@ -1,9 +1,9 @@
 import { toString } from 'uint8arrays'
 
 /**
- * @typedef { import('webnative/path/index').Partition } Partition
- * @typedef { import('webnative/fs/index').default } fs
- * @typedef { import('webnative/path/index').Distinctive<[Partition, ...string[]]> } FilePath
+ * @typedef { import('@oddjs/odd/path/index').Partition } Partition
+ * @typedef { import('@oddjs/odd/fs/index').default } fs
+ * @typedef { import('@oddjs/odd/path/index').Distinctive<[Partition, ...string[]]> } FilePath
  */
 
 /**

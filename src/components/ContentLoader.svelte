@@ -4,7 +4,7 @@
   import { LoadingSpinner } from 'delightful-ui'
 
   /**
-   * @type {import('webnative/path/index').FilePath<*>}
+   * @type {import('@oddjs/odd/path/index').FilePath<*>}
    */
   export let filePath
 

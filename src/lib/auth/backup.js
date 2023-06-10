@@ -1,7 +1,6 @@
-import * as webnative from "webnative"
-
+import * as odd from '@oddjs/odd'
 /**
- * @typedef { import('webnative/fs/index').default } FileSystem
+ * @typedef { import('@oddjs/odd/fs/index').default } FileSystem
  * @typedef { { created: boolean } | null } BackupStatus
  */
 
@@ -11,7 +10,7 @@ import * as webnative from "webnative"
  * @param { BackupStatus } status
  */
 export const setBackupStatus = async (fs, status) => {
-  const backupStatusPath = webnative.path.file("private", "backup-status.json")
+  const backupStatusPath = odd.path.file("private", "backup-status.json")
   await fs.write(backupStatusPath, JSON.stringify(status))
   await fs.publish()
 }
@@ -21,7 +20,7 @@ export const setBackupStatus = async (fs, status) => {
  * @param { FileSystem } fs
  */
 export const getBackupStatus = async fs => {
-  const backupStatusPath = webnative.path.file("private", "backup-status.json")
+  const backupStatusPath = odd.path.file("private", "backup-status.json")
 
   if (await fs.exists(backupStatusPath)) {
     const fileContent = await fs.read(backupStatusPath)

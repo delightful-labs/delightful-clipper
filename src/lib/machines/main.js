@@ -1,6 +1,6 @@
 import { createMachine, interpret, assign, spawn, send } from 'xstate'
 import { fromWebWorker } from '$lib/machine-helpers/from-web-worker'
-import * as webnative from 'webnative'
+import * as odd from '@oddjs/odd'
 import { dev } from '$app/environment'
 import FileWorker from '$lib/machines/fileSystem?worker'
 import Username from '$lib/schemas/Username'
@@ -8,7 +8,7 @@ import { setFullUserName } from '$lib/auth/registration'
 import { notifierMachine } from '$lib/machines/notifier'
 
 /**
- * @typedef { import('webnative/fs/index').default } FileSystem
+ * @typedef { import('@oddjs/odd/fs/index').default } FileSystem
  */
 
 const mainMachine = createMachine({
@@ -39,7 +39,7 @@ const mainMachine = createMachine({
       entry: assign({ notifier: ()=> spawn(notifierMachine, 'notifier')}),
       invoke: {
         // I don't use wnfs because it will load in worker.s
-        src: ()=> webnative.program({ 
+        src: ()=> odd.program({ 
           namespace: { creator: "Delightful Labs", name: "Clipper" },
           fileSystem: { loadImmediately: false },
           debug: dev
@@ -65,12 +65,12 @@ const mainMachine = createMachine({
         ],
         onError: [
           {
-            cond: (_, evt) => evt.data == webnative.ProgramError.InsecureContext,
+            cond: (_, evt) => evt.data == odd.ProgramError.InsecureContext,
             actions: assign({ error: 'Insecure context'}),
             target: 'has_error'
           },
           {
-            cond: (_, evt) => evt.data == webnative.ProgramError.UnsupportedBrowser,
+            cond: (_, evt) => evt.data == odd.ProgramError.UnsupportedBrowser,
             actions: assign({ error: 'Unsupported browser'}),
             target: 'has_error'
           }

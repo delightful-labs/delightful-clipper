@@ -1,13 +1,13 @@
-import { sha256 } from 'webnative/components/crypto/implementation/browser'
-import { publicKeyToDid } from 'webnative/did/transformers'
+import { sha256 } from '@oddjs/odd/components/crypto/implementation/browser'
+import { publicKeyToDid } from '@oddjs/odd/did/transformers'
 import * as uint8arrays from 'uint8arrays'
 
 /** 
- * @typedef {import('webnative').Program} Program
- * @typedef {import('webnative/components').Components} Components
- * @typedef {import('webnative/components/auth/implementation').Implementation<Components>} AuthImplementation
- * @typedef {import('webnative/components/crypto/implementation').Implementation} CryptoImplementation
- * @typedef {import('webnative/components/storage/implementation').Implementation} StorageImplementation
+ * @typedef {import('@oddjs/odd').Program} Program
+ * @typedef {import('@oddjs/odd/components').Components} Components
+ * @typedef {import('@oddjs/odd/components/auth/implementation').Implementation<Components>} AuthImplementation
+ * @typedef {import('@oddjs/odd/components/crypto/implementation').Implementation} CryptoImplementation
+ * @typedef {import('@oddjs/odd/components/storage/implementation').Implementation} StorageImplementation
  */
 
 export const USERNAME_STORAGE_KEY = 'fullUsername'

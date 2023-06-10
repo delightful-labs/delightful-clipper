@@ -1,6 +1,6 @@
 import { createMachine, interpret, assign, send, sendParent } from 'xstate'
 import { assign as immerAssign } from '@xstate/immer'
-import * as wn from 'webnative'
+import * as odd from '@oddjs/odd'
 import { v4 as uuidv4 } from 'uuid'
 import jsonata from 'jsonata'
 import Article from '$lib/schemas/Article'
@@ -10,9 +10,9 @@ import { arrayUnion } from '$lib/utils'
 import { interpretInWebWorker } from '$lib/machine-helpers/from-web-worker'
 
 /**
- * @typedef { import('webnative/fs/index').default } FileSystem
+ * @typedef { import('@oddjs/odd/fs/index').default } FileSystem
  * @typedef { import('$lib/schemas/Article').Article } Article
- * @typedef { import('webnative/path/index').FilePath<*> } FilePath
+ * @typedef { import('@oddjs/odd/path/index').FilePath<*> } FilePath
  */
 
 /**
@@ -52,14 +52,14 @@ const fileSystemMachine = createMachine({
     /** @type {Array<Article>} */
     db: [],
     /** @type {FilePath} */
-    dbPath: wn.path.file('private', 'db.json'),
+    dbPath: odd.path.file('private', 'db.json'),
     /** @type {FileSystem|null} */
     fs: null,
     /** @type {string} */
     //@TODO: change to enum of possible states
     networkStatus: 'online',
     unsavedArticles: [],
-    feedsPath: wn.path.file('private', 'feeds.json'),
+    feedsPath: odd.path.file('private', 'feeds.json'),
     feeds: []
   },
   initial: 'settingUpFs',
@@ -77,7 +77,7 @@ const fileSystemMachine = createMachine({
   states: {
     settingUpFs: {
       invoke: {
-        src: () => wn.program({
+        src: () => odd.program({
           namespace: { creator: "Delightful Labs", name: "Clipper" }
         }),
         onDone: {
@@ -407,7 +407,7 @@ const fileSystemMachine = createMachine({
               // 1. Main image
               // 2. Article images
               // 3. Other media? (videos, audio)
-              // import { PublicFile } from "webnative/fs/v1/PublicFile"
+              // import { PublicFile } from "odd/fs/v1/PublicFile"
 
               // const tempFile = await PublicFile.create(
               //   program.components.depot,
@@ -417,13 +417,13 @@ const fileSystemMachine = createMachine({
               // const cid = await tempFile.put()
 
               // await fs.write(
-              //   webnative.path.file("public", "pictures", cid.toString()),
+              //   odd.path.file("public", "pictures", cid.toString()),
               //   pictureBytes
               // )
 
               // // later
               // await fs.read(
-              //   webnative.path.file("public", "pictures", cidString)
+              //   odd.path.file("public", "pictures", cidString)
               // )
             },
             updatingDatabase: {
