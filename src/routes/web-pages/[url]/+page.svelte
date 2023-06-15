@@ -4,14 +4,15 @@
   import ContentLoader from '$components/ContentLoader.svelte'
   import Sentinel from '$components/Sentinel.svelte'
   import { useMachine } from '@xstate/svelte'
-  import textSelectionMachine from '$lib/machines/textSelection'
   import rssFeedFetcherMachine from '$lib/machines/rssFeedFetcher'
 	import { mainService } from '$lib/machines/main'
+  import * as textPosition from 'dom-anchor-text-position'
+  import * as textQuote from 'dom-anchor-text-quote'
 
   /** @type {import('./$types').PageData} */ 
   export let data
 
-  const { state, send } = useMachine(rssFeedFetcherMachine)
+  //const { state, send } = useMachine(rssFeedFetcherMachine)
 
   // const { state, send } = useMachine(textSelectionMachine)
 
@@ -48,8 +49,21 @@
 		}, 100)
   }
 
+  let content
+
+  const handleSelection = () => {
+    const content = document.getElementsByClassName('content')[0]
+    const range = document.getSelection()?.getRangeAt(0)
+    let position = textPosition.fromRange(content, range)
+    console.log(position)
+    let selector = textQuote.fromTextPosition(content, position)
+    //let position = textQuote.toRange()//textQuote.toTextPosition(document.body, range)
+    console.log(selector)
+  }
+
 </script>
 
+<svelte:document on:selectionchange={() => handleSelection()} />
 <svelte:window bind:scrollY={ypos} on:scroll={()=> updateScrollPosition(ypos)} />
 
 <header>
@@ -61,6 +75,7 @@
 </header>
 
 <div
+  bind:this={content}
 	class="content flow"
 	style:font-size="{$userSettings.fontSize}px"
 	style:width="{$userSettings.contentWidth}vw"
