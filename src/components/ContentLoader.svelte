@@ -3,7 +3,18 @@
   import { mainService } from "$lib/machines/main"
   import { LoadingSpinner } from 'delightful-ui'
   import HTMLRenderer from '@atjson/renderer-html'
-  import HTMLSource from "@atjson/source-html"
+  import HTMLSource, { Bold, Mark } from "@atjson/source-html"
+
+  export const customMarks = [
+    {
+      attributes: {},
+      end: 20,
+      id: "51b47da4-15d0-4cf0-af29-8d9344cd13dg",
+      start: 0,
+      type: "Mark",
+      vendorPrefix: "html"
+    }
+  ]
 
   class MyHTMLRenderer extends HTMLRenderer {
     *p() {
@@ -26,6 +37,10 @@
       return yield* this.$("span");
     }
 
+    *mark() {
+      return yield* this.$("mark");
+    }
+
     *img(embed) {
       return yield* this.$("img", embed.attributes);
     }
@@ -45,7 +60,23 @@
 
           const body = x.event.data.content.match(/<body[^>]*>[\s\S]*<\/body>/gi)[0]
           const doc = HTMLSource.fromRaw(body).canonical()
-          
+
+          // 1. Get raw text of HTML
+          // 2. Make new document from raw text
+          // 3. Add annotations to new document
+          // 4. Merge the original HTML document with the "annotations" document
+
+          console.log(doc)
+
+          if (customMarks.length > 0) {
+            doc.addAnnotations(
+              new Mark ({
+                start: 20,
+                end: 25,
+              })
+            )
+          }
+
           res(doc)
           //res(x.event.data.content)
           dispatch('loaded')
