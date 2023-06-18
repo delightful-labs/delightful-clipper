@@ -13,6 +13,7 @@ const config = {
     }
   },
   optimizeDeps: {
+    include: ['@atjson/document'],
     esbuildOptions: {
       // Node.js global to browser globalThis
       // Needed for web workers

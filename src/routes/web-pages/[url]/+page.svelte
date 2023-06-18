@@ -3,23 +3,15 @@
   import Meta from '$components/Meta.svelte'
   import ContentLoader from '$components/ContentLoader.svelte'
   import Sentinel from '$components/Sentinel.svelte'
-  import { useMachine } from '@xstate/svelte'
-  import rssFeedFetcherMachine from '$lib/machines/rssFeedFetcher'
 	import { mainService } from '$lib/machines/main'
+  import textSelectionMachine from '$lib/machines/textSelection'
+  import { useMachine } from '@xstate/svelte'
   import * as textPosition from 'dom-anchor-text-position'
   import * as textQuote from 'dom-anchor-text-quote'
+  import HTMLSource, { Mark } from "@atjson/source-html"
 
   /** @type {import('./$types').PageData} */ 
   export let data
-
-  //const { state, send } = useMachine(rssFeedFetcherMachine)
-
-  // const { state, send } = useMachine(textSelectionMachine)
-
-  // document.addEventListener("selectionchange", () => {
-  //   console.log(window.getSelection()?.toString())
-  //   send({ type: 'selectionchange', data: { selection: window.getSelection() }})
-  // })
 
   /** @type {number} */
   let ypos = 0
@@ -49,21 +41,46 @@
 		}, 100)
   }
 
-  let content
+  let myContent = null
+
+  let annotationDoc
+
+  let annotations
+
+  let contentContainer
+
+  $: if ( myContent ) {
+    annotationDoc = HTMLSource.fromRaw(myContent.content)
+
+    annotationDoc.addEventListener("change", () => {
+      annotations = annotationDoc.toJSON().annotations
+    })
+  }
 
   const handleSelection = () => {
-    const content = document.getElementsByClassName('content')[0]
     const range = document.getSelection()?.getRangeAt(0)
-    let position = textPosition.fromRange(content, range)
-    console.log(position)
-    let selector = textQuote.fromTextPosition(content, position)
-    //let position = textQuote.toRange()//textQuote.toTextPosition(document.body, range)
-    console.log(selector)
+    let position = textPosition.fromRange(contentContainer, range)
+    //let selector = textQuote.fromTextPosition(contentContainer, position)
+
+    if (annotationDoc) {
+      annotationDoc.addAnnotations(
+        new Mark ({
+          start: position.start - 1,
+          end: position.end - 1,
+        })
+      )
+    }
   }
+
+  const { state, send } = useMachine(textSelectionMachine, {
+    actions: {
+      handleSelection: handleSelection
+    }
+  })
 
 </script>
 
-<svelte:document on:selectionchange={() => handleSelection()} />
+<svelte:document on:selectionchange={e => send(e)} />
 <svelte:window bind:scrollY={ypos} on:scroll={()=> updateScrollPosition(ypos)} />
 
 <header>
@@ -75,7 +92,7 @@
 </header>
 
 <div
-  bind:this={content}
+  bind:this={contentContainer}
 	class="content flow"
 	style:font-size="{$userSettings.fontSize}px"
 	style:width="{$userSettings.contentWidth}vw"
@@ -84,7 +101,12 @@
 	style:line-height={$userSettings.lineHeight / 10}
   style:font-variation-settings="'wght' {$userSettings.fontWeight}"
 >
-  <ContentLoader filePath={data.filePath} on:loaded={setInitialYPos}>
+  <ContentLoader 
+    filePath={data.filePath} 
+    bind:docContent={myContent} 
+    bind:annotations={annotations}
+    on:loaded={setInitialYPos}
+  >
     <Sentinel on:intersecting={()=> console.log('page ended')} slot="after-content" />
   </ContentLoader>
 </div>
