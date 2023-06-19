@@ -111,6 +111,13 @@
   </ContentLoader>
 </div>
 
+{#if $state.value === 'hasSelection'}
+  <dialog>
+    <button on:click={()=> send('CANCEL')}>Cancel</button>
+    <button on:click={()=> send('SUBMIT')}>Add highlight</button>
+  </dialog>
+{/if}
+
 <style lang="scss">
   header {
     width: var(--width__app);
@@ -123,5 +130,15 @@
     :global {
 			@import '../../../lib/assets/flow';
 		}
+  }
+
+  dialog {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: var(--color__background);
+    padding: var(--spacing__xs);
   }
 </style>

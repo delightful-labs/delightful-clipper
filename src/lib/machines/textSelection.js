@@ -16,14 +16,31 @@ const textSelectionMachine = createMachine({
   states: {
     idle: {},
     debouncing: {
+      entry: [
+        assign({ selection: document.getSelection() }),
+      ],
       after: {
-        500: {
-          target: 'gettingSelection',
-          actions: 'handleSelection'
-        }        
+        500: [
+          {
+            cond: (ctx) => ctx.selection.toString() != "",
+            target: 'hasSelection',
+          },
+          {
+            target: 'idle'
+          }
+        ]     
       }
     },
-    gettingSelection: {
+    hasSelection: {
+      on: {
+        CANCEL: {
+          target: 'idle'
+        },
+        SUBMIT: {
+          target: 'idle',
+          actions: 'handleSelection'
+        }
+      }
     }
   }
 })
