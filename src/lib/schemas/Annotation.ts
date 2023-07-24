@@ -7,11 +7,18 @@ const TextQuoteSelector = z.object({
   suffix: z.string()
 })
 
+const TextPositionSelector = z.object({
+  type: z.literal('TextPositionSelector').default('TextPositionSelector'),
+  start: z.number().positive(),
+  end: z.number().positive(),
+})
+
+// @todo: add Creator
 const Annotation = z.object({
   '@context': z.literal('http://www.w3.org/ns/anno.jsonld').default('http://www.w3.org/ns/anno.jsonld'),
   id: z.string().url().default(''),
   type: z.literal('Annotation').default('Annotation'),
-  created: z.string().datetime({ offset: true }),
+  created: z.string().datetime({ offset: true }).default( new Date().toISOString() ),
   modified: z.string().datetime({ offset: true }).optional(),
   motivation: z.enum([
     'assessing', 
@@ -30,7 +37,7 @@ const Annotation = z.object({
   ]).optional(),
   target: z.object({
     source: z.string().url(),
-    selector: TextQuoteSelector,
+    selector: z.array(TextQuoteSelector.or(TextPositionSelector)).or(TextQuoteSelector).or(TextPositionSelector),
   }).or(z.string().url().default('')),
   body: z.object({
     type: z.literal('TextualBody').default('TextualBody'),

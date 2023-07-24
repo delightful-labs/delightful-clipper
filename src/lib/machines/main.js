@@ -38,7 +38,7 @@ const mainMachine = createMachine({
     unitialized: {
       entry: assign({ notifier: ()=> spawn(notifierMachine, 'notifier')}),
       invoke: {
-        // I don't use wnfs because it will load in worker.s
+        // I don't use fs because it will load in worker.
         src: ()=> odd.program({ 
           namespace: { creator: "Delightful Labs", name: "Clipper" },
           fileSystem: { loadImmediately: false },

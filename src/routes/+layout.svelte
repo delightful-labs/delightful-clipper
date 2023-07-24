@@ -12,8 +12,6 @@
       window.location.reload()
     }
   })
-  
-  const userState = useSelector(mainService, (state) => state.value)
 
   // Anytime the store changes, update the local storage value.
   $: {

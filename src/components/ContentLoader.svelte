@@ -1,9 +1,10 @@
 <script>
   import { createEventDispatcher } from 'svelte'
-  import { mainService } from "$lib/machines/main"
+  import { mainService } from '$lib/machines/main'
   import { LoadingSpinner } from 'delightful-ui'
   import HTMLRenderer from '@atjson/renderer-html'
-  import HTMLSource from "@atjson/source-html"
+  import HTMLSource from '@atjson/source-html'
+  import { BlockAnnotation } from '@atjson/document'
 
   export let docContent = null
 
@@ -16,6 +17,20 @@
       ...docContent,
       annotations: [...docContent.annotations, ...annotations]
     }
+  }
+
+  class SVG extends BlockAnnotation {
+    static vendorPrefix = 'html';
+    static type = 'svg';
+  }
+
+  class Path extends BlockAnnotation {
+    static vendorPrefix = 'html';
+    static type = 'path';
+  }
+
+  class MyHTMLSource extends HTMLSource {
+    static schema = [...HTMLSource.schema, SVG, Path];
   }
 
   class MyHTMLRenderer extends HTMLRenderer {
@@ -61,14 +76,10 @@
         if (JSON.stringify(x.event.data.filePath) === JSON.stringify(filePath)) {
 
           const body = x.event.data.content.match(/<body[^>]*>[\s\S]*<\/body>/gi)[0]
-          const doc = HTMLSource.fromRaw(body).canonical()
+          //console.log(body)
+          const doc = MyHTMLSource.fromRaw(body).canonical()
 
           docContent = doc.toJSON()
-
-          // 1. Get raw text of HTML
-          // 2. Make new document from raw text
-          // 3. Add annotations to new document
-          // 4. Merge the original HTML document with the "annotations" document
 
           res(doc)
           //res(x.event.data.content)
@@ -87,7 +98,7 @@
 {:then value} 
   <slot name="before-content" />
     {#if docContent}
-      {@html MyHTMLRenderer.render(new HTMLSource(jsonDocWithAnnotations) )}
+      {@html MyHTMLRenderer.render(new MyHTMLSource(jsonDocWithAnnotations) )}
     {:else}
       {@html MyHTMLRenderer.render(value)}
     {/if}

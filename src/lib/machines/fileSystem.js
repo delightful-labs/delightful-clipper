@@ -457,3 +457,64 @@ const fileSystemMachine = createMachine({
 
 const service = interpretInWebWorker(fileSystemMachine)
 service.start()
+
+// There is a lot of similarity between this and the initiationm process of the file system.
+// @todo: make DRY?
+const annotationMachine = createMachine({
+  // I need to dunamically create the context.
+  // XState V5 makes this so much simplier...
+  context: {
+    url: '',
+    fs: null,
+    collectionPath: null,
+    collection: null
+  },
+  states: {
+    // Use odd exists for URL.
+    // If no, go to creatingCollection.
+    // If yes, go to loadingCollection
+    checkingIfCollectionExists: {
+      invoke: {
+        src: (ctx) => ctx.fs.exists(ctx.collectionPath),
+        onDone: [
+            { 
+              cond: (_, evt) => !evt.data,
+              target: 'creatingCollection'
+            },
+            { 
+              cond: (_, evt) => evt.data,
+              target: 'loadingCollection'
+            }
+        ],
+        onError: {
+          actions: sendParent((_, evt) => createErrorNotification(evt.data)),
+        }
+      }
+    },
+    // On Done, add to context & go to collection ready
+    loadingCollection: {
+      invoke: {
+        src: (ctx) => ctx.fs.get(ctx.collectionPath),
+        onDone: {
+          actions: [
+            assign({ collection: (_, evt) => JSON.parse(uint8ArrayToString(evt.data.content)) }),
+            sendParent({ type: 'ANNOTATIONS_INITIATED' })
+          ],
+          target: 'collectionReady'
+        },
+        onError: {
+          actions: sendParent((_, evt) => createErrorNotification(evt))
+        }
+      }
+    },
+    // On Done, add to context & go to collection ready
+    creatingCollection: {},
+    collectionReady: {
+      // On entry, send collection event to FS, which is parent
+      states: {
+        creatingAnnotation: {},
+        savingCollection: {}
+      }
+    }
+  }
+})
