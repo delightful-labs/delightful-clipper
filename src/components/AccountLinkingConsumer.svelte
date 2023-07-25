@@ -1,5 +1,5 @@
 <script>
-  import { createMachine, assign, send as xSend, spawn } from 'xstate'
+  import { createMachine, assign, sendTo, spawn } from 'xstate'
   import { useMachine } from '@xstate/svelte'
   import { page } from '$app/stores'
   import { createListenerMachine } from '$lib/auth/accountLinking'
@@ -43,7 +43,7 @@
           ],
           CANCEL: {
             target: 'cancelled',
-            actions: xSend({ type: 'CANCEL' }, { to: 'listener' })
+            actions: sendTo('listener', { type: 'CANCEL' })
           }
         }
       },

@@ -1,4 +1,4 @@
-import { createMachine, interpret, assign, send, sendParent } from 'xstate'
+import { createMachine, assign, raise, sendParent } from 'xstate'
 import { assign as immerAssign } from '@xstate/immer'
 import * as odd from '@oddjs/odd'
 import { v4 as uuidv4 } from 'uuid'
@@ -140,13 +140,13 @@ const fileSystemMachine = createMachine({
                 immerAssign((ctx, evt) => {
                   ctx.unsavedArticles.push(evt.data)
                 }),
-                send('CHECK_FOR_UNSAVED_ARTICLE')
+                raise({ type: 'CHECK_FOR_UNSAVED_ARTICLE' })
               ]
             },
           },
           states: {
             idle: {
-              entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
+              entry: raise({ type: 'CHECK_FOR_UNPARSED_ARTICLE' }),
               on: {
                 DELETE_ARTICLE: {
                   target: 'deletingArticle'
@@ -225,7 +225,7 @@ const fileSystemMachine = createMachine({
                 onDone: {
                   target: 'idle',
                   actions: [
-                    send('CHECK_FOR_UNPARSED_ARTICLE'),
+                    raise({ type: 'CHECK_FOR_UNPARSED_ARTICLE' }),
                     sendParent((ctx) => ({type: 'UPDATE_DATABASE', data: ctx.db})),
                   ]
                 },
@@ -442,7 +442,7 @@ const fileSystemMachine = createMachine({
             },
             articleAlreadyExists: {
               //@TODO: Add tags to existing entry, if they exist
-              // entry: send('CHECK_FOR_UNPARSED_ARTICLE'),
+              // entry: raise({ type: 'CHECK_FOR_UNPARSED_ARTICLE' }),
               after: {
                 500: { target: 'idle' }
               }

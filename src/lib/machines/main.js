@@ -1,4 +1,4 @@
-import { createMachine, interpret, assign, spawn, send } from 'xstate'
+import { createMachine, interpret, assign, spawn, sendTo } from 'xstate'
 import { fromWebWorker } from '$lib/machine-helpers/from-web-worker'
 import * as odd from '@oddjs/odd'
 import { dev } from '$app/environment'
@@ -31,7 +31,7 @@ const mainMachine = createMachine({
   initial: 'unitialized',
   on: {
     'NOTIFY': {
-      actions: send((_, evt) => evt, { to: 'notifier' })
+      actions: sendTo('notifier', (_, evt) => evt)
     }
   },
   states: {
@@ -116,29 +116,29 @@ const mainMachine = createMachine({
               actions: assign({ db: (_, evt) => evt.data})
             },
             ARTICLE_ALREADY_EXISTS: {
-              actions: send({ type: 'NOTIFY', data: { 
+              actions: sendTo('notifier', { type: 'NOTIFY', data: { 
                 type: 'warning', 
                 timeout: 5000, 
                 message: 'Article Already Exists' 
-              }}, { to: 'notifier' })
+              }})
             },
             ARTICLE_SAVED: {
-              actions: send({ type: 'NOTIFY', data: { 
+              actions: sendTo('notifier', { type: 'NOTIFY', data: { 
                 type: 'success', 
                 timeout: 5000, 
                 message: 'Article Saved!' 
-              }}, { to: 'notifier' })
+              }})
             },
             // ARTICLE_UPDATED: {
-            //   actions: send({ type: 'NOTIFY', data: { 
+            //   actions: sendTo('notifier', { type: 'NOTIFY', data: { 
             //     type: 'success', 
             //     timeout: 5000, 
             //     message: 'Article Updated!' 
-            //   }}, { to: 'notifier' })
+            //   }})
             // },
             '*' : {
               cond: (_, evt) => ['DELETE_ARTICLE', 'SAVE_ARTICLE', 'UPDATE_ARTICLE', 'ERASE_DATABASE', 'LOAD_CONTENT'].includes(evt.type),
-              actions: send((_, evt) => evt, { to: 'fs' })
+              actions: sendTo('fs', (_, evt) => evt)
             }
           }
         }

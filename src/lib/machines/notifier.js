@@ -1,4 +1,4 @@
-import { assign, createMachine, spawn, send } from "xstate"
+import { assign, createMachine, spawn, sendTo } from "xstate"
 
 const createToastMachine = (options) => createMachine({
   initial: "active",
@@ -67,9 +67,7 @@ export const notifierMachine = createMachine({
           })
         },
         DISMISS: {
-          actions: send("DISMISS", {
-            to: (ctx, event) => ctx.toasts.find((_, i) => i === event.index)
-          })
+          actions: sendTo((ctx, event) => ctx.toasts.find((_, i) => i === event.index), { type: "DISMISS" })
         }
       }
     }

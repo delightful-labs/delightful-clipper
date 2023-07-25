@@ -8,7 +8,7 @@ import type { AnyEventObject,
   StateMachine,
   StateSchema,
   Typestate, } from 'xstate'
-import { getEventType } from 'xstate/lib/utils';
+//import { getEventType } from 'xstate/';
 
 export function fromWebWorker<TContext, TEvent extends EventObject = AnyEventObject>(
   createWorker: (context: TContext, event: TEvent) => Worker
@@ -18,7 +18,7 @@ export function fromWebWorker<TContext, TEvent extends EventObject = AnyEventObj
     const handler = (event: MessageEvent<TEvent>) => {
       try {
         // Will error out if the data is not a valid event
-        getEventType(event.data);
+        //getEventType(event.data);
         sendBack(event.data);
       } catch {}
     };

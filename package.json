@@ -46,7 +46,7 @@
 		"uint8arrays": "^4.0.3",
 		"uuid": "^9.0.0",
 		"vite": "^4.0.0",
-		"xstate": "^4.34.0",
+		"xstate": "^5.0.0-beta.18",
 		"zod": "^3.20.2"
 	},
 	"type": "module"
