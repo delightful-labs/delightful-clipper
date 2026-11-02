@@ -1,0 +1,63 @@
+# MVP design decisions and acceptance details
+
+**Status**: Planning defaults for the accepted product scope. These resolve implementation/interaction details, not new features. Visual styling and runtime qualification remain later work. The product spec governs any conflict.
+
+## Reader, navigation and accessibility
+
+Use locally available system serif and system sans-serif stacks as the two launch font choices. No remote font download, font upload or preset manager. Initial controls: font size 16–32 CSS px (20 default), line height 1.3–2.0 (1.6 default), and maximum text width 40–90ch (65ch default), constrained to the available viewport. Browser zoom and user stylesheet overrides remain functional; these control ranges are not limits on browser magnification. Shared account preferences retain offline cached values.
+
+Distraction-free mode has a persistent, focusable Show controls/Exit control usable by touch and keyboard. Focus within a control prevents it from hiding. Do not depend on hover, pointer movement, color alone or an undiscoverable gesture. Escape closes the topmost transient popover first; it does not discard a note draft. After closing a popover, return focus to its trigger when it still exists, otherwise to the corresponding article/annotation heading.
+
+Archive leaves the current reader open and updates status; no automatic next article. Moving the open article to Trash returns to the originating list and focuses the next surviving item, previous item, or list heading in that order. Permanent deletion also returns to that list. Inline images do not open a viewer in MVP. Source/article links retain browser behavior.
+
+Each highlight has a focusable entry in the annotation collection. Activating a region containing several highlights offers a labeled list of the separate annotations rather than arbitrarily choosing one. Touch and keyboard can reach the same list. It is an annotation-access control, not a merge or repair screen. Rendering must preserve readable text contrast in Light/Dark/System, selection, copy, focus indicators and overlapping-range access.
+
+Acceptance includes keyboard-only capture/reader/note/tag workflows, accessible names and save-status announcements, touch selection with explicit Highlight, zoom/reflow without lost controls, reduced motion, meaningful image alternative text, and restoring focus after dialogs. No compliance certification is claimed from a design document.
+
+## Notes, conflicts and persistence
+
+Persist a device-local draft on each edit through the draft owner; debounce source-of-truth note writes by 500 ms and flush when leaving the editor. Keep the current edit sequence so a delayed acknowledgment cannot label newer text saved. Navigation can proceed once the recoverable draft is durable. If neither draft nor note persistence succeeds, warn before navigation instead of reporting Saved.
+
+Display Saving locally, Saved on this device / Sync pending, Synced, or Save failed as applicable. Connectivity does not gate local editing. A locally durable note may still receive a later remote rejection; retain its text and expose recovery status. Clearing a note saves empty content; an empty note does not create another note or remove its highlight.
+
+Keep one logical note per parent. Concurrent user text must be merged without lost edits where the supported text primitive permits it; otherwise retain both versions in a recoverable conflict and offer a minimal choice/copy action within the note editor. Never silently overwrite a divergent draft, concatenate blindly, or introduce a separate conflict-management dashboard. Concrete storage semantics require qualification.
+
+For independent scalar fields (status, favorite and each preference), use causal ordering when available and deterministic operation-ID tie-breaking for concurrent values. Store desired values rather than replaying toggles. Changes to one field do not overwrite another. Tag assignments are distinct relationships; global tag tombstones suppress stale assignments. Concurrent edits of the same tag name remain recoverable on collision. Delete/restore operations inspect the parent lifecycle before writing.
+
+## Search and tags
+
+Plain case-insensitive keyword search, all entered terms required, with labeled article/highlight/note hits and no query language. Index article title/body, saved quote and literal note text. Use the search engine's default relevance with title boosts and stable original-save-date/ID tie-breaks. Do not require fuzzy matching or advanced ranking controls.
+
+Status, favorites and selected tags combine with AND; multiple selected tags also require all selected tags on the explicit result target. Note results use the note parent's tag assignments. Status/favorite always use the parent article. Activating a tag lists explicitly tagged articles/highlights; it does not infer inheritance. Trash is a separate explicit scope, with the same locally available text/filter semantics.
+
+Tag keys use trimmed Unicode NFC text plus versioned Unicode default case folding, preserving the user's display spelling. Reject an empty key. Do not strip accents or punctuation. Same normalized key reuses the existing tag; rename collisions report a conflict without implicit merge. Duplicate keys produced concurrently must reconcile assignments without deleting content; the storage policy remains a proof gate.
+
+## Positions and progress
+
+Save the first visible reading text position using its representation, normalized code-point position and quote/context, with viewport offset as a secondary aid. Debounce updates by one second and flush on reader departure where the runtime permits; do not rely only on unload. Opening waits for the local saved representation and applies the latest available position once. Later remote updates never scroll an open article.
+
+Per-device observations use causal knowledge, interaction time and deterministic operation ID to resolve available positions; device clock skew is a known limitation, not a claim of globally exact wall-clock ordering. An unsynced local observation is not discarded just because a remote value arrived later.
+
+Display progress as the furthest observed reading position divided by the saved representation's readable text length, clamped to 0–100%; end-of-content reaches 100%. This measures position reached, not verified comprehension, reading time or a separate completed state. Last location may move backward while progress remains furthest reached. Zero-length/link-only entries have no percentage. Restore by verified locator/context first; if no reliable match exists, open at the beginning without overwriting the saved evidence until a new user interaction.
+
+## Highlight deletion and article deletion
+
+Highlight-delete Undo restores the same annotation, anchors, note and assignments. Offer it for at least ten seconds; keep it available while its control is focused/hovered, pause expiry while the page is hidden, and provide an accessibility timing qualification before release. Do not announce an Undo that already expired. Parent permanent deletion or loss of permission prevents restoration with a clear outcome. No other broad Undo is added.
+
+Permanent article deletion first persists a dominating document tombstone, then cleans content/annotations/notes/assignments/positions and unreferenced byte parts/index entries through resumable idempotent work. Shared tag vocabulary survives. Retained byte manifests are reference-checked within the owner scope. A stale offline edit cannot silently resurrect a permanently deleted graph; retain recoverable draft evidence without restoring the article. No guarantee about erasing previously downloaded copies or provider backups is implied.
+
+## Capture, URLs and images
+
+Normalize URL syntax conservatively: parsed HTTP(S), lowercase scheme/host and default-port normalization; retain query order/values, meaningful path segments and submitted fragments as provenance. Do not blanket-strip tracking parameters, upgrade HTTP to HTTPS, remove trailing slashes or equate www/non-www. A fragment does not create a second saved article when the same fetched representation is established, but is retained as an intake locator.
+
+Dedup first by verified final destination/accepted alias. A declared canonical is a candidate only: if it differs, fetch/observe its destination under the same safety rules and require equivalent normalized article content before accepting the alias. Cross-origin candidates require the same evidence; inability to verify leaves the candidate unaccepted. Shortener URLs are observations with time/destination, not permanent aliases. Concurrent reconciliation preserves annotations and provenance before retiring provisional duplicates.
+
+Use the image limits in plan.md as initial processing defaults. Never upscale. Preserve source aspect ratio and alt text; use a lossless output for diagrams/transparency when it fits. Reduce dimensions/quality within the bounded worker policy; if no usable output meets limits, retain a labeled unavailable asset with Retry rather than blocking text or claiming full offline completeness. Animated images may use a static first frame with that limitation indicated. No image-quality guarantee is inferred before fixture review.
+
+Connectivity retry uses capped exponential backoff with jitter, at most five automatic attempts per wake/connectivity cycle, maximum delay five minutes; permanent input/authorization/unsupported-source failures require corrective action. Retain durable work when exhausted. Resuming a runtime does not replay an uncertain insert; reconcile operation IDs first. Incomplete capture detection uses explicit parser/source evidence and missing required content signals; do not invent a universal completeness score.
+
+## Engineering dependencies, not additional product questions
+
+Supported desktop extension runtimes are Chrome and Firefox; Android Chrome uses supported installed-PWA sharing with Add Link fallback; iOS Safari uses Add Link until incoming share support is demonstrated. Minimum release versions are recorded after real-device qualification, not guessed here. First-time identity/library setup and recovery must preserve DLF's provenance rules; no unsupported promise of offline first-ever provisioning is made.
+
+One repository, Readability baseline, i18next runtime instances, Jazz alpha.59, DLF granular boundaries and worker ownership are selected in plan.md. Extension restoration uses DLF in trusted extension UI, not automatic web-origin SSO. Missing creation, request-auth proof acquisition, packaged extension persistence, public-only fetch transport and cold-restart evidence remain explicit implementation gates. Failure of a gate requires revising the plan or a scoped product decision, not adding a fallback account system or silently weakening offline/private behavior.

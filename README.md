@@ -1,28 +1,12 @@
-## Introduction
+# Delightful Clipper
 
-This is a project to create a web clipper that stores web clippings on IPFS via WnFS and allows you to read them later. It currently supports clipping web pages and PDFs and allows uploading of ePub files. It is a work in progress and is constantly being updated to the main branch, so things might break if used.
+Specification baseline for a private, local-first web article reader and browser clipper.
 
-It uses Svelte as the frontend library and XState to control state.
+- [MVP specification](specs/001-jazz-clipper/spec.md)
+- [Technical plan](specs/001-jazz-clipper/plan.md)
+- [Investigation results](specs/001-jazz-clipper/investigation-results.md)
+- [First implementation handoff](specs/001-jazz-clipper/implementation-handoff.md)
 
-## Developing
+`main` currently contains documentation only. The previous prototype and isolated proof scripts are preserved on [archive/pre-jazz-rewrite-2026-11-02](https://github.com/delightful-labs/delightful-clipper/tree/archive/pre-jazz-rewrite-2026-11-02).
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```bash
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://kit.svelte.dev/docs/adapters) for your target environment.
+All subsequent changes must use feature branches and pull requests targeting `main`. Production implementation has not started; the handoff defines the first bounded batch and remaining acceptance checks.

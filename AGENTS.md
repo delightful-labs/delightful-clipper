@@ -1,0 +1,11 @@
+# Repository working agreements
+
+- All subsequent work must use a feature branch and a pull request targeting `main`. Do not push directly to `main`. The specification-baseline reset was a one-time explicit user instruction.
+- Do not merge a PR without explicit user authorization. Do not configure branch protection or change repository settings unless requested.
+- Follow `specs/001-jazz-clipper/spec.md`, `plan.md`, `design-decisions.md`, and `implementation-handoff.md`. Keep accepted scope cuts intact.
+- This baseline contains documentation only. The prototype and isolated proof scripts are archived on `archive/pre-jazz-rewrite-2026-11-02`; do not restore its legacy dependencies or source as the implementation baseline.
+- Use the selected strict TypeScript, Svelte 5, XState, DLF identity/recovery, DUI presentation and i18next boundaries. Model state/resource ownership before implementing asynchronous workflows.
+- Clipper owns domain schemas/policies and data operations; DLF owns reusable identity/recovery behavior; DUI owns generic presentation. Do not silently adopt a sibling repository's constitution or copy its domain models.
+- Separate local persistence from remote acceptance and retain unknown-write recovery. Never claim privacy, offline availability or platform support without the corresponding evidence.
+- Complete and report checks appropriate to each PR. Isolated investigation results do not substitute for validation of the actual implementation.
+- This reset does not itself authorize starting the implementation batch.
