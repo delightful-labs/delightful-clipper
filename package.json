@@ -1,0 +1,29 @@
+{
+	"name": "delightful-clipper",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@10.22.0",
+	"engines": {
+		"node": ">=24.22.2 <25",
+		"pnpm": "10.22.0"
+	},
+	"scripts": {
+		"preinstall": "node tooling/verify-vendor.mjs",
+		"dev": "pnpm --filter @delightful-clipper/web dev",
+		"build": "pnpm --filter @delightful-clipper/web build",
+		"preview": "pnpm --filter @delightful-clipper/web preview",
+		"check": "tsc --project tsconfig.json && pnpm --filter @delightful-clipper/web check",
+		"lint": "oxlint --deny-warnings .",
+		"format": "oxfmt .",
+		"format:check": "oxfmt --check .",
+		"verify:vendor": "node tooling/verify-vendor.mjs --installed",
+		"verify": "pnpm verify:vendor && pnpm format:check && pnpm lint && pnpm check && pnpm build"
+	},
+	"devDependencies": {
+		"@types/node": "24.19.2",
+		"oxfmt": "0.73.0",
+		"oxlint": "1.88.0",
+		"typescript": "6.0.3"
+	}
+}

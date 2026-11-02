@@ -1,0 +1,15 @@
+packages:
+  - apps/*
+  - packages/*
+
+useNodeVersion: 24.22.2
+nodeVersion: 24.22.2
+engineStrict: true
+packageManagerStrictVersion: true
+managePackageManagerVersions: true
+strictPeerDependencies: true
+savePrefix: ''
+onlyBuiltDependencies:
+  - esbuild
+ignoredBuiltDependencies:
+  - protobufjs

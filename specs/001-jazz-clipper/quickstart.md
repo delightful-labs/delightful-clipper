@@ -1,6 +1,6 @@
 # Quickstart and validation guide
 
-**Status**: Future product runbook; `main` is documentation-only and the old prototype is preserved on the archive branch. Isolated investigation experiments have now run, as recorded in [investigation-results.md](investigation-results.md). The product commands and acceptance scenarios below remain unimplemented/unexecuted unless explicitly covered by that report.
+**Status**: Workspace tooling and a minimal web shell are implemented in the tooling PR; the old prototype is preserved on the archive branch. See [tooling documentation](../../docs/tooling.md) for real commands. Product workflows and acceptance scenarios below remain unimplemented/unexecuted unless explicitly covered by the investigation report.
 
 ## Current review
 
@@ -15,7 +15,7 @@ Read [plan.md](plan.md), [research.md](research.md), [data-model.md](data-model.
 - Netlify development/preview environment with the authenticated, public-only first-party fetch boundary enabled. No production deployment or account mutation is implied by this guide.
 - Chrome desktop and Firefox/macOS extension packages with explicit host permissions and trusted session UI. Android Chrome PWA installation; iOS Safari Add Link fallback.
 
-Proposed scripts to add during implementation: root `pnpm dev`, `pnpm build`, `pnpm check`, `pnpm lint`, `pnpm test:unit`, `pnpm test:e2e`; extension target builds and gateway local serving must be documented when implemented. These commands are proposed contracts, not claims that they exist now. There is no application package manifest or runnable development server on this baseline. The archived prototype does not validate this plan.
+Tooling now provides root `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`, `pnpm lint`, `pnpm format:check`, `pnpm verify:vendor` and `pnpm verify`. Node 24.22.2/pnpm 10.22.0 and the lockfile are pinned. Unit/e2e scripts, extension builds and gateway serving will be added with meaningful implementations; no placeholder passing test suite is supplied. The minimal shell is not the completed reader, and no Jazz service or credentials are required for tooling checks.
 
 ## Future acceptance scenarios
 
