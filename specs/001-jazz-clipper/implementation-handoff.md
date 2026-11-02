@@ -1,8 +1,10 @@
 # Implementation handoff
 
-**Status**: Investigation complete enough to start the first bounded implementation batch. Production implementation has not started. Product scope is settled. Runtime acceptance gates remain explicit; this is not a release approval or a claim that the earlier Speckit plan passed every gate.
+**Status**: Investigation complete; workspace tooling and a minimal web shell are implemented in the separate tooling PR. Identity, library, capture and reader workflows have not started. Product scope is settled. Runtime acceptance gates remain explicit; this is not a release approval or a claim that the earlier Speckit plan passed every gate.
 
 ## First batch: application foundation and durable private root
+
+The tooling PR establishes item 1 and only the minimal buildable shell from item 2. The session/storage and product acceptance work below remains unbuilt. Tooling commands and scope are documented in [docs/tooling.md](../../docs/tooling.md).
 
 Build only the new workspace/toolchain and the smallest browser session → canonical private library → local text/bytes → reopen path. Start from the spec-only `main`; the old prototype remains preserved on the archive branch. No dependency on generic DLF multi-workspace creation is necessary.
 

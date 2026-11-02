@@ -1,0 +1,18 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"useTabs": true,
+	"singleQuote": true,
+	"semi": false,
+	"trailingComma": "none",
+	"printWidth": 100,
+	"sortPackageJson": false,
+	"ignorePatterns": [
+		"**/node_modules/**",
+		"**/.svelte-kit/**",
+		"**/.netlify/**",
+		"**/build/**",
+		"vendor/**",
+		"specs/**",
+		"pnpm-lock.yaml"
+	]
+}

@@ -1,0 +1,10 @@
+{
+	"extends": "$app/tsconfig",
+	"include": ["src", "*.ts"],
+	"compilerOptions": {
+		"strict": true,
+		"exactOptionalPropertyTypes": true,
+		"noUncheckedIndexedAccess": true,
+		"skipLibCheck": true
+	}
+}
