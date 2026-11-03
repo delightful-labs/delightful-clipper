@@ -13,7 +13,7 @@
 		selectLibraryActor
 	} from '../machines/runtime/application-readiness.js'
 	import { accountInput, type Session } from '../backend/jazz/account.js'
-	import { t, action, recoveryMessages } from '../localization/index.js'
+	import { t, action } from '../localization/index.js'
 
 	const applicationReadinessMachine = createApplicationReadinessMachine<Session>()
 	let {
@@ -59,9 +59,9 @@
 </script>
 
 <section aria-label={t('app.title')}>
-	<StatusMessage text={t(`account.status.${view.status}`)} />
-	{#if view.feedback}
-		<StatusMessage variant="error" text={t(`account.feedback.${view.feedback}`)} />
+	<StatusMessage {...view.message} />
+	{#if view.feedbackMessage}
+		<StatusMessage {...view.feedbackMessage} />
 	{/if}
 	{#if view.showIdentityForm}
 		<Button type="button" onclick={() => send({ type: 'CREATE' })}
@@ -91,7 +91,7 @@
 		<RecoveryPhrase
 			source={recovery.source}
 			capability={recovery.capability}
-			messages={recoveryMessages()}
+			messages={recovery.messages}
 		/>
 	{/if}
 	{#if view.requiresReload}<Button type="button" onclick={() => window.location.reload()}

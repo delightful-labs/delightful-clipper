@@ -97,3 +97,10 @@ The service worker maps only exact same-origin, unauthenticated GET document nav
 
 
 Validation: all 226 unit tests and twelve Chromium integration tests pass, including direct URL reload, ordinary new-tab link activation, owner-scoped unavailable content and a capture completing after library → reader navigation. Reader OPEN no longer re-enters/reset the parallel capture owner; regression checks cover pending extraction and issued save-child ownership. Five production offline tests pass, including a direct reader deep link after complete offline process restart, fragment-bearing URL reload via the public shell, and restored-profile synchronization. No document URLs/responses enter the shell cache.
+
+
+## Machine-owned localized feedback
+
+Application-readiness states own localized status resolvers and produce localized feedback errors. Capture/reader states own message resolvers and severity, including failure classification and live local-versus-remote outcomes. The library machine supplies list/empty/disabled/sync messages as well. Offline registration transitions update their localized message alongside status/admission and clear it on close. The DLF recovery contract remains reused, with messages supplied by the owning application machine.
+
+Svelte components render machine-provided text/severity rather than switching status/error codes to translation keys. Static labels/headings/actions remain in presentation. Existing catalog entries and wording are reused; no localization additions are made. Regression tests check pending extraction, local saving, remote rejection, capture error categories, reader load/unavailability/closure, account bootstrap/feedback and offline registration/update/failure messages.

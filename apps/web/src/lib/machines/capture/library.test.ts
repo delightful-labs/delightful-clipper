@@ -1,7 +1,7 @@
 import { controlledSave, testLibraryCapability } from './library.test-support.js'
 import { expect, it, vi } from 'vitest'
 import { createActor, toPromise, waitFor } from 'xstate'
-import { libraryMachine } from './library.js'
+import { libraryMachine, selectLibraryView } from './library.js'
 import type { LibraryCapability } from '../../contracts/library.js'
 import type { Candidate } from '../../capture/source.js'
 import type { SaveRequest, SaveResult, ReadResult } from '../../contracts/storage.js'
@@ -315,5 +315,82 @@ it('keeps the issued save child owned while opening and closing a reader', async
 	actor.send({ type: 'SHUTDOWN' })
 	expect(shutdown).toHaveBeenCalledOnce()
 	pending.resolve({ kind: 'unknown', operationId: candidate.id })
+	await toPromise(actor)
+})
+
+it('owns translated preparation, local-save and remote-rejection feedback', async () => {
+	const source = deferred<string>(),
+		write = deferred<SaveResult>(),
+		remote = deferred<void>()
+	const { actor } = fixture({ resolve: () => source.promise, save: () => write.promise })
+	actor.send({ type: 'ADD', url: candidate.finalUrl })
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage).toEqual({
+		text: 'Resolving and extracting the article…',
+		variant: 'info'
+	})
+	source.resolve(candidate.finalUrl)
+	await waitFor(actor, (s) => s.context.writing)
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage).toEqual({
+		text: 'Saving on this device…',
+		variant: 'info'
+	})
+	write.resolve({
+		kind: 'saved',
+		operationId: candidate.id,
+		receipts: [{ global: () => remote.promise }]
+	})
+	await waitFor(actor, (s) => s.context.sync[candidate.id] === 'pending')
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage).toEqual({
+		text: 'Article saved on this device. Sync pending.',
+		variant: 'info'
+	})
+	remote.reject(new Error('denied'))
+	await waitFor(actor, (s) => s.context.sync[candidate.id] === 'rejected')
+	const view = selectLibraryView(actor.getSnapshot())
+	expect(view.captureMessage?.text).toBe(
+		'The server rejected this save. Local content may remain available; it is not confirmed on other devices.'
+	)
+	expect(view.captureMessage?.variant).toBe('error')
+	expect(view.syncMessages[candidate.id]).toEqual(view.captureMessage)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage).toBeUndefined()
+	expect(selectLibraryView(actor.getSnapshot()).syncMessages).toEqual({})
+})
+it.each([
+	['sourceTooLarge', 'This article exceeds the current save limit. Nothing was saved.'],
+	['invalidUrl', 'Enter a valid public HTTP or HTTPS URL.'],
+	['sessionUnavailable', 'Your account could not be authenticated. Reconnect before trying again.'],
+	['rateLimited', 'Too many capture requests. Wait a minute before trying again.'],
+	['unexpected', 'The article could not be fetched. Check the URL and connection, then try again.']
+])('translates capture error %s inside its failed state', async (code, text) => {
+	const { actor } = fixture({
+		resolve: async () => {
+			throw new Error(code)
+		}
+	})
+	actor.send({ type: 'ADD', url: candidate.finalUrl })
+	await waitFor(actor, (s) => s.matches({ running: { capture: 'failed' } }))
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage).toEqual({ text, variant: 'error' })
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+it('owns reader loading/unavailability feedback and clears it when the reader closes', async () => {
+	const pending = deferred<ReadResult>()
+	const { actor } = fixture({ read: () => pending.promise })
+	actor.send({ type: 'OPEN', id: candidate.id })
+	expect(selectLibraryView(actor.getSnapshot()).readerMessage).toEqual({
+		text: 'Opening saved article…',
+		variant: 'info'
+	})
+	pending.resolve({ kind: 'missing' })
+	await waitFor(actor, (s) => s.matches({ running: { reading: 'shown' } }))
+	expect(selectLibraryView(actor.getSnapshot()).readerMessage).toEqual({
+		text: 'This article is not available on this device. Reconnect and open it again.',
+		variant: 'error'
+	})
+	actor.send({ type: 'CLOSE_READER' })
+	expect(selectLibraryView(actor.getSnapshot()).readerMessage).toBeUndefined()
+	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })

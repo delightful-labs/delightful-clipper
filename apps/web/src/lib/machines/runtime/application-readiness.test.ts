@@ -130,16 +130,25 @@ describe('account/root ownership', () => {
 		await vi.waitFor(() => expect(access.localWait).toHaveBeenCalledOnce())
 		expect(actor.getSnapshot().matches({ running: { library: 'ready' } })).toBe(false)
 		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('openingLibrary')
+		expect(selectApplicationView(actor.getSnapshot(), true).message.text).toBe(
+			'Preparing your private library…'
+		)
 		local.resolve()
 		await waitFor(actor, (snapshot) =>
 			snapshot.matches({ running: { library: { ready: 'syncPending' } } })
 		)
 		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('localSaved')
+		expect(selectApplicationView(actor.getSnapshot(), true).message.text).toBe(
+			'Library saved on this device. Sync pending.'
+		)
 		global.reject(new Error('Authority rejected'))
 		await waitFor(actor, (snapshot) =>
 			snapshot.matches({ running: { library: { ready: 'syncFailed' } } })
 		)
 		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('syncFailed')
+		expect(selectApplicationView(actor.getSnapshot(), true).message.text).toBe(
+			'Library saved on this device, but sync failed. Retry when connected.'
+		)
 		actor.send({ type: 'SHUTDOWN' })
 		await waitFor(actor, (snapshot) => snapshot.status === 'done')
 	})
@@ -192,6 +201,10 @@ describe('account/root ownership', () => {
 		actor.send({ type: 'RESTORE', phrase: 'invalid synthetic phrase' })
 		await waitFor(actor, (snapshot) => snapshot.context.feedback === 'restoreInvalid')
 		expect(actor.getSnapshot().context.phrase).toBe('')
+		expect(selectApplicationView(actor.getSnapshot(), true).feedbackMessage).toEqual({
+			text: 'That recovery phrase is invalid. Check it and try again.',
+			variant: 'error'
+		})
 		expect(host.restoration.capability.restoreIdentity).not.toHaveBeenCalled()
 		actor.send({ type: 'SHUTDOWN' })
 		await waitFor(actor, (snapshot) => snapshot.status === 'done')

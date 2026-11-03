@@ -15,3 +15,4 @@
 - Use DUI input components for user-entered fields. A silently initialized local Jazz identity must not expose Sign out; that control is reserved for an explicitly signed-in identity. Keep recovery/restoration available without signing out of local mode.
 - Saved readers are dedicated SvelteKit pages linked by document URL, not inline library panels. Keep session/capture actors in the application layout, use normal anchors for navigation, and qualify direct/offline reader URL loads.
 - Keep Svelte formatting enabled in Oxfmt. Run `pnpm format` and `pnpm format:check` for component changes; format script, markup and CSS, with readable multiline declarations and blank lines between CSS rule blocks.
+- Workflow status/error messages belong to the state machines. Call the localization library directly in the owning machine and expose ready-to-render text/severity; Svelte components must not map machine status/error codes to translation keys.

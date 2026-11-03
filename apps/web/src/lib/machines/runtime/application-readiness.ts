@@ -1,3 +1,5 @@
+import { t, recoveryMessages } from '../../localization/index.js'
+import type { WorkflowMessage } from '../../contracts/feedback.js'
 import { libraryMachine } from '../capture/library.js'
 import { rootBootstrapMachine } from './root-bootstrap.js'
 import {
@@ -62,6 +64,13 @@ function observe(host: AccountHost): AccountObservation {
 	}
 }
 
+function accountStatus(status: MachineStatus) {
+	return {
+		status,
+		message: (): WorkflowMessage => ({ text: t(`account.status.${status}`), variant: 'info' })
+	}
+}
+
 export function createApplicationReadinessMachine<Session extends object>() {
 	const accountActors = {
 		library: libraryMachine,
@@ -109,7 +118,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 		AccountInput<Session>,
 		undefined,
 		{ type: string },
-		{ status: MachineStatus }
+		{ status: MachineStatus; message: () => WorkflowMessage }
 	>({
 		actors: accountActors,
 		guards: {
@@ -229,9 +238,9 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			SHUTDOWN: '.closing'
 		},
 		states: {
-			opening: { meta: { status: 'starting' } },
+			opening: { meta: accountStatus('starting') },
 			openFailed: {
-				meta: { status: 'unavailable' },
+				meta: accountStatus('unavailable'),
 				on: { RETRY: { target: 'opening', actions: sendTo('startup', { type: 'RETRY' }) } }
 			},
 			running: {
@@ -268,7 +277,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				},
 				states: {
 					draining: {
-						meta: { status: 'closing' },
+						meta: accountStatus('closing'),
 						entry: sendTo('readiness', { type: 'SHUTDOWN' }),
 						on: { OBSERVED: {}, SHUTDOWN: {}, SESSION_STATUS: {}, SESSION_OBSERVATION_FAILED: {} }
 					},
@@ -288,7 +297,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						]
 					},
 					signedOut: {
-						meta: { status: 'signedOut' },
+						meta: accountStatus('signedOut'),
 						on: {
 							OBSERVED: { target: 'route', actions: 'rememberObservation' },
 							CREATE: { target: 'creating', actions: assign({ feedback: 'none' }) },
@@ -304,7 +313,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					},
 					waiting: { on: { OBSERVED: { target: 'route', actions: 'rememberObservation' } } },
 					unavailable: {
-						meta: { status: 'unavailable' },
+						meta: accountStatus('unavailable'),
 						on: {
 							RETRY: [
 								{ guard: ({ context }) => context.observationFailed, target: 'reobserving' },
@@ -350,7 +359,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					},
 					creating: {
 						initial: 'active',
-						states: { active: {}, stopping: { meta: { status: 'closing' } } },
+						states: { active: {}, stopping: { meta: accountStatus('closing') } },
 						on: { SHUTDOWN: '.stopping' },
 						invoke: {
 							src: 'create',
@@ -367,7 +376,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					},
 					restoring: {
 						initial: 'active',
-						states: { active: {}, stopping: { meta: { status: 'closing' } } },
+						states: { active: {}, stopping: { meta: accountStatus('closing') } },
 						on: {
 							SHUTDOWN: {
 								target: '.stopping',
@@ -431,7 +440,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					},
 					loggingOut: {
 						initial: 'active',
-						states: { active: {}, stopping: { meta: { status: 'closing' } } },
+						states: { active: {}, stopping: { meta: accountStatus('closing') } },
 						on: { SHUTDOWN: '.stopping' },
 						invoke: {
 							src: 'logout',
@@ -476,7 +485,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						},
 						states: {
 							bootstrapping: {
-								meta: { status: 'openingLibrary' },
+								meta: accountStatus('openingLibrary'),
 								on: {
 									SHUTDOWN: {
 										target: 'stopping',
@@ -492,19 +501,19 @@ export function createApplicationReadinessMachine<Session extends object>() {
 								}
 							},
 							stopping: {
-								meta: { status: 'closing' },
+								meta: accountStatus('closing'),
 								on: { SHUTDOWN: {}, OBSERVED: { actions: 'rememberObservation' } }
 							},
 							replacing: {
-								meta: { status: 'openingLibrary' },
+								meta: accountStatus('openingLibrary'),
 								on: { OBSERVED: { actions: 'rememberObservation' }, SHUTDOWN: 'stopping' }
 							},
 							conflict: {
-								meta: { status: 'conflict' },
+								meta: accountStatus('conflict'),
 								on: { LOGOUT: '#application-readiness.running.loggingOut' }
 							},
 							failed: {
-								meta: { status: 'rootFailed' },
+								meta: accountStatus('rootFailed'),
 								on: {
 									RETRY: { target: '#application-readiness.running.library', reenter: true },
 									LOGOUT: '#application-readiness.running.loggingOut'
@@ -576,7 +585,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 								},
 								states: {
 									stopping: {
-										meta: { status: 'closing' },
+										meta: accountStatus('closing'),
 										on: {
 											LOGOUT: {},
 											RESTORE: {},
@@ -585,7 +594,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 										}
 									},
 									syncPending: {
-										meta: { status: 'localSaved' },
+										meta: accountStatus('localSaved'),
 										invoke: {
 											src: 'global',
 											input: ({ context }) => required(context.write),
@@ -593,9 +602,9 @@ export function createApplicationReadinessMachine<Session extends object>() {
 											onError: 'syncFailed'
 										}
 									},
-									synced: { meta: { status: 'synced' } },
+									synced: { meta: accountStatus('synced') },
 									syncFailed: {
-										meta: { status: 'syncFailed' },
+										meta: accountStatus('syncFailed'),
 										on: {
 											RETRY: 'syncPending'
 										}
@@ -607,7 +616,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				}
 			},
 			closing: {
-				meta: { status: 'closing' },
+				meta: accountStatus('closing'),
 				entry: [
 					'clearPhrase',
 					({ context }) => context.host?.release(),
@@ -622,10 +631,14 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					{ target: 'closed' }
 				]
 			},
-			cleanupFailed: { meta: { status: 'cleanupFailed' }, type: 'final', entry: 'clearResources' },
-			ownerFailed: { meta: { status: 'ownerFailed' }, type: 'final', entry: 'clearResources' },
+			cleanupFailed: {
+				meta: accountStatus('cleanupFailed'),
+				type: 'final',
+				entry: 'clearResources'
+			},
+			ownerFailed: { meta: accountStatus('ownerFailed'), type: 'final', entry: 'clearResources' },
 			closed: {
-				meta: { status: 'closed' },
+				meta: accountStatus('closed'),
 				type: 'final',
 				entry: assign({
 					host: undefined,
@@ -667,8 +680,21 @@ export function selectApplicationView<Session extends object>(
 		: snapshot
 			? (Object.values(snapshot.getMeta()).find((meta) => meta !== undefined)?.status ?? 'working')
 			: 'starting'
+	const meta = snapshot
+		? Object.values(snapshot.getMeta()).find((value) => value !== undefined)
+		: undefined
+	const feedback = snapshot?.context.feedback
+
 	return {
 		status,
+		message:
+			configured && meta
+				? meta.message()
+				: { text: t(`account.status.${status}`), variant: 'info' as const },
+		feedbackMessage:
+			feedback && feedback !== 'none'
+				? { text: t(`account.feedback.${feedback}`), variant: 'error' as const }
+				: undefined,
 		feedback: snapshot?.context.feedback === 'none' ? undefined : snapshot?.context.feedback,
 		showIdentityForm: snapshot?.can({ type: 'CREATE' }) ?? false,
 		canLogout:
@@ -687,7 +713,7 @@ export function selectRecoveryBinding<Session extends object>(
 		!snapshot.context.ownerFailed &&
 		!snapshot.context.cleanupFailed &&
 		snapshot.context.observation.status === 'ready'
-		? snapshot.context.observation.recovery
+		? { ...snapshot.context.observation.recovery, messages: recoveryMessages() }
 		: undefined
 }
 
