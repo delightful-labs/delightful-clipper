@@ -16,3 +16,7 @@ command = "pnpm build:deploy-preview"
 [context.deploy-preview.environment]
 # Qualify the gateway against disposable Jazz; production remains gated off.
 CAPTURE_GATEWAY_ENABLED = "true"
+
+[functions]
+node_bundler = "esbuild"
+external_node_modules = ["jazz-napi"]

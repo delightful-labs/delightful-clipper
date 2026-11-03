@@ -20,6 +20,7 @@
 		"dompurify": "3.4.17",
 		"i18next": "26.7.1",
 		"ipaddr.js": "2.3.0",
+		"jazz-napi": "2.0.0-alpha.59",
 		"jazz-tools": "2.0.0-alpha.59",
 		"jsdom": "29.1.1",
 		"svelte": "5.57.2",
