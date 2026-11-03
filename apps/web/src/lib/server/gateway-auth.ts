@@ -5,17 +5,25 @@ export async function authenticateGateway(
 	request: Request,
 	config: { appId: string; accountRegistry: string }
 ) {
-	const headers = { 'Cache-Control': 'private, no-store' }
-	if (!config.appId || !config.accountRegistry) return new Response(null, { status: 503, headers })
+	const headers = { 'Cache-Control': 'private, no-store', 'Content-Type': 'application/json' }
+	const failure = (status: 401 | 503) =>
+		new Response(
+			JSON.stringify({
+				code: status === 401 ? 'sessionUnavailable' : 'gatewayUnavailable',
+				retryable: status === 503
+			}),
+			{ status, headers }
+		)
+	if (!config.appId || !config.accountRegistry) return failure(503)
 	try {
 		const session = await resolveRequestSession(
 			request,
 			{ ...config, allowLocalFirstAuth: true },
 			{ account: 'login' }
 		)
-		if (!session.account_id) return new Response(null, { status: 503, headers })
+		if (!session.account_id) return failure(503)
 		return { accountId: session.account_id }
 	} catch (error) {
-		return new Response(null, { status: isRequestAuthenticationError(error) ? 401 : 503, headers })
+		return failure(isRequestAuthenticationError(error) ? 401 : 503)
 	}
 }

@@ -185,14 +185,16 @@ test('authenticates capture requests with the existing account and rejects missi
 	await page.goto('/')
 	await page.getByRole('button', { name: 'Create account', exact: true }).click()
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
-	expect((await request.post('/api/capture/resolve')).status()).toBe(401)
+	const missing = await request.post('/api/capture/resolve')
+	expect(missing.status()).toBe(401)
+	expect(await missing.json()).toEqual({ code: 'sessionUnavailable', retryable: false })
 	expect(
 		(
 			await request.post('/api/capture/resolve', { headers: { Authorization: 'Bearer forged' } })
 		).status()
 	).toBe(401)
-	// The capture implementation remains a later batch; passing authentication
-	// reaches routing (404), while the same request without its managed bearer is 401.
+	// Passing authentication reaches destination validation; loopback is blocked
+	// before any upstream connection. Missing or forged bearers remain 401.
 	expect(
 		await page.evaluate(async () => {
 			const path = '/tests/storage-driver.ts'
@@ -201,9 +203,25 @@ test('authenticates capture requests with the existing account and rejects missi
 				await requestCapture('resolve', {
 					protocolVersion: 1,
 					operationId: crypto.randomUUID(),
-					url: 'https://example.com'
+					url: 'http://127.0.0.1/'
 				})
 			).status
 		})
-	).toBe(404)
+	).toBe(400)
+	await authority.stop()
+	try {
+		const outage = await page.evaluate(async () => {
+			const path = '/tests/storage-driver.ts'
+			const { requestCapture } = await import(/* @vite-ignore */ path)
+			const response = await requestCapture('resolve', {
+				protocolVersion: 1,
+				operationId: crypto.randomUUID(),
+				url: 'http://127.0.0.1/'
+			})
+			return { status: response.status, body: await response.json() }
+		})
+		expect(outage).toEqual({ status: 503, body: { code: 'gatewayUnavailable', retryable: true } })
+	} finally {
+		authority = await startAuthority()
+	}
 })
