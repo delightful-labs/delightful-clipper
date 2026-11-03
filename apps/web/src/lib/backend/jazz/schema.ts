@@ -1,6 +1,44 @@
 import { schema as s } from 'jazz-tools'
 
 export const app = s.defineApp({
+	captureIntakes: s.table(
+		{
+			libraryId: s.uuid(),
+			submittedUrl: s.string(),
+			fetchUrl: s.string(),
+			createdAt: s.string(),
+			formatVersion: s.string()
+		},
+		{ library: s.rel('libraries', 'libraryId') }
+	),
+	captureObservations: s.table(
+		{
+			libraryId: s.uuid(),
+			intakeId: s.uuid(),
+			attemptId: s.uuid(),
+			kind: s.string(),
+			payload: s.string(),
+			createdAt: s.string(),
+			formatVersion: s.string()
+		},
+		{ library: s.rel('libraries', 'libraryId'), intake: s.rel('captureIntakes', 'intakeId') }
+	),
+	// Completion has a required parent instead of a conditional reference in an opaque payload.
+	captureCompletions: s.table(
+		{
+			libraryId: s.uuid(),
+			intakeId: s.uuid(),
+			attemptId: s.uuid(),
+			documentId: s.uuid(),
+			createdAt: s.string(),
+			formatVersion: s.string()
+		},
+		{
+			library: s.rel('libraries', 'libraryId'),
+			intake: s.rel('captureIntakes', 'intakeId'),
+			document: s.rel('documents', 'documentId')
+		}
+	),
 	articleSources: s.table(
 		{
 			documentId: s.uuid(),

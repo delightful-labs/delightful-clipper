@@ -44,6 +44,16 @@ A qualified public fetch transport can use Node HTTP(S) request lookup/connectio
 
 The Node APIs are documented for the [target Node 24 HTTP runtime](https://nodejs.org/docs/latest-v24.x/api/http.html); address/redirect defenses follow [OWASP SSRF guidance](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html). This is a design mapping, not a passed SSRF audit or deployed network proof.
 
+## Durable capture schema foundation (2026-11-03 continuation)
+
+See [durable-capture-design.md](durable-capture-design.md) for the next workflow's identities, state/resource ownership, shutdown/account-change rules, bounded retry, publication non-replay barrier and dependency-ordered acceptance tasks. Branch `feat/durable-capture-foundation` starts from `main` at `6425542`; it is independent of the still-open reader PR #11 (`a8d9df3` when checked). Recheck both PRs before continuing and preserve #11's corrections when wiring the new workflow.
+
+Implemented here: additive immutable `captureIntakes`, `captureObservations` and `captureCompletions` tables, owner-only access, same-library parent requirements, format-version guards and update/delete denial. Five real-authority tests cover native rows, failure → completion evidence against the same intake, unchanged existing documents, private reads/forged parents, immutable evidence, unsupported formats and atomic graph acceptance/rejection. These are repository schema/policy checks, not browser restart or synchronization qualification of a capture journal. No deployed authority schema change is claimed.
+
+Foundation validation: `pnpm verify` passes 218 tests/26 files and all tooling/type/build checks; all eight current-main Chromium tests and five production offline tests pass. Commands ran sequentially. These counts exclude the still-open reader PR's additions; existing browser capture paths do not use the new intake tables. Details and evidence limits are in the design document.
+
+Still unbuilt: bounded domain contracts, admission adapters/actors, device-local checkpoint, queue/job owners, typed gateway failure/provenance retention, restart reconciliation, retry scheduling and link-only UI. Existing Add Link does not use these tables yet. The two exact copy proposals in the design await explicit approval; no locale entries or hardcoded UI messages were added. Continue with D1's remaining validation boundary, then D2–D7; do not mark FR-002/054/056/057 complete from this foundation.
+
 ## Review boundary
 
 Implementation is authorized and underway through feature branches and PRs. The archived investigation is supporting evidence only. Current validation and unchecked acceptance work are recorded in [tasks.md](tasks.md); no dependent product workflow should be treated as complete from repository capabilities alone.

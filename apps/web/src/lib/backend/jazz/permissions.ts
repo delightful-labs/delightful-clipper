@@ -15,6 +15,33 @@ export default s.definePermissions(app, ({ policy, session, allOf }) => {
 	policy.libraries.allowInsert.where(canonical)
 	policy.libraries.allowUpdate.whereOld(canonical).whereNew(canonical)
 	policy.libraries.allowDelete.never()
+	policy.captureIntakes.allowRead.where((row) => owns(row.libraryId))
+	policy.captureIntakes.allowInsert.where((row) =>
+		allOf([owns(row.libraryId), { formatVersion: '1' }])
+	)
+	policy.captureIntakes.allowUpdate.never()
+	policy.captureIntakes.allowDelete.never()
+	policy.captureObservations.allowRead.where((row) => owns(row.libraryId))
+	policy.captureObservations.allowInsert.where((row) =>
+		allOf([
+			owns(row.libraryId),
+			{ formatVersion: '1' },
+			policy.captureIntakes.exists.where({ id: row.intakeId, libraryId: row.libraryId })
+		])
+	)
+	policy.captureObservations.allowUpdate.never()
+	policy.captureObservations.allowDelete.never()
+	policy.captureCompletions.allowRead.where((row) => owns(row.libraryId))
+	policy.captureCompletions.allowInsert.where((row) =>
+		allOf([
+			owns(row.libraryId),
+			{ formatVersion: '1' },
+			policy.captureIntakes.exists.where({ id: row.intakeId, libraryId: row.libraryId }),
+			policy.documents.exists.where({ id: row.documentId, libraryId: row.libraryId })
+		])
+	)
+	policy.captureCompletions.allowUpdate.never()
+	policy.captureCompletions.allowDelete.never()
 	policy.storageOperations.allowRead.where((row) => owns(row.libraryId))
 	policy.storageOperations.allowInsert.where((row) => owns(row.libraryId))
 	policy.storageOperations.allowUpdate.never()

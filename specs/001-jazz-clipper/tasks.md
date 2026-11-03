@@ -13,6 +13,20 @@ Updated 2026-11-03. This is the current implementation checklist; the product re
 - [x] Add bounded domain preparation with operation fingerprints, repository save/read actors and separate remote-acceptance receipts.
 - [x] Exercise real-authority native-byte/Unicode round-trip, duplicate operation blocking, account read denial, immutable-row denial, atomic foreign-library rejection, staging invisibility and oversize rejection in repository tests.
 
+## Durable capture foundation continuation
+
+Design and remaining dependency-ordered work: [durable-capture-design.md](durable-capture-design.md). This is a schema/policy foundation, not a completed durable intake feature. The application workflow depends on the corrections in reader PR #11; preserve them when continuing.
+
+- [x] Define immutable native intake, observation and required-document completion tables without changing successful document/snapshot publication.
+- [x] Enforce canonical-owner reads/inserts, same-library parents, format version `1`, immutable evidence and atomic graph validation with the real Jazz test authority.
+- [x] Model journal identities, account/generation ownership, admission/shutdown boundaries, publication uncertainty, retry budget and application acceptance before adding asynchronous capture recovery.
+- [ ] Complete bounded domain contracts/validation and admission transaction actors (D1 remainder, D2).
+- [ ] Implement typed source/failure evidence, durable execution/reconciliation and bounded retry scheduling (D3–D5).
+- [ ] Obtain required exact copy approval and implement link-only library projection/Retry (D6).
+- [ ] Qualify actual application termination/restart, connectivity resume, same-item completion, multi-tab takeover and restored-profile outcomes (D7).
+
+The existing Add Link workflow still does not write these tables. No capture-journal durability, automatic retry or link-only UI claim follows from native schema tests.
+
 ## Storage qualification before enabling a product write flow
 
 - [x] Remove the redundant custom manifest/part codec; validate native asset bounds and parent consistency.
