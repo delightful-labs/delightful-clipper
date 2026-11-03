@@ -14,18 +14,23 @@
 		"build:deploy-preview": "node --experimental-strip-types tooling/netlify-preview.ts"
 	},
 	"dependencies": {
+		"@mozilla/readability": "0.6.0",
 		"delightful-local-first": "file:../../vendor/delightful-local-first-0582a9a.tgz",
 		"delightful-ui": "file:../../vendor/delightful-ui-0.0.25-component-properties.tgz",
+		"dompurify": "3.4.17",
+		"i18next": "26.7.1",
+		"ipaddr.js": "2.3.0",
 		"jazz-tools": "2.0.0-alpha.59",
+		"jsdom": "29.1.1",
 		"svelte": "5.57.2",
-		"xstate": "5.33.2",
-		"i18next": "26.7.1"
+		"xstate": "5.33.2"
 	},
 	"devDependencies": {
 		"@opentelemetry/api": "1.9.1",
 		"@sveltejs/adapter-netlify": "7.0.1",
 		"@sveltejs/kit": "3.0.1",
 		"@sveltejs/vite-plugin-svelte": "7.2.0",
+		"@types/jsdom": "28.0.3",
 		"svelte-check": "4.6.0",
 		"typescript": "6.0.3",
 		"vite": "8.3.4"

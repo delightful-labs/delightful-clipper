@@ -1,0 +1,25 @@
+# Public-source gateway foundation
+
+The resolve/extract POST endpoints are implemented behind existing Jazz/DLF managed-bearer authentication and canonical registry admission. They are disabled by default (`CAPTURE_GATEWAY_ENABLED=false`) until the Netlify deployment/network gate is qualified. No Add Link UI, repository save, image fetch endpoint, or reader is enabled by this work.
+
+## Ownership and network boundary
+
+The request owns its deadline, admission slot and gateway XState actor. The machine owns resolve → one pinned fetch → redirect decision/revalidation → extraction. An explicit cancellation aborts leaf work and waits for settlement. Single-hop transport owns and bounds its socket and response bytes. DNS A/AAAA work is canceled on abort; every returned address must pass public-unicast classification. Addresses that encode loopback/private/reserved ranges, IPv4-mapped IPv6 and transition ranges are rejected. URL normalization precedes validation, so numeric/hex/short IPv4 forms cannot bypass it. Only HTTP port 80 and HTTPS port 443 are selected.
+
+Node HTTP(S) lookup returns the selected address without re-resolving the original hostname. The original URL controls Host, TLS SNI and certificate validation; pooling is disabled and the actual peer is checked. Redirects are manual, bounded to eight and checked anew before any subsequent request. Upstream requests have fixed headers and no user cookies, Authorization, arbitrary headers or credentials. Local fixture tests inject loopback pins directly into the transport leaf; production pins only come from the public resolver.
+
+Requests are at most 16 KiB, with exactly protocol version, UUID operation ID and an 8 KiB URL. Upstream wire and decoded bodies are each capped at 10 MiB; gzip/deflate/Brotli use bounded output and a 100x expansion ceiling (1 KiB floor). Requests have a 20-second total deadline and finite DNS attempts. Replies are limited to 5 MiB. Per-instance admission limits each authenticated owner to two active requests and twenty attempts per minute, with a bounded owner map and Retry-After. These limits are not represented as a distributed/global quota. Responses are private/no-store, and errors contain stable codes rather than raw upstream content.
+
+## Extraction
+
+The selected exact pins are Readability 0.6.0, jsdom 29.1.1, DOMPurify 3.4.17 and ipaddr.js 2.3.0. Source documents are inert: scripts and resource loading are not enabled. A 50,000-element ceiling bounds Readability input. Referenced footnote targets are collected before pruning, retained when still referenced, and sanitized with the extracted content. Only an explicit HTML tag/attribute set survives; active markup, handlers, embeds and inline image sources are excluded. HTTP(S) image candidates are returned as evidence for later processing, not fetched. Candidate/footnote caps are recorded as partial evidence. Plain text remains literal. HTML charset handling uses jsdom's parser; normalized text preserves block boundaries with normalization version 1. Canonical declarations are returned as candidates and do not merge document identity.
+
+## Evidence and open gate
+
+`pnpm verify` passes, including 120 unit tests and the Netlify adapter build. All five existing Chromium tests pass with gateway routes enabled in the test environment. The authenticated browser test now confirms 401 for missing/forged credentials and 400 for a blocked loopback URL after successful authentication.
+
+A live isolated-agent smoke created an account, synced the private root, and extracted `https://example.com/` with the real production request leaf, native registry verifier, public DNS, pinned TLS transport and sanitizer: status 200, expected title and nonempty text. Unit fixtures cover mixed public/private DNS answers, numeric/mapped destinations, redirects, cancellation, actual pinned sockets/Host, bounded decompression, footnotes and hostile markup. Normal dev/agent now explicitly select their own public app ID and canonical registry because the SDK otherwise gives an existing `.env` app ID precedence over its configuration option.
+
+Netlify connector calls returned “Authentication required”; Netlify-hosted Linux native packaging and destination transport remain unqualified. Leave the build-time flag false for production. To qualify a connected deploy preview, build it with the flag true, create a synthetic account, verify public resolve/extract plus blocked private redirects, and confirm the deployed function's native verifier/network behavior. This document does not claim that hosted proof passed.
+
+References: [Node 24 HTTP lookup/agent controls](https://nodejs.org/docs/latest-v24.x/api/http.html), [Mozilla Readability](https://github.com/mozilla/readability), [DOMPurify](https://github.com/cure53/DOMPurify), [ipaddr.js](https://github.com/whitequark/ipaddr.js).

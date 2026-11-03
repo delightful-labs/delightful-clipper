@@ -23,6 +23,13 @@ Updated 2026-11-03. This is the current implementation checklist; the product re
 - [x] Reconnect and verify that content in a separately restored account profile.
 - [ ] Wire consuming actor ownership and drain into the eventual product capture flow; no storage write UI is currently enabled.
 
+## Gateway foundation
+
+- [x] Add authenticated, bounded resolve/extract endpoints with public-address pinning and redirect revalidation.
+- [x] Add inert Readability extraction, explicit DOMPurify allowlists and referenced footnote preservation.
+- [x] Qualify local transport/cancellation/address/sanitizer fixtures and a live authenticated public HTTPS extraction.
+- [ ] Qualify Netlify-hosted native verifier packaging and actual public-only transport before enabling the deployment flag. Connector access currently requires authentication.
+
 ## Subsequent product and release work
 
 - [ ] Build the authenticated public-source gateway and Add Link workflow, including redirect/short-link identity, destination-pinned transport and extraction/sanitization bounds.

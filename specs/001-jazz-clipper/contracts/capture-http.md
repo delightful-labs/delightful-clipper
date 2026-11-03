@@ -1,6 +1,6 @@
 # First-party capture HTTP boundary
 
-**Status**: proposed Netlify Node function contract. Production use is gated on a verified DLF/Jazz-compatible browser identity verifier (G3). No unauthenticated open proxy or invented SDK verifier is authorized.
+**Status**: resolve/extract implemented behind a disabled-by-default deployment qualification flag; asset remains proposed. See [gateway implementation](../gateway-implementation.md). Production use is gated on a verified DLF/Jazz-compatible browser identity verifier (G3). No unauthenticated open proxy or invented SDK verifier is authorized.
 
 ## POST /api/capture/resolve
 

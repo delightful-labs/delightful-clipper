@@ -191,8 +191,8 @@ test('authenticates capture requests with the existing account and rejects missi
 			await request.post('/api/capture/resolve', { headers: { Authorization: 'Bearer forged' } })
 		).status()
 	).toBe(401)
-	// The capture implementation remains a later batch; passing authentication
-	// reaches routing (404), while the same request without its managed bearer is 401.
+	// Passing authentication reaches destination validation; loopback is blocked
+	// before any upstream connection. Missing or forged bearers remain 401.
 	expect(
 		await page.evaluate(async () => {
 			const path = '/tests/storage-driver.ts'
@@ -201,9 +201,9 @@ test('authenticates capture requests with the existing account and rejects missi
 				await requestCapture('resolve', {
 					protocolVersion: 1,
 					operationId: crypto.randomUUID(),
-					url: 'https://example.com'
+					url: 'http://127.0.0.1/'
 				})
 			).status
 		})
-	).toBe(404)
+	).toBe(400)
 })
