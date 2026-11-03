@@ -1,3 +1,6 @@
+import { readRecord } from '../../machines/storage/read.test-support.js'
+import { preparationMachine } from '../../machines/capture/preparation.js'
+import type { LibraryCapability } from '../../contracts/library.js'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import { createPolicyTestApp } from 'jazz-tools/testing'
@@ -51,9 +54,7 @@ it('publishes text and native byte payload only after local persistence', async 
 	if (result.kind !== 'saved') throw new Error('Expected local save')
 	await Promise.all(result.receipts.map((receipt) => receipt.global()))
 	expect(await db.all(app.assets.where({ id: input.operationId }))).toHaveLength(1)
-	const read = await toPromise(
-		createActor(store.readMachine, { input: { id: input.operationId } }).start()
-	)
+	const read = await readRecord(store.readCapabilities, input.operationId)
 	expect(read.kind).toBe('available')
 	if (read.kind !== 'available' || read.asset.kind !== 'available')
 		throw new Error('Expected native asset')
@@ -114,9 +115,7 @@ it('does not publish a complete document from staging metadata alone', async () 
 	const { id: assetId, ...asset } = draft.asset
 	tx.insert(app.assets, asset, { id: assetId })
 	await tx.commit().wait({ tier: 'global' })
-	expect(
-		(await toPromise(createActor(store.readMachine, { input: { id: operationId } }).start())).kind
-	).toBe('missing')
+	expect((await readRecord(store.readCapabilities, operationId)).kind).toBe('missing')
 })
 it('rejects oversized input before writing an operation journal', async () => {
 	const { db, store } = await owner('records-limit')
@@ -160,4 +159,119 @@ it('rejects an invalid native publication atomically and keeps only its operatio
 	expect(await db.one(app.documents.where({ id: documentId }))).toBeNull()
 	expect(await db.one(app.storageOperations.where({ id: operationId }))).not.toBeNull()
 	expect((await toPromise(createActor(store.saveMachine, { input }).start())).kind).toBe('blocked')
+})
+
+it('publishes immutable source provenance with its document and denies foreign or orphan metadata', async () => {
+	const a = await owner('source-a'),
+		b = await owner('source-b')
+	const input = {
+		...request(),
+		source: {
+			finalUrl: 'https://example.com/article',
+			submittedUrl: 'https://short.example/#intro',
+			provenance: '{"canonicalCandidate":"https://other.example/"}'
+		}
+	}
+	const saved = await toPromise(createActor(a.store.saveMachine, { input }).start())
+	if (saved.kind !== 'saved') throw new Error('Expected local save')
+	await Promise.all(saved.receipts.map((receipt) => receipt.global()))
+	const row = await a.db.one(app.articleSources.where({ id: input.operationId }))
+	expect(row).toMatchObject({ ...input.source, documentId: input.operationId, libraryId: a.id })
+	expect(await b.db.one(app.articleSources.where({ id: input.operationId }))).toBeNull()
+	await expect(
+		a.db
+			.update(app.articleSources, input.operationId, { finalUrl: 'https://overwritten.example/' })
+			.wait({ tier: 'global' })
+	).rejects.toThrow(/denied|rejected/i)
+	await expect(
+		b.db
+			.insert(app.articleSources, {
+				documentId: input.operationId,
+				libraryId: b.id,
+				...input.source
+			})
+			.wait({ tier: 'global' })
+	).rejects.toThrow(/denied|rejected/i)
+	await expect(
+		a.db
+			.insert(app.articleSources, {
+				documentId: crypto.randomUUID(),
+				libraryId: a.id,
+				...input.source
+			})
+			.wait({ tier: 'global' })
+	).rejects.toThrow(/denied|rejected/i)
+})
+
+it('reuses verified destination identity and treats a stranded intent as uncertain without replay', async () => {
+	const { createLibraryCapability } = await import('./library.js')
+	const { db, id, store } = await owner('source-identity')
+	let extracts = 0
+	const request = async (mode: 'resolve' | 'extract', body: unknown) => {
+		if (!body || typeof body !== 'object' || !('operationId' in body))
+			throw new Error('Invalid request')
+		const base = { operationId: body.operationId, finalUrl: 'https://example.com/one' }
+		return Response.json(
+			mode === 'resolve'
+				? base
+				: {
+						...base,
+						canonicalCandidate: 'https://unrelated.example/',
+						candidate: {
+							title: 'First snapshot',
+							text: 'Original text',
+							html: '<p>Original text</p>'
+						}
+					}
+		)
+	}
+	const capability = createLibraryCapability(store, id, (mode, body) => {
+		if (mode === 'extract') extracts++
+		return request(mode, body)
+	})
+	const prepare = (capability: LibraryCapability, url: string) =>
+		toPromise(createActor(preparationMachine, { input: { capability, url } }).start())
+	const first = await prepare(capability, 'https://short.example/#a')
+	if (first.kind !== 'preview') throw new Error('Expected preview')
+	const candidate = first.candidate
+	const save = {
+		operationId: candidate.id,
+		title: candidate.title,
+		text: candidate.text,
+		bytes: new TextEncoder().encode(candidate.html),
+		mediaType: 'text/html',
+		source: {
+			finalUrl: candidate.finalUrl,
+			submittedUrl: candidate.submittedUrl,
+			provenance: candidate.provenance
+		}
+	}
+	const saved = await toPromise(createActor(store.saveMachine, { input: save }).start())
+	if (saved.kind !== 'saved') throw new Error('Expected save')
+	await Promise.all(saved.receipts.map((receipt) => receipt.global()))
+	expect(await prepare(capability, 'https://example.com/one#b')).toEqual({
+		kind: 'duplicate',
+		id: candidate.id
+	})
+	expect(extracts).toBe(1)
+	expect(await readRecord(store.readCapabilities, candidate.id)).toMatchObject({
+		kind: 'available',
+		text: 'Original text',
+		source: { submittedUrl: 'https://short.example/#a' }
+	})
+	const { articleId } = await import('../../capture/source.js')
+	const stranded = await articleId(id, 'https://example.com/two')
+	const draft = await prepareSave(id, { ...save, operationId: stranded })
+	const { id: operationId, ...intent } = draft.intent
+	await db.insert(app.storageOperations, intent, { id: operationId }).wait({ tier: 'global' })
+	const strandedCapability = createLibraryCapability(store, id, async (_mode, body) => {
+		if (!body || typeof body !== 'object' || !('operationId' in body))
+			throw new Error('Invalid request')
+		return Response.json({ operationId: body.operationId, finalUrl: 'https://example.com/two' })
+	})
+	expect(await prepare(strandedCapability, 'https://example.com/two')).toEqual({
+		kind: 'uncertain',
+		id: stranded
+	})
+	expect(await db.one(app.documents.where({ id: stranded }))).toBeNull()
 })

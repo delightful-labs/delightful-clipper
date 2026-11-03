@@ -1,16 +1,27 @@
-import type { ActorLogic, Snapshot } from 'xstate'
+import type { ActorLogic, ActorRef, Snapshot } from 'xstate'
 import type {
 	WorkspaceCreationAttempt,
 	WorkspaceCreationResult
 } from 'delightful-local-first/workspace/creation/contracts'
 
+export type ArticleSource = {
+	documentId: string
+	id: string
+	libraryId: string
+	finalUrl: string
+	submittedUrl: string
+	provenance: string
+}
 export type SaveRequest = {
+	source?: Omit<ArticleSource, 'id' | 'libraryId' | 'documentId'>
 	operationId: string
 	title: string
 	text: string
 	bytes: Uint8Array
 	mediaType: string
 }
+export type SyncReport = { type: 'SYNC'; id: string; status: 'accepted' | 'rejected' }
+export type ReceiptWatch = { type: 'WATCH'; id: string; receipts: SyncReceipt[] }
 export type SyncReceipt = { global: () => Promise<void> }
 export type StoredAsset = {
 	id: string
@@ -42,6 +53,7 @@ export type StorageIntent = {
 	createdAt: string
 }
 export type PreparedSave = {
+	source?: ArticleSource
 	intent: StorageIntent
 	asset: StoredAsset
 	snapshot: TextSnapshot
@@ -67,10 +79,25 @@ export type AssetResult =
 	| { kind: 'unavailable'; reason: 'missing' | 'invalid' }
 export type ReadResult =
 	| { kind: 'missing' | 'unavailable' | 'corrupt' }
-	| { kind: 'available'; document: DocumentHeader; text: string; asset: AssetResult }
+	| {
+			kind: 'available'
+			document: DocumentHeader
+			text: string
+			asset: AssetResult
+			source?: ArticleSource
+	  }
+export type ReadOutcome = { kind: ReadResult['kind'] }
+export type ReadReport = { type: 'READ_RESULT'; generation: number; result: ReadResult }
+export type ReadInput = {
+	id: string
+	capability: ReadCapabilities
+	generation?: number
+	reportTo?: ActorRef<Snapshot<unknown>, ReadReport>
+}
 export type ReadCapabilities = {
 	isCurrent: () => boolean
-	document: (id: string) => Promise<DocumentHeader | null>
-	snapshot: (id: string) => Promise<TextSnapshot | null>
-	asset: (id: string) => Promise<StoredAsset | null>
+	document: (id: string, signal: AbortSignal) => Promise<DocumentHeader | null>
+	snapshot: (id: string, signal: AbortSignal) => Promise<TextSnapshot | null>
+	asset: (id: string, signal: AbortSignal) => Promise<StoredAsset | null>
+	source: (id: string, signal: AbortSignal) => Promise<ArticleSource | null>
 }

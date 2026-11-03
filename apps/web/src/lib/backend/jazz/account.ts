@@ -1,3 +1,4 @@
+import { createLibraryCapability } from './library.js'
 import { createLibraryRecords } from './records.js'
 import { ReadTier } from 'jazz-tools'
 import wasmUrl from '#jazz-wasm-binary?url'
@@ -38,6 +39,18 @@ function bindHost(session: Session): AccountHost {
 			status: 'ready',
 			binding: Object.freeze({}),
 			accountId: account.id,
+			library: createLibraryCapability(
+				createLibraryRecords(db, account.id, () => {
+					try {
+						check()
+						return true
+					} catch {
+						return false
+					}
+				}),
+				account.id,
+				requestCapture
+			),
 			root: {
 				read: async () => {
 					check()

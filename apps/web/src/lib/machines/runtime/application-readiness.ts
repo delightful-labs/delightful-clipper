@@ -1,3 +1,4 @@
+import { libraryMachine } from '../capture/library.js'
 import { rootBootstrapMachine } from './root-bootstrap.js'
 import {
 	createSessionStartupMachine,
@@ -42,6 +43,7 @@ type Context<Session extends object> = {
 	write: RootWrite | undefined
 	phrase: string
 	attempt: number
+	productExit: 'logout' | 'shutdown' | 'replace'
 	feedback: 'none' | 'identityFailed' | 'restoreFailed' | 'restoreInvalid'
 }
 function required<T>(value: T | undefined): T {
@@ -62,6 +64,7 @@ function observe(host: AccountHost): AccountObservation {
 
 export function createApplicationReadinessMachine<Session extends object>() {
 	const accountActors = {
+		library: libraryMachine,
 		startup: createSessionStartupMachine<Session>(),
 		readiness: createSessionReadinessMachine(),
 		create: fromPromise(({ input }: { input: AccountHost }) => input.create()),
@@ -75,7 +78,13 @@ export function createApplicationReadinessMachine<Session extends object>() {
 		Context<Session>,
 		Event<Session>,
 		typeof accountActors,
-		{},
+		{
+			startup: 'startup'
+			readiness: 'readiness'
+			bootstrap: 'bootstrap'
+			restore: 'restore'
+			library: 'library'
+		},
 		{
 			refresh: undefined
 			clearPhrase: undefined
@@ -174,7 +183,8 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			write: undefined,
 			phrase: '',
 			attempt: 0,
-			feedback: 'none'
+			feedback: 'none',
+			productExit: 'shutdown'
 		}),
 
 		entry: sendTo('startup', ({ context }) => ({ type: 'START', ...context.input.startup })),
@@ -502,8 +512,61 @@ export function createApplicationReadinessMachine<Session extends object>() {
 							},
 							ready: {
 								initial: 'syncPending',
-								on: { LOGOUT: '#application-readiness.running.loggingOut' },
+								invoke: {
+									id: 'library',
+									src: 'library',
+									input: ({ context }) =>
+										context.observation.status === 'ready'
+											? context.observation.library
+											: undefined,
+									onDone: [
+										{
+											guard: ({ context }) => context.productExit === 'logout',
+											target: '#application-readiness.running.loggingOut'
+										},
+										{
+											guard: ({ context }) => context.productExit === 'replace',
+											target: '#application-readiness.running.route'
+										},
+										{ target: '#application-readiness.running.draining' }
+									]
+								},
+								on: {
+									LOGOUT: {
+										target: '.stopping',
+										actions: [
+											assign({ productExit: 'logout' }),
+											sendTo('library', { type: 'SHUTDOWN' })
+										]
+									},
+									SHUTDOWN: {
+										target: '.stopping',
+										actions: [
+											assign({ productExit: 'shutdown' }),
+											sendTo('library', { type: 'SHUTDOWN' })
+										]
+									},
+									OBSERVED: [
+										{ guard: 'sameBinding' },
+										{
+											target: '.stopping',
+											actions: [
+												'rememberObservation',
+												assign({ productExit: 'replace' }),
+												sendTo('library', { type: 'SHUTDOWN' })
+											]
+										}
+									]
+								},
 								states: {
+									stopping: {
+										meta: { status: 'closing' },
+										on: {
+											LOGOUT: {},
+											SHUTDOWN: { actions: assign({ productExit: 'shutdown' }) },
+											OBSERVED: { actions: 'rememberObservation' }
+										}
+									},
 									syncPending: {
 										meta: { status: 'localSaved' },
 										invoke: {
@@ -517,7 +580,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 									syncFailed: {
 										meta: { status: 'syncFailed' },
 										on: {
-											RETRY: { target: '#application-readiness.running.library', reenter: true }
+											RETRY: 'syncPending'
 										}
 									}
 								}
@@ -604,5 +667,15 @@ export function selectRecoveryBinding<Session extends object>(
 		!snapshot.context.cleanupFailed &&
 		snapshot.context.observation.status === 'ready'
 		? snapshot.context.observation.recovery
+		: undefined
+}
+
+/** The invocation ID is owned by ready; never expose actors from a draining binding. */
+export function selectLibraryActor<Session extends object>(
+	snapshot: ApplicationSnapshot<Session> | undefined
+) {
+	return snapshot?.matches({ running: { library: 'ready' } }) &&
+		!snapshot.matches({ running: { library: { ready: 'stopping' } } })
+		? snapshot.children.library
 		: undefined
 }

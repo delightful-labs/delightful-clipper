@@ -61,6 +61,15 @@ export default s.definePermissions(app, ({ policy, session, allOf }) => {
 			})
 		])
 	)
+	policy.articleSources.allowRead.where((row) => owns(row.libraryId))
+	policy.articleSources.allowInsert.where((row) =>
+		allOf([
+			owns(row.libraryId),
+			policy.documents.exists.where({ id: row.documentId, libraryId: row.libraryId })
+		])
+	)
+	policy.articleSources.allowUpdate.never()
+	policy.articleSources.allowDelete.never()
 	policy.documents.allowUpdate.never()
 	policy.documents.allowDelete.never()
 })

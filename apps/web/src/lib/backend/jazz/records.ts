@@ -1,16 +1,16 @@
+import type { ReadCapabilities } from '../../contracts/storage.js'
 import { ReadTier } from 'jazz-tools'
 import type { Db, Transaction, WriteHandle } from 'jazz-tools'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import type { PreparedSave, StorageIntent, SyncReceipt } from '../../contracts/storage.js'
 import { createSaveRecordMachine } from '../../machines/storage/save.js'
-import { createReadRecordMachine } from '../../machines/storage/read.js'
 import { prepareSave } from '../../storage/prepare.js'
 import { app } from './schema.js'
 
 type Resource = { transaction: Transaction<'mergeable'>; write: WriteHandle | undefined }
 type Stage = 'intent' | 'publish'
 export function createLibraryRecords(
-	db: Pick<Db, 'one' | 'beginTransaction'>,
+	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
@@ -61,6 +61,10 @@ export function createLibraryRecords(
 					resource.transaction.insert(app.snapshots, snapshot, { id: snapshotId })
 					const { id, ...document } = draft.document
 					resource.transaction.insert(app.documents, document, { id })
+					if (draft.source) {
+						const { id: sourceId, ...source } = draft.source
+						resource.transaction.insert(app.articleSources, source, { id: sourceId })
+					}
 				}
 				return {
 					global: () => {
@@ -79,7 +83,7 @@ export function createLibraryRecords(
 			rollback: (resource) => resource.transaction.rollback()
 		})
 	}
-	return {
+	const records = {
 		binding: Object.freeze({}),
 		saveMachine: createSaveRecordMachine({
 			isCurrent,
@@ -90,7 +94,7 @@ export function createLibraryRecords(
 			intent: stageLogic('intent'),
 			publish: stageLogic('publish')
 		}),
-		readMachine: createReadRecordMachine({
+		readCapabilities: {
 			isCurrent,
 			document: async (id) => {
 				check()
@@ -115,7 +119,53 @@ export function createLibraryRecords(
 				})
 				check()
 				return row
+			},
+			source: async (id, signal) => {
+				check()
+				signal.throwIfAborted()
+				const row = await db.one(app.articleSources.where({ id, libraryId }), {
+					tier: ReadTier.LocalFirst
+				})
+				check()
+				signal.throwIfAborted()
+				return row
 			}
-		})
+		} satisfies ReadCapabilities
+	}
+	return {
+		...records,
+		isCurrent,
+		hasDocument: async (id: string) => {
+			check()
+			const row = await db.one(app.documents.where({ id, libraryId }), {
+				tier: ReadTier.LocalFirstUnlessEmpty
+			})
+			check()
+			return row !== null
+		},
+		hasIntent: async (id: string) => {
+			check()
+			const row = await db.one(app.storageOperations.where({ id, libraryId }), {
+				tier: ReadTier.LocalFirstUnlessEmpty
+			})
+			check()
+			return row !== null
+		},
+		subscribe: (
+			next: (rows: import('../../contracts/storage.js').DocumentHeader[]) => void,
+			error: () => void
+		) =>
+			db.subscribe(
+				app.documents.where({ libraryId }),
+				{
+					onUpdate: (rows) => {
+						if (isCurrent()) next(rows)
+					},
+					onError: error
+				},
+				{ tier: ReadTier.LocalFirst }
+			)
 	}
 }
+
+export type LibraryRecords = ReturnType<typeof createLibraryRecords>

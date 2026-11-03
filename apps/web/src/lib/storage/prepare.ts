@@ -19,12 +19,24 @@ export async function prepareSave(libraryId: string, request: SaveRequest): Prom
 		request.bytes.byteLength > BYTE_LIMIT
 	)
 		throw new Error('Invalid bounded storage request')
+	if (
+		request.source &&
+		(request.source.finalUrl.length > 8192 ||
+			request.source.submittedUrl.length > 8192 ||
+			request.source.provenance.length > 32768)
+	)
+		throw new Error('Invalid source metadata')
 	const payload = new Uint8Array(request.bytes)
 	const createdAt = new Date().toISOString()
 	const payloadHash = await hash(
-		encoder.encode(JSON.stringify([title, text, await hash(payload), mediaType]))
+		encoder.encode(
+			JSON.stringify([title, text, await hash(payload), mediaType, request.source ?? null])
+		)
 	)
 	return {
+		...(request.source
+			? { source: { id: operationId, documentId: operationId, libraryId, ...request.source } }
+			: {}),
 		intent: { id: operationId, libraryId, payloadHash, createdAt },
 		asset: { id: operationId, libraryId, operationId, mediaType, payload },
 		snapshot: { id: operationId, libraryId, documentId: operationId, text, formatVersion: '1' },

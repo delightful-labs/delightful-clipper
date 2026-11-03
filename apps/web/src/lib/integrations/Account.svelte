@@ -1,22 +1,24 @@
 <script lang="ts">
-	import { onMount } from 'svelte'
+	import Library from './Library.svelte'
+ import { onMount } from 'svelte'
 	import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 	import { createActor } from 'xstate'
 	import type { SnapshotFrom } from 'xstate'
 	import RecoveryPhrase from 'delightful-local-first/recovery/svelte'
 	import { Button, StatusMessage, Textarea } from 'delightful-ui'
-	import { createApplicationReadinessMachine, selectApplicationView, selectRecoveryBinding } from '../machines/runtime/application-readiness.js'
+	import { createApplicationReadinessMachine, selectApplicationView, selectRecoveryBinding,selectLibraryActor } from '../machines/runtime/application-readiness.js'
 	import { accountInput, type Session } from '../backend/jazz/account.js'
 	import { t, recoveryMessages } from '../localization/index.js'
 
 	const applicationReadinessMachine = createApplicationReadinessMachine<Session>()
-	let { appId, serverUrl }: { appId: string; serverUrl: string } = $props()
+	let { appId, serverUrl, gatewayEnabled }: { appId: string; serverUrl: string;gatewayEnabled:boolean } = $props()
 	let snapshot = $state<SnapshotFrom<typeof applicationReadinessMachine>>()
 	let phrase = $state('')
 	let send = $state<(event: {type: 'CREATE' | 'LOGOUT' | 'RETRY'} | {type: 'RESTORE'; phrase: string}) => void>(() => {})
 	const configured = $derived(appId.length > 0 && serverUrl.length > 0)
 	const view = $derived(selectApplicationView(snapshot, configured))
 	const recovery = $derived(selectRecoveryBinding(snapshot))
+ const library=$derived(selectLibraryActor(snapshot))
 
 	onMount(() => {
 		if (!appId || !serverUrl) return
@@ -56,3 +58,9 @@
 	{#if view.canRetry}<Button type="button" onclick={() => send({type:'RETRY'})}>{t('retry')}</Button>{/if}
 	{#if view.canLogout}<Button type="button" onclick={() => send({type:'LOGOUT'})}>{t('logout')}</Button>{/if}
 </section>
+
+{#if library}
+ {#key library}
+ <Library actor={library} {gatewayEnabled}/>
+ {/key}
+{/if}
