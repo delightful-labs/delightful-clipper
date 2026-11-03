@@ -26,11 +26,13 @@ Every source-of-truth row carries or inherits an enforced `libraryId`/owner rela
 
 ## Device-local records (not synced authority)
 
+PWA Add Link admission uses the native `captureIntakes`/observation/completion records described in [durable-capture-design.md](durable-capture-design.md). It has no separate account-scoped IndexedDB journal. The pre-session external-intake and derived-state possibilities below are distinct future boundaries; they do not justify duplicating an already account-bound Jazz intake. Persist capture execution evidence in Jazz unless a required behavior and demonstrated SDK limitation establish otherwise.
+
 - Availability ledger keyed by account/representation/asset: native row availability and local write settlement; derive offline-complete only when required native text/byte values are locally available.
 - Capture journal for external share/extension intake before account readiness. Raw URL is retained, account binding occurs explicitly; never assign a signed-out capture silently to a different user. Journal records have TTL only for abandoned intake after a documented policy, not automatic Trash expiry.
 - Worker search checkpoint: account, schema/index versions, source sequence/hash and serialized index. Discard/rebuild on mismatch; maintain separate default/Trash scopes without losing retained text.
 - Note draft: parent identity, local edit sequence, draft text and last durable acknowledgment. Never clear on an unconfirmed persistence result.
-- Runtime lease/checkpoint for capture/assets: bounded ownership claim, operation ID and generation. Multiple devices must not treat local leases as global locks.
+- Runtime execution coordination for capture/assets remains to be qualified. A local lock/lease is not a global lock, and does not authorize replay of an uncertain native operation. No separate durable checkpoint store is selected for PWA capture.
 
 ## State and durability rules
 

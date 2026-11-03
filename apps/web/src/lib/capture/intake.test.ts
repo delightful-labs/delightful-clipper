@@ -1,6 +1,5 @@
 import { expect, it } from 'vitest'
 import {
-	decodeCheckpoint,
 	decodeCompletion,
 	decodeIntake,
 	decodeObservation,
@@ -128,7 +127,7 @@ it('decodes only bounded typed observation evidence, never payload completion cl
 	}
 })
 
-it('requires explicit same-library completion identity and understood checkpoint phases', () => {
+it('requires explicit same-library completion identity', () => {
 	const completion = {
 		id,
 		libraryId,
@@ -141,21 +140,4 @@ it('requires explicit same-library completion identity and understood checkpoint
 	expect(decodeCompletion(completion, libraryId)).toEqual(completion)
 	expect(() => decodeCompletion({ ...completion, documentId: null }, libraryId)).toThrow()
 	expect(() => decodeCompletion(completion, crypto.randomUUID())).toThrow()
-	const checkpoint = {
-		formatVersion: '1',
-		intake,
-		attemptId: crypto.randomUUID(),
-		revision: 0,
-		phase: 'pending'
-	}
-	expect(decodeCheckpoint(checkpoint, libraryId)).toEqual(checkpoint)
-	for (const row of [
-		{ ...checkpoint, phase: 'publication' },
-		{ ...checkpoint, formatVersion: '2' },
-		{ ...checkpoint, revision: -1 },
-		{ ...checkpoint, revision: Number.MAX_SAFE_INTEGER },
-		{ ...checkpoint, revision: 0.5 },
-		{ ...checkpoint, draft: 'unexpected' }
-	])
-		expect(() => decodeCheckpoint(row, libraryId)).toThrow()
 })

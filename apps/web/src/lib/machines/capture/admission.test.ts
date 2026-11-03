@@ -3,7 +3,7 @@ import { createActor, toPromise } from 'xstate'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import { createAdmissionMachine } from './admission.js'
 import { prepareIntake } from '../../capture/intake.js'
-import type { CaptureIntake, IntakeCheckpoint, IntakeJournal } from '../../contracts/intake.js'
+import type { AdmissionInput, CaptureIntake } from '../../contracts/intake.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 
 function deferred() {
@@ -22,32 +22,25 @@ function fixture() {
 		'https://example.com/#retained',
 		new Date().toISOString()
 	)
-	const input = { intake, attemptId: crypto.randomUUID() }
+	const input: AdmissionInput = { kind: 'new', intake }
+	const recover: AdmissionInput = { kind: 'recover', intakeId: intake.id }
 	let current = true
-	let checkpoint: IntakeCheckpoint | null = null
 	let row: CaptureIntake | null = null
-	const receipts: SyncReceipt = { global: vi.fn(async () => {}) }
-	const journal: IntakeJournal = {
-		get: vi.fn(async () => (checkpoint ? structuredClone(checkpoint) : null)),
-		create: vi.fn(async (value) => {
-			if (checkpoint) return false
-			checkpoint = structuredClone(value)
-			return true
-		}),
-		advance: vi.fn(async (previous, phase) => {
-			if (!checkpoint || checkpoint.revision !== previous.revision) return null
-			checkpoint = { ...checkpoint, phase, revision: checkpoint.revision + 1 }
-			return structuredClone(checkpoint)
-		}),
-		page: async () => (checkpoint ? [structuredClone(checkpoint)] : [])
+	const receipt: SyncReceipt = { global: vi.fn(async () => {}) }
+	const check = () => {
+		if (!current) throw new Error('Scope expired')
 	}
 	const commit = vi.fn(async () => {
+		check()
 		row = intake
 		return {}
 	})
 	const persist = vi.fn(async () => {})
 	const rollback = vi.fn(() => true)
-	const open = vi.fn(async () => ({}))
+	const open = vi.fn(async () => {
+		check()
+		return {}
+	})
 	const stage = createWorkspaceCreationTransaction<
 		CaptureIntake,
 		object,
@@ -59,7 +52,10 @@ function fixture() {
 		readLocal: async () => row,
 		assess: (existing) =>
 			existing ? { outcome: 'blocked', reason: 'Already exists' } : { outcome: 'eligible' },
-		stage: () => receipts,
+		stage: () => {
+			check()
+			return receipt
+		},
 		commit,
 		persistLocal: persist,
 		rollback
@@ -68,24 +64,20 @@ function fixture() {
 	const machine = createAdmissionMachine({
 		libraryId: intake.libraryId,
 		isCurrent: () => current,
-		journal,
 		read,
 		insert: stage
 	})
 	return {
 		input,
+		recover,
+		intake,
 		machine,
-		journal,
 		commit,
 		persist,
 		open,
 		read,
 		rollback,
-		receipts,
-		checkpoint: () => checkpoint,
-		setCheckpoint: (value: IntakeCheckpoint) => {
-			checkpoint = value
-		},
+		receipt,
 		setRow: (value: CaptureIntake) => {
 			row = value
 		},
@@ -95,9 +87,9 @@ function fixture() {
 	}
 }
 
-it('admits only after the durable barrier, native local wait and final checkpoint', async () => {
-	const f = fixture()
-	const local = deferred(),
+it('admits a new intake only after native local persistence and exposes its separate global receipt', async () => {
+	const f = fixture(),
+		local = deferred(),
 		entered = deferred()
 	f.persist.mockImplementationOnce(async () => {
 		entered.resolve()
@@ -105,75 +97,89 @@ it('admits only after the durable barrier, native local wait and final checkpoin
 	})
 	const actor = createActor(f.machine, { input: f.input }).start()
 	await entered.promise
-	expect(f.checkpoint()?.phase).toBe('issuing')
 	expect(actor.getSnapshot().status).toBe('active')
-	expect(f.receipts.global).not.toHaveBeenCalled()
+	expect(f.receipt.global).not.toHaveBeenCalled()
 	local.resolve()
 	const result = await toPromise(actor)
 	expect(result.kind).toBe('admitted')
-	expect(f.checkpoint()?.phase).toBe('admitted')
-	expect(f.commit).toHaveBeenCalledTimes(1)
+	expect(f.commit).toHaveBeenCalledOnce()
 	expect(actor.getSnapshot().context.request).toBeUndefined()
-	expect(actor.getSnapshot().context.checkpoint).toBeUndefined()
-	expect(actor.getSnapshot().context.receipts).toEqual([])
 	if (result.kind !== 'admitted') throw new Error('Expected admission')
-	await result.receipts[0]?.global()
-	expect(f.receipts.global).toHaveBeenCalledOnce()
+	await result.receipts[0].global()
+	expect(f.receipt.global).toHaveBeenCalledOnce()
 })
 
-it.each(['absent', 'optimistic'] as const)(
-	'does not replay an issued intake when the local row is %s',
+it.each(['absent', 'visible'] as const)(
+	'never inserts during recovery when the Jazz row is %s',
 	async (mode) => {
 		const f = fixture()
-		f.setCheckpoint({
-			formatVersion: '1',
-			intake: f.input.intake,
-			attemptId: f.input.attemptId,
-			phase: 'issuing',
-			revision: 1
-		})
-		if (mode === 'optimistic') f.setRow(f.input.intake)
-		expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe(
-			'uncertain'
+		if (mode === 'visible') f.setRow(f.intake)
+		const actor = createActor(f.machine, { input: f.recover }).start()
+		const result = await toPromise(actor)
+		expect(result).toEqual(
+			mode === 'visible'
+				? { kind: 'recovered', intake: f.intake }
+				: { kind: 'uncertain', intakeId: f.intake.id }
 		)
+		expect('receipts' in result).toBe(false)
+		expect(f.open).not.toHaveBeenCalled()
 		expect(f.commit).not.toHaveBeenCalled()
-		expect(f.checkpoint()?.phase).toBe('issuing')
+		expect(actor.getSnapshot().context.request).toBeUndefined()
 	}
 )
 
-it('reopens a durable admitted checkpoint without writing again or inventing a global receipt', async () => {
+it('does not replay an unresolved local write after either an optimistic read or a missing read', async () => {
 	const f = fixture()
-	f.setCheckpoint({
-		formatVersion: '1',
-		intake: f.input.intake,
-		attemptId: f.input.attemptId,
-		phase: 'admitted',
-		revision: 2
-	})
-	f.setRow(f.input.intake)
+	f.persist.mockRejectedValueOnce(new Error('Unknown local settlement'))
+	expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe(
+		'uncertain'
+	)
+	expect((await toPromise(createActor(f.machine, { input: f.recover }).start())).kind).toBe(
+		'recovered'
+	)
+	expect(f.commit).toHaveBeenCalledOnce()
+	// Another replica may have no knowledge of the same issued operation.
+	const other = fixture()
+	expect(
+		(
+			await toPromise(
+				createActor(other.machine, { input: { kind: 'recover', intakeId: f.intake.id } }).start()
+			)
+		).kind
+	).toBe('uncertain')
+	expect(other.commit).not.toHaveBeenCalled()
+})
+
+it('observes an already-existing matching intake without a new write or fabricated receipt', async () => {
+	const f = fixture()
+	f.setRow(f.intake)
 	expect(await toPromise(createActor(f.machine, { input: f.input }).start())).toEqual({
-		kind: 'admitted',
-		intakeId: f.input.intake.id,
-		receipts: []
+		kind: 'recovered',
+		intake: f.intake
 	})
 	expect(f.commit).not.toHaveBeenCalled()
 })
 
-it.each(['checkpoint', 'barrier'] as const)(
-	'does not start a native insert when %s persistence fails',
-	async (mode) => {
-		const f = fixture()
-		if (mode === 'checkpoint') vi.mocked(f.journal.create).mockRejectedValueOnce(new Error('quota'))
-		else vi.mocked(f.journal.advance).mockRejectedValueOnce(new Error('local outcome unknown'))
-		expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe(
-			mode === 'checkpoint' ? 'failed' : 'uncertain'
-		)
-		expect(f.commit).not.toHaveBeenCalled()
+it('blocks a conflicting intake and rejects invalid fresh input before acquiring native resources', async () => {
+	const f = fixture()
+	f.setRow({
+		...f.intake,
+		submittedUrl: 'https://other.example/',
+		fetchUrl: 'https://other.example/'
+	})
+	expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe('blocked')
+	f.open.mockClear()
+	const invalid: AdmissionInput = {
+		kind: 'new',
+		intake: { ...f.intake, fetchUrl: 'https://unrelated.example/' }
 	}
-)
+	expect((await toPromise(createActor(f.machine, { input: invalid }).start())).kind).toBe('failed')
+	expect(f.open).not.toHaveBeenCalled()
+	expect(f.commit).not.toHaveBeenCalled()
+})
 
 it.each(['open', 'commit', 'local'] as const)(
-	'drains %s before completing shutdown and retains recovery evidence',
+	'drains %s before completing shutdown',
 	async (mode) => {
 		const f = fixture(),
 			gate = deferred(),
@@ -188,6 +194,7 @@ it.each(['open', 'commit', 'local'] as const)(
 			f.commit.mockImplementationOnce(async () => {
 				entered.resolve()
 				await gate.promise
+				f.setRow(f.intake)
 				return {}
 			})
 		if (mode === 'local')
@@ -201,12 +208,11 @@ it.each(['open', 'commit', 'local'] as const)(
 		expect(actor.getSnapshot().status).toBe('active')
 		gate.resolve()
 		expect((await toPromise(actor)).kind).toBe('interrupted')
-		expect(f.checkpoint()).not.toBeNull()
 		expect(f.commit.mock.calls.length).toBeLessThanOrEqual(1)
 	}
 )
 
-it('keeps unresolved local settlement uncertain through shutdown without replay', async () => {
+it('retains uncertainty through shutdown when local persistence cannot be confirmed', async () => {
 	const f = fixture(),
 		gate = deferred(),
 		entered = deferred()
@@ -217,16 +223,12 @@ it('keeps unresolved local settlement uncertain through shutdown without replay'
 	const actor = createActor(f.machine, { input: f.input }).start()
 	await entered.promise
 	actor.send({ type: 'SHUTDOWN' })
-	gate.reject(new Error('Unknown local settlement'))
+	gate.reject(new Error('Local settlement unknown'))
 	expect((await toPromise(actor)).kind).toBe('uncertain')
-	expect(f.checkpoint()?.phase).toBe('issuing')
-	expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe(
-		'uncertain'
-	)
 	expect(f.commit).toHaveBeenCalledOnce()
 })
 
-it('invalidates a scope during local settlement without advancing old-account work', async () => {
+it('stops old-account progression after an issued local wait settles', async () => {
 	const f = fixture(),
 		gate = deferred(),
 		entered = deferred()
@@ -239,100 +241,30 @@ it('invalidates a scope during local settlement without advancing old-account wo
 	f.scopeLost()
 	gate.resolve()
 	expect((await toPromise(actor)).kind).toBe('scopeChanged')
-	expect(f.checkpoint()?.phase).toBe('issuing')
+	expect(f.read).not.toHaveBeenCalled()
 })
 
-it('blocks a reused ID with different submitted evidence and rejects invalid input before journaling', async () => {
+it('reports a definite pre-commit failure without claiming uncertain persistence', async () => {
 	const f = fixture()
-	f.setCheckpoint({
-		formatVersion: '1',
-		intake: {
-			...f.input.intake,
-			submittedUrl: 'https://other.example/',
-			fetchUrl: 'https://other.example/'
-		},
-		attemptId: f.input.attemptId,
-		phase: 'pending',
-		revision: 0
-	})
-	expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe('blocked')
-	const invalid = {
-		...f.input,
-		intake: { ...f.input.intake, fetchUrl: 'https://unrelated.example/' }
-	}
-	expect((await toPromise(createActor(f.machine, { input: invalid }).start())).kind).toBe('failed')
-	expect(f.journal.create).not.toHaveBeenCalled()
+	f.open.mockRejectedValueOnce(new Error('Storage unavailable'))
+	expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe('failed')
 	expect(f.commit).not.toHaveBeenCalled()
 })
 
-it('reconciles a competing barrier claim without issuing another native insert', async () => {
+it('does not convert read failures into absence or authorize insertion', async () => {
 	const f = fixture()
-	vi.mocked(f.journal.advance).mockImplementationOnce(async (previous) => {
-		f.setCheckpoint({ ...previous, phase: 'issuing', revision: previous.revision + 1 })
-		return null
-	})
-	expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe(
+	f.read.mockRejectedValueOnce(new Error('Malformed or unavailable native row'))
+	expect((await toPromise(createActor(f.machine, { input: f.recover }).start())).kind).toBe(
 		'uncertain'
 	)
 	expect(f.commit).not.toHaveBeenCalled()
 })
 
-it('retains uncertainty if the final checkpoint cannot confirm a locally persisted intake', async () => {
+it('keeps late remote rejection separate from local admission without replaying it', async () => {
 	const f = fixture()
-	const advance = f.journal.advance
-	f.journal.advance = vi.fn(async (previous, phase) => {
-		if (phase === 'admitted') throw new Error('Final checkpoint not confirmed')
-		return advance(previous, phase)
-	})
-	expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe(
-		'uncertain'
-	)
-	expect(f.checkpoint()?.phase).toBe('issuing')
-	expect(f.commit).toHaveBeenCalledOnce()
-	expect((await toPromise(createActor(f.machine, { input: f.input }).start())).kind).toBe(
-		'uncertain'
-	)
-	expect(f.commit).toHaveBeenCalledOnce()
-})
-
-it('keeps a late remote rejection separate from local admission and never retries the insert', async () => {
-	const f = fixture()
-	vi.mocked(f.receipts.global).mockRejectedValue(new Error('Remote rejection'))
+	vi.mocked(f.receipt.global).mockRejectedValueOnce(new Error('Remote rejection'))
 	const result = await toPromise(createActor(f.machine, { input: f.input }).start())
 	if (result.kind !== 'admitted') throw new Error('Expected local admission')
-	await expect(result.receipts[0]?.global()).rejects.toThrow('Remote rejection')
-	expect(f.checkpoint()?.phase).toBe('admitted')
+	await expect(result.receipts[0].global()).rejects.toThrow('Remote rejection')
 	expect(f.commit).toHaveBeenCalledOnce()
 })
-
-it.each(['create', 'barrier'] as const)(
-	'drains an issued %s checkpoint write on shutdown',
-	async (mode) => {
-		const f = fixture(),
-			gate = deferred(),
-			entered = deferred()
-		if (mode === 'create') {
-			const create = f.journal.create
-			f.journal.create = vi.fn(async (value) => {
-				entered.resolve()
-				await gate.promise
-				return create(value)
-			})
-		} else {
-			const advance = f.journal.advance
-			f.journal.advance = vi.fn(async (previous, phase) => {
-				entered.resolve()
-				await gate.promise
-				return advance(previous, phase)
-			})
-		}
-		const actor = createActor(f.machine, { input: f.input }).start()
-		await entered.promise
-		actor.send({ type: 'SHUTDOWN' })
-		expect(actor.getSnapshot().status).toBe('active')
-		gate.resolve()
-		expect((await toPromise(actor)).kind).toBe('interrupted')
-		expect(f.commit).not.toHaveBeenCalled()
-		expect(f.checkpoint()?.phase).toBe(mode === 'create' ? 'pending' : 'issuing')
-	}
-)

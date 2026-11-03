@@ -6,7 +6,9 @@ Updated 2026-11-03. This is the current implementation checklist; the product re
 
 The current feature branch is `feat/durable-capture-foundation`, PR [#12](https://github.com/delightful-labs/delightful-clipper/pull/12), targeting `main`. Reader PR #11 has merged into `main` at `aa36551`, and that baseline is incorporated. The foundation includes immutable capture evidence and the bounded admission capability; the application queue/recovery workflow remains unbuilt. Check the live PR state before continuing: if merged, start a new feature branch from current `main`; otherwise keep related work on this PR. Do not merge without explicit user authorization.
 
-Latest local validation: `pnpm verify` passes 263 unit tests across 29 files plus vendor/format/lint/type/build checks; `pnpm test:e2e` passes 15 Chromium tests; `pnpm test:offline` passes five production offline regressions. Commands ran sequentially. The three new browser cases exercise the real admission capability through a test driver: offline native intake/checkpoint → full process restart → separately restored-profile sync, atomic competing claims/account separation, and bounded enumeration/unsupported-record retention. Add Link still uses its prior transient capture path. No autonomous UI capture recovery or production-shell journal proof is claimed.
+Admission now uses existing Jazz intake records exclusively. The custom IndexedDB journal/checkpoint protocol and its implementation-specific tests are removed. A fresh command confirms local settlement through the native receipt; read-only recovery returns native data without a receipt and never inserts on absence. Full application queue/retry acceptance remains open.
+
+Current validation: `pnpm verify` passes 260 tests/29 files plus vendor, formatting, lint, type and production-build checks. All 13 Chromium tests and five production offline regressions pass, run sequentially. Native intake survives an offline authority and full browser-process restart, recovers without a fabricated receipt, and syncs to a restored profile without a custom journal. Missing-ID recovery remains read-only. Tests specific to the deleted checkpoint implementation were removed; native policy/decoder and uncertainty/drain tests remain.
 
 Historical reader-baseline validation: `pnpm verify` passes 235 unit tests across 26 files, strict application/service-worker checks, formatting, lint, vendor checks and production build; `pnpm test:e2e` passes 12 Chromium tests; `pnpm test:offline` passes five production tests. Final formatting/lint/diff checks also pass. Offline tests now retain static SVG and native disclosures through a full browser-process restart with web/Jazz stopped and HTTP cache cleared, then sync to a separately restored profile. Gateway responses are fixtures in these restart tests; persistence, authority, browser and sync boundaries are real. These results supersede historical counts below. Hosted real-extraction evidence predates the SVG change; do not describe it as hosted SVG qualification. CI tooling/types/build and browser jobs pass for `f0e5738`; Netlify preview deploy `6aea3b05b5dae0f3763471f2` is ready. This establishes deployment checks, not a new hosted manual SVG exercise. Check any subsequent commit separately.
 
@@ -38,16 +40,16 @@ Design and remaining dependency-ordered work: [durable-capture-design.md](durabl
 
 - [x] Define immutable native intake, observation and required-document completion tables without changing successful document/snapshot publication.
 - [x] Enforce canonical-owner reads/inserts, same-library parents, format version `1`, immutable evidence and atomic graph validation with the real Jazz test authority.
-- [x] Model journal identities, account/generation ownership, admission/shutdown boundaries, publication uncertainty, retry budget and application acceptance before adding asynchronous capture recovery.
-- [x] Add bounded intake/evidence decoders and admission-checkpoint contracts; native adapter reads reject invalid owner-written evidence instead of projecting absence.
-- [x] Implement account-scoped IndexedDB admission checkpoints, compare-and-set issuance barrier and DLF-owned native intake/observation/completion transaction leaves (D2 capability).
-- [x] Qualify admission local/global separation, uncertainty/non-replay, shutdown drain, terminal buffer cleanup, real Chromium checkpoint/native-intake restart, restored-profile intake sync and concurrent journal claims.
-- [ ] Wire those capabilities into the capture queue and every projection boundary; finish richer execution checkpoint contracts and deployment qualification (D1 remainder, D4).
+- [x] Model native intake/operation identities, account/generation ownership, admission/shutdown boundaries, publication uncertainty, retry budget and application acceptance before adding asynchronous capture recovery.
+- [x] Add bounded native intake/evidence decoders; native adapter reads reject invalid owner-written evidence instead of projecting absence.
+- [x] Use DLF-owned native Jazz intake/observation/completion transaction leaves and explicit fresh/read-only recovery admission (D2 capability); remove the duplicate IndexedDB store and checkpoint protocol.
+- [x] Qualify native admission local/global separation, read-only recovery/non-replay, shutdown drain, terminal buffer cleanup and Jazz intake persistence through Chromium process restart/restored-profile sync.
+- [ ] Wire those capabilities into the capture queue and every projection boundary; model required native execution evidence and deployment qualification (D1 remainder, D4).
 - [ ] Implement typed source/failure evidence, durable execution/reconciliation and bounded retry scheduling (D3–D5).
 - [ ] Obtain required exact copy approval and implement link-only library projection/Retry (D6).
 - [ ] Qualify actual application termination/restart, connectivity resume, same-item completion, multi-tab takeover and restored-profile outcomes (D7).
 
-The existing Add Link workflow still does not write these tables. New browser admission checks invoke the real capability through a test driver; they qualify that capability, not automatic recovery of the UI capture workflow. The production offline suite remains a regression check, not a new journal-in-shell proof.
+The existing Add Link workflow still does not write these tables. New browser admission checks invoke the real capability through a test driver; they qualify that capability, not automatic recovery of the UI capture workflow. The production offline suite remains a regression check, not a new production-shell queue-recovery proof.
 
 ## Storage qualification before enabling a product write flow
 

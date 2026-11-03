@@ -17,7 +17,7 @@ import type { SyncReceipt } from '../../contracts/storage.js'
 import { app } from './schema.js'
 
 type Resource = { transaction: Transaction<'mergeable'>; write?: WriteHandle }
-/** Leaves only: the admission owner journals issuance before invoking this transaction. */
+/** Leaves only. Recover existing operations by reading, never by replaying this insert. */
 export function createIntakeRecords(
 	db: Pick<Db, 'one' | 'beginTransaction'>,
 	libraryId: string,

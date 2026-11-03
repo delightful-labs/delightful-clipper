@@ -53,23 +53,6 @@ export type CaptureCompletion = {
 	createdAt: string
 	formatVersion: '1'
 }
-/** Version 1 currently admits only URL intake. Unknown future execution phases fail closed. */
-export type IntakeCheckpoint = {
-	formatVersion: '1'
-	intake: CaptureIntake
-	attemptId: string
-	revision: number
-	phase: 'pending' | 'issuing' | 'admitted'
-}
-export type IntakeJournal = {
-	get: (id: string) => Promise<IntakeCheckpoint | null>
-	create: (checkpoint: IntakeCheckpoint) => Promise<boolean>
-	advance: (
-		previous: IntakeCheckpoint,
-		phase: IntakeCheckpoint['phase']
-	) => Promise<IntakeCheckpoint | null>
-	page: (after?: string, limit?: number) => Promise<IntakeCheckpoint[]>
-}
 export type AdmissionStageResult = WorkspaceCreationResult<CaptureIntake, SyncReceipt>
 export type AdmissionStage<S extends Snapshot<AdmissionStageResult>> = ActorLogic<
 	S,
@@ -86,16 +69,19 @@ export type AdmissionStage<S extends Snapshot<AdmissionStageResult>> = ActorLogi
 export type AdmissionCapability<S extends Snapshot<AdmissionStageResult>> = {
 	libraryId: string
 	isCurrent: () => boolean
-	journal: IntakeJournal
 	read: (id: string) => Promise<CaptureIntake | null>
 	insert: AdmissionStage<S>
 }
-export type AdmissionInput = { intake: CaptureIntake; attemptId: string }
+/** Recovery is read-only. A missing row never authorizes another insert. */
+export type AdmissionInput =
+	| { kind: 'new'; intake: CaptureIntake }
+	| { kind: 'recover'; intakeId: string }
 export type AdmissionResult =
 	| {
 			kind: 'admitted'
 			intakeId: string
-			/** Empty on recovery: do not submit an empty watch and infer global acceptance. */
-			receipts: SyncReceipt[]
+			receipts: [SyncReceipt]
 	  }
+	/** Visible Jazz data, without a recovered local/global write receipt. */
+	| { kind: 'recovered'; intake: CaptureIntake }
 	| { kind: 'failed' | 'uncertain' | 'blocked' | 'interrupted' | 'scopeChanged'; intakeId: string }

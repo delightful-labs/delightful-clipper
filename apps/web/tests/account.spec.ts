@@ -82,7 +82,7 @@ test('invalid restoration preserves the current local library', async ({ page })
 	await expect(page.getByLabel('Recovery phrase', { exact: true })).toHaveValue('')
 })
 
-test('admits a URL offline, retains its checkpoint through process restart and syncs its native intake', async ({
+test('retains an offline Jazz intake across process restart and syncs it without a separate journal', async ({
 	browser
 }) => {
 	const profile = await mkdtemp(join(tmpdir(), 'clipper-intake-profile-'))
@@ -113,10 +113,6 @@ test('admits a URL offline, retains its checkpoint through process restart and s
 				return (await import(/* @vite-ignore */ path)).admit(id, false)
 			}, id)
 		).toBe('admitted')
-		await page.evaluate(async (id) => {
-			const path = '/tests/intake-driver.ts'
-			await (await import(/* @vite-ignore */ path)).barrier(id)
-		}, uncertainId)
 		await context.close()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
 		const reopened = await context.newPage()
@@ -129,19 +125,31 @@ test('admits a URL offline, retains its checkpoint through process restart and s
 				const path = '/tests/intake-driver.ts'
 				return (await import(/* @vite-ignore */ path)).read(id)
 			}, id)
-		).toEqual({ phase: 'admitted', url, nativeUrl: url })
+		).toBe(url)
 		expect(
 			await reopened.evaluate(async (id) => {
 				const path = '/tests/intake-driver.ts'
-				return (await import(/* @vite-ignore */ path)).admit(id, false)
+				return (await import(/* @vite-ignore */ path)).recover(id)
 			}, uncertainId)
-		).toBe('uncertain')
+		).toEqual({ kind: 'uncertain', url: null, hasReceipts: false })
 		expect(
 			await reopened.evaluate(async (id) => {
 				const path = '/tests/intake-driver.ts'
 				return (await import(/* @vite-ignore */ path)).read(id)
 			}, uncertainId)
-		).toEqual({ phase: 'issuing', url, nativeUrl: null })
+		).toBeNull()
+		expect(
+			await reopened.evaluate(async (id) => {
+				const path = '/tests/intake-driver.ts'
+				return (await import(/* @vite-ignore */ path)).recover(id)
+			}, id)
+		).toEqual({ kind: 'recovered', url, hasReceipts: false })
+		expect(
+			await reopened.evaluate(async () =>
+				(await indexedDB.databases()).some((db) => db.name === 'clipper.capture-intake.1')
+			)
+		).toBe(false)
+
 		authority = await startAuthority()
 		await reopened.reload()
 		await restored.reload()
@@ -155,43 +163,12 @@ test('admits a URL offline, retains its checkpoint through process restart and s
 					}, id),
 				{ timeout: 30000 }
 			)
-			.toEqual({ phase: null, url: null, nativeUrl: url })
+			.toBe(url)
 	} finally {
 		await context.close()
 		await independent.close()
 		await rm(profile, { recursive: true, force: true })
 	}
-})
-
-test('serializes checkpoint admission claims without cross-account exposure', async ({ page }) => {
-	await page.goto('/')
-	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
-	expect(
-		await page.evaluate(async (id) => {
-			const path = '/tests/intake-driver.ts'
-			return (await import(/* @vite-ignore */ path)).journalRace(id)
-		}, crypto.randomUUID())
-	).toEqual({ creates: 1, advances: 1, stale: null, foreign: null })
-})
-
-test('bounds journal enumeration and preserves unsupported checkpoints without executing them', async ({
-	page
-}) => {
-	await page.goto('/')
-	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
-	expect(
-		await page.evaluate(async () => {
-			const path = '/tests/intake-driver.ts'
-			return (await import(/* @vite-ignore */ path)).journalValidation()
-		})
-	).toEqual({
-		pagination: true,
-		scopeDenied: true,
-		readDenied: true,
-		replacementDenied: true,
-		enumerationDenied: true,
-		retained: true
-	})
 })
 
 test('retains the account and library after closing every page and browser process with the authority offline', async () => {

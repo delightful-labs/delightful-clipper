@@ -1,14 +1,12 @@
 import { assign, enqueueActions, fromPromise, setup } from 'xstate'
 import type { Snapshot } from 'xstate'
-import { captureUuid, decodeCheckpoint, decodeIntake, sameIntake } from '../../capture/intake.js'
+import { captureUuid, decodeIntake, sameIntake } from '../../capture/intake.js'
 import type {
 	AdmissionCapability,
 	AdmissionInput,
 	AdmissionResult,
-	AdmissionStageResult,
-	IntakeCheckpoint
+	AdmissionStageResult
 } from '../../contracts/intake.js'
-import type { SyncReceipt } from '../../contracts/storage.js'
 
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Missing capture admission resource')
@@ -16,34 +14,22 @@ function required<T>(value: T | undefined): T {
 }
 type Context = {
 	request: AdmissionInput | undefined
-	checkpoint: IntakeCheckpoint | undefined
 	intakeId: string
 	closing: boolean
-	receipts: SyncReceipt[]
 	result: AdmissionResult | undefined
 }
-/** Admission stops at local durability. It never starts network or document publication. */
+/** Jazz owns persistence. Recovery observes existing evidence and cannot issue an insert. */
 export function createAdmissionMachine<S extends Snapshot<AdmissionStageResult>>(
 	capability: AdmissionCapability<S>
 ) {
 	const actors = {
-		validate: fromPromise(async ({ input }: { input: AdmissionInput }) => {
+		validate: fromPromise(async ({ input }: { input: AdmissionInput }): Promise<AdmissionInput> => {
 			if (!capability.isCurrent()) throw new Error('Capture scope expired')
-			return {
-				intake: decodeIntake(input.intake, capability.libraryId),
-				attemptId: captureUuid(input.attemptId)
-			}
+			if (input.kind === 'recover')
+				return { kind: 'recover', intakeId: captureUuid(input.intakeId) }
+			if (input.kind !== 'new') throw new Error('Invalid capture admission request')
+			return { kind: 'new', intake: decodeIntake(input.intake, capability.libraryId) }
 		}),
-		load: fromPromise(({ input }: { input: string }) => capability.journal.get(input)),
-		create: fromPromise(({ input }: { input: IntakeCheckpoint }) =>
-			capability.journal.create(input)
-		),
-		barrier: fromPromise(({ input }: { input: IntakeCheckpoint }) =>
-			capability.journal.advance(input, 'issuing')
-		),
-		settle: fromPromise(({ input }: { input: IntakeCheckpoint }) =>
-			capability.journal.advance(input, 'admitted')
-		),
 		read: fromPromise(({ input }: { input: string }) => capability.read(input)),
 		insert: capability.insert
 	}
@@ -72,16 +58,12 @@ export function createAdmissionMachine<S extends Snapshot<AdmissionStageResult>>
 		{ guard: 'stale' as const, target: 'scopeChanged' },
 		{ guard: 'closing' as const, target: 'interrupted' }
 	]
-	const checkpoint = ({ context }: { context: Context }) => required(context.checkpoint)
-	const id = ({ context }: { context: Context }) => context.intakeId
-	const finish = (kind: Exclude<AdmissionResult['kind'], 'admitted'>) =>
+	const finish = (kind: Exclude<AdmissionResult['kind'], 'admitted' | 'recovered'>) =>
 		model.createStateConfig({
 			type: 'final',
 			entry: assign({
 				result: ({ context }) => ({ kind, intakeId: context.intakeId }),
-				request: undefined,
-				checkpoint: undefined,
-				receipts: []
+				request: undefined
 			})
 		})
 	return model.createMachine({
@@ -89,10 +71,8 @@ export function createAdmissionMachine<S extends Snapshot<AdmissionStageResult>>
 		initial: 'validating',
 		context: ({ input }) => ({
 			request: input,
-			checkpoint: undefined,
-			intakeId: input.intake.id,
+			intakeId: input.kind === 'new' ? input.intake.id : input.intakeId,
 			closing: false,
-			receipts: [],
 			result: undefined
 		}),
 		on: { SHUTDOWN: { actions: 'shutdown' } },
@@ -104,78 +84,26 @@ export function createAdmissionMachine<S extends Snapshot<AdmissionStageResult>>
 					input: ({ context }) => required(context.request),
 					onDone: [
 						...interrupts,
-						{ target: 'loading', actions: assign({ request: ({ event }) => event.output }) }
-					],
-					onError: [{ guard: 'stale', target: 'scopeChanged' }, { target: 'failed' }]
-				}
-			},
-			loading: {
-				invoke: {
-					src: 'load',
-					input: id,
-					onDone: [
-						...interrupts,
-						{ guard: ({ event }) => event.output === null, target: 'creating' },
-						{
-							guard: ({ context, event }) =>
-								!!event.output && sameIntake(event.output.intake, required(context.request).intake),
-							target: 'classifying',
-							actions: assign({ checkpoint: ({ event }) => event.output ?? undefined })
-						},
-						{ target: 'blocked' }
+						{ target: 'routing', actions: assign({ request: ({ event }) => event.output }) }
 					],
 					onError: [...interrupts, { target: 'failed' }]
 				}
 			},
-			creating: {
-				invoke: {
-					src: 'create',
-					input: ({ context }) =>
-						decodeCheckpoint(
-							{
-								formatVersion: '1',
-								intake: required(context.request).intake,
-								attemptId: required(context.request).attemptId,
-								revision: 0,
-								phase: 'pending'
-							},
-							capability.libraryId
-						),
-					onDone: [...interrupts, { target: 'loading' }],
-					onError: [...interrupts, { target: 'failed' }]
-				}
-			},
-			classifying: {
+			routing: {
 				always: [
 					...interrupts,
-					{
-						guard: ({ context }) => required(context.checkpoint).phase === 'pending',
-						target: 'recordingBarrier'
-					},
-					{ target: 'reconciling' }
+					{ guard: ({ context }) => context.request?.kind === 'new', target: 'inserting' },
+					{ target: 'recovering' }
 				]
-			},
-			recordingBarrier: {
-				invoke: {
-					src: 'barrier',
-					input: checkpoint,
-					onDone: [
-						...interrupts,
-						{ guard: ({ event }) => event.output === null, target: 'loading' },
-						{
-							target: 'inserting',
-							actions: assign({ checkpoint: ({ event }) => event.output ?? undefined })
-						}
-					],
-					onError: [...interrupts, { target: 'uncertain' }]
-				}
 			},
 			inserting: {
 				invoke: {
 					id: 'insert',
 					src: 'insert',
 					input: ({ context }) => {
-						const draft = required(context.request).intake
+						const request = required(context.request)
+						if (request.kind !== 'new') throw new Error('Recovery cannot insert a capture')
+						const draft = request.intake
 						return {
 							attempt: {
 								operationId: draft.id,
@@ -190,78 +118,58 @@ export function createAdmissionMachine<S extends Snapshot<AdmissionStageResult>>
 							guard: ({ event }) => !event.output || event.output.settlement.kind === 'unresolved',
 							target: 'uncertain'
 						},
-						{ guard: 'stale', target: 'scopeChanged' },
+						...interrupts,
 						{
 							guard: ({ event }) => event.output?.settlement.kind === 'locallyPersisted',
-							target: 'settling',
+							target: 'admitted',
 							actions: assign({
-								receipts: ({ event }) =>
-									event.output?.settlement.kind === 'locallyPersisted'
-										? [event.output.settlement.workspace]
-										: []
+								result: ({ context, event }) => {
+									if (event.output?.settlement.kind !== 'locallyPersisted')
+										throw new Error('Missing local capture receipt')
+									return {
+										kind: 'admitted',
+										intakeId: context.intakeId,
+										receipts: [event.output.settlement.workspace]
+									}
+								}
 							})
 						},
-						{ guard: 'closing', target: 'interrupted' },
-						{ guard: ({ event }) => event.output?.outcome === 'blocked', target: 'reconciling' },
-						// Keep the barrier even for a known pre-commit failure; recovery never guesses.
-						{ target: 'uncertain' }
+						{ guard: ({ event }) => event.output?.outcome === 'blocked', target: 'recovering' },
+						{ target: 'failed' }
 					],
 					onError: { target: 'uncertain' }
 				}
 			},
-			reconciling: {
+			recovering: {
 				invoke: {
 					src: 'read',
-					input: id,
+					input: ({ context }) => context.intakeId,
 					onDone: [
 						...interrupts,
 						{ guard: ({ event }) => event.output === null, target: 'uncertain' },
 						{
 							guard: ({ context, event }) =>
-								!!event.output && sameIntake(event.output, required(context.request).intake),
-							target: 'reconciled'
+								context.request?.kind === 'new' &&
+								!!event.output &&
+								!sameIntake(context.request.intake, event.output),
+							target: 'blocked'
 						},
-						{ target: 'blocked' }
+						{
+							target: 'recovered',
+							actions: assign({
+								result: ({ event }) => {
+									if (!event.output) throw new Error('Missing capture evidence')
+									// A local-first read can be optimistic; no write or sync receipt is invented.
+									return { kind: 'recovered', intake: event.output }
+								}
+							})
+						}
 					],
 					onError: [...interrupts, { target: 'uncertain' }]
 				}
 			},
-			reconciled: {
-				always: [
-					...interrupts,
-					{
-						guard: ({ context }) => required(context.checkpoint).phase === 'admitted',
-						target: 'admitted'
-					},
-					// A local-first row can still be optimistic; it is not a durability receipt.
-					{ target: 'uncertain' }
-				]
-			},
-			settling: {
-				invoke: {
-					src: 'settle',
-					input: checkpoint,
-					onDone: [
-						...interrupts,
-						{ guard: ({ event }) => event.output === null, target: 'uncertain' },
-						{ target: 'admitted' }
-					],
-					onError: [...interrupts, { target: 'uncertain' }]
-				}
-			},
-			admitted: {
-				type: 'final',
-				entry: assign({
-					result: ({ context }) => ({
-						kind: 'admitted',
-						intakeId: context.intakeId,
-						receipts: context.receipts
-					}),
-					request: undefined,
-					checkpoint: undefined,
-					receipts: []
-				})
-			},
+			admitted: { type: 'final', entry: assign({ request: undefined }) },
+			recovered: { type: 'final', entry: assign({ request: undefined }) },
 			failed: finish('failed'),
 			uncertain: finish('uncertain'),
 			blocked: finish('blocked'),

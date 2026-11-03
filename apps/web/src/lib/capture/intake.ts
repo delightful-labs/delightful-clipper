@@ -4,7 +4,6 @@ import type {
 	CaptureFailureCode,
 	CaptureIntake,
 	CaptureObservation,
-	IntakeCheckpoint,
 	ResolutionEvidence
 } from '../contracts/intake.js'
 
@@ -205,24 +204,6 @@ export function decodeCompletion(value: unknown, libraryId: string): CaptureComp
 		documentId: captureUuid(row.documentId),
 		createdAt: timestamp(row.createdAt),
 		formatVersion: version(row.formatVersion)
-	}
-}
-export function decodeCheckpoint(value: unknown, libraryId: string): IntakeCheckpoint {
-	const row = object(value, ['formatVersion', 'intake', 'attemptId', 'revision', 'phase'])
-	if (
-		typeof row.revision !== 'number' ||
-		!Number.isSafeInteger(row.revision) ||
-		row.revision < 0 ||
-		row.revision >= Number.MAX_SAFE_INTEGER ||
-		(row.phase !== 'pending' && row.phase !== 'issuing' && row.phase !== 'admitted')
-	)
-		return invalid()
-	return {
-		formatVersion: version(row.formatVersion),
-		intake: decodeIntake(row.intake, libraryId),
-		attemptId: captureUuid(row.attemptId),
-		revision: row.revision,
-		phase: row.phase
 	}
 }
 export function sameIntake(a: CaptureIntake, b: CaptureIntake): boolean {
