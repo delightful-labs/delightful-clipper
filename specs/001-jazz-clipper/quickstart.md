@@ -1,6 +1,6 @@
 # Quickstart and validation guide
 
-**Status**: Workspace tooling and a minimal web shell are implemented in the tooling PR; the old prototype is preserved on the archive branch. See [tooling documentation](../../docs/tooling.md) for real commands. Product workflows and acceptance scenarios below remain unimplemented/unexecuted unless explicitly covered by the investigation report.
+**Status**: Tooling, session/recovery and the private library root are implemented. The current storage PR adds bounded text/byte repository capabilities. See [tasks.md](tasks.md) for completed checks and open qualification; capture, reader and release acceptance remain unbuilt.
 
 ## Current review
 
@@ -15,7 +15,7 @@ Read [plan.md](plan.md), [research.md](research.md), [data-model.md](data-model.
 - Netlify development/preview environment with the authenticated, public-only first-party fetch boundary enabled. No production deployment or account mutation is implied by this guide.
 - Chrome desktop and Firefox/macOS extension packages with explicit host permissions and trusted session UI. Android Chrome PWA installation; iOS Safari Add Link fallback.
 
-Tooling now provides root `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`, `pnpm lint`, `pnpm format:check`, `pnpm verify:vendor` and `pnpm verify`. Node 24.22.2/pnpm 10.22.0 and the lockfile are pinned. Unit/e2e scripts, extension builds and gateway serving will be added with meaningful implementations; no placeholder passing test suite is supplied. The minimal shell is not the completed reader, and no Jazz service or credentials are required for tooling checks.
+Tooling now provides root `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`, `pnpm lint`, `pnpm format:check`, `pnpm verify:vendor` and `pnpm verify`. Node 24.22.2/pnpm 10.22.0 and the lockfile are pinned. Run `pnpm test:unit` for machine and native authorization/repository tests and `pnpm test:e2e` for Chromium session/root integration tests. Tests start disposable local Jazz authorities; they require permission to bind local ports. Extension builds and gateway serving remain subsequent work. The shell is not the completed reader.
 
 ## Future acceptance scenarios
 
@@ -32,4 +32,4 @@ Tooling now provides root `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`
 
 ## Validation reporting
 
-When implementation is authorized, record commands, package versions, device/browser versions, fixture set, observed results, and remaining failures. Evaluate SC-003's 90% rate against a declared representative set, counting ambiguous/unresolved outcomes honestly. Accessibility checks cover keyboard focus, touch, zoom/reflow, labels, contrast and overlapping annotations; avoid CSS-class assertions. No current test result is claimed by this document.
+When implementation is authorized, record commands, package versions, device/browser versions, fixture set, observed results, and remaining failures. Evaluate SC-003's 90% rate against a declared representative set, counting ambiguous/unresolved outcomes honestly. Accessibility checks cover keyboard focus, touch, zoom/reflow, labels, contrast and overlapping annotations; avoid CSS-class assertions. Current implementation evidence and outstanding scenarios are tracked in [tasks.md](tasks.md).

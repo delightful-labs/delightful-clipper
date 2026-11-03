@@ -1,0 +1,34 @@
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: Conventional PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Validate Conventional Commits title
+        shell: bash
+        run: |
+          node <<'NODE'
+          const { readFileSync } = require('node:fs')
+          const { pull_request: { title } } = JSON.parse(
+            readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')
+          )
+          const pattern = /^[a-z]+(?:\([^()\r\n]+\))?!?: [^\s].*$/u
+          if (!pattern.test(title) || /[\r\n]/u.test(title)) {
+            console.error('::error::Use a Conventional Commits PR title: type(scope): description. Scope is optional; use ! before the colon for breaking changes.')
+            console.error('See https://www.conventionalcommits.org/en/v1.0.0/')
+            process.exitCode = 1
+          }
+          NODE

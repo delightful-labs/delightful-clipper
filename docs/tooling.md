@@ -35,7 +35,7 @@ Oxlint is not claimed to lint Svelte templates; `svelte-check` and the Svelte co
 
 `apps/web` owns the web build. `apps/*` and `packages/*` are workspace locations; do not create empty domain packages or extension stubs merely to fill the planned directory tree. Add shared packages when there is implementation to own.
 
-GitHub Actions runs a frozen install and `pnpm verify` for PRs and main, with Node/pnpm pinned and read-only repository permissions. Action revisions are pinned to verified upstream commits. No production credentials are needed. Tests start disposable local Jazz authorities; the browser job installs Chromium.
+GitHub Actions runs a frozen install and `pnpm verify` for PRs and main, with Node/pnpm pinned and read-only repository permissions. Action revisions are pinned to verified upstream commits. No production credentials are needed. Tests start disposable local Jazz authorities; the browser job installs Chromium. A separate `Conventional PR title` check validates `type(scope): description` on PR opening, title edits and subsequent updates, matching the sibling repositories. Scope is optional; breaking changes may use `!` before the colon.
 
 Netlify uses `apps/web` as its build base and `build` as the publish directory, matching the adapter's generated functions/config. `NODE_VERSION` and `PNPM_VERSION` match local/CI pins. The local build verifies adapter output, not a deployed preview, native gateway packaging or destination-safe network transport. No deployment command is part of this setup.
 
