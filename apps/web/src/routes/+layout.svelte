@@ -9,9 +9,9 @@
  let admitted=$state(false)
 </script>
 
-<svelte:head><title>{t('title')}</title></svelte:head>
+<svelte:head><title>{t('app.title')}</title></svelte:head>
 <main>
-	<h1>{t('title')}</h1>
+	<h1>{t('app.title')}</h1>
  <OfflineShell onAdmission={()=>{admitted=true}}/>
  {#if admitted}
 	<Account appId={PUBLIC_JAZZ_APP_ID} serverUrl={PUBLIC_JAZZ_SERVER_URL} gatewayEnabled={CAPTURE_GATEWAY_ENABLED} />
