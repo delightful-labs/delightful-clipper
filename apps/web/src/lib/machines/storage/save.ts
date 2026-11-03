@@ -20,6 +20,17 @@ function prepared(context: Context) {
 	if (!context.prepared) throw new Error('Missing prepared record')
 	return context.prepared
 }
+function stageResultKind(
+	output: StageResult | undefined,
+	isCurrent: () => boolean
+): Exclude<SaveResult['kind'], 'saved'> {
+	if (output?.settlement.kind === 'unresolved') return 'unknown'
+	if (!isCurrent()) return 'scopeChanged'
+	if (output?.outcome === 'blocked') return 'blocked'
+	if (output?.outcome === 'closed') return 'interrupted'
+	return 'failed'
+}
+
 export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 	capability: SaveCapabilities<S>
 ) {
@@ -81,16 +92,7 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 				? [...context.receipts, event.output.settlement.workspace]
 				: context.receipts,
 		result: {
-			kind:
-				event.output?.settlement.kind === 'unresolved'
-					? 'unknown'
-					: !capability.isCurrent()
-						? 'scopeChanged'
-						: event.output?.outcome === 'blocked'
-							? 'blocked'
-							: event.output?.outcome === 'closed'
-								? 'interrupted'
-								: 'failed',
+			kind: stageResultKind(event.output, capability.isCurrent),
 			operationId: context.operationId
 		} satisfies SaveResult
 	})
