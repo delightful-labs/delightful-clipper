@@ -19,9 +19,10 @@ CAPTURE_GATEWAY_ENABLED = "true"
 
 [functions]
 node_bundler = "esbuild"
-external_node_modules = ["jazz-napi"]
+external_node_modules = ["jazz-napi", "jsdom", "@mozilla/readability", "dompurify"]
 # The pinned package ships all platforms inline; keep Netlify's Linux x64 binary.
 included_files = [
+	"apps/web/.netlify/v1/parser/**",
 	"!**/jazz-napi.darwin-*.node",
 	"!**/jazz-napi.win32-*.node",
 	"!**/jazz-napi.linux-arm64-gnu.node",
