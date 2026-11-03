@@ -46,3 +46,30 @@ it('refuses foreign browser origins even with an admitted identity', async () =>
 	req.headers.set('Origin', 'https://foreign.example')
 	expect((await capture(req, crypto.randomUUID(), 'extract', true)).status).toBe(403)
 })
+
+it('bounds total instance admission and releases slots after body cancellation', async () => {
+	const controllers = Array.from({ length: 4 }, () => new AbortController())
+	const pending = controllers.map((controller) => {
+		const init = {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: new ReadableStream<Uint8Array>(),
+			duplex: 'half',
+			signal: controller.signal
+		}
+		return capture(
+			new Request('https://clipper.example/api/capture/extract', init),
+			crypto.randomUUID(),
+			'extract',
+			true
+		)
+	})
+	try {
+		expect((await capture(request(input()), crypto.randomUUID(), 'extract', true)).status).toBe(429)
+	} finally {
+		for (const controller of controllers) controller.abort()
+	}
+	const results = await Promise.all(pending)
+	expect(results.every((response) => response.status === 408)).toBe(true)
+	expect((await capture(request(input()), crypto.randomUUID(), 'extract', true)).status).toBe(400)
+})

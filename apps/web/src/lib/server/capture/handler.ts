@@ -3,12 +3,18 @@ import { createGatewayMachine } from '../../machines/capture/gateway.js'
 import { CaptureError } from './errors.js'
 import { sourceUrl, resolveDestination } from './destination.js'
 import { fetchHop } from './transport.js'
-import { extract } from './extract.js'
-const machine = createGatewayMachine({ resolve: resolveDestination, fetch: fetchHop, extract })
+import { extractInWorker } from './parser.js'
+const machine = createGatewayMachine({
+	resolve: resolveDestination,
+	fetch: fetchHop,
+	extract: extractInWorker
+})
 // Instance-local abuse bound, not a distributed quota or persistent account store.
+let active = 0
 const owners = new Map<string, { start: number; count: number; active: number }>()
 function acquire(owner: string) {
 	const now = Date.now()
+	if (active >= 4) throw new CaptureError('rateLimited', 429, true)
 	for (const [id, value] of owners)
 		if (value.active === 0 && now - value.start >= 60000) owners.delete(id)
 	let value = owners.get(owner)
@@ -23,9 +29,11 @@ function acquire(owner: string) {
 	}
 	if (value.active >= 2 || value.count >= 20) throw new CaptureError('rateLimited', 429, true)
 	value.active++
+	active++
 	value.count++
 	return () => {
 		value.active--
+		active--
 	}
 }
 async function readInput(request: Request, signal: AbortSignal) {

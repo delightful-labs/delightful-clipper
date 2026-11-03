@@ -4,14 +4,15 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
+		"dev": "pnpm build:parser-worker && vite dev",
+		"build": "vite build && pnpm build:parser-worker",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig tsconfig.json --fail-on-warnings",
 		"prepare": "svelte-kit sync",
 		"deploy:jazz": "jazz-tools deploy --schema-dir src/lib/backend/jazz",
-		"dev:agent": "vite dev --mode agent --port 5180",
-		"build:deploy-preview": "node --experimental-strip-types tooling/netlify-preview.ts"
+		"dev:agent": "pnpm build:parser-worker && vite dev --mode agent --port 5180",
+		"build:deploy-preview": "node --experimental-strip-types tooling/netlify-preview.ts",
+		"build:parser-worker": "esbuild src/lib/server/capture/extract-worker.ts --bundle --platform=node --format=esm --target=node24 --external:jsdom --external:@mozilla/readability --external:dompurify --outfile=.netlify/v1/parser/extract-worker.mjs"
 	},
 	"dependencies": {
 		"@mozilla/readability": "0.6.0",
@@ -20,6 +21,7 @@
 		"dompurify": "3.4.17",
 		"i18next": "26.7.1",
 		"ipaddr.js": "2.3.0",
+		"jazz-napi": "2.0.0-alpha.59",
 		"jazz-tools": "2.0.0-alpha.59",
 		"jsdom": "29.1.1",
 		"svelte": "5.57.2",
@@ -31,6 +33,7 @@
 		"@sveltejs/kit": "3.0.1",
 		"@sveltejs/vite-plugin-svelte": "7.2.0",
 		"@types/jsdom": "28.0.3",
+		"esbuild": "0.27.7",
 		"svelte-check": "4.6.0",
 		"typescript": "6.0.3",
 		"vite": "8.3.4"

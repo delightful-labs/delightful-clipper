@@ -5,7 +5,7 @@ import type { extract } from '../../server/capture/extract.js'
 import type { Hop } from '../../server/capture/transport.js'
 type Destination = { address: string; family: number }
 type Redirect = { from: string; to: string; status: number }
-type Extraction = ReturnType<typeof extract>
+type Extraction = Awaited<ReturnType<typeof extract>>
 export type GatewayResult =
 	| {
 			kind: 'success'
@@ -27,7 +27,12 @@ type Context = Input & {
 export function createGatewayMachine(capability: {
 	resolve: (url: URL, signal: AbortSignal) => Promise<Destination>
 	fetch: (url: URL, destination: Destination, signal: AbortSignal) => Promise<Hop>
-	extract: (body: Uint8Array, mediaType: string, url: string) => Extraction
+	extract: (
+		body: Uint8Array,
+		mediaType: string,
+		url: string,
+		signal: AbortSignal
+	) => Extraction | Promise<Extraction>
 }) {
 	const actors = {
 		redirect: fromPromise(async ({ input }: { input: Context }) => {
@@ -49,7 +54,12 @@ export function createGatewayMachine(capability: {
 			if (!input.hop) throw new Error('Missing response')
 			if (input.mode === 'resolve') return undefined
 			try {
-				return capability.extract(input.hop.body, input.hop.mediaType, input.current)
+				return await capability.extract(
+					input.hop.body,
+					input.hop.mediaType,
+					input.current,
+					input.signal
+				)
 			} catch (error) {
 				throw error instanceof CaptureError ? error : new CaptureError('parseFailed', 422)
 			}
