@@ -13,7 +13,7 @@ Every command/report includes `protocolVersion`, `requestId`, `operationId`, non
 | bindPrivateLibrary | DLF ready session/client capability, binding generation | owner-scoped repository; readiness is not proof of write permission or fresh remote data |
 | journalCapture | URL or bounded rendered HTML, entry point, operation ID | locally durable intake ID before caller view closes |
 | resolveSourceIdentity | submitted URL + browser observations | validated destination/provenance/canonical evidence or recoverable unresolved result |
-| persistSnapshot | capture/document ID, sanitized normalized output + manifests | stable snapshot reference after local durability; explicit remote pending/accepted/rejected |
+| persistSnapshot | capture/document ID, sanitized normalized output + native byte assets | stable snapshot reference after local durability; explicit remote pending/accepted/rejected |
 | saveNote | parent identity, edit sequence, literal text | local acknowledgment for that sequence; separate remote sync report; draft retained on error |
 | setStatus / setFavorite / assignTag | single target and desired value | idempotent desired-state write, not toggle replay |
 | trash / restore | single document, operation ID | retained graph and prior status; no implicit duplicate restore |

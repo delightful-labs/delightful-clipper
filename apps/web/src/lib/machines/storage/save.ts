@@ -24,7 +24,7 @@ function stageResultKind(
 	output: StageResult | undefined,
 	isCurrent: () => boolean
 ): Exclude<SaveResult['kind'], 'saved'> {
-	if (output?.settlement.kind === 'unresolved') return 'unknown'
+	if (!output || output.settlement.kind === 'unresolved') return 'unknown'
 	if (!isCurrent()) return 'scopeChanged'
 	if (output?.outcome === 'blocked') return 'blocked'
 	if (output?.outcome === 'closed') return 'interrupted'
@@ -37,18 +37,9 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 	const actors = {
 		prepare: fromPromise(({ input }: { input: SaveRequest }) => capability.prepare(input)),
 		intent: capability.intent,
-		parts: capability.parts,
-		publish: capability.publish,
-		readParts: fromPromise(({ input }: { input: string }) => capability.readParts(input)),
-		verify: fromPromise(
-			({
-				input
-			}: {
-				input: { manifest: PreparedSave['manifest']; parts: PreparedSave['parts'] }
-			}) => capability.verify(input)
-		)
+		publish: capability.publish
 	}
-	type FullContext = Context & { observedParts: PreparedSave['parts'] }
+	type FullContext = Context
 	const model = setup<
 		FullContext,
 		{ type: 'SHUTDOWN' },
@@ -65,7 +56,7 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 		guards: { stopping: stateIn({ running: { control: 'stopping' } }) },
 		actions: {
 			shutdownChild: enqueueActions(({ self, enqueue }) => {
-				for (const id of ['intent', 'parts', 'publish']) {
+				for (const id of ['intent', 'publish']) {
 					const child = self.getSnapshot().children[id]
 					if (child?.getSnapshot().status === 'active') enqueue.sendTo(child, { type: 'SHUTDOWN' })
 				}
@@ -96,7 +87,7 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 			operationId: context.operationId
 		} satisfies SaveResult
 	})
-	const stage = (src: 'intent' | 'parts' | 'publish', next: 'parts' | 'readingParts' | 'saved') =>
+	const stage = (src: 'intent' | 'publish', next: 'publish' | 'saved') =>
 		model.createStateConfig({
 			invoke: {
 				id: src,
@@ -104,7 +95,7 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 				input,
 				onDone: [
 					{
-						guard: ({ event }) => event.output?.settlement.kind === 'unresolved',
+						guard: ({ event }) => !event.output || event.output.settlement.kind === 'unresolved',
 						target: 'finishing',
 						actions: assign(({ context, event }) =>
 							stageOutput({ context, event: { output: event.output } })
@@ -155,7 +146,6 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 			operationId: input.operationId,
 			prepared: undefined,
 			receipts: [],
-			observedParts: [],
 			result: undefined
 		}),
 		output: ({ context }) => {
@@ -201,45 +191,7 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 									}
 								}
 							},
-							intent: stage('intent', 'parts'),
-							parts: stage('parts', 'readingParts'),
-							readingParts: {
-								invoke: {
-									src: 'readParts',
-									input: ({ context }) => context.operationId,
-									onDone: [
-										{ guard: 'stopping', target: 'finishing' },
-										{
-											target: 'verifying',
-											actions: assign({ observedParts: ({ event }) => event.output })
-										}
-									],
-									onError: 'finishing'
-								}
-							},
-							verifying: {
-								invoke: {
-									src: 'verify',
-									input: ({ context }) => ({
-										manifest: prepared(context).manifest,
-										parts: context.observedParts
-									}),
-									onDone: [
-										{ guard: 'stopping', target: 'finishing' },
-										{ guard: () => capability.isCurrent(), target: 'publish' },
-										{
-											target: 'finishing',
-											actions: assign(({ context }) => ({
-												result: {
-													kind: 'scopeChanged',
-													operationId: context.operationId
-												} satisfies SaveResult
-											}))
-										}
-									],
-									onError: 'finishing'
-								}
-							},
+							intent: stage('intent', 'publish'),
 							publish: stage('publish', 'saved'),
 							saved: {
 								entry: assign(({ context }) => ({
@@ -278,7 +230,6 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 				entry: assign(({ context }) => ({
 					request: undefined,
 					prepared: undefined,
-					observedParts: [],
 					receipts: [],
 					result:
 						context.result ??

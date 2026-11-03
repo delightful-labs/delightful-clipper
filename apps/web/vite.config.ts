@@ -39,6 +39,11 @@ export default defineConfig(({ command, mode }) => ({
 		}),
 		sveltekit({ adapter: adapter(), paths: { relative: false } })
 	],
-	server: { host: '127.0.0.1', port: 5173, strictPort: true },
+	server: {
+		host: '127.0.0.1',
+		port: 5173,
+		strictPort: true,
+		...(process.env.CLIPPER_TEST === 'true' ? { fs: { allow: ['.'] } } : {})
+	},
 	preview: { host: '127.0.0.1', port: 4173, strictPort: true }
 }))
