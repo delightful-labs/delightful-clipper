@@ -1,12 +1,12 @@
 # Implementation handoff
 
-**Status**: Investigation complete; workspace tooling and a minimal web shell are implemented in the separate tooling PR. Identity, library, capture and reader workflows have not started. Product scope is settled. Runtime acceptance gates remain explicit; this is not a release approval or a claim that the earlier Speckit plan passed every gate.
+**Status**: Workspace tooling, DLF account creation/restoration/recovery and the canonical private library root are implemented. The current storage PR adds bounded immutable text/byte repository capabilities without product UI. Storage cold-restart/cross-profile acceptance and lifecycle fault qualification remain open in [tasks.md](tasks.md). Capture and reader workflows remain unbuilt. Product scope is settled; this is not release approval.
 
 ## First batch: application foundation and durable private root
 
-The tooling PR establishes item 1 and only the minimal buildable shell from item 2. The session/storage and product acceptance work below remains unbuilt. Tooling commands and scope are documented in [docs/tooling.md](../../docs/tooling.md).
+Items 1–5 are implemented for the session/private-root path; item 6 is implemented as a bounded repository capability in the current PR. Item 7 remains partially qualified. See [session-implementation.md](session-implementation.md), [storage-implementation.md](storage-implementation.md) and [tasks.md](tasks.md) for evidence and remaining work. Tooling commands and scope are documented in [docs/tooling.md](../../docs/tooling.md).
 
-Build only the new workspace/toolchain and the smallest browser session → canonical private library → local text/bytes → reopen path. Start from the spec-only `main`; the old prototype remains preserved on the archive branch. No dependency on generic DLF multi-workspace creation is necessary.
+Build only the new workspace/toolchain and the smallest browser session → canonical private library → local text/bytes → reopen path. Start from the spec-only `main`; the old prototype remains preserved on the archive branch. The canonical root remains domain-owned; storage transactions reuse DLF’s generic transaction resource owner without introducing workspaces.
 
 1. Establish Clipper's repository agreements and minimal pnpm workspace. Pin the selected Svelte/Kit/Vite/XState/Jazz/TypeScript baseline, Node 24, and the exact DLF/DUI archives by digest. Verify archive export/peer compatibility rather than taking a different private `0.0.0` build. Lock extractor/search/localization packages only when the relevant module enters the batch; do not install future PDF/EPUB/viewer packages.
 2. Add the client-rendered SvelteKit shell and one minimal route, with localizable status descriptors and browser integration outside presentation. No speculative reader styling, account settings suite or workspace chooser. Use native CSS/DUI where applicable.
@@ -46,4 +46,4 @@ The Node APIs are documented for the [target Node 24 HTTP runtime](https://nodej
 
 ## Review boundary
 
-This handoff is ready for implementation to begin; it has not begun it. The user's latest instruction requested investigation and a return before implementation. No commit, deployment, product dependency installation, production schema mutation or DLF source change was made in this investigation session. Present the first batch's concrete implementation and validation honestly when it is later authorized.
+Implementation is authorized and underway through feature branches and PRs. The archived investigation is supporting evidence only. Current validation and unchecked acceptance work are recorded in [tasks.md](tasks.md); no dependent product workflow should be treated as complete from repository capabilities alone.

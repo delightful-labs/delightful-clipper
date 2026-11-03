@@ -8,4 +8,4 @@
 - Clipper owns domain schemas/policies and data operations; DLF owns reusable identity/recovery behavior; DUI owns generic presentation. Do not silently adopt a sibling repository's constitution or copy its domain models.
 - Separate local persistence from remote acceptance and retain unknown-write recovery. Never claim privacy, offline availability or platform support without the corresponding evidence.
 - Complete and report checks appropriate to each PR. Isolated investigation results do not substitute for validation of the actual implementation.
-- Keep implementation scoped to the current user request; the current foundation batch covers session identity/recovery and the private library root; capture and reader features require subsequent work.
+- Keep implementation scoped to the current user request; the current foundation batch adds bounded immutable text/byte repository capabilities to session identity/recovery and the private library root; capture and reader features require subsequent work.

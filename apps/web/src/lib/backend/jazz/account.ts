@@ -1,3 +1,4 @@
+import { createLibraryRecords } from './records.js'
 import { ReadTier } from 'jazz-tools'
 import wasmUrl from '#jazz-wasm-binary?url'
 import type { JazzSession, JazzSessionConfig } from 'jazz-tools/svelte'
@@ -92,4 +93,17 @@ const registry = createJazzStartupRegistry()
 const runtimeSources = Object.freeze({ wasmUrl, wasmVersion: '2.0.0-alpha.59' })
 export function accountInput(config: JazzSessionConfig): AccountInput<Session> {
 	return { startup: registry.getJazzStartupBinding({ ...config, runtimeSources }), bind: bindHost }
+}
+
+/** A consuming integration owns/drains the returned record actors before identity changes. */
+export function currentLibraryRecords() {
+	const session = registry.getCurrentJazzSession()
+	const snapshot = session?.getSnapshot()
+	if (!session || snapshot?.status !== 'ready' || !snapshot.account || !snapshot.client)
+		throw new Error('Library scope unavailable')
+	const { account, client } = snapshot
+	return createLibraryRecords(client.db, account.id, () => {
+		const now = session.getSnapshot()
+		return now.status === 'ready' && now.account === account && now.client === client
+	})
 }
