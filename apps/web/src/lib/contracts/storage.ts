@@ -1,4 +1,4 @@
-import type { ActorLogic, Snapshot } from 'xstate'
+import type { ActorLogic, ActorRef, Snapshot } from 'xstate'
 import type {
 	WorkspaceCreationAttempt,
 	WorkspaceCreationResult
@@ -20,6 +20,8 @@ export type SaveRequest = {
 	bytes: Uint8Array
 	mediaType: string
 }
+export type SyncReport = { type: 'SYNC'; id: string; status: 'accepted' | 'rejected' }
+export type ReceiptWatch = { type: 'WATCH'; id: string; receipts: SyncReceipt[] }
 export type SyncReceipt = { global: () => Promise<void> }
 export type StoredAsset = {
 	id: string
@@ -84,9 +86,18 @@ export type ReadResult =
 			asset: AssetResult
 			source?: ArticleSource
 	  }
+export type ReadOutcome = { kind: ReadResult['kind'] }
+export type ReadReport = { type: 'READ_RESULT'; generation: number; result: ReadResult }
+export type ReadInput = {
+	id: string
+	capability: ReadCapabilities
+	generation?: number
+	reportTo?: ActorRef<Snapshot<unknown>, ReadReport>
+}
 export type ReadCapabilities = {
 	isCurrent: () => boolean
-	document: (id: string) => Promise<DocumentHeader | null>
-	snapshot: (id: string) => Promise<TextSnapshot | null>
-	asset: (id: string) => Promise<StoredAsset | null>
+	document: (id: string, signal: AbortSignal) => Promise<DocumentHeader | null>
+	snapshot: (id: string, signal: AbortSignal) => Promise<TextSnapshot | null>
+	asset: (id: string, signal: AbortSignal) => Promise<StoredAsset | null>
+	source: (id: string, signal: AbortSignal) => Promise<ArticleSource | null>
 }

@@ -35,8 +35,8 @@ export function createLibraryCapability(
 	return {
 		isCurrent: records.isCurrent,
 		subscribe: records.subscribe,
-		read: records.read,
-		spawnSave: (spawn, input) => spawn(records.saveMachine, { id: 'save', input }),
+		read: records.readCapabilities,
+		spawnSave: (spawn, input) => spawn(records.saveMachine, { input }),
 		resolve: async (url, id, signal) => resolvedUrl(await json('resolve', url, id, signal), id),
 		identify: async (url, signal) => {
 			current(signal)

@@ -1,7 +1,9 @@
-import { assign, enqueueActions, fromCallback, fromPromise, sendTo, setup, stopChild } from 'xstate'
+import { syncOwnerMachine } from '../storage/sync-owner.js'
+import { readRecordMachine } from '../storage/read.js'
+import { assign, enqueueActions, fromCallback, sendTo, setup, stopChild } from 'xstate'
 import { preparationMachine } from './preparation.js'
 import type { SaveRef } from '../../contracts/library.js'
-import type { LibraryCapability, LibraryEvent, ReceiptWatch } from '../../contracts/library.js'
+import type { LibraryCapability, LibraryEvent } from '../../contracts/library.js'
 import type { DocumentHeader, ReadResult, SaveResult } from '../../contracts/storage.js'
 import type { Candidate } from '../../capture/source.js'
 type Context = {
@@ -13,6 +15,7 @@ type Context = {
 	preview: Candidate | undefined
 	captureId: string
 	readerId: string
+	readerGeneration: number
 	reader: ReadResult | undefined
 	rows: DocumentHeader[]
 	listFailed: boolean
@@ -35,40 +38,15 @@ const actors = {
 			return undefined
 		}
 	}),
-	receipts: fromCallback<ReceiptWatch>(({ receive, sendBack }) => {
-		let current = true
-		receive((event) => {
-			void Promise.all(
-				event.receipts.map((receipt) => Promise.resolve().then(() => receipt.global()))
-			).then(
-				() => {
-					if (current) sendBack({ type: 'SYNC', id: event.id, status: 'accepted' })
-				},
-				() => {
-					if (current) sendBack({ type: 'SYNC', id: event.id, status: 'rejected' })
-				}
-			)
-		})
-		return () => {
-			current = false
-		}
-	}),
+	receipts: syncOwnerMachine,
 	prepare: preparationMachine,
-	read: fromPromise(
-		({
-			input,
-			signal
-		}: {
-			input: { capability: LibraryCapability; id: string }
-			signal: AbortSignal
-		}) => input.capability.read(input.id, signal)
-	)
+	read: readRecordMachine
 }
 export const libraryMachine = setup<
 	Context,
 	| LibraryEvent
-	| { type: 'xstate.done.actor.save'; output: SaveResult }
-	| { type: 'xstate.error.actor.save'; error: unknown },
+	| { type: `xstate.done.actor.${string}`; actorId: string; output: SaveResult }
+	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown },
 	typeof actors,
 	{},
 	{ close: undefined },
@@ -81,6 +59,7 @@ export const libraryMachine = setup<
 	actions: {
 		close: enqueueActions(({ context, enqueue }) => {
 			if (context.saveRef) enqueue.sendTo(context.saveRef, { type: 'SHUTDOWN' })
+			enqueue.sendTo('receipts', { type: 'SHUTDOWN' })
 			enqueue.assign({
 				closing: true,
 				preview: undefined,
@@ -103,6 +82,7 @@ export const libraryMachine = setup<
 		preview: undefined,
 		captureId: '',
 		readerId: '',
+		readerGeneration: 0,
 		reader: undefined,
 		rows: [],
 		listFailed: false,
@@ -114,7 +94,7 @@ export const libraryMachine = setup<
 			type: 'parallel',
 			invoke: [
 				{ id: 'collection', src: 'collection', input: ({ context }) => context.capability },
-				{ id: 'receipts', src: 'receipts' }
+				{ id: 'receipts', src: 'receipts', input: ({ self }) => ({ reportTo: self }) }
 			],
 			always: { guard: ({ context }) => context.closing && !context.writing, target: 'closed' },
 			on: {
@@ -214,18 +194,21 @@ export const libraryMachine = setup<
 								return {
 									writing: true,
 									captureId: preview.id,
-									saveRef: required(context.capability).spawnSave(spawn, {
-										operationId: preview.id,
-										title: preview.title,
-										text: preview.text,
-										bytes: new TextEncoder().encode(preview.html),
-										mediaType: 'text/html',
-										source: {
-											finalUrl: preview.finalUrl,
-											submittedUrl: preview.submittedUrl,
-											provenance: preview.provenance
+									saveRef: required(context.capability).spawnSave(
+										(logic, options) => spawn(logic, options),
+										{
+											operationId: preview.id,
+											title: preview.title,
+											text: preview.text,
+											bytes: new TextEncoder().encode(preview.html),
+											mediaType: 'text/html',
+											source: {
+												finalUrl: preview.finalUrl,
+												submittedUrl: preview.submittedUrl,
+												provenance: preview.provenance
+											}
 										}
-									})
+									)
 								}
 							}),
 							exit: [
@@ -247,9 +230,15 @@ export const libraryMachine = setup<
 							},
 							on: {
 								SHUTDOWN: { target: '.stopping', actions: 'close' },
-								'xstate.done.actor.save': [
+								'xstate.done.actor.*': [
 									{
-										guard: ({ event }) => event.output.kind === 'saved',
+										guard: ({ context, event }) =>
+											context.closing && event.actorId === context.saveRef?.id,
+										target: 'canceled'
+									},
+									{
+										guard: ({ context, event }) =>
+											event.actorId === context.saveRef?.id && event.output.kind === 'saved',
 										target: 'saved',
 										actions: [
 											assign({
@@ -266,14 +255,26 @@ export const libraryMachine = setup<
 											}))
 										]
 									},
-									{ guard: ({ event }) => event.output.kind === 'failed', target: 'saveFailed' },
-									{ guard: ({ event }) => event.output.kind === 'interrupted', target: 'canceled' },
 									{
+										guard: ({ context, event }) =>
+											event.actorId === context.saveRef?.id && event.output.kind === 'failed',
+										target: 'saveFailed'
+									},
+									{
+										guard: ({ context, event }) =>
+											event.actorId === context.saveRef?.id && event.output.kind === 'interrupted',
+										target: 'canceled'
+									},
+									{
+										guard: ({ context, event }) => event.actorId === context.saveRef?.id,
 										target: 'uncertain',
 										actions: assign({ captureId: ({ event }) => event.output.operationId })
 									}
 								],
-								'xstate.error.actor.save': { target: 'uncertain' }
+								'xstate.error.actor.*': {
+									guard: ({ context, event }) => event.actorId === context.saveRef?.id,
+									target: 'uncertain'
+								}
 							}
 						},
 						saved: {
@@ -317,26 +318,39 @@ export const libraryMachine = setup<
 						OPEN: {
 							target: '.loading',
 							reenter: true,
-							actions: assign({ readerId: ({ event }) => event.id, reader: undefined })
+							actions: assign({
+								readerId: ({ event }) => event.id,
+								readerGeneration: ({ context }) => context.readerGeneration + 1,
+								reader: undefined
+							})
 						},
-						CLOSE_READER: { target: '.empty', actions: assign({ reader: undefined }) }
+						CLOSE_READER: {
+							target: '.empty',
+							actions: assign({
+								reader: undefined,
+								readerGeneration: ({ context }) => context.readerGeneration + 1
+							})
+						},
+						READ_RESULT: {
+							guard: ({ context, event }) =>
+								event.generation === context.readerGeneration &&
+								!context.closing &&
+								!!context.capability?.isCurrent(),
+							target: '.shown',
+							actions: assign({ reader: ({ event }) => event.result })
+						}
 					},
 					states: {
 						empty: {},
 						loading: {
 							invoke: {
 								src: 'read',
-								input: ({ context }) => ({
-									capability: required(context.capability),
-									id: context.readerId
+								input: ({ context, self }) => ({
+									capability: required(context.capability).read,
+									id: context.readerId,
+									generation: context.readerGeneration,
+									reportTo: self
 								}),
-								onDone: {
-									target: 'shown',
-									actions: assign({
-										reader: ({ context, event }) =>
-											context.capability?.isCurrent() ? event.output : undefined
-									})
-								},
 								onError: { target: 'shown', actions: assign({ reader: { kind: 'unavailable' } }) }
 							}
 						},

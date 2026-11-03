@@ -59,9 +59,14 @@ export function testLibraryCapability(
 		hasDocument: async () => false,
 		hasIntent: async () => false,
 		extract: async () => candidate,
-		spawnSave: (spawn: SaveSpawner, request: SaveRequest) =>
-			spawn(save, { id: 'save', input: request }),
-		read: async () => ({ kind: 'missing' }),
+		spawnSave: (spawn: SaveSpawner, request: SaveRequest) => spawn(save, { input: request }),
+		read: {
+			isCurrent: () => true,
+			document: async () => null,
+			snapshot: async () => null,
+			asset: async () => null,
+			source: async () => null
+		},
 		subscribe: () => () => {},
 		...overrides
 	}

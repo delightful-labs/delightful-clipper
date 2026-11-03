@@ -372,7 +372,7 @@ it.each(['logout', 'shutdown', 'replacement'] as const)(
 				provenance: '{}',
 				imagesMissing: false
 			},
-			{ spawnSave: (spawn, input) => spawn(save, { id: 'save', input }) }
+			{ spawnSave: (spawn, input) => spawn(save, { input }) }
 		)
 		const observation = { ...base, library }
 		const { host, emit } = fixture(observation)

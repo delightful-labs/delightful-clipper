@@ -1,3 +1,4 @@
+import { readRecord } from '../src/lib/machines/storage/read.test-support.js'
 import { createActor, toPromise } from 'xstate'
 import { currentLibraryRecords } from '../src/lib/backend/jazz/account.js'
 export async function save(operationId: string) {
@@ -16,7 +17,7 @@ export async function save(operationId: string) {
 	return result.kind
 }
 export async function read(id: string) {
-	const result = await currentLibraryRecords().read(id, new AbortController().signal)
+	const result = await readRecord(currentLibraryRecords().readCapabilities, id)
 	if (result.kind !== 'available') return null
 	return {
 		text: result.text,

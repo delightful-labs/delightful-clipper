@@ -1,3 +1,4 @@
+import { readRecord } from '../../machines/storage/read.test-support.js'
 import { preparationMachine } from '../../machines/capture/preparation.js'
 import type { LibraryCapability } from '../../contracts/library.js'
 import { afterAll, beforeAll, expect, it } from 'vitest'
@@ -53,7 +54,7 @@ it('publishes text and native byte payload only after local persistence', async 
 	if (result.kind !== 'saved') throw new Error('Expected local save')
 	await Promise.all(result.receipts.map((receipt) => receipt.global()))
 	expect(await db.all(app.assets.where({ id: input.operationId }))).toHaveLength(1)
-	const read = await store.read(input.operationId, new AbortController().signal)
+	const read = await readRecord(store.readCapabilities, input.operationId)
 	expect(read.kind).toBe('available')
 	if (read.kind !== 'available' || read.asset.kind !== 'available')
 		throw new Error('Expected native asset')
@@ -114,7 +115,7 @@ it('does not publish a complete document from staging metadata alone', async () 
 	const { id: assetId, ...asset } = draft.asset
 	tx.insert(app.assets, asset, { id: assetId })
 	await tx.commit().wait({ tier: 'global' })
-	expect((await store.read(operationId, new AbortController().signal)).kind).toBe('missing')
+	expect((await readRecord(store.readCapabilities, operationId)).kind).toBe('missing')
 })
 it('rejects oversized input before writing an operation journal', async () => {
 	const { db, store } = await owner('records-limit')
@@ -253,7 +254,7 @@ it('reuses verified destination identity and treats a stranded intent as uncerta
 		id: candidate.id
 	})
 	expect(extracts).toBe(1)
-	expect(await store.read(candidate.id, new AbortController().signal)).toMatchObject({
+	expect(await readRecord(store.readCapabilities, candidate.id)).toMatchObject({
 		kind: 'available',
 		text: 'Original text',
 		source: { submittedUrl: 'https://short.example/#a' }

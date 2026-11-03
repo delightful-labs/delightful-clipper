@@ -16,7 +16,7 @@ Updated 2026-11-03. This is the current implementation checklist; the product re
 ## Storage qualification before enabling a product write flow
 
 - [x] Remove the redundant custom manifest/part codec; validate native asset bounds and parent consistency.
-- [x] Clear retained read-actor content/output at terminal states and qualify scope loss at document, snapshot and asset completions.
+- [x] Clear retained read-actor content/output at terminal states and qualify scope loss at document, snapshot, asset and optional-source completions.
 - [x] Qualify parent-reference consistency and missing/invalid native assets while preserving readable text.
 - [x] Exercise shutdown during acquisition/commit/local wait, unknown settlement without replay, and late remote rejection; treat missing stage output as unknown.
 - [x] Save unuploaded text/bytes with the authority stopped, close the complete browser process, reopen the same profile and verify exact local content.

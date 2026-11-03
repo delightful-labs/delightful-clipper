@@ -25,7 +25,8 @@ function deferred<T>() {
 	return { promise, resolve, reject }
 }
 function fixture(
-	overrides: Partial<LibraryCapability> & {
+	overrides: Omit<Partial<LibraryCapability>, 'read'> & {
+		read?: (id: string, signal: AbortSignal) => Promise<ReadResult>
 		save?: (request: SaveRequest) => Promise<SaveResult>
 		shutdown?: () => void
 	} = {}
@@ -38,7 +39,14 @@ function fixture(
 	const capability = testLibraryCapability(candidate, {
 		subscribe: () => unsubscribe,
 		...overrides,
-		spawnSave: (spawn, input) => spawn(save, { id: 'save', input })
+		read: {
+			...testLibraryCapability(candidate).read,
+			document: async (id, signal) => {
+				await overrides.read?.(id, signal)
+				return null
+			}
+		},
+		spawnSave: (spawn, input) => spawn(save, { input })
 	})
 	const actor = createActor(libraryMachine, { input: capability }).start()
 	return { actor, capability, unsubscribe }
@@ -61,12 +69,20 @@ it('drains issued local work before shutdown and clears all retained content', a
 	expect(shutdown).toHaveBeenCalledOnce()
 	expect(actor.getSnapshot().status).toBe('active')
 	expect(actor.getSnapshot().matches({ running: { capture: { saving: 'stopping' } } })).toBe(true)
-	expect(actor.getSnapshot().children.save).toBeDefined()
+	expect(
+		Object.values(actor.getSnapshot().children).find(
+			(child) => child?.id === actor.getSnapshot().context.saveRef?.id
+		)
+	).toBeDefined()
 	expect(actor.getSnapshot().context.preview).toBeUndefined()
 	pending.resolve({ kind: 'unknown', operationId: candidate.id })
 	await toPromise(actor)
 	expect(unsubscribe).toHaveBeenCalledOnce()
-	expect(actor.getSnapshot().children.save).toBeUndefined()
+	expect(
+		Object.values(actor.getSnapshot().children).find(
+			(child) => child?.id === actor.getSnapshot().context.saveRef?.id
+		)
+	).toBeUndefined()
 	expect(actor.getSnapshot().context.saveRef).toBeUndefined()
 	expect(actor.getSnapshot().context).toMatchObject({
 		preview: undefined,
@@ -169,13 +185,21 @@ it('sends cancellation once and keeps the child until its interrupted outcome', 
 	actor.send({ type: 'SAVE' })
 	actor.send({ type: 'CANCEL' })
 	expect(actor.getSnapshot().matches({ running: { capture: { saving: 'stopping' } } })).toBe(true)
-	expect(actor.getSnapshot().children.save).toBeDefined()
+	expect(
+		Object.values(actor.getSnapshot().children).find(
+			(child) => child?.id === actor.getSnapshot().context.saveRef?.id
+		)
+	).toBeDefined()
 	expect(shutdown).toHaveBeenCalledOnce()
 	actor.send({ type: 'CANCEL' })
 	expect(shutdown).toHaveBeenCalledOnce()
 	pending.resolve({ kind: 'interrupted', operationId: candidate.id })
 	await waitFor(actor, (s) => s.matches({ running: { capture: 'canceled' } }))
-	expect(actor.getSnapshot().children.save).toBeUndefined()
+	expect(
+		Object.values(actor.getSnapshot().children).find(
+			(child) => child?.id === actor.getSnapshot().context.saveRef?.id
+		)
+	).toBeUndefined()
 	expect(actor.getSnapshot().context.sync[candidate.id]).toBeUndefined()
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
@@ -188,10 +212,54 @@ it('handles a child actor failure as uncertain and removes it without replay', a
 	await preview(actor)
 	actor.send({ type: 'SAVE' })
 	await waitFor(actor, (s) => s.matches({ running: { capture: 'uncertain' } }))
-	expect(actor.getSnapshot().children.save).toBeUndefined()
+	expect(
+		Object.values(actor.getSnapshot().children).find(
+			(child) => child?.id === actor.getSnapshot().context.saveRef?.id
+		)
+	).toBeUndefined()
 	expect(actor.getSnapshot().context.saveRef).toBeUndefined()
 	actor.send({ type: 'SAVE' })
 	expect(save).toHaveBeenCalledOnce()
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
+})
+
+it('rejects stale reader generations after replacement and closing', async () => {
+	const pending = deferred<ReadResult>(),
+		signals: AbortSignal[] = []
+	const { actor } = fixture({
+		read: (_id, signal) => {
+			signals.push(signal)
+			return pending.promise
+		}
+	})
+	actor.send({ type: 'OPEN', id: 'first' })
+	const firstGeneration = actor.getSnapshot().context.readerGeneration
+	actor.send({ type: 'OPEN', id: 'second' })
+	const secondGeneration = actor.getSnapshot().context.readerGeneration
+	expect(signals[0]?.aborted).toBe(true)
+	actor.send({ type: 'READ_RESULT', generation: firstGeneration, result: { kind: 'corrupt' } })
+	expect(actor.getSnapshot().context.reader).toBeUndefined()
+	expect(actor.getSnapshot().matches({ running: { reading: 'loading' } })).toBe(true)
+	actor.send({ type: 'CLOSE_READER' })
+	expect(signals[1]?.aborted).toBe(true)
+	actor.send({ type: 'READ_RESULT', generation: secondGeneration, result: { kind: 'missing' } })
+	expect(actor.getSnapshot().context.reader).toBeUndefined()
+	expect(actor.getSnapshot().matches({ running: { reading: 'empty' } })).toBe(true)
+	pending.resolve({ kind: 'missing' })
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+
+it('does not attach a new sync observer when a drained save finishes after shutdown', async () => {
+	const pending = deferred<SaveResult>(),
+		global = vi.fn(async () => {})
+	const { actor } = fixture({ save: () => pending.promise })
+	await preview(actor)
+	actor.send({ type: 'SAVE' })
+	actor.send({ type: 'SHUTDOWN' })
+	pending.resolve({ kind: 'saved', operationId: candidate.id, receipts: [{ global }] })
+	await toPromise(actor)
+	expect(global).not.toHaveBeenCalled()
+	expect(actor.getSnapshot().context.sync).toEqual({})
 })

@@ -1,11 +1,9 @@
-import { createActor, toPromise } from 'xstate'
-import type { ReadResult } from '../../contracts/storage.js'
+import type { ReadCapabilities } from '../../contracts/storage.js'
 import { ReadTier } from 'jazz-tools'
 import type { Db, Transaction, WriteHandle } from 'jazz-tools'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import type { PreparedSave, StorageIntent, SyncReceipt } from '../../contracts/storage.js'
 import { createSaveRecordMachine } from '../../machines/storage/save.js'
-import { createReadRecordMachine } from '../../machines/storage/read.js'
 import { prepareSave } from '../../storage/prepare.js'
 import { app } from './schema.js'
 
@@ -96,7 +94,7 @@ export function createLibraryRecords(
 			intent: stageLogic('intent'),
 			publish: stageLogic('publish')
 		}),
-		readMachine: createReadRecordMachine({
+		readCapabilities: {
 			isCurrent,
 			document: async (id) => {
 				check()
@@ -121,8 +119,18 @@ export function createLibraryRecords(
 				})
 				check()
 				return row
+			},
+			source: async (id, signal) => {
+				check()
+				signal.throwIfAborted()
+				const row = await db.one(app.articleSources.where({ id, libraryId }), {
+					tier: ReadTier.LocalFirst
+				})
+				check()
+				signal.throwIfAborted()
+				return row
 			}
-		})
+		} satisfies ReadCapabilities
 	}
 	return {
 		...records,
@@ -156,35 +164,7 @@ export function createLibraryRecords(
 					onError: error
 				},
 				{ tier: ReadTier.LocalFirst }
-			),
-		read: async (id: string, signal: AbortSignal): Promise<ReadResult> => {
-			signal.throwIfAborted()
-			const delivered: { value: ReadResult } = { value: { kind: 'unavailable' } }
-			const actor = createActor(records.readMachine, { input: { id } })
-			const subscription = actor.on('record', ({ result }) => {
-				if (!signal.aborted && isCurrent()) delivered.value = result
-			})
-			const abort = () => actor.send({ type: 'SHUTDOWN' })
-			signal.addEventListener('abort', abort, { once: true })
-			try {
-				actor.start()
-				if (signal.aborted) abort()
-				await toPromise(actor)
-				const result = delivered.value
-				if (result.kind === 'available') {
-					const source = await db.one(app.articleSources.where({ id, libraryId }), {
-						tier: ReadTier.LocalFirst
-					})
-					if (signal.aborted || !isCurrent()) return { kind: 'unavailable' }
-					if (source && source.documentId === id) return { ...result, source }
-				}
-				return result
-			} finally {
-				signal.removeEventListener('abort', abort)
-				subscription.unsubscribe()
-				actor.stop()
-			}
-		}
+			)
 	}
 }
 
