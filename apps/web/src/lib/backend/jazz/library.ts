@@ -1,4 +1,3 @@
-import { createActor, toPromise } from 'xstate'
 import type { LibraryCapability } from '../../contracts/library.js'
 import {
 	articleId,
@@ -7,6 +6,7 @@ import {
 	resolvedUrl
 } from '../../capture/source.js'
 import type { LibraryRecords } from './records.js'
+/** Individual I/O leaves; capture sequencing and actor lifetime belong to machines. */
 export function createLibraryCapability(
 	records: LibraryRecords,
 	libraryId: string,
@@ -18,6 +18,7 @@ export function createLibraryCapability(
 	}
 	async function json(mode: 'resolve' | 'extract', url: string, id: string, signal: AbortSignal) {
 		current(signal)
+		normalizedSource(url)
 		const response = await request(mode, { protocolVersion: 1, operationId: id, url }, signal)
 		const data: unknown = await response.json()
 		current(signal)
@@ -35,43 +36,27 @@ export function createLibraryCapability(
 		isCurrent: records.isCurrent,
 		subscribe: records.subscribe,
 		read: records.read,
-		prepare: async (url, signal) => {
-			normalizedSource(url)
-			const requestId = crypto.randomUUID()
-			const resolved = resolvedUrl(await json('resolve', url, requestId, signal), requestId)
-			const lookup = async (finalUrl: string) => {
-				const id = await articleId(libraryId, finalUrl)
-				current(signal)
-				const state = await records.lookup(id)
-				current(signal)
-				return { id, state }
-			}
-			const first = await lookup(resolved)
-			if (first.state !== 'missing')
-				return { kind: first.state === 'available' ? 'duplicate' : 'uncertain', id: first.id }
-			const candidate = extractedCandidate(
-				await json('extract', url, requestId, signal),
-				requestId,
-				url
-			)
-			const final = await lookup(candidate.finalUrl)
-			if (final.state !== 'missing')
-				return { kind: final.state === 'available' ? 'duplicate' : 'uncertain', id: final.id }
-			return { kind: 'preview', candidate: { ...candidate, id: final.id } }
-		},
-		save: async (request, signal) => {
+		spawnSave: (spawn, input) => spawn(records.saveMachine, { id: 'save', input }),
+		resolve: async (url, id, signal) => resolvedUrl(await json('resolve', url, id, signal), id),
+		identify: async (url, signal) => {
 			current(signal)
-			const actor = createActor(records.saveMachine, { input: request })
-			const abort = () => actor.send({ type: 'SHUTDOWN' })
-			signal.addEventListener('abort', abort, { once: true })
-			try {
-				actor.start()
-				if (signal.aborted) abort()
-				return await toPromise(actor)
-			} finally {
-				signal.removeEventListener('abort', abort)
-				actor.stop()
-			}
-		}
+			const id = await articleId(libraryId, url)
+			current(signal)
+			return id
+		},
+		hasDocument: async (id, signal) => {
+			current(signal)
+			const found = await records.hasDocument(id)
+			current(signal)
+			return found
+		},
+		hasIntent: async (id, signal) => {
+			current(signal)
+			const found = await records.hasIntent(id)
+			current(signal)
+			return found
+		},
+		extract: async (url, id, signal) =>
+			extractedCandidate(await json('extract', url, id, signal), id, url)
 	}
 }

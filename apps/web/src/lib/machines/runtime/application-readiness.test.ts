@@ -1,3 +1,4 @@
+import { controlledSave, testLibraryCapability } from '../capture/library.test-support.js'
 import {
 	createSessionAcquisitionMachine,
 	selectAcquiredSession
@@ -358,29 +359,21 @@ it.each(['logout', 'shutdown', 'replacement'] as const)(
 		const base = ready('owner', root(Promise.resolve(), Promise.resolve()))
 		if (base.status !== 'ready') throw new Error('Expected ready')
 		const id = crypto.randomUUID()
-		let signal: AbortSignal | undefined
-		const library: import('../../contracts/library.js').LibraryCapability = {
-			isCurrent: () => true,
-			subscribe: () => () => {},
-			read: async () => ({ kind: 'missing' }),
-			prepare: async () => ({
-				kind: 'preview',
-				candidate: {
-					id,
-					title: 'Private',
-					text: 'private text',
-					html: '<p>private text</p>',
-					finalUrl: 'https://example.com/',
-					submittedUrl: 'https://example.com/',
-					provenance: '{}',
-					imagesMissing: false
-				}
-			}),
-			save: (_request, abort) => {
-				signal = abort
-				return pending.promise
-			}
-		}
+		const shutdown = vi.fn()
+		const save = controlledSave(() => pending.promise, shutdown)
+		const library = testLibraryCapability(
+			{
+				id,
+				title: 'Private',
+				text: 'private text',
+				html: '<p>private text</p>',
+				finalUrl: 'https://example.com/',
+				submittedUrl: 'https://example.com/',
+				provenance: '{}',
+				imagesMissing: false
+			},
+			{ spawnSave: (spawn, input) => spawn(save, { id: 'save', input }) }
+		)
 		const observation = { ...base, library }
 		const { host, emit } = fixture(observation)
 		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
@@ -394,7 +387,7 @@ it.each(['logout', 'shutdown', 'replacement'] as const)(
 		if (mode === 'replacement') emit(ready('other', root(Promise.resolve(), Promise.resolve())))
 		else actor.send({ type: mode === 'logout' ? 'LOGOUT' : 'SHUTDOWN' })
 		await waitFor(actor, (s) => s.matches({ running: { library: { ready: 'stopping' } } }))
-		expect(signal?.aborted).toBe(true)
+		expect(shutdown).toHaveBeenCalledOnce()
 		expect(selectLibraryActor(actor.getSnapshot())).toBeUndefined()
 		expect(host.logout).not.toHaveBeenCalled()
 		expect(host.release).not.toHaveBeenCalled()

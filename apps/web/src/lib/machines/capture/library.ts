@@ -1,12 +1,14 @@
-import { assign, fromCallback, fromPromise, sendTo, setup } from 'xstate'
+import { assign, enqueueActions, fromCallback, fromPromise, sendTo, setup, stopChild } from 'xstate'
+import { preparationMachine } from './preparation.js'
+import type { SaveRef } from '../../contracts/library.js'
 import type { LibraryCapability, LibraryEvent, ReceiptWatch } from '../../contracts/library.js'
-import type { DocumentHeader, ReadResult, SaveRequest } from '../../contracts/storage.js'
+import type { DocumentHeader, ReadResult, SaveResult } from '../../contracts/storage.js'
 import type { Candidate } from '../../capture/source.js'
 type Context = {
 	capability: LibraryCapability | undefined
 	closing: boolean
 	writing: boolean
-	controller: AbortController
+	saveRef: SaveRef | undefined
 	url: string
 	preview: Candidate | undefined
 	captureId: string
@@ -51,22 +53,7 @@ const actors = {
 			current = false
 		}
 	}),
-	prepare: fromPromise(
-		({
-			input,
-			signal
-		}: {
-			input: { capability: LibraryCapability; url: string }
-			signal: AbortSignal
-		}) => input.capability.prepare(input.url, signal)
-	),
-	save: fromPromise(
-		({
-			input
-		}: {
-			input: { capability: LibraryCapability; request: SaveRequest; signal: AbortSignal }
-		}) => input.capability.save(input.request, input.signal)
-	),
+	prepare: preparationMachine,
 	read: fromPromise(
 		({
 			input,
@@ -79,22 +66,39 @@ const actors = {
 }
 export const libraryMachine = setup<
 	Context,
-	LibraryEvent,
+	| LibraryEvent
+	| { type: 'xstate.done.actor.save'; output: SaveResult }
+	| { type: 'xstate.error.actor.save'; error: unknown },
 	typeof actors,
 	{},
-	{},
+	{ close: undefined },
 	{},
 	never,
 	string,
 	LibraryCapability | undefined
->({ actors }).createMachine({
+>({
+	actors,
+	actions: {
+		close: enqueueActions(({ context, enqueue }) => {
+			if (context.saveRef) enqueue.sendTo(context.saveRef, { type: 'SHUTDOWN' })
+			enqueue.assign({
+				closing: true,
+				preview: undefined,
+				reader: undefined,
+				rows: [],
+				url: '',
+				sync: {}
+			})
+		})
+	}
+}).createMachine({
 	id: 'library',
 	initial: 'running',
 	context: ({ input }) => ({
 		capability: input,
 		closing: false,
 		writing: false,
-		controller: new AbortController(),
+		saveRef: undefined,
 		url: '',
 		preview: undefined,
 		captureId: '',
@@ -114,19 +118,7 @@ export const libraryMachine = setup<
 			],
 			always: { guard: ({ context }) => context.closing && !context.writing, target: 'closed' },
 			on: {
-				SHUTDOWN: {
-					actions: [
-						({ context }) => context.controller.abort(),
-						assign({
-							closing: true,
-							preview: undefined,
-							reader: undefined,
-							rows: [],
-							url: '',
-							sync: {}
-						})
-					]
-				},
+				SHUTDOWN: { actions: 'close' },
 				ROWS: {
 					guard: ({ context }) => !context.closing && !!context.capability?.isCurrent(),
 					actions: assign({ rows: ({ event }) => event.rows, listFailed: false })
@@ -165,6 +157,11 @@ export const libraryMachine = setup<
 								}),
 								onDone: [
 									{
+										guard: ({ event }) => event.output.kind === 'scopeChanged',
+										target: 'idle',
+										actions: assign({ preview: undefined, url: '' })
+									},
+									{
 										guard: ({ event }) => event.output.kind === 'preview',
 										target: 'preview',
 										actions: assign({
@@ -177,14 +174,18 @@ export const libraryMachine = setup<
 										target: 'duplicate',
 										actions: assign({
 											captureId: ({ event }) =>
-												event.output.kind !== 'preview' ? event.output.id : ''
+												event.output.kind === 'duplicate' || event.output.kind === 'uncertain'
+													? event.output.id
+													: ''
 										})
 									},
 									{
 										target: 'uncertain',
 										actions: assign({
 											captureId: ({ event }) =>
-												event.output.kind !== 'preview' ? event.output.id : ''
+												event.output.kind === 'duplicate' || event.output.kind === 'uncertain'
+													? event.output.id
+													: ''
 										})
 									}
 								],
@@ -201,40 +202,52 @@ export const libraryMachine = setup<
 						preview: {
 							on: {
 								SAVE: {
-									target: 'saving',
-									actions: assign({ controller: () => new AbortController() })
+									target: 'saving'
 								},
 								CANCEL: { target: 'idle', actions: assign({ preview: undefined, url: '' }) }
 							}
 						},
 						saving: {
-							entry: assign({
-								writing: true,
-								captureId: ({ context }) => required(context.preview).id
+							initial: 'active',
+							entry: assign(({ context, spawn }) => {
+								const preview = required(context.preview)
+								return {
+									writing: true,
+									captureId: preview.id,
+									saveRef: required(context.capability).spawnSave(spawn, {
+										operationId: preview.id,
+										title: preview.title,
+										text: preview.text,
+										bytes: new TextEncoder().encode(preview.html),
+										mediaType: 'text/html',
+										source: {
+											finalUrl: preview.finalUrl,
+											submittedUrl: preview.submittedUrl,
+											provenance: preview.provenance
+										}
+									})
+								}
 							}),
-							exit: assign({ writing: false, preview: undefined }),
-							invoke: {
-								src: 'save',
-								input: ({ context }) => {
-									const preview = required(context.preview)
-									return {
-										capability: required(context.capability),
-										signal: context.controller.signal,
-										request: {
-											operationId: preview.id,
-											title: preview.title,
-											text: preview.text,
-											bytes: new TextEncoder().encode(preview.html),
-											mediaType: 'text/html',
-											source: {
-												finalUrl: preview.finalUrl,
-												submittedUrl: preview.submittedUrl,
-												provenance: preview.provenance
-											}
+							exit: [
+								stopChild(({ context }) => required(context.saveRef)),
+								assign({ writing: false, preview: undefined, saveRef: undefined })
+							],
+							states: {
+								active: {
+									on: {
+										CANCEL: {
+											target: 'stopping',
+											actions: sendTo(({ context }) => required(context.saveRef), {
+												type: 'SHUTDOWN'
+											})
 										}
 									}
 								},
-								onDone: [
+								stopping: {}
+							},
+							on: {
+								SHUTDOWN: { target: '.stopping', actions: 'close' },
+								'xstate.done.actor.save': [
 									{
 										guard: ({ event }) => event.output.kind === 'saved',
 										target: 'saved',
@@ -260,9 +273,8 @@ export const libraryMachine = setup<
 										actions: assign({ captureId: ({ event }) => event.output.operationId })
 									}
 								],
-								onError: { target: 'uncertain' }
-							},
-							on: { CANCEL: { actions: ({ context }) => context.controller.abort() } }
+								'xstate.error.actor.save': { target: 'uncertain' }
+							}
 						},
 						saved: {
 							on: {

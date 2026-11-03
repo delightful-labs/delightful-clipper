@@ -1,9 +1,10 @@
+import { controlledSave, testLibraryCapability } from './library.test-support.js'
 import { expect, it, vi } from 'vitest'
 import { createActor, toPromise, waitFor } from 'xstate'
 import { libraryMachine } from './library.js'
 import type { LibraryCapability } from '../../contracts/library.js'
 import type { Candidate } from '../../capture/source.js'
-import type { SaveResult, ReadResult } from '../../contracts/storage.js'
+import type { SaveRequest, SaveResult, ReadResult } from '../../contracts/storage.js'
 const candidate: Candidate = {
 	id: crypto.randomUUID(),
 	title: 'Private article',
@@ -23,16 +24,22 @@ function deferred<T>() {
 	})
 	return { promise, resolve, reject }
 }
-function fixture(overrides: Partial<LibraryCapability> = {}) {
+function fixture(
+	overrides: Partial<LibraryCapability> & {
+		save?: (request: SaveRequest) => Promise<SaveResult>
+		shutdown?: () => void
+	} = {}
+) {
 	const unsubscribe = vi.fn()
-	const capability: LibraryCapability = {
-		isCurrent: () => true,
-		prepare: async () => ({ kind: 'preview', candidate }),
-		save: async () => ({ kind: 'saved', operationId: candidate.id, receipts: [] }),
-		read: async () => ({ kind: 'missing' }),
+	const save = controlledSave(
+		overrides.save ?? (async () => ({ kind: 'saved', operationId: candidate.id, receipts: [] })),
+		overrides.shutdown
+	)
+	const capability = testLibraryCapability(candidate, {
 		subscribe: () => unsubscribe,
-		...overrides
-	}
+		...overrides,
+		spawnSave: (spawn, input) => spawn(save, { id: 'save', input })
+	})
 	const actor = createActor(libraryMachine, { input: capability }).start()
 	return { actor, capability, unsubscribe }
 }
@@ -42,23 +49,25 @@ async function preview(actor: ReturnType<typeof fixture>['actor']) {
 }
 it('drains issued local work before shutdown and clears all retained content', async () => {
 	const pending = deferred<SaveResult>()
-	let signal: AbortSignal | undefined
+	const shutdown = vi.fn()
 	const { actor, unsubscribe } = fixture({
-		save: (_request, abort) => {
-			signal = abort
-			return pending.promise
-		}
+		save: () => pending.promise,
+		shutdown
 	})
 	await preview(actor)
 	actor.send({ type: 'SAVE' })
 	await waitFor(actor, (s) => s.context.writing)
 	actor.send({ type: 'SHUTDOWN' })
-	expect(signal?.aborted).toBe(true)
+	expect(shutdown).toHaveBeenCalledOnce()
 	expect(actor.getSnapshot().status).toBe('active')
+	expect(actor.getSnapshot().matches({ running: { capture: { saving: 'stopping' } } })).toBe(true)
+	expect(actor.getSnapshot().children.save).toBeDefined()
 	expect(actor.getSnapshot().context.preview).toBeUndefined()
 	pending.resolve({ kind: 'unknown', operationId: candidate.id })
 	await toPromise(actor)
 	expect(unsubscribe).toHaveBeenCalledOnce()
+	expect(actor.getSnapshot().children.save).toBeUndefined()
+	expect(actor.getSnapshot().context.saveRef).toBeUndefined()
 	expect(actor.getSnapshot().context).toMatchObject({
 		preview: undefined,
 		reader: undefined,
@@ -68,10 +77,10 @@ it('drains issued local work before shutdown and clears all retained content', a
 	})
 })
 it('cancels extraction and discards a late result without enabling save', async () => {
-	const pending = deferred<Awaited<ReturnType<LibraryCapability['prepare']>>>()
+	const pending = deferred<string>()
 	let signal: AbortSignal | undefined
 	const { actor } = fixture({
-		prepare: (_url, abort) => {
+		resolve: (_url, _id, abort) => {
 			signal = abort
 			return pending.promise
 		}
@@ -79,7 +88,7 @@ it('cancels extraction and discards a late result without enabling save', async 
 	actor.send({ type: 'ADD', url: 'https://example.com/' })
 	actor.send({ type: 'CANCEL' })
 	expect(signal?.aborted).toBe(true)
-	pending.resolve({ kind: 'preview', candidate })
+	pending.resolve(candidate.finalUrl)
 	await Promise.resolve()
 	expect(actor.getSnapshot().can({ type: 'SAVE' })).toBe(false)
 	expect(actor.getSnapshot().context.preview).toBeUndefined()

@@ -1,3 +1,5 @@
+import { preparationMachine } from '../../machines/capture/preparation.js'
+import type { LibraryCapability } from '../../contracts/library.js'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import { createPolicyTestApp } from 'jazz-tools/testing'
@@ -226,7 +228,9 @@ it('reuses verified destination identity and treats a stranded intent as uncerta
 		if (mode === 'extract') extracts++
 		return request(mode, body)
 	})
-	const first = await capability.prepare('https://short.example/#a', new AbortController().signal)
+	const prepare = (capability: LibraryCapability, url: string) =>
+		toPromise(createActor(preparationMachine, { input: { capability, url } }).start())
+	const first = await prepare(capability, 'https://short.example/#a')
 	if (first.kind !== 'preview') throw new Error('Expected preview')
 	const candidate = first.candidate
 	const save = {
@@ -241,12 +245,13 @@ it('reuses verified destination identity and treats a stranded intent as uncerta
 			provenance: candidate.provenance
 		}
 	}
-	const saved = await capability.save(save, new AbortController().signal)
+	const saved = await toPromise(createActor(store.saveMachine, { input: save }).start())
 	if (saved.kind !== 'saved') throw new Error('Expected save')
 	await Promise.all(saved.receipts.map((receipt) => receipt.global()))
-	expect(
-		await capability.prepare('https://example.com/one#b', new AbortController().signal)
-	).toEqual({ kind: 'duplicate', id: candidate.id })
+	expect(await prepare(capability, 'https://example.com/one#b')).toEqual({
+		kind: 'duplicate',
+		id: candidate.id
+	})
 	expect(extracts).toBe(1)
 	expect(await store.read(candidate.id, new AbortController().signal)).toMatchObject({
 		kind: 'available',
@@ -263,8 +268,9 @@ it('reuses verified destination identity and treats a stranded intent as uncerta
 			throw new Error('Invalid request')
 		return Response.json({ operationId: body.operationId, finalUrl: 'https://example.com/two' })
 	})
-	expect(
-		await strandedCapability.prepare('https://example.com/two', new AbortController().signal)
-	).toEqual({ kind: 'uncertain', id: stranded })
+	expect(await prepare(strandedCapability, 'https://example.com/two')).toEqual({
+		kind: 'uncertain',
+		id: stranded
+	})
 	expect(await db.one(app.documents.where({ id: stranded }))).toBeNull()
 })

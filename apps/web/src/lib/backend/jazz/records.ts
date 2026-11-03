@@ -127,18 +127,21 @@ export function createLibraryRecords(
 	return {
 		...records,
 		isCurrent,
-		lookup: async (id: string) => {
+		hasDocument: async (id: string) => {
 			check()
 			const row = await db.one(app.documents.where({ id, libraryId }), {
 				tier: ReadTier.LocalFirstUnlessEmpty
 			})
 			check()
-			if (row) return 'available' as const
-			const intent = await db.one(app.storageOperations.where({ id, libraryId }), {
+			return row !== null
+		},
+		hasIntent: async (id: string) => {
+			check()
+			const row = await db.one(app.storageOperations.where({ id, libraryId }), {
 				tier: ReadTier.LocalFirstUnlessEmpty
 			})
 			check()
-			return intent ? ('uncertain' as const) : ('missing' as const)
+			return row !== null
 		},
 		subscribe: (
 			next: (rows: import('../../contracts/storage.js').DocumentHeader[]) => void,
