@@ -24,5 +24,9 @@ external_node_modules = ["jazz-napi"]
 included_files = [
   "!**/jazz-napi.darwin-*.node",
   "!**/jazz-napi.win32-*.node",
-  "!**/jazz-napi.linux-arm64-gnu.node"
+  "!**/jazz-napi.linux-arm64-gnu.node",
+  "!node_modules/.pnpm/**/jazz-napi.darwin-*.node",
+  "!node_modules/.pnpm/**/jazz-napi.win32-*.node",
+  "!node_modules/.pnpm/**/jazz-napi.linux-arm64-gnu.node",
+  "!node_modules/.pnpm/@garden-co+jazz-napi-*/**/*.node"
 ]
