@@ -5,7 +5,21 @@ import { sourceUrl } from './destination.js'
 export async function extract(body: Uint8Array, mediaType: string, url: string) {
 	if (!/^(text\/html|application\/xhtml\+xml|text\/plain)(;|$)/i.test(mediaType))
 		throw new CaptureError('unsupportedMedia', 415)
-	const { JSDOM, VirtualConsole } = await import('jsdom').catch(() => {
+	const { JSDOM, VirtualConsole } = await import('jsdom').catch((error: unknown) => {
+		const code =
+			error instanceof Error &&
+			'code' in error &&
+			typeof error.code === 'string' &&
+			/^[A-Z_]{1,64}$/.test(error.code)
+				? error.code
+				: 'DEPENDENCY_LOAD_FAILED'
+		console.error('captureParserUnavailable', {
+			code,
+			node: process.versions.node,
+			esmRequireEnabled:
+				process.env.NODE_OPTIONS?.includes('--experimental-require-module') ?? false,
+			requireDisabled: process.execArgv.includes('--no-experimental-require-module')
+		})
 		throw new CaptureError('gatewayUnavailable', 503, true)
 	})
 	const virtualConsole = new VirtualConsole()
