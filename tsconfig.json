@@ -12,5 +12,5 @@
 		"noEmit": true,
 		"types": ["node"]
 	},
-	"include": ["tooling/**/*.mjs"]
+	"include": ["tooling/**/*.mjs", "vitest.config.ts", "playwright.config.ts"]
 }

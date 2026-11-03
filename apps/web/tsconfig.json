@@ -1,6 +1,6 @@
 {
 	"extends": "$app/tsconfig",
-	"include": ["src", "*.ts"],
+	"include": ["src", "*.ts", "tests"],
 	"compilerOptions": {
 		"strict": true,
 		"exactOptionalPropertyTypes": true,

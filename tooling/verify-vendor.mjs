@@ -27,6 +27,8 @@ for (const entry of manifest) {
 if (process.argv.includes('--installed')) {
 	const require = createRequire(new URL('apps/web/package.json', root))
 	for (const name of [
+		'delightful-local-first/backend/jazz/startup',
+		'delightful-local-first/session/workflow',
 		'delightful-local-first/backend/jazz/session',
 		'delightful-local-first/backend/jazz/session-readiness',
 		'delightful-local-first/backend/jazz/recovery',
