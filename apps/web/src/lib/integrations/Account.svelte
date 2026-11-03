@@ -4,10 +4,11 @@
 	import type { SnapshotFrom } from 'xstate'
 	import RecoveryPhrase from 'delightful-local-first/recovery/svelte'
 	import { Button, StatusMessage, Textarea } from 'delightful-ui'
-	import { accountMachine } from '../machines/account.js'
-	import { accountInput } from '../backend/jazz/account.js'
+	import { createAccountMachine } from '../machines/account.js'
+	import { accountInput, type Session } from '../backend/jazz/account.js'
 	import { t, recoveryMessages } from '../localization/index.js'
 
+	const accountMachine = createAccountMachine<Session>()
 	let { appId, serverUrl }: { appId: string; serverUrl: string } = $props()
 	let snapshot = $state<SnapshotFrom<typeof accountMachine>>()
 	let phrase = $state('')
@@ -27,8 +28,7 @@
 		if (snapshot.matches({running:{library:'conflict'}})) return 'conflict'
 		if (snapshot.matches({running:'library'})) return 'openingLibrary'
 		if (snapshot.matches('openFailed') || snapshot.matches({running:'unavailable'})) return 'unavailable'
-		if (snapshot.matches('closing')) return 'closing'
-		if (snapshot.matches('closeFailed')) return 'closeFailed'
+		if (snapshot.matches('closing') || snapshot.matches({running:'draining'})) return 'closing'
 		if (snapshot.matches('closed')) return 'closed'
 		return 'working'
 	})
@@ -44,7 +44,7 @@
 		return () => {
 			subscription.unsubscribe()
 			phrase = ''
-			// Retain the owner through async close, including late acquisition.
+			// Drain attachment resources; DLF retains the application-scoped session owner.
 			const terminal = actor.subscribe((next) => {
 				if (next.status === 'done') { terminal.unsubscribe(); actor.stop() }
 			})

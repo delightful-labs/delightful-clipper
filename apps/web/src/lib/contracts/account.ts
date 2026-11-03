@@ -1,3 +1,8 @@
+import type { SessionOwnerRef } from 'delightful-local-first/session/workflow'
+import type {
+	SessionScope,
+	SessionReadinessBinding
+} from 'delightful-local-first/session/contracts'
 import type {
 	RecoveryPhraseCapability,
 	RecoveryScopeSource
@@ -27,11 +32,13 @@ export type AccountObservation =
 	| Readonly<{ status: 'signed-out' | 'transitioning' | 'error' | 'closed' }>
 export type AccountHost = Readonly<{
 	read: () => AccountObservation
-	subscribe: (notify: (observation: AccountObservation) => void) => () => void
+	readiness: SessionReadinessBinding
 	create: () => Promise<void>
 	logout: () => Promise<void>
-	retry: () => Promise<void>
-	close: () => Promise<void>
+	release: () => void
 	restoration: Readonly<{ binding: object; capability: RestorationCapability }>
 }>
-export type AccountInput = Readonly<{ open: () => Promise<AccountHost> }>
+export type AccountInput<Session extends object> = Readonly<{
+	startup: { owner: SessionOwnerRef<Session>; scope: SessionScope }
+	bind: (session: Session) => AccountHost
+}>

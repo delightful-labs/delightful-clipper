@@ -30,8 +30,8 @@ importers:
   apps/web:
     dependencies:
       delightful-local-first:
-        specifier: file:../../vendor/delightful-local-first-0.0.0-readiness.tgz
-        version: file:vendor/delightful-local-first-0.0.0-readiness.tgz(delightful-ui@file:vendor/delightful-ui-0.0.25-component-properties.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2)
+        specifier: file:../../vendor/delightful-local-first-0582a9a.tgz
+        version: file:vendor/delightful-local-first-0582a9a.tgz(delightful-ui@file:vendor/delightful-ui-0.0.25-component-properties.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2)
       delightful-ui:
         specifier: file:../../vendor/delightful-ui-0.0.25-component-properties.tgz
         version: file:vendor/delightful-ui-0.0.25-component-properties.tgz(svelte@5.57.2)
@@ -888,8 +888,8 @@ packages:
     resolution: {integrity: sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==}
     engines: {node: '>=0.10.0'}
 
-  delightful-local-first@file:vendor/delightful-local-first-0.0.0-readiness.tgz:
-    resolution: {integrity: sha512-RjTVgtYXlkqcJMtXW70Uf2gi8nntySrfZcGXFT2rXrJpaIFqSqtRoM5672MhJEb16JIEwZEqliKToj/QLm9oNg==, tarball: file:vendor/delightful-local-first-0.0.0-readiness.tgz}
+  delightful-local-first@file:vendor/delightful-local-first-0582a9a.tgz:
+    resolution: {integrity: sha512-czzgR6j37+PZQZDMHlfzgM5Rsf+4gQNckRqsAk0n2UPOY31DqDqcyoT5A4hVccpVeTkq0qXZ1YlGPOTqyfQZpw==, tarball: file:vendor/delightful-local-first-0582a9a.tgz}
     version: 0.0.0
     engines: {node: ^22.17.0 || >=24.0.0}
     peerDependencies:
@@ -1946,7 +1946,7 @@ snapshots:
 
   deepmerge@4.3.1: {}
 
-  delightful-local-first@file:vendor/delightful-local-first-0.0.0-readiness.tgz(delightful-ui@file:vendor/delightful-ui-0.0.25-component-properties.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2):
+  delightful-local-first@file:vendor/delightful-local-first-0582a9a.tgz(delightful-ui@file:vendor/delightful-ui-0.0.25-component-properties.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2):
     dependencies:
       svelte: 5.57.2
     optionalDependencies:

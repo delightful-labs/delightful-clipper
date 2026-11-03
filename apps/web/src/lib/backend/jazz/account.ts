@@ -2,14 +2,14 @@ import { ReadTier } from 'jazz-tools'
 import wasmUrl from '#jazz-wasm-binary?url'
 import type { JazzSession, JazzSessionConfig } from 'jazz-tools/svelte'
 import type { JazzClient } from 'jazz-tools/client'
-import { createJazzSessionAcquisition } from 'delightful-local-first/backend/jazz/session'
+import { createJazzStartupRegistry } from 'delightful-local-first/backend/jazz/startup'
 import { createJazzSessionReadinessAdapter } from 'delightful-local-first/backend/jazz/session-readiness'
 import { createJazzRecoveryAdapter } from 'delightful-local-first/backend/jazz/recovery'
 import { createJazzRestorationAdapter } from 'delightful-local-first/backend/jazz/restoration'
 import type { AccountHost, AccountInput, AccountObservation } from '../../contracts/account.js'
 import { app } from './schema.js'
 
-type Session = JazzSession<JazzClient>
+export type Session = JazzSession<JazzClient>
 
 function bindHost(session: Session): AccountHost {
 	const readiness = createJazzSessionReadinessAdapter(session)
@@ -76,28 +76,20 @@ function bindHost(session: Session): AccountHost {
 	const restored = createJazzRestorationAdapter(session, () => session)
 	return {
 		read,
-		subscribe: (notify) => {
-			const publish = () => notify(read())
-			const unsubscribe = readiness.capability.subscribe(publish)
-			publish()
-			return unsubscribe
-		},
+		readiness,
 		create: () => session.createLocalFirst(),
 		logout: () => session.logout(),
-		retry: () => session.retry(),
-		close: () => {
+		release: () => {
 			recovery.invalidate()
 			restored.invalidate()
-			return session.close()
 		},
 		restoration: restored
 	}
 }
 
-export function accountInput(config: JazzSessionConfig): AccountInput {
-	const acquisition = createJazzSessionAcquisition({
-		...config,
-		runtimeSources: { wasmUrl, wasmVersion: '2.0.0-alpha.59' }
-	})
-	return { open: async () => bindHost(await acquisition.capability.open()) }
+// Constructing the registry is inert; only browser mount requests an attachment.
+const registry = createJazzStartupRegistry()
+const runtimeSources = Object.freeze({ wasmUrl, wasmVersion: '2.0.0-alpha.59' })
+export function accountInput(config: JazzSessionConfig): AccountInput<Session> {
+	return { startup: registry.getJazzStartupBinding({ ...config, runtimeSources }), bind: bindHost }
 }
