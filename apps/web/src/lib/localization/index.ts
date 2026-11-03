@@ -3,6 +3,11 @@ import type { RecoveryMessages } from 'delightful-local-first/recovery/messages'
 
 const english = {
 	title: 'Delightful Clipper',
+	offlinePreparing: 'Preparing offline startup…',
+	offlineReady: 'Offline startup prepared on this browser.',
+	offlineUpdate: 'An update is ready. Close all Clipper tabs and reopen to apply it safely.',
+	offlineFailed: 'Offline startup could not be prepared. You can continue online and retry.',
+	offlineUnsupported: 'Offline startup is unavailable in this browser.',
 	openOriginal: 'Open original',
 	addLink: 'Add Link',
 	urlLabel: 'Article URL',

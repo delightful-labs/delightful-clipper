@@ -1,3 +1,4 @@
+import { JAZZ_RUNTIME_VERSION } from '../../offline/runtime-version.js'
 import { createLibraryCapability } from './library.js'
 import { createLibraryRecords } from './records.js'
 import { ReadTier } from 'jazz-tools'
@@ -103,7 +104,7 @@ function bindHost(session: Session): AccountHost {
 
 // Constructing the registry is inert; only browser mount requests an attachment.
 const registry = createJazzStartupRegistry()
-const runtimeSources = Object.freeze({ wasmUrl, wasmVersion: '2.0.0-alpha.59' })
+const runtimeSources = Object.freeze({ wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION })
 export function accountInput(config: JazzSessionConfig): AccountInput<Session> {
 	return { startup: registry.getJazzStartupBinding({ ...config, runtimeSources }), bind: bindHost }
 }

@@ -1,15 +1,20 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte'
-	import { PUBLIC_JAZZ_APP_ID, PUBLIC_JAZZ_SERVER_URL } from '$app/env/public'
+	import OfflineShell from '../lib/integrations/OfflineShell.svelte'
+ import type { Snippet } from 'svelte'
+	import { PUBLIC_JAZZ_APP_ID, PUBLIC_JAZZ_SERVER_URL,CAPTURE_GATEWAY_ENABLED } from '$app/env/public'
 	import 'delightful-ui/theme.css'
 	import Account from '../lib/integrations/Account.svelte'
 	import { t } from '../lib/localization/index.js'
-	let { children, data }: { children: Snippet;data:{gatewayEnabled:boolean} } = $props()
+	let { children }: { children: Snippet } = $props()
+ let admitted=$state(false)
 </script>
 
 <svelte:head><title>{t('title')}</title></svelte:head>
 <main>
 	<h1>{t('title')}</h1>
-	<Account appId={PUBLIC_JAZZ_APP_ID} serverUrl={PUBLIC_JAZZ_SERVER_URL} gatewayEnabled={data.gatewayEnabled} />
+ <OfflineShell onAdmission={()=>{admitted=true}}/>
+ {#if admitted}
+	<Account appId={PUBLIC_JAZZ_APP_ID} serverUrl={PUBLIC_JAZZ_SERVER_URL} gatewayEnabled={CAPTURE_GATEWAY_ENABLED} />
+ {/if}
 	{@render children()}
 </main>
