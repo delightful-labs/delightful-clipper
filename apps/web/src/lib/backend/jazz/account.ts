@@ -40,6 +40,7 @@ function bindHost(session: Session): AccountHost {
 			status: 'ready',
 			binding: Object.freeze({}),
 			accountId: account.id,
+			signedIn: !['urn:jazz:local-first', 'urn:jazz:anonymous'].includes(account.identity.issuer),
 			library: createLibraryCapability(
 				createLibraryRecords(db, account.id, () => {
 					try {
@@ -106,7 +107,11 @@ function bindHost(session: Session): AccountHost {
 const registry = createJazzStartupRegistry()
 const runtimeSources = Object.freeze({ wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION })
 export function accountInput(config: JazzSessionConfig): AccountInput<Session> {
-	return { startup: registry.getJazzStartupBinding({ ...config, runtimeSources }), bind: bindHost }
+	// Match Finance: provision a local identity silently when no saved identity exists.
+	return {
+		startup: registry.getJazzStartupBinding({ ...config, initial: 'local-first', runtimeSources }),
+		bind: bindHost
+	}
 }
 
 /** A consuming integration owns/drains the returned record actors before identity changes. */

@@ -2,6 +2,23 @@
 
 Updated 2026-11-03. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
+## Current handoff — PR #11
+
+The current feature branch is `feat/structured-saved-reader`, PR [#11](https://github.com/delightful-labs/delightful-clipper/pull/11), targeting `main`. Implementation commit `f0e5738` contains the completed SVG/disclosure changes. Check the live PR state before continuing: if merged, start a new feature branch from current `main`; otherwise keep related corrections on the existing PR. Do not merge without explicit user authorization.
+
+Latest local validation: `pnpm verify` passes 235 unit tests across 26 files, strict application/service-worker checks, formatting, lint, vendor checks and production build; `pnpm test:e2e` passes 12 Chromium tests; `pnpm test:offline` passes five production tests. Final formatting/lint/diff checks also pass. Offline tests now retain static SVG and native disclosures through a full browser-process restart with web/Jazz stopped and HTTP cache cleared, then sync to a separately restored profile. Gateway responses are fixtures in these restart tests; persistence, authority, browser and sync boundaries are real. These results supersede historical counts below. Hosted real-extraction evidence predates the SVG change; do not describe it as hosted SVG qualification. CI tooling/types/build and browser jobs pass for `f0e5738`; Netlify preview deploy `6aea3b05b5dae0f3763471f2` is ready. This establishes deployment checks, not a new hosted manual SVG exercise. Check any subsequent commit separately.
+
+- [x] Open a usable local library without signup using DLF/Jazz `initial: 'local-first'`; hide Sign out for automatic local identities.
+- [x] Use DUI URL input and one-step Add Link with automatic local saving and explicit Open.
+- [x] Use dedicated SvelteKit reader routes with layout-owned capture/save lifetimes, direct loads, new tabs/history and public-shell offline deep links.
+- [x] Keep localized workflow feedback in the owning machines; components render supplied text/severity.
+- [x] Enable Oxfmt Svelte formatting, including embedded CSS.
+- [x] Preserve native `details`/`summary` and `open`; verify keyboard toggling.
+- [x] Preserve static inline SVG shapes/text/geometry/solid paints with namespace-specific sanitization at extraction and display; strip active/external/reference features and bound SVG attribute lengths.
+- [x] Test actual Readability preservation, malicious persisted markup, rendered SVG geometry, no remote resource loads, offline restart and restored-profile SVG reading.
+
+Next bounded work to consider: durable pre-save intake and failed-capture link-only entries (FR-002, FR-054, FR-056, FR-057), preserving unknown-write recovery and local-versus-remote receipts. This is a proposed next batch, not completed work. Model its state/resource ownership and schema/policies before implementation; keep images and annotations separate unless explicitly included. See the handoff for constraints.
+
 ## Completed foundation
 
 - [x] Pin workspace tooling and vendor archives; provide build, lint, type-check and test commands.
@@ -46,8 +63,9 @@ The existing Add Link workflow still does not write these tables. No capture-jou
 
 ## Subsequent product and release work
 
-- [x] Build authenticated Add Link → preview → explicit local save → minimal text reader, with final-destination duplicate checks, provenance and honest remote status.
-- [ ] Complete image acquisition, richer saved reader requirements and durable pre-save intake recovery; the current preview is ephemeral.
+- [x] Build authenticated Add Link → automatic local save → saved reader, with final-destination duplicate checks, provenance and honest remote status.
+- [x] Render saved HTML structure with a shared sanitizer allowlist, isolated internal anchors, normal same-tab article links and literal-text fallback; qualify offline restart and restored-profile rendering.
+- [ ] Complete image acquisition, richer saved reader requirements and durable pre-save intake recovery; pre-save work remains ephemeral.
 - [ ] Implement desktop extension intake and annotation anchoring with sender validation, packaged runtime assets and restart reconciliation.
 - [ ] Implement retained reader, note/highlight, image, organization, search and deletion requirements.
 - [x] Qualify the production service-worker shell in Chromium with web and Jazz stopped, HTTP cache cleared and a complete browser-process restart. Keep broader platform qualification open.
@@ -56,14 +74,68 @@ The existing Add Link workflow still does not write these tables. No capture-jou
 
 Typography presets, the DUI image viewer, custom fonts, reading-time estimation and other accepted deferrals remain outside MVP. This checklist does not expand scope.
 
-## Validation for the storage PR
+## Historical validation for the storage PR
 
 `pnpm verify` passes vendor verification, formatting, lint, TypeScript/Svelte checks, 40 unit tests and the Netlify production build. All five Chromium tests pass. The native 600 KiB payload survives a complete offline browser restart, then syncs to an independently restored account profile. The web shell stays served. Scope-loss and terminal-cleanup tests cover the exercised boundaries; exhaustive scope replacement at every SDK boundary remains open. Large bundle/duplicate WASM warnings remain tracked above.
 
 ## Add Link and minimal reader batch
 
-See [add-link-implementation.md](add-link-implementation.md). `pnpm verify` and eight Chromium browser tests pass, including UI preview → authority offline → Save → full browser restart → exact text → restored-profile sync. The gateway responses in that UI restart test are fixtures; storage/authority/process boundaries are real. Actual hosted gateway/reader validation is recorded separately. Full offline shell startup, images, concurrent-capture reconciliation, rich reader controls and broader platform qualification remain open. No image completeness or production enablement claim follows from text availability.
+Historical initial-batch evidence (superseded by the current handoff above): see [add-link-implementation.md](add-link-implementation.md). `pnpm verify` and eight Chromium browser tests pass, including UI preview → authority offline → Save → full browser restart → exact text → restored-profile sync. The gateway responses in that UI restart test are fixtures; storage/authority/process boundaries are real. Actual hosted gateway/reader validation is recorded separately. Full offline shell startup, images, concurrent-capture reconciliation, rich reader controls and broader platform qualification remain open. No image completeness or production enablement claim follows from text availability.
 
 ## Offline shell batch
 
 See [offline-shell-implementation.md](offline-shell-implementation.md). DLF remains the session/readiness/recovery/persistence integration; Clipper caches only its public build artifacts and prerendered root. Five production Chromium tests cover complete offline browser startup and exact reading with both servers stopped, restored-profile sync, waiting updates across multiple tabs, cache isolation/cleanup, installation failure and retry without replacing the DLF account. The HTTP cache is cleared; the service-worker cache supplies the root response. These are Chromium desktop results, not mobile/Firefox support or eviction-proof storage claims.
+
+
+## Structured saved reader batch
+
+The reader now displays locally saved HTML with the extractor's shared DOMPurify allowlist, sanitized again at the display boundary. Headings, lists, tables, emphasis, code and referenced footnote locations remain navigable without loading remote assets. Persisted IDs receive isolated display IDs; duplicates and missing fragment targets cannot hijack app controls. External article links and Open original use normal same-tab navigation. Stored snapshots and their identity/normalization versions are unchanged. Unavailable, non-HTML, invalid UTF-8, empty or oversized/pathological markup falls back to exact stored text.
+
+The existing DLF/Jazz account/storage/read owners remain unchanged. The display attachment owns only synchronous DOM projection and clears it on destruction; unchanged content does not re-render on unrelated sync status updates. No new locale strings, dependencies or schema changes are needed. The prior 1 MiB byte bound is supplemented by a conservative 5,000 markup-token bound before DOM sanitization to protect the UI from extreme element counts.
+
+This is partial reader implementation: TOC, footnote popovers, persisted reading position/progress, preferences, annotations and images remain open. Same-tab navigation is qualified separately from the still-unimplemented reading-position restoration requirement. Chromium evidence does not establish other browser/mobile support.
+
+
+Historical validation: `pnpm verify` passes all 219 unit tests across 26 files, strict application/service-worker typing, lint, formatting, vendor checks and the production build. Nine Chromium integration tests cover retained structure, footnote focus, dangerous-markup removal, no remote image requests, normal same-tab links, exact-text fallback and account/reader cleanup. Five production offline tests include structured headings and footnote navigation with both servers stopped after a full browser restart and HTTP-cache clearing, then structured rendering in the separately restored profile. Gateway extraction responses are fixtures in those UI restart checks; storage, account, browser and sync boundaries are real.
+
+
+## Local-first startup correction
+
+Use Finance's existing DLF/Jazz startup configuration, `initial: 'local-first'`, to silently initialize a local identity only when needed. A fresh browser opens the private library without a Create account action; stored identities continue to reopen. Explicit sign-out still exposes manual creation/restoration, and restoration follows the existing drain/identity-change path. Local root readiness remains separate from global acceptance. No custom guest identity, account migration, new credential storage or new locale copy is introduced.
+
+Browser checks cover fresh startup without signup, startup with the authority unavailable and identity retention across reload, local/offline save, complete browser restart, independently restored-profile sync, deliberate sign-out/invalid restoration, and gateway authentication through the same managed identity. The previous requirement to click Create account was an omitted startup option, not a required Jazz/DLF boundary.
+
+
+## Local presentation and gateway correction
+
+The URL field uses DUI InputText, retaining native URL validation, bounded length, accessible label and value binding. Local Jazz identities no longer expose Sign out. An optional restoration form is available directly; its actor drains the current library before calling the existing DLF restoration workflow. Unit coverage includes restoration during an uncertain issued save and sign-out visibility for local versus explicitly signed-in observations. This does not implement external-provider sign-in or merge libraries during restoration.
+
+A real local 503 was traced to shared SvelteKit generated environment files pointing the running dev verifier at the stopped E2E authority on port 5181. Isolate local/agent/E2E generated directories from one another and from build/sync output. Real example.com resolution and extraction both return 200 on the running developer server while E2E runs; no Netlify function emulator is needed. Temporary auth diagnostics were removed and no catalog strings were added.
+
+
+## One-step Add Link
+
+User direction replaces the initial preview/confirm flow: Add Link resolves/extracts, performs final-destination duplicate/intent checks and automatically starts the existing local save actor. There is no preview state or SAVE event in the library workflow. The prepared candidate is private transient state, cleared on settlement/shutdown. Existing local/sync/uncertain/rejected messages and explicit Open remain; completion stays in the library. Existing saved snapshots are never replaced, and unknown intents are reconciled rather than replayed. FR-053 now records this interaction requirement.
+
+Tests cover a single ADD causing exactly one save, a closed reader until Open, cancellation at preparation boundaries, shutdown/cancel/identity-change drain, uncertain child outcomes and late rejection. UI offline fixtures disconnect the authority just before delivering extraction results, so automatic publication is local/offline without a second user action. Durable pre-save recovery and failed-capture link-only entries remain subsequent work.
+
+
+## Dedicated reader routes
+
+Saved collection/Open controls are normal links to `/articles/[id]`, with a Kit 3 named UUID parameter matcher. The library renders only on `/`. A layout-provided reactive library binding keeps capture/save/sync actors alive across navigation; the reader page requests the current ID and cancels/clears its read when leaving or changing scope. Direct page loads wait for local-first account/root readiness; missing or inaccessible documents use the existing unavailable message. No new locale copy is added.
+
+The service worker maps only exact same-origin, unauthenticated GET document navigations for valid article URLs to the public cached root. Queries, authenticated/range requests, unknown paths and ordinary article fetch requests bypass that fallback. It does not cache any private article response or add document URLs to Cache Storage. The production cold-start proof now opens a reader deep link directly after a complete offline browser restart with both servers stopped and HTTP cache cleared.
+
+
+Historical validation: all 226 unit tests and twelve Chromium integration tests pass, including direct URL reload, ordinary new-tab link activation, owner-scoped unavailable content and a capture completing after library → reader navigation. Reader OPEN no longer re-enters/reset the parallel capture owner; regression checks cover pending extraction and issued save-child ownership. Five production offline tests pass, including a direct reader deep link after complete offline process restart, fragment-bearing URL reload via the public shell, and restored-profile synchronization. No document URLs/responses enter the shell cache.
+
+
+## Machine-owned localized feedback
+
+Application-readiness states own localized status resolvers and produce localized feedback errors. Capture/reader states own message resolvers and severity, including failure classification and live local-versus-remote outcomes. The library machine supplies list/empty/disabled/sync messages as well. Offline registration transitions update their localized message alongside status/admission and clear it on close. The DLF recovery contract remains reused, with messages supplied by the owning application machine.
+
+Svelte components render machine-provided text/severity rather than switching status/error codes to translation keys. Static labels/headings/actions remain in presentation. Existing catalog entries and wording are reused; no localization additions are made. Regression tests check pending extraction, local saving, remote rejection, capture error categories, reader load/unavailability/closure, account bootstrap/feedback and offline registration/update/failure messages.
+
+## SVG and native disclosure policy
+
+The shared extraction/display policy retains `details`, `summary`, `open`, and static SVG shapes, paths, groups, text, title/description, geometry and solid paints. SVG links/IDs/references, CSS, images, embedded HTML, filters and animation are removed; gradients and `use` definitions remain unsupported. SVG attributes are limited to 16 KiB each and the existing article byte/node limits still apply. Display width is constrained to the reader. This is a bounded static subset, not arbitrary SVG support or a general SVG security audit. See the accepted [design decision](design-decisions.md#retained-disclosure-and-svg-content).

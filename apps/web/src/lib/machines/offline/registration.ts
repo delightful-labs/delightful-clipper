@@ -1,3 +1,6 @@
+import { t } from '../../localization/index.js'
+import type { WorkflowMessage } from '../../contracts/feedback.js'
+import type { SnapshotFrom } from 'xstate'
 import { assign, fromCallback, fromPromise, setup } from 'xstate'
 export type ShellStatus = 'preparing' | 'ready' | 'waiting' | 'failed' | 'unsupported'
 export type ShellWorker = EventTarget & { state: string }
@@ -15,6 +18,23 @@ type Context = {
 	registration: ShellRegistration | undefined
 	admitted: boolean
 	status: ShellStatus
+	message: WorkflowMessage | undefined
+}
+function shellMessage(status: ShellStatus): WorkflowMessage {
+	return {
+		text: t(
+			status === 'ready'
+				? 'offline.ready'
+				: status === 'waiting'
+					? 'offline.update'
+					: status === 'failed'
+						? 'offline.failed'
+						: status === 'unsupported'
+							? 'offline.unsupported'
+							: 'offline.preparing'
+		),
+		variant: status === 'failed' ? 'error' : 'info'
+	}
 }
 export function createShellRegistrationMachine(platform: ShellPlatform) {
 	const actors = {
@@ -28,12 +48,17 @@ export function createShellRegistrationMachine(platform: ShellPlatform) {
 	}).createMachine({
 		id: 'offline-shell',
 		initial: 'registering',
-		context: { registration: undefined, admitted: false, status: 'preparing' },
+		context: () => ({
+			registration: undefined,
+			admitted: false,
+			status: 'preparing',
+			message: shellMessage('preparing')
+		}),
 		on: { SHUTDOWN: '.closed' },
 		after: { 45000: { guard: ({ context }) => !context.admitted, target: '.failed' } },
 		states: {
 			registering: {
-				entry: assign({ status: 'preparing' }),
+				entry: assign({ status: 'preparing', message: () => shellMessage('preparing') }),
 				invoke: {
 					src: 'register',
 					onDone: [
@@ -60,6 +85,7 @@ export function createShellRegistrationMachine(platform: ShellPlatform) {
 					STATUS: {
 						actions: assign({
 							status: ({ event }) => event.status,
+							message: ({ event }) => shellMessage(event.status),
 							admitted: ({ context, event }) => context.admitted || event.status !== 'preparing'
 						})
 					},
@@ -67,14 +93,33 @@ export function createShellRegistrationMachine(platform: ShellPlatform) {
 				}
 			},
 			failed: {
-				entry: assign({ status: 'failed', admitted: true, registration: undefined }),
+				entry: assign({
+					status: 'failed',
+					admitted: true,
+					registration: undefined,
+					message: () => shellMessage('failed')
+				}),
 				on: { RETRY: 'registering' }
 			},
 			unsupported: {
 				type: 'final',
-				entry: assign({ status: 'unsupported', admitted: true, registration: undefined })
+				entry: assign({
+					status: 'unsupported',
+					admitted: true,
+					registration: undefined,
+					message: () => shellMessage('unsupported')
+				})
 			},
-			closed: { type: 'final', entry: assign({ registration: undefined }) }
+			closed: { type: 'final', entry: assign({ registration: undefined, message: undefined }) }
 		}
 	})
+}
+
+export function selectShellView(
+	snapshot: SnapshotFrom<ReturnType<typeof createShellRegistrationMachine>> | undefined
+) {
+	return {
+		message: snapshot ? snapshot.context.message : shellMessage('preparing'),
+		canRetry: snapshot?.context.status === 'failed' && snapshot.can({ type: 'RETRY' })
+	}
 }

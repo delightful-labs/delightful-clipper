@@ -97,7 +97,7 @@ Minimum versions will be set from validated capability/SDK requirements before r
 ## Delivery sequence (planning, not tasks.md)
 
 1. Execute the bounded foundation batch: lock the stack/archives, document Clipper agreements, integrate DLF and implement the canonical private root with acceptance checks.
-2. Complete the actual domain schema/policies, local durability and blob-part acceptance before enabling dependent capture paths.
+2. Complete the actual domain schema/policies, local durability and native byte-asset acceptance before enabling dependent capture paths.
 3. Build a vertical Add Link → saved snapshot → offline restart path with redirect-safe gateway and failure entry.
 4. Add trusted extension same-account restoration and browser capture; prove source/reader exact anchoring.
 5. Add notes, overlapping highlights, local image acquisition, position restoration and shell caching.
@@ -105,20 +105,18 @@ Minimum versions will be set from validated capability/SDK requirements before r
 
 ## Open implementation gates
 
-The first [foundation proof](foundation-proof.md) passed five isolated local-authority scenario groups: exclusive creation, private row/byte reads, rejected ownership/reference attacks, atomic rejection and precommit rollback. This is partial G1 evidence, not DLF/browser/cold-restart qualification. The production application remains unimplemented.
+The initial [foundation proof](foundation-proof.md) is historical supporting evidence. Actual application integration now includes canonical private roots, native immutable text/byte operations, DLF local-first startup/recovery, authenticated public-only gateway extraction, automatic Add Link saving, routed structured reading and a production offline shell. Current evidence and gaps are in [tasks.md](tasks.md); the handoff identifies the branch/PR and next bounded work.
 
-The [selected library bootstrap](contracts/library-bootstrap.md) supersedes the earlier generic-creation dependency: Clipper ensures one canonical immutable account-ID root through its app-owned data boundary. Packaged DLF identity/recovery is exercised; generic multi-workspace creation remains separate foundation work. Independent offline replica and full domain-policy qualification remain G1 acceptance.
-
-| Gate | Evidence needed before dependent implementation/release |
+| Gate | Current evidence and remaining qualification |
 | --- | --- |
-| G1 Foundation integration | Exact DLF archive/public exports exercised; local authority owner/root checks passed. Implement production canonical root/domain graph and qualify two independent offline replicas, Node 24 and complete policy/deployment behavior. |
-| G2 Extension identity and runtime | Packaged DLF restored the same synthetic account in Chromium MV3 with local WASM; local rows/bytes survived page close. Qualify actual intake/background lifecycle and Firefox; content scripts receive no credentials. Automatic device linking is unnecessary. |
-| G3 Fetch gateway authorization and deployment | Managed current-bearer/public SDK verifier matched the browser account and rejected tampering locally. Implement fixed-origin request leaf, Linux Netlify native packaging, operation authorization and pinned public-only redirect-safe transport before enabling gateway. |
-| G4 Worker extraction and anchoring | Synthetic serialized DOM/Node-worker extraction parity supports baseline; footnote target loss requires precollection. Qualify actual browser worker, final sanitized mapping, repeated quotes, Unicode and mobile selection on representative fixtures. |
-| G5 Offline durability and sync | Local rows/bytes survived browser and extension page close with authority stopped. Qualify offline shell/full process restart, second-device transfer, actual images, partial writes/quota and deletion/tombstones. |
-| G6 Platform qualification | Real Firefox/macOS and Chrome desktop extension tests; Chrome Android PWA share intake and iOS Add Link fallback; minimum versions recorded from actual validation. |
+| G1 Foundation integration | Packaged DLF/public exports, canonical root, owner-only native content policies, account changes, shutdown drain, unknown writes and rejection are exercised in the actual application. Broader domain graphs and future operations require their own policy checks. |
+| G2 Extension identity and runtime | Earlier isolated identity/WASM evidence does not implement extension intake. Actual background journal/lifecycle, packaged CSP/runtime assets, sender validation and Firefox remain open. Content scripts receive no credentials. |
+| G3 Fetch gateway authorization and deployment | Existing managed bearer/public verifier, bounded address-pinned redirect-safe transport, Linux native packaging and hosted extraction are qualified. Production gateway enablement is separate; controlled hosted private-redirect qualification remains open. |
+| G4 Worker extraction and anchoring | Actual bounded Node parser worker, footnote preservation and shared extraction/display sanitizer are implemented. Static SVG and native disclosures pass extraction, adversarial display and browser tests. Extension worker extraction, source/reader annotation mapping, repeated quotes and mobile selection remain open. |
+| G5 Offline durability and sync | Actual text/native bytes and routed structured HTML (including SVG/disclosures) survive complete Chromium restart with both servers stopped and HTTP cache cleared, then sync to a separately restored profile. Durable pre-save intake, images, future draft/annotation operations, quota and deletion/tombstones remain open. |
+| G6 Platform qualification | Chromium desktop evidence is recorded. Firefox/macOS extensions, Chrome Android share intake, iOS fallback, accessibility/performance acceptance and minimum supported versions still require actual validation. |
 
-No gate permits silently weakening an accepted requirement. If a gate fails, revise the plan or obtain a scoped decision. Qualification remains open; the first batch is ready to build the necessary production artifacts. The full skill's no-unresolved-gates completion criterion is not claimed.
+No gate permits silently weakening an accepted requirement. A passed capability does not establish full workflow or MVP completion. The shared content policy supports native `details`/`summary` and static SVG without active/external/reference features; see [design-decisions.md](design-decisions.md#retained-disclosure-and-svg-content). Future sanitizer changes must test both actual extraction and re-sanitization of persisted HTML.
 
 ## Complexity and gate recheck
 

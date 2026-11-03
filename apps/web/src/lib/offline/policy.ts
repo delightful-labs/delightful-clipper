@@ -1,3 +1,4 @@
+import { isArticlePath } from '../reader/routes.js'
 import { JAZZ_RUNTIME_VERSION } from './runtime-version.js'
 export const SHELL_CACHE_PREFIX = 'delightful-clipper-shell-v1-'
 export type ShellPolicy = {
@@ -45,7 +46,7 @@ export function shellPolicy(
 		)
 	}
 }
-/** Unknown/query/private requests always bypass the shell cache. */
+/** Known article navigations reuse only the public shell, never cached article responses. */
 export function shellKey(policy: ShellPolicy, request: Request): string | undefined {
 	const url = new URL(request.url)
 	if (
@@ -55,6 +56,14 @@ export function shellKey(policy: ShellPolicy, request: Request): string | undefi
 		request.headers.has('range')
 	)
 		return undefined
+	const scopePath = new URL(policy.root).pathname
+	if (
+		request.mode === 'navigate' &&
+		!url.search &&
+		url.pathname.startsWith(scopePath) &&
+		isArticlePath('/' + url.pathname.slice(scopePath.length))
+	)
+		return policy.root
 	const original = url.href
 	url.search = ''
 	url.hash = ''
