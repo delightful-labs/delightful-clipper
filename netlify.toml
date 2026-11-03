@@ -1,7 +1,7 @@
 [build]
-base = "apps/web"
+base = "."
 command = "pnpm build"
-publish = "build"
+publish = "apps/web/build"
 
 [build.environment]
 NODE_VERSION = "24.22.2"
@@ -12,3 +12,7 @@ command = "pnpm deploy:jazz && pnpm build"
 
 [context.deploy-preview]
 command = "pnpm build:deploy-preview"
+
+[context.deploy-preview.environment]
+# Qualify the gateway against disposable Jazz; production remains gated off.
+CAPTURE_GATEWAY_ENABLED = "true"
