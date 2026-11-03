@@ -10,7 +10,13 @@
 		"checkJs": true,
 		"skipLibCheck": true,
 		"noEmit": true,
-		"types": ["node"]
+		"types": ["node"],
+		"allowImportingTsExtensions": true
 	},
-	"include": ["tooling/**/*.mjs", "vitest.config.ts", "playwright.config.ts"]
+	"include": [
+		"tooling/**/*.mjs",
+		"vitest.config.ts",
+		"playwright.config.ts",
+		"apps/web/tooling/**/*.ts"
+	]
 }

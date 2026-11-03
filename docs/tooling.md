@@ -1,6 +1,6 @@
 # Tooling
 
-The workspace includes a client-rendered account and private-library foundation. Capture, extensions, service workers, reader features and deployment remain separate work.
+The workspace includes a client-rendered account and private-library foundation. Capture, extensions, service workers, reader features remain separate work. Agent development and Netlify Jazz deployment hooks are configured below.
 
 ## Runtime and packages
 
@@ -21,6 +21,9 @@ Run from the repository root:
 | `pnpm install`                      | Install and update the lockfile intentionally.                                                 |
 | `pnpm install --frozen-lockfile`    | Reproduce committed dependencies.                                                              |
 | `pnpm dev`                          | Web dev server at http://127.0.0.1:5173; fail if the port is occupied.                         |
+| `pnpm dev:agent`                    | Isolated agent web server on 5180 and disposable in-memory Jazz on 5181.                       |
+| `pnpm deploy:jazz`                  | Deploy Clipper schema/policies to explicitly configured Jazz service.                          |
+| `pnpm build:deploy-preview`         | Netlify deploy-preview only: provision disposable Jazz, deploy, then build.                    |
 | `pnpm preview`                      | Preview the production build at http://127.0.0.1:4173.                                         |
 | `pnpm check`                        | Strict checking of tooling JS and Svelte/TypeScript web sources, including Vite configuration. |
 | `pnpm lint`                         | Oxlint correctness and strict TypeScript rules for supported JS/TS files.                      |
@@ -37,12 +40,24 @@ Oxlint is not claimed to lint Svelte templates; `svelte-check` and the Svelte co
 
 GitHub Actions runs a frozen install and `pnpm verify` for PRs and main, with Node/pnpm pinned and read-only repository permissions. Action revisions are pinned to verified upstream commits. No production credentials are needed. Tests start disposable local Jazz authorities; the browser job installs Chromium. A separate `Conventional PR title` check validates `type(scope): description` on PR opening, title edits and subsequent updates, matching the sibling repositories. Scope is optional; breaking changes may use `!` before the colon.
 
-Netlify uses `apps/web` as its build base and `build` as the publish directory, matching the adapter's generated functions/config. `NODE_VERSION` and `PNPM_VERSION` match local/CI pins. The local build verifies adapter output, not a deployed preview, native gateway packaging or destination-safe network transport. No deployment command is part of this setup.
+Netlify uses `apps/web` as its build base and `build` as the publish directory, matching the adapter's generated functions/config. `NODE_VERSION` and `PNPM_VERSION` match local/CI pins. The local build verifies adapter output, not a deployed preview, native gateway packaging or destination-safe network transport. Production builds run `pnpm deploy:jazz && pnpm build`; a failed deployment stops the build. Configure production-context `PUBLIC_JAZZ_APP_ID`, `PUBLIC_JAZZ_SERVER_URL` and build-only `JAZZ_ADMIN_SECRET` in Netlify. The CLI accepts the public coordinates; if `JAZZ_APP_ID`/`JAZZ_SERVER_URL` are also set, they must identify the same app.
+
+Deploy previews run `pnpm build:deploy-preview`. Each build provisions one disposable Jazz app, waits for cold routing with at most 12 checks separated by five seconds, publishes Clipper's schema/policies, then builds against the generated coordinates. No shared production app is used on failure. Provisioning itself is not retried. Generated admin credentials are only passed to the deploy subprocess and cleared before the frontend build; inherited admin/backend secrets are removed from the build environment. Cancellation aborts the current request/process group and waits for settlement. Disposable apps expire after 14 days; each preview rebuild gets a new app and therefore a separate identity/data scope.
+
+Preview builds override `PUBLIC_JAZZ_APP_ID`, `PUBLIC_JAZZ_SERVER_URL`, CLI coordinates and `JAZZ_ACCOUNT_REGISTRY` for the generated app. The gateway hook reads the registry as a server-only static build variable, so a preview uses its generated registry even when the function runtime has no corresponding environment override. It is a service coordinate, not a credential. Production builds require separately provisioned service credentials; neither local dev nor CI needs production credentials. Branch deploys retain the default build command and need explicit service configuration; disposable provisioning is restricted to Netlify's `deploy-preview` context.
 
 ## Account service configuration
 
 `pnpm dev` starts the local Jazz authority on port 5174 and the web app on 5173. Development uses the production library schema and permissions, with inspector disabled. Checks/builds do not start the authority.
 
-Production requires `PUBLIC_JAZZ_APP_ID` and `PUBLIC_JAZZ_SERVER_URL` at build time. These are public service coordinates, not administrator credentials. Without them the app displays a configuration status. Deploy the schema/policies to the intended Jazz service using `pnpm --filter @delightful-clipper/web deploy:jazz` with separately provisioned Jazz deployment credentials. This repository change does not deploy a service.
+Production requires `PUBLIC_JAZZ_APP_ID` and `PUBLIC_JAZZ_SERVER_URL` at build time. These are public service coordinates, not administrator credentials. Without them the app displays a configuration status. Deploy the schema/policies to the intended Jazz service using `pnpm --filter @delightful-clipper/web deploy:jazz` with separately provisioned Jazz deployment credentials. Netlify production and preview hooks invoke this deployment command automatically.
 
 The build emits the Jazz WASM asset and passes its bundled URL to the runtime. The app distinguishes local root persistence from remote acceptance. This proves cached account/root behavior while the authority is unavailable; it does not provide an offline app shell or article availability. See the [session implementation](../specs/001-jazz-clipper/session-implementation.md) for ownership and failure behavior.
+
+## Agent development and qualification
+
+`pnpm dev:agent` uses agent Vite mode, a separate fixed Jazz app ID and in-memory authority. It serves Clipper's actual schema and permissions with the inspector disabled. Ports fail when occupied; stop the agent server before running browser tests, which also use 5180/5181. Use a separate browser profile for agent work; the Jazz data is discarded when the server exits. Ordinary `pnpm dev` keeps its stable 5173/5174 identity scope.
+
+Qualification: `pnpm verify` passes, including preview state-machine cancellation, bounded readiness, failure and credential-boundary tests. Chromium created an account and synced its private library through the actual agent server. A live disposable preview build provisioned Jazz app `68aed7eb-068f-4518-a90e-31ee27d6bf3c`, observed cold routing (503 then 200), deployed Clipper's real schema/policies and completed the Netlify adapter build. This validates the build entry point locally; Netlify-hosted execution is checked by the PR deploy preview when hosting is connected.
+
+After integrating PR #5, combined validation passed: `pnpm verify` (67 unit tests and the production build) and all five Chromium tests, including native-byte offline restart/sync and gateway authentication.

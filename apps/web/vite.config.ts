@@ -8,7 +8,7 @@ import { jazzSvelteKit } from 'jazz-tools/dev/sveltekit'
 const wasmEntry = resolveJazzWasmEntry()
 if (!wasmEntry) throw new Error('Jazz WASM package is unavailable')
 
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, mode }) => ({
 	resolve: {
 		alias: [
 			{ find: /^#jazz-wasm-binary/, replacement: join(dirname(wasmEntry), 'jazz_wasm_bg.wasm') }
@@ -18,11 +18,22 @@ export default defineConfig(({ command }) => ({
 		jazzSvelteKit({
 			server:
 				command === 'serve' &&
-				process.env.npm_lifecycle_event === 'dev' &&
+				['dev', 'dev:agent'].includes(process.env.npm_lifecycle_event ?? '') &&
 				process.env.CLIPPER_TEST !== 'true'
-					? { port: 5174, host: '127.0.0.1', appId: '9c0871ad-3ea3-49d0-9eaf-b034914da924' }
+					? {
+							port: mode === 'agent' ? 5181 : 5174,
+							host: '127.0.0.1',
+							appId:
+								mode === 'agent'
+									? '8d217851-cec3-4c24-a595-d130259d497c'
+									: '9c0871ad-3ea3-49d0-9eaf-b034914da924',
+							inMemory: mode === 'agent'
+						}
 					: false,
-			appId: '9c0871ad-3ea3-49d0-9eaf-b034914da924',
+			appId:
+				mode === 'agent'
+					? '8d217851-cec3-4c24-a595-d130259d497c'
+					: '9c0871ad-3ea3-49d0-9eaf-b034914da924',
 			schemaDir: 'src/lib/backend/jazz',
 			inspector: false
 		}),

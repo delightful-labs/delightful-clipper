@@ -20,7 +20,10 @@
 		"verify:vendor": "node tooling/verify-vendor.mjs --installed",
 		"verify": "pnpm verify:vendor && pnpm format:check && pnpm lint && pnpm check && pnpm test:unit && pnpm build",
 		"test:unit": "vitest run",
-		"test:e2e": "playwright test"
+		"test:e2e": "playwright test",
+		"dev:agent": "pnpm --filter @delightful-clipper/web dev:agent",
+		"build:deploy-preview": "pnpm --filter @delightful-clipper/web build:deploy-preview",
+		"deploy:jazz": "pnpm --filter @delightful-clipper/web deploy:jazz"
 	},
 	"devDependencies": {
 		"@types/node": "24.19.2",
