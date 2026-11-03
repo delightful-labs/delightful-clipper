@@ -4,7 +4,10 @@ import {
 } from 'delightful-local-first/session/workflow'
 import { createActor, waitFor } from 'xstate'
 import { describe, expect, it, vi } from 'vitest'
-import { createApplicationReadinessMachine } from './application-readiness.js'
+import {
+	createApplicationReadinessMachine,
+	selectApplicationView
+} from './application-readiness.js'
 import type {
 	AccountHost,
 	AccountInput,
@@ -122,14 +125,17 @@ describe('account/root ownership', () => {
 		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: { library: 'local' } }))
 		expect(actor.getSnapshot().matches({ running: { library: 'ready' } })).toBe(false)
+		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('openingLibrary')
 		local.resolve()
 		await waitFor(actor, (snapshot) =>
 			snapshot.matches({ running: { library: { ready: 'syncPending' } } })
 		)
+		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('localSaved')
 		global.reject(new Error('Authority rejected'))
 		await waitFor(actor, (snapshot) =>
 			snapshot.matches({ running: { library: { ready: 'syncFailed' } } })
 		)
+		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('syncFailed')
 		actor.send({ type: 'SHUTDOWN' })
 		await waitFor(actor, (snapshot) => snapshot.status === 'done')
 	})

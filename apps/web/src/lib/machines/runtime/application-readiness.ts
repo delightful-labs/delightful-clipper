@@ -7,6 +7,7 @@ import type {
 	SessionReadinessReport,
 	SessionReadinessScope
 } from 'delightful-local-first/session/contracts'
+import type { SnapshotFrom } from 'xstate'
 import { assign, fromPromise, raise, sendTo, setup, stateIn } from 'xstate'
 import { restorationMachine } from 'delightful-local-first/restoration/workflow'
 import type { RestorationReport } from 'delightful-local-first/restoration/contracts'
@@ -180,8 +181,9 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			SHUTDOWN: '.closing'
 		},
 		states: {
-			opening: {},
+			opening: { tags: 'starting' },
 			openFailed: {
+				tags: 'unavailable',
 				on: { RETRY: { target: 'opening', actions: sendTo('startup', { type: 'RETRY' }) } }
 			},
 			running: {
@@ -222,6 +224,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				},
 				states: {
 					draining: {
+						tags: 'closing',
 						entry: sendTo('readiness', { type: 'SHUTDOWN' }),
 						on: { OBSERVED: {}, SHUTDOWN: {}, SESSION_STATUS: {}, SESSION_OBSERVATION_FAILED: {} }
 					},
@@ -241,6 +244,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						]
 					},
 					signedOut: {
+						tags: 'signedOut',
 						on: {
 							OBSERVED: { target: 'route', actions: 'rememberObservation' },
 							CREATE: { target: 'creating', actions: assign({ feedback: 'none' }) },
@@ -256,6 +260,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					},
 					waiting: { on: { OBSERVED: { target: 'route', actions: 'rememberObservation' } } },
 					unavailable: {
+						tags: 'unavailable',
 						on: {
 							RETRY: [
 								{ guard: ({ context }) => context.observationFailed, target: 'reobserving' },
@@ -407,6 +412,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						},
 						states: {
 							reading: {
+								tags: 'openingLibrary',
 								invoke: {
 									src: 'readRoot',
 									input: ({ context }) => root(context),
@@ -417,8 +423,12 @@ export function createApplicationReadinessMachine<Session extends object>() {
 									onError: 'failed'
 								}
 							},
-							conflict: { on: { LOGOUT: '#application-readiness.running.loggingOut' } },
+							conflict: {
+								tags: 'conflict',
+								on: { LOGOUT: '#application-readiness.running.loggingOut' }
+							},
 							ensuring: {
+								tags: 'openingLibrary',
 								invoke: {
 									src: 'ensureRoot',
 									input: ({ context }) => root(context),
@@ -430,6 +440,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 								}
 							},
 							local: {
+								tags: 'openingLibrary',
 								initial: 'active',
 								states: { active: {}, stopping: {} },
 								on: { SHUTDOWN: '.stopping' },
@@ -447,6 +458,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 								}
 							},
 							failed: {
+								tags: 'rootFailed',
 								on: { RETRY: 'reading', LOGOUT: '#application-readiness.running.loggingOut' }
 							},
 							ready: {
@@ -454,6 +466,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 								on: { LOGOUT: '#application-readiness.running.loggingOut' },
 								states: {
 									syncPending: {
+										tags: 'localSaved',
 										invoke: {
 											src: 'global',
 											input: ({ context }) => required(context.write),
@@ -461,8 +474,11 @@ export function createApplicationReadinessMachine<Session extends object>() {
 											onError: 'syncFailed'
 										}
 									},
-									synced: {},
-									syncFailed: { on: { RETRY: '#application-readiness.running.library.reading' } }
+									synced: { tags: 'synced' },
+									syncFailed: {
+										tags: 'syncFailed',
+										on: { RETRY: '#application-readiness.running.library.reading' }
+									}
 								}
 							}
 						}
@@ -470,6 +486,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				}
 			},
 			closing: {
+				tags: 'closing',
 				entry: [
 					'clearPhrase',
 					({ context }) => context.host?.release(),
@@ -478,6 +495,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				on: { SESSION_ACQUIRED: {}, SESSION_STARTUP_FAILED: {}, SESSION_STARTING: {}, SHUTDOWN: {} }
 			},
 			closed: {
+				tags: 'closed',
 				type: 'final',
 				entry: assign({
 					host: undefined,
@@ -488,4 +506,61 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			}
 		}
 	})
+}
+
+export type ApplicationStatus =
+	| 'configuration'
+	| 'starting'
+	| 'signedOut'
+	| 'synced'
+	| 'syncFailed'
+	| 'localSaved'
+	| 'rootFailed'
+	| 'conflict'
+	| 'openingLibrary'
+	| 'unavailable'
+	| 'closing'
+	| 'closed'
+	| 'working'
+type ApplicationSnapshot<Session extends object> = SnapshotFrom<
+	ReturnType<typeof createApplicationReadinessMachine<Session>>
+>
+// Status tags are mutually exclusive and owned by the corresponding machine states.
+const statuses: ApplicationStatus[] = [
+	'starting',
+	'signedOut',
+	'synced',
+	'syncFailed',
+	'localSaved',
+	'rootFailed',
+	'conflict',
+	'openingLibrary',
+	'unavailable',
+	'closing',
+	'closed'
+]
+export function selectApplicationView<Session extends object>(
+	snapshot: ApplicationSnapshot<Session> | undefined,
+	configured: boolean
+) {
+	const status: ApplicationStatus = !configured
+		? 'configuration'
+		: snapshot
+			? (statuses.find((tag) => snapshot.hasTag(tag)) ?? 'working')
+			: 'starting'
+	return {
+		status,
+		feedback: snapshot?.context.feedback === 'none' ? undefined : snapshot?.context.feedback,
+		showIdentityForm: snapshot?.can({ type: 'CREATE' }) ?? false,
+		canLogout: snapshot?.can({ type: 'LOGOUT' }) ?? false,
+		canRetry: snapshot?.can({ type: 'RETRY' }) ?? false
+	}
+}
+export function selectRecoveryBinding<Session extends object>(
+	snapshot: ApplicationSnapshot<Session> | undefined
+) {
+	return snapshot?.matches({ running: 'library' }) &&
+		snapshot.context.observation.status === 'ready'
+		? snapshot.context.observation.recovery
+		: undefined
 }
