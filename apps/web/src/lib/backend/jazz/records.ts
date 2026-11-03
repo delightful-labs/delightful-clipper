@@ -6,6 +6,7 @@ import type { PreparedSave, StorageIntent, SyncReceipt } from '../../contracts/s
 import { createSaveRecordMachine } from '../../machines/storage/save.js'
 import { prepareSave } from '../../storage/prepare.js'
 import { app } from './schema.js'
+import { createIntakeRecords } from './intakes.js'
 
 type Resource = { transaction: Transaction<'mergeable'>; write: WriteHandle | undefined }
 type Stage = 'intent' | 'publish'
@@ -84,6 +85,7 @@ export function createLibraryRecords(
 		})
 	}
 	const records = {
+		intakes: createIntakeRecords(db, libraryId, isCurrent),
 		binding: Object.freeze({}),
 		saveMachine: createSaveRecordMachine({
 			isCurrent,

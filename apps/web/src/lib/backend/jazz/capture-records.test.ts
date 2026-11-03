@@ -5,6 +5,9 @@ import type { PolicyTestApp, PolicyTestSession } from 'jazz-tools/testing'
 import { app } from './schema.js'
 import permissions from './permissions.js'
 import { createLibraryRecords } from './records.js'
+import { createIntakeRecords } from './intakes.js'
+import { prepareIntake } from '../../capture/intake.js'
+import type { CaptureCompletion, CaptureObservation } from '../../contracts/intake.js'
 
 let fixture: PolicyTestApp
 beforeAll(async () => {
@@ -282,4 +285,94 @@ it('accepts an atomic intake/evidence graph and exposes it to the same account s
 	expect(await second.db.all(app.captureCompletions.where({ intakeId }))).toMatchObject([
 		completion
 	])
+})
+
+function attempt<Draft extends { id: string }>(draft: Draft) {
+	return {
+		attempt: { operationId: draft.id, workspaceId: draft.id, membershipId: draft.id, draft }
+	}
+}
+
+it('uses native transaction owners for bounded intake, failure and completion leaves without replay', async () => {
+	const a = await owner('capture-adapters')
+	const native = createIntakeRecords(a.db, a.libraryId, () => true)
+	const intake = prepareIntake(
+		a.libraryId,
+		crypto.randomUUID(),
+		'https://example.com/article#retained',
+		new Date().toISOString()
+	)
+	const saved = await toPromise(createActor(native.insert, { input: attempt(intake) }).start())
+	expect(saved.outcome).toBe('succeeded')
+	if (saved.settlement.kind !== 'locallyPersisted')
+		throw new Error('Expected local intake durability')
+	await saved.settlement.workspace.global()
+	expect(await native.read(intake.id)).toEqual(intake)
+	expect(
+		(await toPromise(createActor(native.insert, { input: attempt(intake) }).start())).outcome
+	).toBe('blocked')
+	const failure: CaptureObservation = {
+		id: crypto.randomUUID(),
+		libraryId: a.libraryId,
+		intakeId: intake.id,
+		attemptId: crypto.randomUUID(),
+		createdAt: intake.createdAt,
+		formatVersion: '1',
+		kind: 'failure',
+		payload: { code: 'sourceUnavailable', retryable: true }
+	}
+	const failed = await toPromise(createActor(native.observe, { input: attempt(failure) }).start())
+	if (failed.settlement.kind !== 'locallyPersisted')
+		throw new Error('Expected local observation durability')
+	await failed.settlement.workspace.global()
+	expect(await native.readObservation(failure.id)).toEqual(failure)
+	const completion: CaptureCompletion = {
+		id: crypto.randomUUID(),
+		libraryId: a.libraryId,
+		intakeId: intake.id,
+		attemptId: crypto.randomUUID(),
+		documentId: await saveDocument(a),
+		createdAt: intake.createdAt,
+		formatVersion: '1'
+	}
+	const completed = await toPromise(
+		createActor(native.complete, { input: attempt(completion) }).start()
+	)
+	if (completed.settlement.kind !== 'locallyPersisted')
+		throw new Error('Expected local completion durability')
+	await completed.settlement.workspace.global()
+	expect(await native.readCompletion(completion.id)).toEqual(completion)
+	expect(
+		(await toPromise(createActor(native.observe, { input: attempt(failure) }).start())).outcome
+	).toBe('blocked')
+	expect(
+		(await toPromise(createActor(native.complete, { input: attempt(completion) }).start())).outcome
+	).toBe('blocked')
+})
+
+it('rejects malformed native evidence instead of projecting it as absence or trusted state', async () => {
+	const a = await owner('capture-adapter-invalid')
+	const native = createIntakeRecords(a.db, a.libraryId, () => true)
+	const id = crypto.randomUUID()
+	const invalid = {
+		...prepareIntake(a.libraryId, id, 'https://example.com/', new Date().toISOString()),
+		submittedUrl: 'javascript:alert(1)'
+	}
+	const failed = await toPromise(createActor(native.insert, { input: attempt(invalid) }).start())
+	expect(failed.outcome).toBe('failed')
+	expect(failed.settlement.kind).toBe('notStarted')
+	expect(await a.db.one(app.captureIntakes.where({ id }))).toBeNull()
+	// Owner-level inserts can be structurally authorized but still domain-invalid.
+	await a.db.insert(app.captureIntakes, intake(a.libraryId), { id }).wait({ tier: 'global' })
+	const evidenceId = crypto.randomUUID()
+	await a.db
+		.insert(
+			app.captureObservations,
+			{ ...observation(a.libraryId, id), payload: '{"code":"unrecognized","retryable":true}' },
+			{ id: evidenceId }
+		)
+		.wait({ tier: 'global' })
+	await expect(native.readObservation(evidenceId)).rejects.toThrow()
+	const expired = createIntakeRecords(a.db, a.libraryId, () => false)
+	await expect(expired.read(id)).rejects.toThrow('Capture scope expired')
 })

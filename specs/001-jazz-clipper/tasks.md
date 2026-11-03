@@ -2,11 +2,13 @@
 
 Updated 2026-11-03. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
-## Current handoff — PR #11
+## Current handoff — PR #12
 
-The current feature branch is `feat/structured-saved-reader`, PR [#11](https://github.com/delightful-labs/delightful-clipper/pull/11), targeting `main`. Implementation commit `f0e5738` contains the completed SVG/disclosure changes. Check the live PR state before continuing: if merged, start a new feature branch from current `main`; otherwise keep related corrections on the existing PR. Do not merge without explicit user authorization.
+The current feature branch is `feat/durable-capture-foundation`, PR [#12](https://github.com/delightful-labs/delightful-clipper/pull/12), targeting `main`. Reader PR #11 has merged into `main` at `aa36551`, and that baseline is incorporated. The foundation includes immutable capture evidence and the bounded admission capability; the application queue/recovery workflow remains unbuilt. Check the live PR state before continuing: if merged, start a new feature branch from current `main`; otherwise keep related work on this PR. Do not merge without explicit user authorization.
 
-Latest local validation: `pnpm verify` passes 235 unit tests across 26 files, strict application/service-worker checks, formatting, lint, vendor checks and production build; `pnpm test:e2e` passes 12 Chromium tests; `pnpm test:offline` passes five production tests. Final formatting/lint/diff checks also pass. Offline tests now retain static SVG and native disclosures through a full browser-process restart with web/Jazz stopped and HTTP cache cleared, then sync to a separately restored profile. Gateway responses are fixtures in these restart tests; persistence, authority, browser and sync boundaries are real. These results supersede historical counts below. Hosted real-extraction evidence predates the SVG change; do not describe it as hosted SVG qualification. CI tooling/types/build and browser jobs pass for `f0e5738`; Netlify preview deploy `6aea3b05b5dae0f3763471f2` is ready. This establishes deployment checks, not a new hosted manual SVG exercise. Check any subsequent commit separately.
+Latest local validation: `pnpm verify` passes 263 unit tests across 29 files plus vendor/format/lint/type/build checks; `pnpm test:e2e` passes 15 Chromium tests; `pnpm test:offline` passes five production offline regressions. Commands ran sequentially. The three new browser cases exercise the real admission capability through a test driver: offline native intake/checkpoint → full process restart → separately restored-profile sync, atomic competing claims/account separation, and bounded enumeration/unsupported-record retention. Add Link still uses its prior transient capture path. No autonomous UI capture recovery or production-shell journal proof is claimed.
+
+Historical reader-baseline validation: `pnpm verify` passes 235 unit tests across 26 files, strict application/service-worker checks, formatting, lint, vendor checks and production build; `pnpm test:e2e` passes 12 Chromium tests; `pnpm test:offline` passes five production tests. Final formatting/lint/diff checks also pass. Offline tests now retain static SVG and native disclosures through a full browser-process restart with web/Jazz stopped and HTTP cache cleared, then sync to a separately restored profile. Gateway responses are fixtures in these restart tests; persistence, authority, browser and sync boundaries are real. These results supersede historical counts below. Hosted real-extraction evidence predates the SVG change; do not describe it as hosted SVG qualification. CI tooling/types/build and browser jobs pass for `f0e5738`; Netlify preview deploy `6aea3b05b5dae0f3763471f2` is ready. This establishes deployment checks, not a new hosted manual SVG exercise. Check any subsequent commit separately.
 
 - [x] Open a usable local library without signup using DLF/Jazz `initial: 'local-first'`; hide Sign out for automatic local identities.
 - [x] Use DUI URL input and one-step Add Link with automatic local saving and explicit Open.
@@ -17,7 +19,7 @@ Latest local validation: `pnpm verify` passes 235 unit tests across 26 files, st
 - [x] Preserve static inline SVG shapes/text/geometry/solid paints with namespace-specific sanitization at extraction and display; strip active/external/reference features and bound SVG attribute lengths.
 - [x] Test actual Readability preservation, malicious persisted markup, rendered SVG geometry, no remote resource loads, offline restart and restored-profile SVG reading.
 
-Next bounded work to consider: durable pre-save intake and failed-capture link-only entries (FR-002, FR-054, FR-056, FR-057), preserving unknown-write recovery and local-versus-remote receipts. This is a proposed next batch, not completed work. Model its state/resource ownership and schema/policies before implementation; keep images and annotations separate unless explicitly included. See the handoff for constraints.
+Next bounded work: typed gateway source/failure evidence (D3), queue/job integration and publication reconciliation (D4), bounded scheduling (D5), approved-copy link-only projection (D6) and application acceptance (D7). The design and schema/admission capability are in place, but FR-002/054/056/057 remain open. Preserve unknown-write non-replay and local-versus-remote receipts; keep images and annotations separate. See the handoff and durable-capture design for constraints.
 
 ## Completed foundation
 
@@ -32,17 +34,20 @@ Next bounded work to consider: durable pre-save intake and failed-capture link-o
 
 ## Durable capture foundation continuation
 
-Design and remaining dependency-ordered work: [durable-capture-design.md](durable-capture-design.md). This is a schema/policy foundation, not a completed durable intake feature. The application workflow depends on the corrections in reader PR #11; preserve them when continuing.
+Design and remaining dependency-ordered work: [durable-capture-design.md](durable-capture-design.md). This is a schema/admission capability, not a completed durable intake feature. Reader PR #11 is merged and incorporated; preserve its corrections when continuing.
 
 - [x] Define immutable native intake, observation and required-document completion tables without changing successful document/snapshot publication.
 - [x] Enforce canonical-owner reads/inserts, same-library parents, format version `1`, immutable evidence and atomic graph validation with the real Jazz test authority.
 - [x] Model journal identities, account/generation ownership, admission/shutdown boundaries, publication uncertainty, retry budget and application acceptance before adding asynchronous capture recovery.
-- [ ] Complete bounded domain contracts/validation and admission transaction actors (D1 remainder, D2).
+- [x] Add bounded intake/evidence decoders and admission-checkpoint contracts; native adapter reads reject invalid owner-written evidence instead of projecting absence.
+- [x] Implement account-scoped IndexedDB admission checkpoints, compare-and-set issuance barrier and DLF-owned native intake/observation/completion transaction leaves (D2 capability).
+- [x] Qualify admission local/global separation, uncertainty/non-replay, shutdown drain, terminal buffer cleanup, real Chromium checkpoint/native-intake restart, restored-profile intake sync and concurrent journal claims.
+- [ ] Wire those capabilities into the capture queue and every projection boundary; finish richer execution checkpoint contracts and deployment qualification (D1 remainder, D4).
 - [ ] Implement typed source/failure evidence, durable execution/reconciliation and bounded retry scheduling (D3–D5).
 - [ ] Obtain required exact copy approval and implement link-only library projection/Retry (D6).
 - [ ] Qualify actual application termination/restart, connectivity resume, same-item completion, multi-tab takeover and restored-profile outcomes (D7).
 
-The existing Add Link workflow still does not write these tables. No capture-journal durability, automatic retry or link-only UI claim follows from native schema tests.
+The existing Add Link workflow still does not write these tables. New browser admission checks invoke the real capability through a test driver; they qualify that capability, not automatic recovery of the UI capture workflow. The production offline suite remains a regression check, not a new journal-in-shell proof.
 
 ## Storage qualification before enabling a product write flow
 

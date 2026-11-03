@@ -82,6 +82,118 @@ test('invalid restoration preserves the current local library', async ({ page })
 	await expect(page.getByLabel('Recovery phrase', { exact: true })).toHaveValue('')
 })
 
+test('admits a URL offline, retains its checkpoint through process restart and syncs its native intake', async ({
+	browser
+}) => {
+	const profile = await mkdtemp(join(tmpdir(), 'clipper-intake-profile-'))
+	let context = await chromium.launchPersistentContext(profile, { headless: true })
+	const independent = await browser.newContext()
+	const id = crypto.randomUUID(),
+		uncertainId = crypto.randomUUID()
+	const url = 'https://example.com/article?b=2&a=1#note'
+	try {
+		const page = await context.newPage()
+		await page.goto('http://127.0.0.1:5180')
+		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
+		const phrase = await page
+			.getByRole('dialog')
+			.getByLabel('Recovery phrase', { exact: true })
+			.inputValue()
+		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const restored = await independent.newPage()
+		await restored.goto('http://127.0.0.1:5180')
+		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await authority.stop()
+		expect(
+			await page.evaluate(async (id) => {
+				const path = '/tests/intake-driver.ts'
+				return (await import(/* @vite-ignore */ path)).admit(id, false)
+			}, id)
+		).toBe('admitted')
+		await page.evaluate(async (id) => {
+			const path = '/tests/intake-driver.ts'
+			await (await import(/* @vite-ignore */ path)).barrier(id)
+		}, uncertainId)
+		await context.close()
+		context = await chromium.launchPersistentContext(profile, { headless: true })
+		const reopened = await context.newPage()
+		await reopened.goto('http://127.0.0.1:5180')
+		await expect(
+			reopened.getByText('Library saved on this device. Sync pending.', { exact: true })
+		).toBeVisible()
+		expect(
+			await reopened.evaluate(async (id) => {
+				const path = '/tests/intake-driver.ts'
+				return (await import(/* @vite-ignore */ path)).read(id)
+			}, id)
+		).toEqual({ phase: 'admitted', url, nativeUrl: url })
+		expect(
+			await reopened.evaluate(async (id) => {
+				const path = '/tests/intake-driver.ts'
+				return (await import(/* @vite-ignore */ path)).admit(id, false)
+			}, uncertainId)
+		).toBe('uncertain')
+		expect(
+			await reopened.evaluate(async (id) => {
+				const path = '/tests/intake-driver.ts'
+				return (await import(/* @vite-ignore */ path)).read(id)
+			}, uncertainId)
+		).toEqual({ phase: 'issuing', url, nativeUrl: null })
+		authority = await startAuthority()
+		await reopened.reload()
+		await restored.reload()
+		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect
+			.poll(
+				() =>
+					restored.evaluate(async (id) => {
+						const path = '/tests/intake-driver.ts'
+						return (await import(/* @vite-ignore */ path)).read(id)
+					}, id),
+				{ timeout: 30000 }
+			)
+			.toEqual({ phase: null, url: null, nativeUrl: url })
+	} finally {
+		await context.close()
+		await independent.close()
+		await rm(profile, { recursive: true, force: true })
+	}
+})
+
+test('serializes checkpoint admission claims without cross-account exposure', async ({ page }) => {
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	expect(
+		await page.evaluate(async (id) => {
+			const path = '/tests/intake-driver.ts'
+			return (await import(/* @vite-ignore */ path)).journalRace(id)
+		}, crypto.randomUUID())
+	).toEqual({ creates: 1, advances: 1, stale: null, foreign: null })
+})
+
+test('bounds journal enumeration and preserves unsupported checkpoints without executing them', async ({
+	page
+}) => {
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	expect(
+		await page.evaluate(async () => {
+			const path = '/tests/intake-driver.ts'
+			return (await import(/* @vite-ignore */ path)).journalValidation()
+		})
+	).toEqual({
+		pagination: true,
+		scopeDenied: true,
+		readDenied: true,
+		replacementDenied: true,
+		enumerationDenied: true,
+		retained: true
+	})
+})
+
 test('retains the account and library after closing every page and browser process with the authority offline', async () => {
 	const profile = await mkdtemp(join(tmpdir(), 'clipper-cold-profile-'))
 	let context = await chromium.launchPersistentContext(profile, { headless: true })
