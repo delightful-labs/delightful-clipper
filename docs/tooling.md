@@ -99,3 +99,5 @@ Automatic local identities do not show Sign out. Optional recovery-phrase restor
 Add Link now saves automatically after extraction and duplicate checks. The earlier preview/Save step is removed; successful local save stays in the library with an explicit Open action. Network extraction still needs connectivity; local publication and pending remote acceptance remain separate.
 
 Saved articles open as SvelteKit pages at `/articles/[id]`. The root layout owns the local-first runtime across library/reader navigation. Browser Back and normal new-tab links work; direct offline reader navigations use only the cached public shell while document reads remain owner scoped in Jazz.
+
+Oxfmt explicitly enables Svelte formatting with `svelte: true` in `.oxfmtrc.json`. `pnpm format` formats component scripts, templates and embedded CSS; `pnpm format:check` checks them in the existing `pnpm verify` CI gate. Svelte support is opt-in in the pinned formatter and must not be disabled. Components use multiline CSS declarations and blank lines between rule blocks.

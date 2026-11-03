@@ -14,5 +14,6 @@
 		"vendor/**",
 		"specs/**",
 		"pnpm-lock.yaml"
-	]
+	],
+	"svelte": true
 }

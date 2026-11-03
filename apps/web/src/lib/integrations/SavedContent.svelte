@@ -3,26 +3,38 @@
 	import { savedContent } from '../reader/content.js'
 
 	type Content = { asset: AssetResult; text: string; sourceUrl: string | undefined }
-	let { asset, text, sourceUrl }: {
+	let {
+		asset,
+		text,
+		sourceUrl
+	}: {
 		asset: AssetResult
 		text: string
 		sourceUrl?: string | undefined
 	} = $props()
 
 	function render(node: HTMLElement, input: Content) {
-		let previous: {
-			bytes: Uint8Array | undefined
-			mediaType: string | undefined
-			text: string
-			sourceUrl: string | undefined
-		} | undefined
+		let previous:
+			| {
+					bytes: Uint8Array | undefined
+					mediaType: string | undefined
+					text: string
+					sourceUrl: string | undefined
+			  }
+			| undefined
 
 		function update(value: Content) {
 			const bytes = value.asset.kind === 'available' ? value.asset.bytes : undefined
 			const mediaType = value.asset.kind === 'available' ? value.asset.mediaType : undefined
 			// Typed arrays are not Svelte proxies; preserve selection/focus during unrelated updates.
-			if (previous && previous.bytes === bytes && previous.mediaType === mediaType &&
-				previous.text === value.text && previous.sourceUrl === value.sourceUrl) return
+			if (
+				previous &&
+				previous.bytes === bytes &&
+				previous.mediaType === mediaType &&
+				previous.text === value.text &&
+				previous.sourceUrl === value.sourceUrl
+			)
+				return
 			previous = { bytes, mediaType, text: value.text, sourceUrl: value.sourceUrl }
 			const fragment = savedContent(value.asset, node.ownerDocument, value.sourceUrl)
 			node.classList.toggle('plain', !fragment)
@@ -32,7 +44,10 @@
 		update(input)
 		return {
 			update,
-			destroy: () => { previous = undefined; node.replaceChildren() }
+			destroy: () => {
+				previous = undefined
+				node.replaceChildren()
+			}
 		}
 	}
 </script>
@@ -40,11 +55,42 @@
 <div class="reader" use:render={{ asset, text, sourceUrl }}></div>
 
 <style>
-	.reader { line-height: 1.7; max-width: 70ch; margin-inline: auto; overflow-wrap: anywhere }
-	.reader:global(.plain) { white-space: pre-wrap }
-	.reader :global(pre) { white-space: pre-wrap }
-	.reader :global(table) { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse }
-	.reader :global(th), .reader :global(td) { border: 1px solid currentColor; padding: .4rem; text-align: start }
-	.reader :global(blockquote) { border-inline-start: 2px solid currentColor; padding-inline-start: 1rem; margin-inline: 0 }
-	.reader :global([id]) { scroll-margin-block: 1rem }
+	.reader {
+		line-height: 1.7;
+		max-width: 70ch;
+		margin-inline: auto;
+		overflow-wrap: anywhere;
+	}
+
+	.reader:global(.plain) {
+		white-space: pre-wrap;
+	}
+
+	.reader :global(pre) {
+		white-space: pre-wrap;
+	}
+
+	.reader :global(table) {
+		display: block;
+		max-width: 100%;
+		overflow-x: auto;
+		border-collapse: collapse;
+	}
+
+	.reader :global(th),
+	.reader :global(td) {
+		border: 1px solid currentColor;
+		padding: 0.4rem;
+		text-align: start;
+	}
+
+	.reader :global(blockquote) {
+		border-inline-start: 2px solid currentColor;
+		padding-inline-start: 1rem;
+		margin-inline: 0;
+	}
+
+	.reader :global([id]) {
+		scroll-margin-block: 1rem;
+	}
 </style>
