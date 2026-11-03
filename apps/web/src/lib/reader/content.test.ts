@@ -37,10 +37,10 @@ it('removes executable markup, styles, embedded resources and source navigation 
 		),
 		document()
 	)!
-	expect(fragment.querySelector('script,style,img,iframe,video,svg,math,form,input')).toBeNull()
+	expect(fragment.querySelector('script,style,img,iframe,video,math,form,input')).toBeNull()
 	expect(fragment.querySelector('[onclick],[style],[target],[ping],[download],[src]')).toBeNull()
-	expect(fragment.querySelector('a')?.getAttribute('href')).toBe('https://example.com/')
-	expect(fragment.querySelector('a')?.getAttribute('rel')).toBe('noreferrer')
+	expect(fragment.querySelector('a[href]')?.getAttribute('href')).toBe('https://example.com/')
+	expect(fragment.querySelector('a[href]')?.getAttribute('rel')).toBe('noreferrer')
 })
 it('allows only credential-free HTTP(S) links, resolving relative links against the saved source', () => {
 	const fragment = savedContent(
@@ -85,4 +85,29 @@ it('falls back to text for unavailable, unrelated, malformed, oversized or empty
 })
 it('rejects pathological element counts without discarding the stored text fallback', () => {
 	expect(savedContent(asset('<br>'.repeat(50001) + 'Readable'), document())).toBeUndefined()
+})
+
+it('retains disclosures and static SVG while stripping active and referenced SVG features', () => {
+	const fragment = savedContent(
+		asset(`<details open name="shared"><summary>Diagram</summary>
+ <svg viewBox="0 0 100 100" onload="alert(1)"><title>Chart</title><desc>Static diagram</desc>
+ <g transform="translate(1 2)"><path d="M0 0 L10 10" stroke="red"/><circle cx="5" cy="5" r="3" fill="url(https://spy.example/paint)"/>
+ <rect width="10" height="20" fill="url(#outside)"/><text x="1" y="2">Label</text></g>
+ <use href="#outside"/><image href="https://spy.example/image"/><foreignObject><p>Embedded</p></foreignObject>
+ <animate attributeName="href" values="javascript:alert(1)"/><set attributeName="fill" to="url(https://spy.example/)"/>
+ <a href="https://spy.example/">Link</a><style>svg{fill:url(https://spy.example/)}</style></svg></details>`),
+		document()
+	)!
+	expect(fragment.querySelector('details')?.hasAttribute('open')).toBe(true)
+	expect(fragment.querySelector('details')?.hasAttribute('name')).toBe(false)
+	expect(fragment.querySelector('summary')?.textContent).toBe('Diagram')
+	expect(fragment.querySelector('svg')?.getAttribute('viewBox')).toBe('0 0 100 100')
+	expect(fragment.querySelector('path')?.getAttribute('stroke')).toBe('red')
+	expect(fragment.querySelector('g')?.getAttribute('transform')).toBe('translate(1 2)')
+	expect(fragment.querySelector('text')?.textContent).toBe('Label')
+	expect(fragment.querySelector('circle')?.hasAttribute('fill')).toBe(false)
+	expect(fragment.querySelector('rect')?.hasAttribute('fill')).toBe(false)
+	expect(
+		fragment.querySelector('use,image,foreignObject,animate,set,style,[onload],svg [href]')
+	).toBeNull()
 })

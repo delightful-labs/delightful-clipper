@@ -70,6 +70,11 @@
 		white-space: pre-wrap;
 	}
 
+	.reader :global(svg) {
+		max-width: 100%;
+		height: auto;
+	}
+
 	.reader :global(table) {
 		display: block;
 		max-width: 100%;

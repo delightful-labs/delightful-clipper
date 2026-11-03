@@ -1,6 +1,5 @@
-import { articlePolicy } from '../../reader/policy.js'
+import { articlePolicy, articlePurifier } from '../../reader/policy.js'
 import { Readability } from '@mozilla/readability'
-import createDOMPurify from 'dompurify'
 import { CaptureError } from './errors.js'
 import { sourceUrl } from './destination.js'
 export async function extract(body: Uint8Array, mediaType: string, url: string) {
@@ -122,7 +121,7 @@ export async function extract(body: Uint8Array, mediaType: string, url: string) 
 						link.removeAttribute('href')
 					}
 			}
-			const purify = createDOMPurify(result.window)
+			const purify = articlePurifier(result.window)
 			const html = purify.sanitize(root.body.innerHTML, articlePolicy)
 			root.body.innerHTML = html
 			const blocks = new Set([

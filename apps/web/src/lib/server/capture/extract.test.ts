@@ -39,3 +39,19 @@ it('rejects unsupported media and empty extraction', async () => {
 		'parseFailed'
 	)
 })
+
+it('preserves native disclosures and static SVG through real extraction', async () => {
+	const result = await extract(
+		new TextEncoder().encode(`<article><h1>Diagram article</h1>${paragraph}
+ <details open><summary>More evidence</summary>${paragraph}</details>
+ <svg viewBox="0 0 100 100"><title>Chart</title><path d="M0 0 L10 10" stroke="red"/><image href="https://spy.example/x"/><circle fill="url(https://spy.example/x)" r="2"/></svg>
+ ${paragraph}</article>`),
+		'text/html',
+		'https://example.com/article'
+	)
+	expect(result.candidate.html).toContain('<details open="">')
+	expect(result.candidate.html).toContain('<summary>More evidence</summary>')
+	expect(result.candidate.html).toContain('<svg viewBox="0 0 100 100">')
+	expect(result.candidate.html).toContain('stroke="red"')
+	expect(result.candidate.html).not.toMatch(/<image|spy\.example|url\(/)
+})

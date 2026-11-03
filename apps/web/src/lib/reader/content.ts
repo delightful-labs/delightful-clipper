@@ -1,7 +1,6 @@
-import createDOMPurify from 'dompurify'
 import type { AssetResult } from '../contracts/storage.js'
 import { BYTE_LIMIT } from '../storage/prepare.js'
-import { articlePolicy } from './policy.js'
+import { articlePolicy, articlePurifier } from './policy.js'
 
 /** Treat persisted HTML as untrusted, even when extraction already sanitized it. */
 export function savedContent(
@@ -21,7 +20,7 @@ export function savedContent(
 		const html = new TextDecoder('utf-8', { fatal: true }).decode(asset.bytes)
 		// Conservative markup-token bound before DOM parsing; unusual/oversized markup uses text.
 		if ((html.match(/</g)?.length ?? 0) > 5000) return undefined
-		const purify = createDOMPurify(window)
+		const purify = articlePurifier(window)
 		const fragment = purify.sanitize(html, { ...articlePolicy, RETURN_DOM_FRAGMENT: true })
 		if (!fragment.textContent?.trim() || fragment.querySelectorAll('*').length > 5000)
 			return undefined

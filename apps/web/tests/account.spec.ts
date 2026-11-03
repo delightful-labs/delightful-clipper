@@ -261,7 +261,7 @@ async function fixtureArticle(
 					candidate: {
 						title: 'UI saved article',
 						text: 'Exact UI text café 🦊\nLiteral <script> stays text.',
-						html: '<h3>Structured heading</h3><p>Exact UI text café 🦊</p><p>Literal &lt;script&gt; stays text. <a href="#fn1">Citation</a></p><ol><li id="fn1">Saved footnote</li></ol><pre><code>const safe = true</code></pre><a href="https://external.example/next">External source</a><img src="https://images.example/pixel.png"><script>globalThis.readerCompromised=true</script><p onclick="globalThis.readerCompromised=true">Safe text</p>',
+						html: '<h3>Structured heading</h3><details><summary>Diagram details</summary><svg viewBox="0 0 100 100" width="100" height="100" onload="globalThis.readerCompromised=true"><title>Saved diagram</title><path d="M0 0 L100 100" stroke="red"/><circle r="10" fill="url(https://images.example/paint)"/><image href="https://images.example/svg-image"/><foreignObject><p>Embedded</p></foreignObject><animate attributeName="href" values="javascript:alert(1)"/></svg></details><p>Exact UI text café 🦊</p><p>Literal &lt;script&gt; stays text. <a href="#fn1">Citation</a></p><ol><li id="fn1">Saved footnote</li></ol><pre><code>const safe = true</code></pre><a href="https://external.example/next">External source</a><img src="https://images.example/pixel.png"><script>globalThis.readerCompromised=true</script><p onclick="globalThis.readerCompromised=true">Safe text</p>',
 						assetCandidates: [
 							{ sourceUrl: 'https://images.example/pixel.png', alt: 'Unavailable image' }
 						],
@@ -297,6 +297,16 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	const reader = page.getByRole('article')
 	await expect(reader.getByRole('heading', { name: 'Structured heading' })).toBeVisible()
 	await expect(reader.locator('code')).toHaveText('const safe = true')
+	await expect(reader.locator('svg')).toBeHidden()
+	await reader.locator('summary').focus()
+	await page.keyboard.press('Enter')
+	await expect(reader.locator('details')).toHaveAttribute('open', '')
+	await expect(reader.locator('svg')).toBeVisible()
+	await expect(reader.locator('path')).toHaveAttribute('stroke', 'red')
+	expect(await reader.locator('svg').evaluate((node) => node.getBoundingClientRect().width)).toBe(
+		100
+	)
+	await expect(reader.locator('image,foreignObject,animate,[onload],circle[fill]')).toHaveCount(0)
 	await expect(reader.locator('script,img,[onclick]')).toHaveCount(0)
 	const external = reader.getByRole('link', { name: 'External source' })
 	await expect(external).toHaveAttribute('href', 'https://external.example/next')

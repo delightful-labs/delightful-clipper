@@ -62,7 +62,7 @@ async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 						candidate: {
 							title: 'Completely offline article',
 							text: 'Exact offline shell text café 🦊',
-							html: '<h3>Offline structure</h3><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p><ol><li id="fn1">Offline footnote</li></ol>',
+							html: '<h3>Offline structure</h3><details><summary>Offline diagram</summary><svg viewBox="0 0 100 100"><title>Chart</title><path d="M0 0 L10 10" stroke="red"/></svg></details><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p><ol><li id="fn1">Offline footnote</li></ol>',
 							assetCandidates: [],
 							partialEvidence: [],
 							parserVersion: 'fixture',
@@ -166,6 +166,9 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await expect(
 			reopened.getByRole('article').getByRole('heading', { name: 'Offline structure' })
 		).toBeVisible()
+		await reopened.getByRole('article').locator('summary').click()
+		await expect(reopened.getByRole('article').locator('svg')).toBeVisible()
+		await expect(reopened.getByRole('article').locator('path')).toHaveAttribute('stroke', 'red')
 		await reopened.getByRole('article').getByRole('link', { name: 'Citation', exact: true }).click()
 		await expect(reopened.getByRole('article').locator('li')).toBeFocused()
 
@@ -189,6 +192,9 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.getByRole('link', { name: 'Completely offline article', exact: true })
 			.click({ timeout: 30000 })
 		await expect(restored.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		await restored.getByRole('article').locator('summary').click()
+		await expect(restored.getByRole('article').locator('svg')).toBeVisible()
+		await expect(restored.getByRole('article').locator('path')).toHaveAttribute('stroke', 'red')
 		await expect(
 			restored.getByRole('article').getByRole('heading', { name: 'Offline structure' })
 		).toBeVisible()
