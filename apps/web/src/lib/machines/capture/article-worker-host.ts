@@ -1,4 +1,6 @@
 import { createActor, toPromise } from 'xstate'
+import { inspectMachines } from '../../diagnostics/inspect.js'
+import { debugEnabled } from '../../diagnostics/logger.js'
 import type {
 	QueueOpen,
 	WorkerCall,
@@ -26,7 +28,7 @@ export function articleWorkerOpen(
 		}
 		async function save(input: SaveArticleRequest) {
 			check()
-			const actor = createActor(records.articles.saveMachine, { input })
+			const actor = createActor(records.articles.saveMachine, { input, inspect: inspectMachines })
 			writes.add(actor)
 			actor.start()
 			try {
@@ -45,6 +47,7 @@ export function articleWorkerOpen(
 		async function fail(id: string, code: string | null) {
 			check()
 			const actor = createActor(records.articles.failure, {
+				inspect: inspectMachines,
 				input: {
 					attempt: {
 						operationId: crypto.randomUUID(),
@@ -129,7 +132,7 @@ export function articleWorkerOpen(
 			void promise.finally(() => tasks.delete(promise)).catch(() => {})
 			return promise
 		}
-		post({ type: 'INIT', libraryId: records.articles.libraryId })
+		post({ type: 'INIT', libraryId: records.articles.libraryId, debug: debugEnabled })
 		const unsubscribe = records.articles.subscribePending(
 			(rows) => {
 				if (!closing) post({ type: 'ROWS', rows })

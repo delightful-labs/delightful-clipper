@@ -12,7 +12,7 @@ export type RpcReply =
 	| { method: 'save'; result: SavedReply }
 	| { method: 'fail' }
 export type WorkerInput =
-	| { type: 'INIT'; libraryId: string }
+	| { type: 'INIT'; libraryId: string; debug: boolean }
 	| { type: 'ROWS'; rows: Article[] }
 	| { type: 'REPLY'; id: string; reply: RpcReply }
 	| { type: 'ERROR'; id: string; code: string }
