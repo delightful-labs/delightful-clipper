@@ -52,7 +52,7 @@ Preview builds override `PUBLIC_JAZZ_APP_ID`, `PUBLIC_JAZZ_SERVER_URL`, CLI coor
 
 Production requires `PUBLIC_JAZZ_APP_ID` and `PUBLIC_JAZZ_SERVER_URL` at build time. These are public service coordinates, not administrator credentials. Without them the app displays a configuration status. Deploy the schema/policies to the intended Jazz service using `pnpm --filter @delightful-clipper/web deploy:jazz` with separately provisioned Jazz deployment credentials. Netlify production and preview hooks invoke this deployment command automatically.
 
-The build emits the Jazz WASM asset and passes its bundled URL to the runtime. The app distinguishes local root persistence from remote acceptance. This proves cached account/root behavior while the authority is unavailable; it does not provide an offline app shell or article availability. See the [session implementation](../specs/001-jazz-clipper/session-implementation.md) for ownership and failure behavior.
+The build emits the Jazz WASM asset and passes its bundled URL to the runtime. The app distinguishes local root persistence from remote acceptance. Production offline shell and saved article restart evidence are recorded separately in the offline-shell implementation and current tasks. See the [session implementation](../specs/001-jazz-clipper/session-implementation.md) for ownership and failure behavior.
 
 ## Agent development and qualification
 
@@ -64,7 +64,7 @@ After integrating PR #5, combined validation passed: `pnpm verify` (67 unit test
 
 ## Public-source gateway qualification
 
-The resolve/extract routes require the existing Jazz account plus `CAPTURE_GATEWAY_ENABLED=true` at build time. The default is false until hosted Netlify native/network qualification is completed. In local agent mode, run `CAPTURE_GATEWAY_ENABLED=true pnpm dev:agent`; Vite selects the isolated app ID and matching canonical registry explicitly so a normal-development `.env` cannot select the wrong namespace. Tests enable the routes against their disposable authority. See [gateway implementation](../specs/001-jazz-clipper/gateway-implementation.md) for bounds, evidence and the remaining hosted gate. The Add Link batch consumes these endpoints through a runtime-owned preview/save workflow; saving still requires an explicit user action.
+The resolve/extract routes require the existing Jazz account plus `CAPTURE_GATEWAY_ENABLED=true` at build time. The default is false until hosted Netlify native/network qualification is completed. In local agent mode, run `CAPTURE_GATEWAY_ENABLED=true pnpm dev:agent`; Vite selects the isolated app ID and matching canonical registry explicitly so a normal-development `.env` cannot select the wrong namespace. Tests enable the routes against their disposable authority. See [gateway implementation](../specs/001-jazz-clipper/gateway-implementation.md) for bounds, evidence and the remaining hosted gate. The Add Link batch consumes these endpoints through a runtime-owned workflow; one Add Link submission automatically saves usable extracted content.
 
 The deploy-preview context enables the gateway only against its generated disposable Jazz app for hosted qualification. Production keeps the default disabled flag. On 2026-11-03, production deploy `6ae9d9bec3d9d9edb3d5e0d0` was marked ready but served 404 because no functions were deployed. Netlify's actual Frameworks API loader reproduced the mismatch: base `apps/web` + package `apps/web` found no config; base `.` + package `apps/web` found the generated config. The root-base configuration fixes that discovery path without modifying site settings.
 
@@ -80,9 +80,9 @@ PR #8 verification: `pnpm verify` passes with 125 unit tests. A compiled worker 
 
 ## Add Link development
 
-With `CAPTURE_GATEWAY_ENABLED=true pnpm dev:agent`, open the local library directly and use Add Link → automatic save → Open saved article. The saved collection opens a literal-text reader; sanitized HTML and source provenance remain in private native records. Existing final destinations show Already saved and preserve their snapshot. Canonical declarations remain unaccepted evidence. Unknown or stranded operations require checking existing content; the workflow never automatically replays their insert.
+With `CAPTURE_GATEWAY_ENABLED=true pnpm dev:agent`, open the local library directly and use Add Link → automatic save → Open saved article. The saved collection opens dedicated SvelteKit reader pages with sanitized structured HTML and literal-text fallback; source provenance remains in private native records. Existing final destinations show Already saved and preserve their snapshot. Canonical declarations remain unaccepted evidence. Unknown or stranded operations require checking existing content; the workflow never automatically replays their insert.
 
-Production gateway enablement is still a separate deployment choice. The UI restart test stubs gateway responses but uses real Jazz persistence/sync and full Chromium process exit; it saves an already-extracted preview with the authority offline. The web server remains available during restart. There is no service-worker shell or downloaded-image claim yet.
+Production gateway enablement is still a separate deployment choice. The UI restart test stubs gateway responses but uses real Jazz persistence/sync and full Chromium process exit; it disconnects the authority before returning extraction so automatic saving completes locally. The production offline suite additionally stops both servers and clears HTTP cache before a full browser-process restart. Downloaded images remain unimplemented.
 
 ## Production offline qualification
 

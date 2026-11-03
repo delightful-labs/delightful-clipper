@@ -1,12 +1,10 @@
 # Quickstart and validation guide
 
-**Status**: Tooling, session/recovery and the private library root are implemented. The current storage PR adds bounded text/byte repository capabilities. See [tasks.md](tasks.md) for completed checks and open qualification; capture, reader and release acceptance remain unbuilt.
+**Status**: Local-first DLF/Jazz startup, private native text/byte storage, authenticated public-source extraction, automatic Add Link saving, routed structured reader and production offline shell are implemented. Static SVG and native disclosures are supported under the shared sanitizer. Full product/release acceptance remains open. Start with [implementation-handoff.md](implementation-handoff.md) and [tasks.md](tasks.md) for PR/branch status, current checks and remaining work.
 
 ## Current review
 
-Subsequent to the planning phase, an isolated [foundation proof](foundation-proof.md) was implemented and run. See its recorded environment/results and [reproduction instructions](https://github.com/delightful-labs/delightful-clipper/blob/422ceffcb640f3d70a0bdf68bd5f7ac0aed719de/scripts/proofs/README.md). It does not add the proposed application scripts below or qualify the full MVP.
-
-Read [plan.md](plan.md), [research.md](research.md), [data-model.md](data-model.md) and [contracts/](contracts/). Follow the [implementation handoff](implementation-handoff.md) for the now-ready first bounded batch; G1–G6 remain acceptance gates before dependent behavior is enabled or released. Record target browser/device versions after validation, not from assumed support.
+PR [#11](https://github.com/delightful-labs/delightful-clipper/pull/11), branch `feat/structured-saved-reader`, includes the latest reader corrections. Recheck whether it has merged before continuing; if merged, use a fresh feature branch from current `main`. Read repository agreements and localization memory before editing. The archived prototype and isolated foundation proof are not the implementation baseline.
 
 ## Prerequisites for the implementation phase
 
@@ -15,7 +13,7 @@ Read [plan.md](plan.md), [research.md](research.md), [data-model.md](data-model.
 - Netlify development/preview environment with the authenticated, public-only first-party fetch boundary enabled. No production deployment or account mutation is implied by this guide.
 - Chrome desktop and Firefox/macOS extension packages with explicit host permissions and trusted session UI. Android Chrome PWA installation; iOS Safari Add Link fallback.
 
-Tooling now provides root `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`, `pnpm lint`, `pnpm format:check`, `pnpm verify:vendor` and `pnpm verify`. Node 24.22.2/pnpm 10.22.0 and the lockfile are pinned. Run `pnpm test:unit` for machine and native authorization/repository tests and `pnpm test:e2e` for Chromium session/root integration tests. Tests start disposable local Jazz authorities; they require permission to bind local ports. Extension builds and gateway serving remain subsequent work. The shell is not the completed reader.
+Tooling now provides root `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`, `pnpm lint`, `pnpm format:check`, `pnpm verify:vendor` and `pnpm verify`. Node 24.22.2/pnpm 10.22.0 and the lockfile are pinned. Run `pnpm test:unit` for machine and native authorization/repository tests and `pnpm test:e2e` for Chromium session/root integration tests. Tests start disposable local Jazz authorities; they require permission to bind local ports. Use `CAPTURE_GATEWAY_ENABLED=true pnpm dev` for actual local capture (web 5173/Jazz 5174). `pnpm test:offline` runs production cold-restart/sync qualification. Run verification and browser suites sequentially; agent mode and E2E share ports 5180/5181. Extension builds remain subsequent work.
 
 ## Future acceptance scenarios
 
