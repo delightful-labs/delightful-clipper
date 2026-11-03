@@ -32,9 +32,9 @@ Updated 2026-11-03. This is the current implementation checklist; the product re
 
 ## Subsequent product and release work
 
-- [x] Build authenticated Add Link → preview → explicit local save → minimal text reader, with final-destination duplicate checks, provenance and honest remote status.
+- [x] Build authenticated Add Link → automatic local save → saved reader, with final-destination duplicate checks, provenance and honest remote status.
 - [x] Render saved HTML structure with a shared sanitizer allowlist, isolated internal anchors, normal same-tab article links and literal-text fallback; qualify offline restart and restored-profile rendering.
-- [ ] Complete image acquisition, richer saved reader requirements and durable pre-save intake recovery; the current preview is ephemeral.
+- [ ] Complete image acquisition, richer saved reader requirements and durable pre-save intake recovery; pre-save work remains ephemeral.
 - [ ] Implement desktop extension intake and annotation anchoring with sender validation, packaged runtime assets and restart reconciliation.
 - [ ] Implement retained reader, note/highlight, image, organization, search and deletion requirements.
 - [x] Qualify the production service-worker shell in Chromium with web and Jazz stopped, HTTP cache cleared and a complete browser-process restart. Keep broader platform qualification open.
@@ -80,3 +80,10 @@ Browser checks cover fresh startup without signup, startup with the authority un
 The URL field uses DUI InputText, retaining native URL validation, bounded length, accessible label and value binding. Local Jazz identities no longer expose Sign out. An optional restoration form is available directly; its actor drains the current library before calling the existing DLF restoration workflow. Unit coverage includes restoration during an uncertain issued save and sign-out visibility for local versus explicitly signed-in observations. This does not implement external-provider sign-in or merge libraries during restoration.
 
 A real local 503 was traced to shared SvelteKit generated environment files pointing the running dev verifier at the stopped E2E authority on port 5181. Isolate local/agent/E2E generated directories from one another and from build/sync output. Real example.com resolution and extraction both return 200 on the running developer server while E2E runs; no Netlify function emulator is needed. Temporary auth diagnostics were removed and no catalog strings were added.
+
+
+## One-step Add Link
+
+User direction replaces the initial preview/confirm flow: Add Link resolves/extracts, performs final-destination duplicate/intent checks and automatically starts the existing local save actor. There is no preview state or SAVE event in the library workflow. The prepared candidate is private transient state, cleared on settlement/shutdown. Existing local/sync/uncertain/rejected messages and explicit Open remain; completion stays in the library. Existing saved snapshots are never replaced, and unknown intents are reconciled rather than replayed. FR-053 now records this interaction requirement.
+
+Tests cover a single ADD causing exactly one save, a closed reader until Open, cancellation at preparation boundaries, shutdown/cancel/identity-change drain, uncertain child outcomes and late rejection. UI offline fixtures disconnect the authority just before delivering extraction results, so automatic publication is local/offline without a second user action. Durable pre-save recovery and failed-capture link-only entries remain subsequent work.

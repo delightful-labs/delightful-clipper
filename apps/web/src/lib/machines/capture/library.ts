@@ -12,7 +12,7 @@ type Context = {
 	writing: boolean
 	saveRef: SaveRef | undefined
 	url: string
-	preview: Candidate | undefined
+	candidate: Candidate | undefined
 	captureId: string
 	readerId: string
 	readerGeneration: number
@@ -62,7 +62,7 @@ export const libraryMachine = setup<
 			enqueue.sendTo('receipts', { type: 'SHUTDOWN' })
 			enqueue.assign({
 				closing: true,
-				preview: undefined,
+				candidate: undefined,
 				reader: undefined,
 				rows: [],
 				url: '',
@@ -79,7 +79,7 @@ export const libraryMachine = setup<
 		writing: false,
 		saveRef: undefined,
 		url: '',
-		preview: undefined,
+		candidate: undefined,
 		captureId: '',
 		readerId: '',
 		readerGeneration: 0,
@@ -122,7 +122,7 @@ export const libraryMachine = setup<
 									target: 'preparing',
 									actions: assign({
 										url: ({ event }) => event.url,
-										preview: undefined,
+										candidate: undefined,
 										failure: ''
 									})
 								}
@@ -139,14 +139,14 @@ export const libraryMachine = setup<
 									{
 										guard: ({ event }) => event.output.kind === 'scopeChanged',
 										target: 'idle',
-										actions: assign({ preview: undefined, url: '' })
+										actions: assign({ candidate: undefined, url: '' })
 									},
 									{
-										guard: ({ event }) => event.output.kind === 'preview',
-										target: 'preview',
+										guard: ({ event }) => event.output.kind === 'ready',
+										target: 'saving',
 										actions: assign({
-											preview: ({ event }) =>
-												event.output.kind === 'preview' ? event.output.candidate : undefined
+											candidate: ({ event }) =>
+												event.output.kind === 'ready' ? event.output.candidate : undefined
 										})
 									},
 									{
@@ -177,35 +177,27 @@ export const libraryMachine = setup<
 									})
 								}
 							},
-							on: { CANCEL: { target: 'idle', actions: assign({ url: '', preview: undefined }) } }
-						},
-						preview: {
-							on: {
-								SAVE: {
-									target: 'saving'
-								},
-								CANCEL: { target: 'idle', actions: assign({ preview: undefined, url: '' }) }
-							}
+							on: { CANCEL: { target: 'idle', actions: assign({ url: '', candidate: undefined }) } }
 						},
 						saving: {
 							initial: 'active',
 							entry: assign(({ context, spawn }) => {
-								const preview = required(context.preview)
+								const candidate = required(context.candidate)
 								return {
 									writing: true,
-									captureId: preview.id,
+									captureId: candidate.id,
 									saveRef: required(context.capability).spawnSave(
 										(logic, options) => spawn(logic, options),
 										{
-											operationId: preview.id,
-											title: preview.title,
-											text: preview.text,
-											bytes: new TextEncoder().encode(preview.html),
+											operationId: candidate.id,
+											title: candidate.title,
+											text: candidate.text,
+											bytes: new TextEncoder().encode(candidate.html),
 											mediaType: 'text/html',
 											source: {
-												finalUrl: preview.finalUrl,
-												submittedUrl: preview.submittedUrl,
-												provenance: preview.provenance
+												finalUrl: candidate.finalUrl,
+												submittedUrl: candidate.submittedUrl,
+												provenance: candidate.provenance
 											}
 										}
 									)
@@ -213,7 +205,7 @@ export const libraryMachine = setup<
 							}),
 							exit: [
 								stopChild(({ context }) => required(context.saveRef)),
-								assign({ writing: false, preview: undefined, saveRef: undefined })
+								assign({ writing: false, candidate: undefined, saveRef: undefined })
 							],
 							states: {
 								active: {
@@ -363,7 +355,7 @@ export const libraryMachine = setup<
 			type: 'final',
 			entry: assign({
 				capability: undefined,
-				preview: undefined,
+				candidate: undefined,
 				reader: undefined,
 				rows: [],
 				sync: {},

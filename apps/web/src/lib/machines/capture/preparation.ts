@@ -161,7 +161,7 @@ export const preparationMachine = model.createMachine({
 				onDone: [
 					{ guard: 'scopeLost', target: 'scopeChanged' },
 					{ guard: ({ event }) => event.output, target: 'uncertain' },
-					{ target: 'preview' }
+					{ target: 'ready' }
 				]
 			}
 		},
@@ -183,10 +183,10 @@ export const preparationMachine = model.createMachine({
 			}),
 			type: 'final'
 		},
-		preview: {
+		ready: {
 			entry: assign({
 				result: ({ context }) => ({
-					kind: 'preview',
+					kind: 'ready',
 					candidate: { ...required(context.candidate), id: context.id }
 				}),
 				candidate: undefined

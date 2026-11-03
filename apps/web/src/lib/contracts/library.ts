@@ -9,7 +9,7 @@ import type {
 	SyncReport
 } from './storage.js'
 export type CapturePreparation =
-	| { kind: 'preview'; candidate: Candidate }
+	| { kind: 'ready'; candidate: Candidate }
 	| { kind: 'duplicate' | 'uncertain'; id: string }
 	| { kind: 'scopeChanged' }
 export type SaveRef = ActorRef<Snapshot<SaveResult>, { type: 'SHUTDOWN' }>
@@ -32,7 +32,7 @@ export type LibraryCapability = {
 export type LibraryEvent =
 	| ReadReport
 	| { type: 'ADD'; url: string }
-	| { type: 'SAVE' | 'CANCEL' | 'SHUTDOWN' | 'CLOSE_READER' }
+	| { type: 'CANCEL' | 'SHUTDOWN' | 'CLOSE_READER' }
 	| { type: 'OPEN'; id: string }
 	| { type: 'ROWS'; rows: DocumentHeader[] }
 	| { type: 'LIST_FAILED' }

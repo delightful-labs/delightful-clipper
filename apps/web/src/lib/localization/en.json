@@ -95,7 +95,6 @@
 			"session_unavailable": "Your account could not be authenticated. Reconnect before trying again.",
 			"rate_limited": "Too many capture requests. Wait a minute before trying again."
 		},
-		"preview_heading": "Article preview",
 		"url_label": "Article URL",
 		"text_only": "Text preview and reading are available. Images are not downloaded in this version.",
 		"disabled": "Adding links is not enabled on this deployment."

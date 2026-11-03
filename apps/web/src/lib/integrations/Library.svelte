@@ -22,20 +22,11 @@
  {#if !gatewayEnabled}<StatusMessage text={t('capture.disabled')}/>{/if}
  <form onsubmit={event=>{event.preventDefault();actor.send({type:'ADD',url})}}>
  <InputText label={t('capture.url_label')} id="article-url" name="url" type="url" bind:value={url} required maxlength={8192} autocomplete="url" disabled={!canAdd}/>
- <Button type="submit" disabled={!canAdd}>{action('get','article')}</Button>
+ <Button type="submit" disabled={!canAdd}>{action('add','link')}</Button>
  </form>
  {#if snapshot?.matches({running:{capture:'preparing'}})}<StatusMessage text={t('capture.status.pending')}/>{/if}
  {#if snapshot?.matches({running:{capture:'saving'}})}<StatusMessage text={t('capture.status.saving')}/>{/if}
  {#if snapshot?.matches({running:{capture:'failed'}})}<StatusMessage variant="error" text={t(feedback)}/>{/if}
- {#if snapshot?.matches({running:{capture:'preview'}}) && capture.preview}
- <section aria-label={t('capture.preview_heading')}>
- <h3>{capture.preview.title}</h3>
- <p>{capture.preview.finalUrl}</p>
- <StatusMessage text={t('capture.text_only')}/>
- <p class="preview">{capture.preview.text}</p>
- <Button type="button" onclick={()=>actor.send({type:'SAVE'})}>{action('save','article')}</Button>
- </section>
- {/if}
  {#if snapshot?.can({type:'CANCEL'})}<Button type="button" onclick={()=>actor.send({type:'CANCEL'})}>{t('actions.cancel')}</Button>{/if}
  {#if snapshot?.matches({running:{capture:'saveFailed'}})}<StatusMessage variant="error" text={t('capture.status.save_failed')}/>{/if}
  {#if snapshot?.matches({running:{capture:'canceled'}})}<StatusMessage text={t('capture.status.canceled')}/>{/if}
@@ -63,5 +54,5 @@
 {/if}
 {/if}
 <style>
- section{margin-block:1.5rem}form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}li{margin-block:.75rem}li span{display:block;font-size:.875rem}.preview{white-space:pre-wrap;max-height:20rem;overflow:auto}
+ section{margin-block:1.5rem}form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}li{margin-block:.75rem}li span{display:block;font-size:.875rem}
 </style>

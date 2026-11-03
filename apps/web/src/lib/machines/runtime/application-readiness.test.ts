@@ -384,8 +384,7 @@ it.each(['logout', 'shutdown', 'replacement', 'restore'] as const)(
 		const product = selectLibraryActor(actor.getSnapshot())
 		if (!product) throw new Error('Missing library owner')
 		product.send({ type: 'ADD', url: 'https://example.com/' })
-		await waitFor(product, (s) => s.matches({ running: { capture: 'preview' } }))
-		product.send({ type: 'SAVE' })
+		await waitFor(product, (s) => s.context.writing)
 		if (mode === 'replacement') emit(ready('other', root(Promise.resolve(), Promise.resolve())))
 		else if (mode === 'restore') actor.send({ type: 'RESTORE', phrase: 'invalid synthetic phrase' })
 		else actor.send({ type: mode === 'logout' ? 'LOGOUT' : 'SHUTDOWN' })
@@ -410,7 +409,7 @@ it.each(['logout', 'shutdown', 'replacement', 'restore'] as const)(
 					!s.matches({ running: { library: { ready: 'stopping' } } })
 			)
 		expect(product.getSnapshot().status).toBe('done')
-		expect(product.getSnapshot().context.preview).toBeUndefined()
+		expect(product.getSnapshot().context.candidate).toBeUndefined()
 		actor.send({ type: 'SHUTDOWN' })
 	}
 )

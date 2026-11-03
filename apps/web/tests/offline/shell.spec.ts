@@ -44,10 +44,11 @@ async function ready(page: Page) {
 		page.getByText('Offline startup prepared on this browser.', { exact: true })
 	).toBeVisible({ timeout: 45000 })
 }
-async function fixtureArticle(page: Page) {
+async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 	await page.route('**/api/capture/*', async (route) => {
 		const input: { operationId: string; url: string } = route.request().postDataJSON()
 		const base = { operationId: input.operationId, finalUrl: 'https://example.com/offline' }
+		if (route.request().url().endsWith('/extract')) await beforeExtract?.()
 		await route.fulfill({
 			json: route.request().url().endsWith('/resolve')
 				? base
@@ -99,7 +100,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 	try {
 		const page = await context.newPage()
 		await clearHttpCache(page)
-		await fixtureArticle(page)
+		await fixtureArticle(page, stopAuthority)
 		const started = performance.now()
 		await page.goto('http://127.0.0.1:5190')
 		await ready(page)
@@ -127,8 +128,8 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/offline')
-		await page.getByRole('button', { name: 'Get article', exact: true }).click()
-		await expect(page.getByRole('button', { name: 'Save article', exact: true })).toBeVisible()
+		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+
 		await page.evaluate(async () => {
 			await fetch('/api/private-probe', { headers: { Authorization: 'Bearer private-fixture' } })
 		})
@@ -143,8 +144,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			true
 		)
 		expect(cachePaths.filter((path) => path.endsWith('.wasm'))).toHaveLength(1)
-		await stopAuthority()
-		await page.getByRole('button', { name: 'Save article', exact: true }).click()
+
 		await expect(
 			page.getByText('Article saved on this device. Sync pending.', { exact: true })
 		).toBeVisible()

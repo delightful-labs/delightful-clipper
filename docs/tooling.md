@@ -80,7 +80,7 @@ PR #8 verification: `pnpm verify` passes with 125 unit tests. A compiled worker 
 
 ## Add Link development
 
-With `CAPTURE_GATEWAY_ENABLED=true pnpm dev:agent`, open the local library directly and use Add Link → Get article → Save article. The saved collection opens a literal-text reader; sanitized HTML and source provenance remain in private native records. Existing final destinations show Already saved and preserve their snapshot. Canonical declarations remain unaccepted evidence. Unknown or stranded operations require checking existing content; the workflow never automatically replays their insert.
+With `CAPTURE_GATEWAY_ENABLED=true pnpm dev:agent`, open the local library directly and use Add Link → automatic save → Open saved article. The saved collection opens a literal-text reader; sanitized HTML and source provenance remain in private native records. Existing final destinations show Already saved and preserve their snapshot. Canonical declarations remain unaccepted evidence. Unknown or stranded operations require checking existing content; the workflow never automatically replays their insert.
 
 Production gateway enablement is still a separate deployment choice. The UI restart test stubs gateway responses but uses real Jazz persistence/sync and full Chromium process exit; it saves an already-extracted preview with the authority offline. The web server remains available during restart. There is no service-worker shell or downloaded-image claim yet.
 
@@ -95,3 +95,5 @@ First use follows Finance: DLF/Jazz startup receives `initial: 'local-first'` an
 Local Vite uses `.svelte-kit/local`, agent Vite uses `.svelte-kit/agent`, and browser-test Vite uses `.svelte-kit/e2e`; production/sync output stays in `.svelte-kit`. This prevents a running developer server from importing a test-generated environment that points account verification at a stopped test authority. The first-party `/api/capture/*` SvelteKit routes run directly under Vite; Netlify function emulation is not required for Add Link. Real local extraction must be checked without gateway fixtures after test/build runs, in addition to the deterministic browser suite.
 
 Automatic local identities do not show Sign out. Optional recovery-phrase restoration is available from the local library and drains issued library writes before the DLF restoration operation. Sign-out presentation requires an explicitly signed-in identity; this does not introduce a new sign-in provider flow.
+
+Add Link now saves automatically after extraction and duplicate checks. The earlier preview/Save step is removed; successful local save stays in the library with an explicit Open action. Network extraction still needs connectivity; local publication and pending remote acceptance remain separate.

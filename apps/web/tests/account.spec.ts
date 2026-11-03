@@ -225,7 +225,10 @@ test('authenticates capture requests with the existing account and rejects missi
 })
 
 /** Fixture gateway responses; native persistence, browser processes and Jazz sync stay real. */
-async function fixtureArticle(page: import('@playwright/test').Page) {
+async function fixtureArticle(
+	page: import('@playwright/test').Page,
+	beforeExtract?: () => Promise<void>
+) {
 	let extractions = 0
 	await page.route('**/api/capture/*', async (route) => {
 		const input: { operationId: string; url: string } = route.request().postDataJSON()
@@ -244,6 +247,7 @@ async function fixtureArticle(page: import('@playwright/test').Page) {
 			})
 		else {
 			extractions++
+			await beforeExtract?.()
 			await route.fulfill({
 				json: {
 					...common,
@@ -271,7 +275,7 @@ async function fixtureArticle(page: import('@playwright/test').Page) {
 	return () => extractions
 }
 
-test('Add Link previews, saves and detects a resolved duplicate without replacing content', async ({
+test('Add Link automatically saves and detects a resolved duplicate without replacing content', async ({
 	page
 }) => {
 	const extractions = await fixtureArticle(page)
@@ -282,11 +286,10 @@ test('Add Link previews, saves and detects a resolved duplicate without replacin
 	await page.goto('/')
 	await expect(page.getByRole('heading', { name: 'Add link', exact: true })).toBeVisible()
 	await page.getByLabel('Article URL', { exact: true }).fill('https://short.example/#intro')
-	await page.getByRole('button', { name: 'Get article', exact: true }).click()
-	await expect(page.getByRole('region', { name: 'Article preview' })).toContainText(
-		'Exact UI text café 🦊'
-	)
-	await page.getByRole('button', { name: 'Save article', exact: true }).click()
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(page.getByRole('button', { name: 'Save article', exact: true })).toHaveCount(0)
+	await expect(page.getByRole('region', { name: 'Article preview' })).toHaveCount(0)
+	await expect(page.getByRole('article')).toHaveCount(0)
 	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
 	await page.getByRole('button', { name: 'Open saved article', exact: true }).click()
 	await expect(page.getByRole('article')).toContainText('Literal <script> stays text.')
@@ -304,7 +307,7 @@ test('Add Link previews, saves and detects a resolved duplicate without replacin
 	await page
 		.getByLabel('Article URL', { exact: true })
 		.fill('https://example.com/saved?order=1&keep=2#different')
-	await page.getByRole('button', { name: 'Get article', exact: true }).click()
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
 	await expect(page.getByText('Already saved.', { exact: true })).toBeVisible()
 	expect(remoteRequests).toEqual([])
 	expect(extractions()).toBe(1)
@@ -326,7 +329,7 @@ test('Add Link previews, saves and detects a resolved duplicate without replacin
 	await expect(page.getByRole('article')).toHaveCount(0)
 })
 
-test('UI preview saves offline, survives a full browser restart and syncs to a restored profile', async ({
+test('UI Add Link saves automatically with the authority offline, survives a full browser restart and syncs to a restored profile', async ({
 	browser
 }) => {
 	const profile = await mkdtemp(join(tmpdir(), 'clipper-ui-profile-'))
@@ -334,7 +337,7 @@ test('UI preview saves offline, survives a full browser restart and syncs to a r
 	const independent = await browser.newContext()
 	try {
 		const page = await context.newPage()
-		await fixtureArticle(page)
+		await fixtureArticle(page, () => authority.stop())
 		await page.goto('http://127.0.0.1:5180')
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
@@ -351,10 +354,8 @@ test('UI preview saves offline, survives a full browser restart and syncs to a r
 		await page
 			.getByLabel('Article URL', { exact: true })
 			.fill('https://example.com/saved?order=1&keep=2')
-		await page.getByRole('button', { name: 'Get article', exact: true }).click()
-		await expect(page.getByRole('button', { name: 'Save article', exact: true })).toBeVisible()
-		await authority.stop()
-		await page.getByRole('button', { name: 'Save article', exact: true }).click()
+		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+
 		await expect(
 			page.getByText('Article saved on this device. Sync pending.', { exact: true })
 		).toBeVisible()
@@ -391,7 +392,7 @@ test('UI preview saves offline, survives a full browser restart and syncs to a r
 	}
 })
 
-test('canceling an Add Link request prevents a late preview and leaves the form usable', async ({
+test('canceling an Add Link request prevents a late save and leaves the form usable', async ({
 	page
 }) => {
 	let release!: () => void
@@ -404,7 +405,7 @@ test('canceling an Add Link request prevents a late preview and leaves the form 
 	})
 	await page.goto('/')
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/')
-	await page.getByRole('button', { name: 'Get article', exact: true }).click()
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
 	await expect(
 		page.getByText('Resolving and extracting the article…', { exact: true })
 	).toBeVisible()
