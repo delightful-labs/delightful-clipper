@@ -27,6 +27,7 @@ export type AccountObservation =
 			status: 'ready'
 			binding: object
 			accountId: string
+			signedIn?: boolean
 			library?: LibraryCapability
 			root: RootAccess
 			recovery: RecoveryBinding

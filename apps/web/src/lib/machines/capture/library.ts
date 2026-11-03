@@ -1,3 +1,6 @@
+import { t, type MessageKey } from '../../localization/index.js'
+import type { WorkflowMessage } from '../../contracts/feedback.js'
+import type { SnapshotFrom } from 'xstate'
 import { syncOwnerMachine } from '../storage/sync-owner.js'
 import { readRecordMachine } from '../storage/read.js'
 import { assign, enqueueActions, fromCallback, sendTo, setup, stopChild } from 'xstate'
@@ -12,7 +15,7 @@ type Context = {
 	writing: boolean
 	saveRef: SaveRef | undefined
 	url: string
-	preview: Candidate | undefined
+	candidate: Candidate | undefined
 	captureId: string
 	readerId: string
 	readerGeneration: number
@@ -21,6 +24,29 @@ type Context = {
 	listFailed: boolean
 	sync: Record<string, 'pending' | 'accepted' | 'rejected'>
 	failure: string
+}
+type PresentationMeta = {
+	captureMessage?: (context: Context) => WorkflowMessage
+	readerMessage?: (context: Context) => WorkflowMessage
+	openCapture?: true
+}
+function captureStatus(
+	key: MessageKey,
+	variant: WorkflowMessage['variant'] = 'info'
+): PresentationMeta {
+	return { captureMessage: () => ({ text: t(key), variant }) }
+}
+function syncMessage(status: 'pending' | 'accepted' | 'rejected'): WorkflowMessage {
+	return {
+		text: t(
+			status === 'accepted'
+				? 'capture.status.synced'
+				: status === 'rejected'
+					? 'capture.status.rejected'
+					: 'library.sync_pending'
+		),
+		variant: status === 'rejected' ? 'error' : 'info'
+	}
 }
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Library unavailable')
@@ -53,7 +79,10 @@ export const libraryMachine = setup<
 	{},
 	never,
 	string,
-	LibraryCapability | undefined
+	LibraryCapability | undefined,
+	undefined,
+	{ type: string },
+	PresentationMeta
 >({
 	actors,
 	actions: {
@@ -62,7 +91,7 @@ export const libraryMachine = setup<
 			enqueue.sendTo('receipts', { type: 'SHUTDOWN' })
 			enqueue.assign({
 				closing: true,
-				preview: undefined,
+				candidate: undefined,
 				reader: undefined,
 				rows: [],
 				url: '',
@@ -79,7 +108,7 @@ export const libraryMachine = setup<
 		writing: false,
 		saveRef: undefined,
 		url: '',
-		preview: undefined,
+		candidate: undefined,
 		captureId: '',
 		readerId: '',
 		readerGeneration: 0,
@@ -122,13 +151,14 @@ export const libraryMachine = setup<
 									target: 'preparing',
 									actions: assign({
 										url: ({ event }) => event.url,
-										preview: undefined,
+										candidate: undefined,
 										failure: ''
 									})
 								}
 							}
 						},
 						preparing: {
+							meta: captureStatus('capture.status.pending'),
 							invoke: {
 								src: 'prepare',
 								input: ({ context }) => ({
@@ -139,14 +169,14 @@ export const libraryMachine = setup<
 									{
 										guard: ({ event }) => event.output.kind === 'scopeChanged',
 										target: 'idle',
-										actions: assign({ preview: undefined, url: '' })
+										actions: assign({ candidate: undefined, url: '' })
 									},
 									{
-										guard: ({ event }) => event.output.kind === 'preview',
-										target: 'preview',
+										guard: ({ event }) => event.output.kind === 'ready',
+										target: 'saving',
 										actions: assign({
-											preview: ({ event }) =>
-												event.output.kind === 'preview' ? event.output.candidate : undefined
+											candidate: ({ event }) =>
+												event.output.kind === 'ready' ? event.output.candidate : undefined
 										})
 									},
 									{
@@ -177,35 +207,28 @@ export const libraryMachine = setup<
 									})
 								}
 							},
-							on: { CANCEL: { target: 'idle', actions: assign({ url: '', preview: undefined }) } }
-						},
-						preview: {
-							on: {
-								SAVE: {
-									target: 'saving'
-								},
-								CANCEL: { target: 'idle', actions: assign({ preview: undefined, url: '' }) }
-							}
+							on: { CANCEL: { target: 'idle', actions: assign({ url: '', candidate: undefined }) } }
 						},
 						saving: {
+							meta: captureStatus('capture.status.saving'),
 							initial: 'active',
 							entry: assign(({ context, spawn }) => {
-								const preview = required(context.preview)
+								const candidate = required(context.candidate)
 								return {
 									writing: true,
-									captureId: preview.id,
+									captureId: candidate.id,
 									saveRef: required(context.capability).spawnSave(
 										(logic, options) => spawn(logic, options),
 										{
-											operationId: preview.id,
-											title: preview.title,
-											text: preview.text,
-											bytes: new TextEncoder().encode(preview.html),
+											operationId: candidate.id,
+											title: candidate.title,
+											text: candidate.text,
+											bytes: new TextEncoder().encode(candidate.html),
 											mediaType: 'text/html',
 											source: {
-												finalUrl: preview.finalUrl,
-												submittedUrl: preview.submittedUrl,
-												provenance: preview.provenance
+												finalUrl: candidate.finalUrl,
+												submittedUrl: candidate.submittedUrl,
+												provenance: candidate.provenance
 											}
 										}
 									)
@@ -213,7 +236,7 @@ export const libraryMachine = setup<
 							}),
 							exit: [
 								stopChild(({ context }) => required(context.saveRef)),
-								assign({ writing: false, preview: undefined, saveRef: undefined })
+								assign({ writing: false, candidate: undefined, saveRef: undefined })
 							],
 							states: {
 								active: {
@@ -278,31 +301,60 @@ export const libraryMachine = setup<
 							}
 						},
 						saved: {
+							meta: {
+								openCapture: true,
+								captureMessage: (context) => {
+									const status = context.sync[context.captureId]
+									return status === 'accepted' || status === 'rejected'
+										? syncMessage(status)
+										: { text: t('capture.status.saved'), variant: 'info' }
+								}
+							},
 							on: {
 								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
 							}
 						},
 						duplicate: {
+							meta: { ...captureStatus('capture.status.duplicate', 'info'), openCapture: true },
 							on: {
 								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
 							}
 						},
 						saveFailed: {
+							meta: { ...captureStatus('capture.status.save_failed', 'error') },
 							on: {
 								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
 							}
 						},
 						canceled: {
+							meta: { ...captureStatus('capture.status.canceled', 'info'), openCapture: true },
 							on: {
 								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
 							}
 						},
 						uncertain: {
+							meta: { ...captureStatus('capture.status.unknown', 'error'), openCapture: true },
 							on: {
 								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
 							}
 						},
 						failed: {
+							meta: {
+								captureMessage: ({ failure }) => ({
+									variant: 'error',
+									text: t(
+										failure === 'sourceTooLarge'
+											? 'capture.errors.source_too_large'
+											: failure === 'invalidUrl'
+												? 'capture.errors.invalid_url'
+												: failure === 'sessionUnavailable'
+													? 'capture.errors.session_unavailable'
+													: failure === 'rateLimited'
+														? 'capture.errors.rate_limited'
+														: 'capture.status.failed'
+									)
+								})
+							},
 							on: {
 								ADD: {
 									target: 'preparing',
@@ -317,7 +369,6 @@ export const libraryMachine = setup<
 					on: {
 						OPEN: {
 							target: '.loading',
-							reenter: true,
 							actions: assign({
 								readerId: ({ event }) => event.id,
 								readerGeneration: ({ context }) => context.readerGeneration + 1,
@@ -343,6 +394,7 @@ export const libraryMachine = setup<
 					states: {
 						empty: {},
 						loading: {
+							meta: { readerMessage: () => ({ text: t('reader.loading'), variant: 'info' }) },
 							invoke: {
 								src: 'read',
 								input: ({ context, self }) => ({
@@ -354,7 +406,14 @@ export const libraryMachine = setup<
 								onError: { target: 'shown', actions: assign({ reader: { kind: 'unavailable' } }) }
 							}
 						},
-						shown: {}
+						shown: {
+							meta: {
+								readerMessage: ({ reader }) =>
+									reader?.kind === 'available'
+										? { text: t('capture.text_only'), variant: 'info' }
+										: { text: t('reader.unavailable'), variant: 'error' }
+							}
+						}
 					}
 				}
 			}
@@ -363,7 +422,7 @@ export const libraryMachine = setup<
 			type: 'final',
 			entry: assign({
 				capability: undefined,
-				preview: undefined,
+				candidate: undefined,
 				reader: undefined,
 				rows: [],
 				sync: {},
@@ -374,3 +433,41 @@ export const libraryMachine = setup<
 		}
 	}
 })
+
+/** State-local message resolvers call i18next here; UI receives text and severity only. */
+export function selectLibraryView(
+	snapshot: SnapshotFrom<typeof libraryMachine> | undefined,
+	gatewayEnabled = true
+) {
+	const context = snapshot?.context
+	const visible = !!context && !context.closing && snapshot.status === 'active'
+	const meta = visible ? Object.values(snapshot.getMeta()) : []
+	return {
+		captureMessage: visible
+			? meta.find((value) => value?.captureMessage)?.captureMessage?.(context)
+			: undefined,
+		readerMessage: !snapshot
+			? { text: t('reader.loading'), variant: 'info' as const }
+			: visible
+				? meta.find((value) => value?.readerMessage)?.readerMessage?.(context)
+				: undefined,
+		disabledMessage:
+			visible && !gatewayEnabled
+				? { text: t('capture.disabled'), variant: 'info' as const }
+				: undefined,
+		listMessage:
+			visible && context.listFailed
+				? { text: t('library.list_failed'), variant: 'error' as const }
+				: undefined,
+		emptyMessage:
+			visible && !context.rows.length
+				? { text: t('library.empty'), variant: 'info' as const }
+				: undefined,
+		syncMessages: visible
+			? Object.fromEntries(
+					Object.entries(context.sync).map(([id, status]) => [id, syncMessage(status)])
+				)
+			: {},
+		canOpenCapture: visible && meta.some((value) => value?.openCapture === true)
+	}
+}

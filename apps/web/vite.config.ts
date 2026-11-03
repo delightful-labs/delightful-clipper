@@ -55,6 +55,14 @@ export default defineConfig(({ command, mode }) => {
 			}),
 			sveltekit({
 				adapter: adapter(),
+				outDir:
+					command === 'serve'
+						? process.env.CLIPPER_TEST === 'true'
+							? '.svelte-kit/e2e'
+							: mode === 'agent'
+								? '.svelte-kit/agent'
+								: '.svelte-kit/local'
+						: '.svelte-kit',
 				paths: { relative: false },
 				serviceWorker: { register: false },
 				...(process.env.CLIPPER_SHELL_VERSION

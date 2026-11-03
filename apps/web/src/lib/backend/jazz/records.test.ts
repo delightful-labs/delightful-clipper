@@ -232,7 +232,7 @@ it('reuses verified destination identity and treats a stranded intent as uncerta
 	const prepare = (capability: LibraryCapability, url: string) =>
 		toPromise(createActor(preparationMachine, { input: { capability, url } }).start())
 	const first = await prepare(capability, 'https://short.example/#a')
-	if (first.kind !== 'preview') throw new Error('Expected preview')
+	if (first.kind !== 'ready') throw new Error('Expected prepared content')
 	const candidate = first.candidate
 	const save = {
 		operationId: candidate.id,

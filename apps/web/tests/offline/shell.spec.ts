@@ -44,10 +44,11 @@ async function ready(page: Page) {
 		page.getByText('Offline startup prepared on this browser.', { exact: true })
 	).toBeVisible({ timeout: 45000 })
 }
-async function fixtureArticle(page: Page) {
+async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 	await page.route('**/api/capture/*', async (route) => {
 		const input: { operationId: string; url: string } = route.request().postDataJSON()
 		const base = { operationId: input.operationId, finalUrl: 'https://example.com/offline' }
+		if (route.request().url().endsWith('/extract')) await beforeExtract?.()
 		await route.fulfill({
 			json: route.request().url().endsWith('/resolve')
 				? base
@@ -61,7 +62,7 @@ async function fixtureArticle(page: Page) {
 						candidate: {
 							title: 'Completely offline article',
 							text: 'Exact offline shell text café 🦊',
-							html: '<p>Exact offline shell text café 🦊</p>',
+							html: '<h3>Offline structure</h3><details><summary>Offline diagram</summary><svg viewBox="0 0 100 100"><title>Chart</title><path d="M0 0 L10 10" stroke="red"/></svg></details><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p><ol><li id="fn1">Offline footnote</li></ol>',
 							assetCandidates: [],
 							partialEvidence: [],
 							parserVersion: 'fixture',
@@ -99,12 +100,11 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 	try {
 		const page = await context.newPage()
 		await clearHttpCache(page)
-		await fixtureArticle(page)
+		await fixtureArticle(page, stopAuthority)
 		const started = performance.now()
 		await page.goto('http://127.0.0.1:5190')
 		await ready(page)
 		const preparedMs = Math.round(performance.now() - started)
-		await page.getByRole('button', { name: 'Create account', exact: true }).click()
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		const wasmRequests = ui.requests.filter((request) => request.path.endsWith('.wasm'))
 		expect(wasmRequests).toHaveLength(1)
@@ -128,8 +128,8 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/offline')
-		await page.getByRole('button', { name: 'Get article', exact: true }).click()
-		await expect(page.getByRole('button', { name: 'Save article', exact: true })).toBeVisible()
+		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+
 		await page.evaluate(async () => {
 			await fetch('/api/private-probe', { headers: { Authorization: 'Bearer private-fixture' } })
 		})
@@ -144,11 +144,14 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			true
 		)
 		expect(cachePaths.filter((path) => path.endsWith('.wasm'))).toHaveLength(1)
-		await stopAuthority()
-		await page.getByRole('button', { name: 'Save article', exact: true }).click()
+
 		await expect(
 			page.getByText('Article saved on this device. Sync pending.', { exact: true })
 		).toBeVisible()
+		const readerPath = await page
+			.getByRole('link', { name: 'Open saved article', exact: true })
+			.getAttribute('href')
+		expect(readerPath).toMatch(/^\/articles\/[0-9a-f-]+$/)
 		await context.close()
 		await ui.stop()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
@@ -156,14 +159,19 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const reopened = await context.newPage()
 		await clearHttpCache(reopened)
 		const offlineStarted = performance.now()
-		const response = await reopened.goto('http://127.0.0.1:5190')
+		const response = await reopened.goto('http://127.0.0.1:5190' + readerPath)
 		expect(response?.fromServiceWorker()).toBe(true)
 		await ready(reopened)
-		await reopened
-			.getByRole('region', { name: 'Saved articles' })
-			.getByRole('button', { name: 'Completely offline article', exact: true })
-			.click()
 		await expect(reopened.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		await expect(
+			reopened.getByRole('article').getByRole('heading', { name: 'Offline structure' })
+		).toBeVisible()
+		await reopened.getByRole('article').locator('summary').click()
+		await expect(reopened.getByRole('article').locator('svg')).toBeVisible()
+		await expect(reopened.getByRole('article').locator('path')).toHaveAttribute('stroke', 'red')
+		await reopened.getByRole('article').getByRole('link', { name: 'Citation', exact: true }).click()
+		await expect(reopened.getByRole('article').locator('li')).toBeFocused()
+
 		console.info(
 			JSON.stringify({
 				offlineColdReaderMs: Math.round(performance.now() - offlineStarted),
@@ -175,13 +183,21 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await context.setOffline(false)
 		await ui.start()
 		await startAuthority()
-		await reopened.reload()
+		const sourceReload = await reopened.reload()
+		expect(sourceReload?.status()).toBe(200)
+		expect(sourceReload?.fromServiceWorker()).toBe(true)
 		await restored.reload()
 		await restored
 			.getByRole('region', { name: 'Saved articles' })
-			.getByRole('button', { name: 'Completely offline article', exact: true })
+			.getByRole('link', { name: 'Completely offline article', exact: true })
 			.click({ timeout: 30000 })
 		await expect(restored.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		await restored.getByRole('article').locator('summary').click()
+		await expect(restored.getByRole('article').locator('svg')).toBeVisible()
+		await expect(restored.getByRole('article').locator('path')).toHaveAttribute('stroke', 'red')
+		await expect(
+			restored.getByRole('article').getByRole('heading', { name: 'Offline structure' })
+		).toBeVisible()
 	} finally {
 		await independent.close()
 		await context.close()
@@ -280,7 +296,7 @@ test('failed update installation discards its partial cache and keeps the old bu
 		await clearHttpCache(page)
 		expect((await page.reload())?.fromServiceWorker()).toBe(true)
 		await ready(page)
-		await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeVisible()
+		await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
 	} finally {
 		await context.close()
 		await rm(profile, { recursive: true, force: true })
@@ -307,7 +323,6 @@ test('first-install failure admits the DLF account path and retry prepares offli
 				exact: true
 			})
 		).toBeVisible({ timeout: 45000 })
-		await page.getByRole('button', { name: 'Create account', exact: true }).click()
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		expect((await page.evaluate(() => caches.keys())).some((name) => name.startsWith(prefix))).toBe(
 			false
