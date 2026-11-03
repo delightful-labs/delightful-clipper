@@ -16,7 +16,7 @@ The selected exact pins are Readability 0.6.0, jsdom 29.1.1, DOMPurify 3.4.17 an
 
 ## Evidence and open gate
 
-`pnpm verify` passes, including 120 unit tests and the Netlify adapter build. All five existing Chromium tests pass with gateway routes enabled in the test environment. The authenticated browser test now confirms 401 for missing/forged credentials and 400 for a blocked loopback URL after successful authentication.
+`pnpm verify` passes, including 120 unit tests and the Netlify adapter build. All five existing Chromium tests pass with gateway routes enabled in the test environment. The authenticated browser test now confirms 401 for missing/forged credentials and 400 for a blocked loopback URL after successful authentication, and 503 with a retryable JSON outcome when the real registry is stopped. Authentication failures also use stable JSON codes. Parser diagnostics are isolated from the console so source content is not logged.
 
 A live isolated-agent smoke created an account, synced the private root, and extracted `https://example.com/` with the real production request leaf, native registry verifier, public DNS, pinned TLS transport and sanitizer: status 200, expected title and nonempty text. Unit fixtures cover mixed public/private DNS answers, numeric/mapped destinations, redirects, cancellation, actual pinned sockets/Host, bounded decompression, footnotes and hostile markup. Normal dev/agent now explicitly select their own public app ID and canonical registry because the SDK otherwise gives an existing `.env` app ID precedence over its configuration option.
 

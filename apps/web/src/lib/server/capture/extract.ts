@@ -1,4 +1,4 @@
-import { JSDOM } from 'jsdom'
+import { JSDOM, VirtualConsole } from 'jsdom'
 import { Readability } from '@mozilla/readability'
 import createDOMPurify from 'dompurify'
 import { CaptureError } from './errors.js'
@@ -6,6 +6,7 @@ import { sourceUrl } from './destination.js'
 export function extract(body: Uint8Array, mediaType: string, url: string) {
 	if (!/^(text\/html|application\/xhtml\+xml|text\/plain)(;|$)/i.test(mediaType))
 		throw new CaptureError('unsupportedMedia', 415)
+	const virtualConsole = new VirtualConsole()
 	const plain = /^text\/plain/i.test(mediaType)
 	let text = ''
 	if (plain) {
@@ -18,8 +19,8 @@ export function extract(body: Uint8Array, mediaType: string, url: string) {
 		}
 	}
 	const dom = plain
-		? new JSDOM('<article><pre></pre></article>', { url })
-		: new JSDOM(Buffer.from(body), { url, contentType: mediaType })
+		? new JSDOM('<article><pre></pre></article>', { url, virtualConsole })
+		: new JSDOM(Buffer.from(body), { url, contentType: mediaType, virtualConsole })
 	try {
 		const document = dom.window.document
 		if (/^text\/plain/i.test(mediaType)) {
@@ -54,7 +55,7 @@ export function extract(body: Uint8Array, mediaType: string, url: string) {
 			? { title: new URL(url).hostname, byline: null, content: document.body.innerHTML }
 			: new Readability(document, { maxElemsToParse: 50000 }).parse()
 		if (!article?.content) throw new CaptureError('parseFailed', 422)
-		const result = new JSDOM(article.content, { url })
+		const result = new JSDOM(article.content, { url, virtualConsole })
 		try {
 			const root = result.window.document
 			for (const link of root.querySelectorAll('a[href]')) {

@@ -47,9 +47,12 @@ export function createGatewayMachine(capability: {
 		extract: fromPromise(async ({ input }: { input: Context }) => {
 			input.signal.throwIfAborted()
 			if (!input.hop) throw new Error('Missing response')
-			return input.mode === 'resolve'
-				? undefined
-				: capability.extract(input.hop.body, input.hop.mediaType, input.current)
+			if (input.mode === 'resolve') return undefined
+			try {
+				return capability.extract(input.hop.body, input.hop.mediaType, input.current)
+			} catch (error) {
+				throw error instanceof CaptureError ? error : new CaptureError('parseFailed', 422)
+			}
 		})
 	}
 	return setup<

@@ -185,7 +185,9 @@ test('authenticates capture requests with the existing account and rejects missi
 	await page.goto('/')
 	await page.getByRole('button', { name: 'Create account', exact: true }).click()
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
-	expect((await request.post('/api/capture/resolve')).status()).toBe(401)
+	const missing = await request.post('/api/capture/resolve')
+	expect(missing.status()).toBe(401)
+	expect(await missing.json()).toEqual({ code: 'sessionUnavailable', retryable: false })
 	expect(
 		(
 			await request.post('/api/capture/resolve', { headers: { Authorization: 'Bearer forged' } })
@@ -206,4 +208,20 @@ test('authenticates capture requests with the existing account and rejects missi
 			).status
 		})
 	).toBe(400)
+	await authority.stop()
+	try {
+		const outage = await page.evaluate(async () => {
+			const path = '/tests/storage-driver.ts'
+			const { requestCapture } = await import(/* @vite-ignore */ path)
+			const response = await requestCapture('resolve', {
+				protocolVersion: 1,
+				operationId: crypto.randomUUID(),
+				url: 'http://127.0.0.1/'
+			})
+			return { status: response.status, body: await response.json() }
+		})
+		expect(outage).toEqual({ status: 503, body: { code: 'gatewayUnavailable', retryable: true } })
+	} finally {
+		authority = await startAuthority()
+	}
 })
