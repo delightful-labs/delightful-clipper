@@ -16,7 +16,7 @@ import type {
 	AccountObservation,
 	RootAccess,
 	RootWrite
-} from '../contracts/account.js'
+} from '../../contracts/account.js'
 
 type Event<Session extends object> =
 	| SessionStartupReport<Session>
@@ -56,7 +56,7 @@ function observe(host: AccountHost): AccountObservation {
 	}
 }
 
-export function createAccountMachine<Session extends object>() {
+export function createApplicationReadinessMachine<Session extends object>() {
 	const accountActors = {
 		startup: createSessionStartupMachine<Session>(),
 		readiness: createSessionReadinessMachine(),
@@ -131,7 +131,7 @@ export function createAccountMachine<Session extends object>() {
 			failedIdentity: assign({ feedback: 'identityFailed' })
 		}
 	}).createMachine({
-		id: 'account',
+		id: 'application-readiness',
 		initial: 'opening',
 		context: ({ input }) => ({
 			input,
@@ -153,7 +153,7 @@ export function createAccountMachine<Session extends object>() {
 			id: 'startup',
 			src: 'startup',
 			input: ({ self }) => ({ reportTo: self }),
-			onDone: '#account.closed'
+			onDone: '#application-readiness.closed'
 		},
 		on: {
 			SESSION_STARTING: {
@@ -196,7 +196,7 @@ export function createAccountMachine<Session extends object>() {
 					id: 'readiness',
 					src: 'readiness',
 					input: ({ self }) => ({ reportTo: self }),
-					onDone: '#account.closing'
+					onDone: '#application-readiness.closing'
 				},
 				on: {
 					SHUTDOWN: '.draining',
@@ -307,11 +307,11 @@ export function createAccountMachine<Session extends object>() {
 							src: 'create',
 							input: ({ context }) => required(context.host),
 							onDone: [
-								{ guard: 'stoppingCreate', target: '#account.running.draining' },
+								{ guard: 'stoppingCreate', target: '#application-readiness.running.draining' },
 								{ target: 'route', actions: 'refresh' }
 							],
 							onError: [
-								{ guard: 'stoppingCreate', target: '#account.running.draining' },
+								{ guard: 'stoppingCreate', target: '#application-readiness.running.draining' },
 								{ target: 'route', actions: ['failedIdentity', 'refresh'] }
 							]
 						}
@@ -348,7 +348,7 @@ export function createAccountMachine<Session extends object>() {
 							onDone: [
 								{
 									guard: 'stoppingRestore',
-									target: '#account.running.draining',
+									target: '#application-readiness.running.draining',
 									actions: 'clearPhrase'
 								},
 								{
@@ -370,7 +370,7 @@ export function createAccountMachine<Session extends object>() {
 							onError: [
 								{
 									guard: 'stoppingRestore',
-									target: '#account.running.draining',
+									target: '#application-readiness.running.draining',
 									actions: 'clearPhrase'
 								},
 								{
@@ -388,11 +388,11 @@ export function createAccountMachine<Session extends object>() {
 							src: 'logout',
 							input: ({ context }) => required(context.host),
 							onDone: [
-								{ guard: 'stoppingLogout', target: '#account.running.draining' },
+								{ guard: 'stoppingLogout', target: '#application-readiness.running.draining' },
 								{ target: 'route', actions: 'refresh' }
 							],
 							onError: [
-								{ guard: 'stoppingLogout', target: '#account.running.draining' },
+								{ guard: 'stoppingLogout', target: '#application-readiness.running.draining' },
 								{ target: 'route', actions: ['failedIdentity', 'refresh'] }
 							]
 						}
@@ -402,7 +402,7 @@ export function createAccountMachine<Session extends object>() {
 						on: {
 							OBSERVED: [
 								{ guard: 'sameBinding' },
-								{ target: '#account.running.route', actions: 'rememberObservation' }
+								{ target: '#application-readiness.running.route', actions: 'rememberObservation' }
 							]
 						},
 						states: {
@@ -417,7 +417,7 @@ export function createAccountMachine<Session extends object>() {
 									onError: 'failed'
 								}
 							},
-							conflict: { on: { LOGOUT: '#account.running.loggingOut' } },
+							conflict: { on: { LOGOUT: '#application-readiness.running.loggingOut' } },
 							ensuring: {
 								invoke: {
 									src: 'ensureRoot',
@@ -437,19 +437,21 @@ export function createAccountMachine<Session extends object>() {
 									src: 'local',
 									input: ({ context }) => required(context.write),
 									onDone: [
-										{ guard: 'stoppingLocal', target: '#account.running.draining' },
+										{ guard: 'stoppingLocal', target: '#application-readiness.running.draining' },
 										{ target: 'ready' }
 									],
 									onError: [
-										{ guard: 'stoppingLocal', target: '#account.running.draining' },
+										{ guard: 'stoppingLocal', target: '#application-readiness.running.draining' },
 										{ target: 'failed' }
 									]
 								}
 							},
-							failed: { on: { RETRY: 'reading', LOGOUT: '#account.running.loggingOut' } },
+							failed: {
+								on: { RETRY: 'reading', LOGOUT: '#application-readiness.running.loggingOut' }
+							},
 							ready: {
 								initial: 'syncPending',
-								on: { LOGOUT: '#account.running.loggingOut' },
+								on: { LOGOUT: '#application-readiness.running.loggingOut' },
 								states: {
 									syncPending: {
 										invoke: {
@@ -460,7 +462,7 @@ export function createAccountMachine<Session extends object>() {
 										}
 									},
 									synced: {},
-									syncFailed: { on: { RETRY: '#account.running.library.reading' } }
+									syncFailed: { on: { RETRY: '#application-readiness.running.library.reading' } }
 								}
 							}
 						}

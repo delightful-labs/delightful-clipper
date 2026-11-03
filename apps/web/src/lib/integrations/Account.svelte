@@ -4,13 +4,13 @@
 	import type { SnapshotFrom } from 'xstate'
 	import RecoveryPhrase from 'delightful-local-first/recovery/svelte'
 	import { Button, StatusMessage, Textarea } from 'delightful-ui'
-	import { createAccountMachine } from '../machines/account.js'
+	import { createApplicationReadinessMachine } from '../machines/runtime/application-readiness.js'
 	import { accountInput, type Session } from '../backend/jazz/account.js'
 	import { t, recoveryMessages } from '../localization/index.js'
 
-	const accountMachine = createAccountMachine<Session>()
+	const applicationReadinessMachine = createApplicationReadinessMachine<Session>()
 	let { appId, serverUrl }: { appId: string; serverUrl: string } = $props()
-	let snapshot = $state<SnapshotFrom<typeof accountMachine>>()
+	let snapshot = $state<SnapshotFrom<typeof applicationReadinessMachine>>()
 	let phrase = $state('')
 	let send = $state<(event: {type: 'CREATE' | 'LOGOUT' | 'RETRY'} | {type: 'RESTORE'; phrase: string}) => void>(() => {})
 	const configured = $derived(appId.length > 0 && serverUrl.length > 0)
@@ -37,7 +37,7 @@
 
 	onMount(() => {
 		if (!appId || !serverUrl) return
-		const actor = createActor(accountMachine, {input:accountInput({appId,serverUrl,env:'clipper'})})
+		const actor = createActor(applicationReadinessMachine, {input:accountInput({appId,serverUrl,env:'clipper'})})
 		send = (event) => actor.send(event)
 		const subscription = actor.subscribe((next) => { snapshot = next })
 		actor.start()

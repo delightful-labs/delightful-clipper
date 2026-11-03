@@ -4,15 +4,15 @@ import {
 } from 'delightful-local-first/session/workflow'
 import { createActor, waitFor } from 'xstate'
 import { describe, expect, it, vi } from 'vitest'
-import { createAccountMachine } from './account.js'
+import { createApplicationReadinessMachine } from './application-readiness.js'
 import type {
 	AccountHost,
 	AccountInput,
 	AccountObservation,
 	RootAccess
-} from '../contracts/account.js'
+} from '../../contracts/account.js'
 
-const accountMachine = createAccountMachine<AccountHost>()
+const applicationReadinessMachine = createApplicationReadinessMachine<AccountHost>()
 function startup(open: () => Promise<AccountHost>) {
 	const binding = {}
 	const owner = createActor(createSessionAcquisitionMachine<AccountHost>(), {
@@ -100,13 +100,13 @@ describe('account/root ownership', () => {
 		const { host } = fixture({ status: 'signed-out' })
 		const open = vi.fn(() => opening.promise)
 		const { owner, attach } = startup(open)
-		const actor = createActor(accountMachine, { input: attach() }).start()
+		const actor = createActor(applicationReadinessMachine, { input: attach() }).start()
 		actor.send({ type: 'SHUTDOWN' })
 		await waitFor(actor, (snapshot) => snapshot.status === 'done')
 		opening.resolve(host)
 		await waitFor(owner, (snapshot) => selectAcquiredSession(snapshot) === host)
 		expect(host.release).not.toHaveBeenCalled()
-		const next = createActor(accountMachine, { input: attach() }).start()
+		const next = createActor(applicationReadinessMachine, { input: attach() }).start()
 		await waitFor(next, (snapshot) => snapshot.matches({ running: 'signedOut' }))
 		expect(open).toHaveBeenCalledOnce()
 		next.send({ type: 'SHUTDOWN' })
@@ -119,7 +119,7 @@ describe('account/root ownership', () => {
 		const local = Promise.withResolvers<void>(),
 			global = Promise.withResolvers<void>()
 		const { host } = fixture(ready('owner', root(local.promise, global.promise)))
-		const actor = createActor(accountMachine, { input: input(host) }).start()
+		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: { library: 'local' } }))
 		expect(actor.getSnapshot().matches({ running: { library: 'ready' } })).toBe(false)
 		local.resolve()
@@ -136,7 +136,7 @@ describe('account/root ownership', () => {
 	it('drains a pending root write before releasing the DLF attachment', async () => {
 		const local = Promise.withResolvers<void>()
 		const { host } = fixture(ready('owner', root(local.promise, Promise.resolve())))
-		const actor = createActor(accountMachine, { input: input(host) }).start()
+		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: { library: 'local' } }))
 		actor.send({ type: 'SHUTDOWN' })
 		expect(host.release).not.toHaveBeenCalled()
@@ -149,7 +149,7 @@ describe('account/root ownership', () => {
 		const initial = ready('first', root(first.promise, Promise.resolve()))
 		const next = ready('second', root(Promise.resolve(), Promise.resolve()))
 		const { host, emit } = fixture(initial)
-		const actor = createActor(accountMachine, { input: input(host) }).start()
+		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: { library: 'local' } }))
 		emit(next)
 		await waitFor(actor, (snapshot) =>
@@ -164,7 +164,7 @@ describe('account/root ownership', () => {
 	it('does not overwrite an incompatible root', async () => {
 		const ensure = vi.fn(() => ({ local: async () => {}, global: async () => {} }))
 		const { host } = fixture(ready('owner', { read: async () => 'incompatible', ensure }))
-		const actor = createActor(accountMachine, { input: input(host) }).start()
+		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: { library: 'conflict' } }))
 		expect(ensure).not.toHaveBeenCalled()
 		actor.send({ type: 'SHUTDOWN' })
@@ -172,7 +172,7 @@ describe('account/root ownership', () => {
 	})
 	it('uses DLF validation and clears an invalid restoration phrase without mutation', async () => {
 		const { host } = fixture({ status: 'signed-out' })
-		const actor = createActor(accountMachine, { input: input(host) }).start()
+		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: 'signedOut' }))
 		actor.send({ type: 'RESTORE', phrase: 'invalid synthetic phrase' })
 		await waitFor(actor, (snapshot) => snapshot.context.feedback === 'restoreInvalid')
@@ -187,7 +187,7 @@ describe('account/root ownership', () => {
 			.fn(async () => host)
 			.mockRejectedValueOnce(new Error('Synthetic acquisition failure'))
 		const { owner, attach } = startup(open)
-		const actor = createActor(accountMachine, { input: attach() }).start()
+		const actor = createActor(applicationReadinessMachine, { input: attach() }).start()
 		await waitFor(actor, (snapshot) => snapshot.matches('openFailed'))
 		actor.send({ type: 'RETRY' })
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: 'signedOut' }))
@@ -204,7 +204,7 @@ describe('account/root ownership', () => {
 			...host,
 			readiness: { ...host.readiness, capability: { ...host.readiness.capability, retry } }
 		}
-		const actor = createActor(accountMachine, { input: input(bound) }).start()
+		const actor = createActor(applicationReadinessMachine, { input: input(bound) }).start()
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: 'unavailable' }))
 		actor.send({ type: 'RETRY' })
 		actor.send({ type: 'RETRY' })
@@ -224,7 +224,7 @@ describe('account/root ownership', () => {
 			...host,
 			readiness: { ...host.readiness, capability: { ...host.readiness.capability, subscribe } }
 		}
-		const actor = createActor(accountMachine, { input: input(bound) }).start()
+		const actor = createActor(applicationReadinessMachine, { input: input(bound) }).start()
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: 'unavailable' }))
 		actor.send({ type: 'RETRY' })
 		await waitFor(actor, (snapshot) => snapshot.matches({ running: 'signedOut' }))
