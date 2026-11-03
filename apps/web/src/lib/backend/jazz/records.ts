@@ -86,7 +86,7 @@ export function createLibraryRecords(
 	const parts = async (id: string) => {
 		check()
 		const rows = await db.all(app.blobParts.where({ manifestId: id, libraryId }).limit(6), {
-			tier: ReadTier.LocalFirst
+			tier: ReadTier.LocalFirstUnlessEmpty
 		})
 		check()
 		return rows
@@ -113,7 +113,7 @@ export function createLibraryRecords(
 			document: async (id) => {
 				check()
 				const row = await db.one(app.documents.where({ id, libraryId }), {
-					tier: ReadTier.LocalFirst
+					tier: ReadTier.LocalFirstUnlessEmpty
 				})
 				check()
 				return row
@@ -121,7 +121,7 @@ export function createLibraryRecords(
 			snapshot: async (id) => {
 				check()
 				const row = await db.one(app.snapshots.where({ id, libraryId }), {
-					tier: ReadTier.LocalFirst
+					tier: ReadTier.LocalFirstUnlessEmpty
 				})
 				check()
 				return row
@@ -129,7 +129,7 @@ export function createLibraryRecords(
 			manifest: async (id) => {
 				check()
 				const row = await db.one(app.blobManifests.where({ id, libraryId }), {
-					tier: ReadTier.LocalFirst
+					tier: ReadTier.LocalFirstUnlessEmpty
 				})
 				check()
 				return row
