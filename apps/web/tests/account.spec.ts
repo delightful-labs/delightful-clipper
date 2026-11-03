@@ -258,7 +258,7 @@ async function fixtureArticle(page: import('@playwright/test').Page) {
 					candidate: {
 						title: 'UI saved article',
 						text: 'Exact UI text café 🦊\nLiteral <script> stays text.',
-						html: '<p>Exact UI text café 🦊</p><p>Literal &lt;script&gt; stays text.</p>',
+						html: '<h3>Structured heading</h3><p>Exact UI text café 🦊</p><p>Literal &lt;script&gt; stays text. <a href="#fn1">Citation</a></p><ol><li id="fn1">Saved footnote</li></ol><pre><code>const safe = true</code></pre><a href="https://external.example/next">External source</a><img src="https://images.example/pixel.png"><script>globalThis.readerCompromised=true</script><p onclick="globalThis.readerCompromised=true">Safe text</p>',
 						assetCandidates: [
 							{ sourceUrl: 'https://images.example/pixel.png', alt: 'Unavailable image' }
 						],
@@ -277,6 +277,10 @@ test('Add Link previews, saves and detects a resolved duplicate without replacin
 	page
 }) => {
 	const extractions = await fixtureArticle(page)
+	const remoteRequests: string[] = []
+	page.on('request', (request) => {
+		if (request.url().includes('images.example')) remoteRequests.push(request.url())
+	})
 	await page.goto('/')
 	await page.getByRole('button', { name: 'Create account', exact: true }).click()
 	await expect(page.getByRole('heading', { name: 'Add link', exact: true })).toBeVisible()
@@ -289,17 +293,37 @@ test('Add Link previews, saves and detects a resolved duplicate without replacin
 	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
 	await page.getByRole('button', { name: 'Open saved article', exact: true }).click()
 	await expect(page.getByRole('article')).toContainText('Literal <script> stays text.')
+	const reader = page.getByRole('article')
+	await expect(reader.getByRole('heading', { name: 'Structured heading' })).toBeVisible()
+	await expect(reader.locator('code')).toHaveText('const safe = true')
+	await expect(reader.locator('script,img,[onclick]')).toHaveCount(0)
+	const external = reader.getByRole('link', { name: 'External source' })
+	await expect(external).toHaveAttribute('href', 'https://external.example/next')
+	await expect(external).not.toHaveAttribute('target')
+	await reader.getByRole('link', { name: 'Citation', exact: true }).click()
+	await expect(reader.locator('li')).toBeFocused()
+	expect(await page.evaluate(() => Reflect.get(globalThis, 'readerCompromised'))).toBeUndefined()
+
 	await page
 		.getByLabel('Article URL', { exact: true })
 		.fill('https://example.com/saved?order=1&keep=2#different')
 	await page.getByRole('button', { name: 'Get article', exact: true }).click()
 	await expect(page.getByText('Already saved.', { exact: true })).toBeVisible()
+	expect(remoteRequests).toEqual([])
 	expect(extractions()).toBe(1)
 	await expect(
 		page
 			.getByRole('region', { name: 'Saved articles' })
 			.getByRole('button', { name: 'UI saved article', exact: true })
 	).toHaveCount(1)
+	await page.route('https://external.example/next', (route) =>
+		route.fulfill({ contentType: 'text/html', body: '<p>External destination</p>' })
+	)
+	const pagesBefore = page.context().pages().length
+	await external.click()
+	await expect(page).toHaveURL('https://external.example/next')
+	expect(page.context().pages()).toHaveLength(pagesBefore)
+	await page.goBack()
 	await page.getByRole('button', { name: 'Sign out', exact: true }).click()
 	await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeVisible()
 	await expect(page.getByText('UI saved article', { exact: true })).toHaveCount(0)
@@ -349,6 +373,11 @@ test('UI preview saves offline, survives a full browser restart and syncs to a r
 			.click()
 		await expect(reopened.getByRole('article')).toContainText('Exact UI text café 🦊')
 		await expect(reopened.getByRole('article')).toContainText('Literal <script> stays text.')
+		await expect(
+			reopened.getByRole('article').getByRole('heading', { name: 'Structured heading' })
+		).toBeVisible()
+		await expect(reopened.getByRole('article').locator('code')).toHaveText('const safe = true')
+
 		authority = await startAuthority()
 		await reopened.reload()
 		await restored.reload()
@@ -357,6 +386,9 @@ test('UI preview saves offline, survives a full browser restart and syncs to a r
 			.getByRole('button', { name: 'UI saved article', exact: true })
 			.click({ timeout: 30000 })
 		await expect(restored.getByRole('article')).toContainText('Exact UI text café 🦊')
+		await expect(
+			restored.getByRole('article').getByRole('heading', { name: 'Structured heading' })
+		).toBeVisible()
 	} finally {
 		await independent.close()
 		await context.close()
@@ -386,4 +418,24 @@ test('canceling an Add Link request prevents a late preview and leaves the form 
 	release()
 	await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled()
 	await expect(page.getByRole('button', { name: 'Save article', exact: true })).toHaveCount(0)
+})
+
+test('reader falls back to exact text when a saved asset is not HTML', async ({ page }) => {
+	await page.goto('/')
+	await page.getByRole('button', { name: 'Create account', exact: true }).click()
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const result = await page.evaluate(async () => {
+		const path = '/tests/storage-driver.ts'
+		const { save } = await import(/* @vite-ignore */ path)
+		return save(crypto.randomUUID())
+	})
+	expect(result).toBe('saved')
+	await page
+		.getByRole('region', { name: 'Saved articles' })
+		.getByRole('button', { name: 'Restart proof', exact: true })
+		.click()
+	await expect(page.getByRole('article')).toContainText('Exact offline text café 🦊')
+	await expect(page.getByRole('article').locator('.reader')).toHaveClass(/plain/)
+	await page.getByRole('button', { name: 'Close article', exact: true }).click()
+	await expect(page.getByRole('article')).toHaveCount(0)
 })

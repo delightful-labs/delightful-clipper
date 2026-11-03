@@ -61,7 +61,7 @@ async function fixtureArticle(page: Page) {
 						candidate: {
 							title: 'Completely offline article',
 							text: 'Exact offline shell text café 🦊',
-							html: '<p>Exact offline shell text café 🦊</p>',
+							html: '<h3>Offline structure</h3><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p><ol><li id="fn1">Offline footnote</li></ol>',
 							assetCandidates: [],
 							partialEvidence: [],
 							parserVersion: 'fixture',
@@ -164,6 +164,12 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.getByRole('button', { name: 'Completely offline article', exact: true })
 			.click()
 		await expect(reopened.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		await expect(
+			reopened.getByRole('article').getByRole('heading', { name: 'Offline structure' })
+		).toBeVisible()
+		await reopened.getByRole('article').getByRole('link', { name: 'Citation', exact: true }).click()
+		await expect(reopened.getByRole('article').locator('li')).toBeFocused()
+
 		console.info(
 			JSON.stringify({
 				offlineColdReaderMs: Math.round(performance.now() - offlineStarted),
@@ -182,6 +188,9 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.getByRole('button', { name: 'Completely offline article', exact: true })
 			.click({ timeout: 30000 })
 		await expect(restored.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		await expect(
+			restored.getByRole('article').getByRole('heading', { name: 'Offline structure' })
+		).toBeVisible()
 	} finally {
 		await independent.close()
 		await context.close()

@@ -1,0 +1,45 @@
+import type { Config } from 'dompurify'
+
+/** Shared extraction/display allowlist: no active content or network-loading elements. */
+export const articlePolicy = {
+	ALLOWED_TAGS: [
+		'article',
+		'section',
+		'p',
+		'h1',
+		'h2',
+		'h3',
+		'h4',
+		'h5',
+		'h6',
+		'ul',
+		'ol',
+		'li',
+		'a',
+		'sup',
+		'sub',
+		'em',
+		'strong',
+		'b',
+		'i',
+		'blockquote',
+		'pre',
+		'code',
+		'br',
+		'hr',
+		'table',
+		'thead',
+		'tbody',
+		'tr',
+		'th',
+		'td',
+		'figure',
+		'figcaption',
+		'dl',
+		'dt',
+		'dd'
+	],
+	ALLOWED_ATTR: ['href', 'id', 'title', 'colspan', 'rowspan'],
+	ALLOW_DATA_ATTR: false,
+	ALLOW_ARIA_ATTR: false
+} satisfies Config

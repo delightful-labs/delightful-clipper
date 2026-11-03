@@ -1,5 +1,6 @@
 <script lang="ts">
  import {onMount} from 'svelte'
+ import SavedContent from './SavedContent.svelte'
  import type {ActorRefFrom,SnapshotFrom} from 'xstate'
  import {normalizedSource} from '../capture/source.js'
  import {libraryMachine} from '../machines/capture/library.js'
@@ -57,11 +58,11 @@
  <section aria-label={t('reader.heading')}>
  <Button type="button" onclick={()=>actor.send({type:'CLOSE_READER'})}>{action('close','article')}</Button>
  {#if capture.reader.kind==='available'}
- <article><h2>{capture.reader.document.title}</h2>{#if originalUrl}<a href={originalUrl} target="_blank" rel="noreferrer">{action('open','original')}</a>{/if}<StatusMessage text={t('capture.text_only')}/><div class="reader">{capture.reader.text}</div></article>
+ <article><h2>{capture.reader.document.title}</h2>{#if originalUrl}<a href={originalUrl} rel="noreferrer">{action('open','original')}</a>{/if}<StatusMessage text={t('capture.text_only')}/><SavedContent asset={capture.reader.asset} text={capture.reader.text} sourceUrl={originalUrl}/></article>
  {:else}<StatusMessage variant="error" text={t('reader.unavailable')}/>{/if}
  </section>
 {/if}
 {/if}
 <style>
- section{margin-block:1.5rem}form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}input{flex:1;min-width:12rem;padding:.6rem;font:inherit}li{margin-block:.75rem}li span{display:block;font-size:.875rem}.preview{white-space:pre-wrap;max-height:20rem;overflow:auto}.reader{white-space:pre-wrap;line-height:1.7;max-width:70ch;margin-inline:auto;overflow-wrap:anywhere}
+ section{margin-block:1.5rem}form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}input{flex:1;min-width:12rem;padding:.6rem;font:inherit}li{margin-block:.75rem}li span{display:block;font-size:.875rem}.preview{white-space:pre-wrap;max-height:20rem;overflow:auto}
 </style>

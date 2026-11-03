@@ -1,3 +1,4 @@
+import { articlePolicy } from '../../reader/policy.js'
 import { Readability } from '@mozilla/readability'
 import createDOMPurify from 'dompurify'
 import { CaptureError } from './errors.js'
@@ -122,48 +123,7 @@ export async function extract(body: Uint8Array, mediaType: string, url: string) 
 					}
 			}
 			const purify = createDOMPurify(result.window)
-			const html = purify.sanitize(root.body.innerHTML, {
-				ALLOWED_TAGS: [
-					'article',
-					'section',
-					'p',
-					'h1',
-					'h2',
-					'h3',
-					'h4',
-					'h5',
-					'h6',
-					'ul',
-					'ol',
-					'li',
-					'a',
-					'sup',
-					'sub',
-					'em',
-					'strong',
-					'b',
-					'i',
-					'blockquote',
-					'pre',
-					'code',
-					'br',
-					'hr',
-					'table',
-					'thead',
-					'tbody',
-					'tr',
-					'th',
-					'td',
-					'figure',
-					'figcaption',
-					'dl',
-					'dt',
-					'dd'
-				],
-				ALLOWED_ATTR: ['href', 'id', 'title', 'colspan', 'rowspan'],
-				ALLOW_DATA_ATTR: false,
-				ALLOW_ARIA_ATTR: false
-			})
+			const html = purify.sanitize(root.body.innerHTML, articlePolicy)
 			root.body.innerHTML = html
 			const blocks = new Set([
 				'P',
