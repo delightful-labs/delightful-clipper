@@ -1,3 +1,4 @@
+import { rootBootstrapMachine } from './root-bootstrap.js'
 import {
 	createSessionStartupMachine,
 	createSessionReadinessMachine
@@ -35,6 +36,8 @@ type Context<Session extends object> = {
 	retryAttempt: number
 	observationAttempt: number
 	observationFailed: boolean
+	ownerFailed: boolean
+	cleanupFailed: boolean
 	observation: AccountObservation
 	write: RootWrite | undefined
 	phrase: string
@@ -63,9 +66,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 		readiness: createSessionReadinessMachine(),
 		create: fromPromise(({ input }: { input: AccountHost }) => input.create()),
 		logout: fromPromise(({ input }: { input: AccountHost }) => input.logout()),
-		readRoot: fromPromise(({ input }: { input: RootAccess }) => input.read()),
-		ensureRoot: fromPromise(async ({ input }: { input: RootAccess }) => input.ensure()),
-		local: fromPromise(({ input }: { input: RootWrite }) => input.local()),
+		bootstrap: rootBootstrapMachine,
 		global: fromPromise(({ input }: { input: RootWrite }) => input.global()),
 		restore: restorationMachine
 	}
@@ -80,22 +81,40 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			clearPhrase: undefined
 			rememberObservation: undefined
 			failedIdentity: undefined
+			clearResources: undefined
 		},
 		{
 			stoppingCreate: undefined
 			stoppingRestore: undefined
 			stoppingLogout: undefined
-			stoppingLocal: undefined
+			stoppingBootstrap: undefined
+			replacingBootstrap: undefined
 			sameBinding: undefined
 			currentStartup: undefined
 			currentReadiness: undefined
+			currentReadinessScope: undefined
+			failedOwner: undefined
 		},
 		never,
-		string,
-		AccountInput<Session>
+		never,
+		AccountInput<Session>,
+		undefined,
+		{ type: string },
+		{ status: MachineStatus }
 	>({
 		actors: accountActors,
 		guards: {
+			failedOwner: ({ context, event }) =>
+				event.type === 'SESSION_STARTUP_FAILED' &&
+				event.reason === 'ownerFailed' &&
+				event.scope.binding === context.scope.binding &&
+				event.scope.attachment === context.scope.attachment &&
+				event.scope.generation === context.scope.generation,
+			currentReadinessScope: ({ context, event }) =>
+				'scope' in event &&
+				event.scope.binding === context.readinessScope?.binding &&
+				event.scope.attachment === context.readinessScope?.attachment,
+
 			currentStartup: ({ context, event }) =>
 				'scope' in event &&
 				'generation' in event.scope &&
@@ -112,7 +131,8 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			stoppingCreate: stateIn({ running: { creating: 'stopping' } }),
 			stoppingRestore: stateIn({ running: { restoring: 'stopping' } }),
 			stoppingLogout: stateIn({ running: { loggingOut: 'stopping' } }),
-			stoppingLocal: stateIn({ running: { library: { local: 'stopping' } } }),
+			stoppingBootstrap: stateIn({ running: { library: 'stopping' } }),
+			replacingBootstrap: stateIn({ running: { library: 'replacing' } }),
 			sameBinding: ({ context, event }) =>
 				event.type === 'OBSERVED' &&
 				event.observation.status === 'ready' &&
@@ -126,6 +146,12 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					: observe(required(context.host))
 			})),
 			clearPhrase: assign({ phrase: '' }),
+			clearResources: assign({
+				host: undefined,
+				write: undefined,
+				observation: { status: 'closed' },
+				phrase: ''
+			}),
 			rememberObservation: assign(({ event }) =>
 				event.type === 'OBSERVED' ? { observation: event.observation } : {}
 			),
@@ -141,6 +167,8 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			retryAttempt: 0,
 			observationAttempt: 0,
 			observationFailed: false,
+			ownerFailed: false,
+			cleanupFailed: false,
 			host: undefined,
 			observation: { status: 'signed-out' },
 			write: undefined,
@@ -154,7 +182,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			id: 'startup',
 			src: 'startup',
 			input: ({ self }) => ({ reportTo: self }),
-			onDone: '#application-readiness.closed'
+			onDone: '#application-readiness.finished'
 		},
 		on: {
 			SESSION_STARTING: {
@@ -177,13 +205,23 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					}
 				})
 			},
-			SESSION_STARTUP_FAILED: { guard: 'currentStartup', target: '.openFailed' },
+			SESSION_STARTUP_FAILED: [
+				{
+					guard: 'failedOwner',
+					actions: [assign({ ownerFailed: true }), raise({ type: 'SHUTDOWN' })]
+				},
+				{ guard: 'currentStartup', target: '.openFailed' }
+			],
+			SESSION_OBSERVATION_CLEANUP_FAILED: {
+				guard: 'currentReadinessScope',
+				actions: [assign({ cleanupFailed: true }), raise({ type: 'SHUTDOWN' })]
+			},
 			SHUTDOWN: '.closing'
 		},
 		states: {
-			opening: { tags: 'starting' },
+			opening: { meta: { status: 'starting' } },
 			openFailed: {
-				tags: 'unavailable',
+				meta: { status: 'unavailable' },
 				on: { RETRY: { target: 'opening', actions: sendTo('startup', { type: 'RETRY' }) } }
 			},
 			running: {
@@ -216,15 +254,11 @@ export function createApplicationReadinessMachine<Session extends object>() {
 							assign({ observationFailed: true }),
 							raise({ type: 'OBSERVED', observation: { status: 'error' } })
 						]
-					},
-					SESSION_OBSERVATION_CLEANUP_FAILED: {
-						guard: 'currentReadiness',
-						actions: assign({ observationFailed: true })
 					}
 				},
 				states: {
 					draining: {
-						tags: 'closing',
+						meta: { status: 'closing' },
 						entry: sendTo('readiness', { type: 'SHUTDOWN' }),
 						on: { OBSERVED: {}, SHUTDOWN: {}, SESSION_STATUS: {}, SESSION_OBSERVATION_FAILED: {} }
 					},
@@ -244,7 +278,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						]
 					},
 					signedOut: {
-						tags: 'signedOut',
+						meta: { status: 'signedOut' },
 						on: {
 							OBSERVED: { target: 'route', actions: 'rememberObservation' },
 							CREATE: { target: 'creating', actions: assign({ feedback: 'none' }) },
@@ -260,7 +294,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					},
 					waiting: { on: { OBSERVED: { target: 'route', actions: 'rememberObservation' } } },
 					unavailable: {
-						tags: 'unavailable',
+						meta: { status: 'unavailable' },
 						on: {
 							RETRY: [
 								{ guard: ({ context }) => context.observationFailed, target: 'reobserving' },
@@ -306,7 +340,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					},
 					creating: {
 						initial: 'active',
-						states: { active: {}, stopping: {} },
+						states: { active: {}, stopping: { meta: { status: 'closing' } } },
 						on: { SHUTDOWN: '.stopping' },
 						invoke: {
 							src: 'create',
@@ -323,7 +357,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					},
 					restoring: {
 						initial: 'active',
-						states: { active: {}, stopping: {} },
+						states: { active: {}, stopping: { meta: { status: 'closing' } } },
 						on: {
 							SHUTDOWN: {
 								target: '.stopping',
@@ -387,7 +421,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 					},
 					loggingOut: {
 						initial: 'active',
-						states: { active: {}, stopping: {} },
+						states: { active: {}, stopping: { meta: { status: 'closing' } } },
 						on: { SHUTDOWN: '.stopping' },
 						invoke: {
 							src: 'logout',
@@ -402,8 +436,28 @@ export function createApplicationReadinessMachine<Session extends object>() {
 							]
 						}
 					},
+
 					library: {
-						initial: 'reading',
+						initial: 'bootstrapping',
+						invoke: {
+							id: 'bootstrap',
+							src: 'bootstrap',
+							input: ({ context }) => root(context),
+							onDone: [
+								{ guard: 'stoppingBootstrap', target: '#application-readiness.running.draining' },
+								{ guard: 'replacingBootstrap', target: '#application-readiness.running.route' },
+								{
+									guard: ({ event }) => event.output.outcome === 'ready',
+									target: '.ready',
+									actions: assign({
+										write: ({ event }) =>
+											event.output.outcome === 'ready' ? event.output.write : undefined
+									})
+								},
+								{ guard: ({ event }) => event.output.outcome === 'conflict', target: '.conflict' },
+								{ target: '.failed' }
+							]
+						},
 						on: {
 							OBSERVED: [
 								{ guard: 'sameBinding' },
@@ -411,62 +465,47 @@ export function createApplicationReadinessMachine<Session extends object>() {
 							]
 						},
 						states: {
-							reading: {
-								tags: 'openingLibrary',
-								invoke: {
-									src: 'readRoot',
-									input: ({ context }) => root(context),
-									onDone: [
-										{ guard: ({ event }) => event.output === 'incompatible', target: 'conflict' },
-										{ target: 'ensuring' }
-									],
-									onError: 'failed'
-								}
-							},
-							conflict: {
-								tags: 'conflict',
-								on: { LOGOUT: '#application-readiness.running.loggingOut' }
-							},
-							ensuring: {
-								tags: 'openingLibrary',
-								invoke: {
-									src: 'ensureRoot',
-									input: ({ context }) => root(context),
-									onDone: {
-										target: 'local',
-										actions: assign({ write: ({ event }) => event.output })
+							bootstrapping: {
+								meta: { status: 'openingLibrary' },
+								on: {
+									SHUTDOWN: {
+										target: 'stopping',
+										actions: sendTo('bootstrap', { type: 'SHUTDOWN' })
 									},
-									onError: 'failed'
-								}
-							},
-							local: {
-								tags: 'openingLibrary',
-								initial: 'active',
-								states: { active: {}, stopping: {} },
-								on: { SHUTDOWN: '.stopping' },
-								invoke: {
-									src: 'local',
-									input: ({ context }) => required(context.write),
-									onDone: [
-										{ guard: 'stoppingLocal', target: '#application-readiness.running.draining' },
-										{ target: 'ready' }
-									],
-									onError: [
-										{ guard: 'stoppingLocal', target: '#application-readiness.running.draining' },
-										{ target: 'failed' }
+									OBSERVED: [
+										{ guard: 'sameBinding' },
+										{
+											target: 'replacing',
+											actions: ['rememberObservation', sendTo('bootstrap', { type: 'SHUTDOWN' })]
+										}
 									]
 								}
 							},
+							stopping: {
+								meta: { status: 'closing' },
+								on: { SHUTDOWN: {}, OBSERVED: { actions: 'rememberObservation' } }
+							},
+							replacing: {
+								meta: { status: 'openingLibrary' },
+								on: { OBSERVED: { actions: 'rememberObservation' }, SHUTDOWN: 'stopping' }
+							},
+							conflict: {
+								meta: { status: 'conflict' },
+								on: { LOGOUT: '#application-readiness.running.loggingOut' }
+							},
 							failed: {
-								tags: 'rootFailed',
-								on: { RETRY: 'reading', LOGOUT: '#application-readiness.running.loggingOut' }
+								meta: { status: 'rootFailed' },
+								on: {
+									RETRY: { target: '#application-readiness.running.library', reenter: true },
+									LOGOUT: '#application-readiness.running.loggingOut'
+								}
 							},
 							ready: {
 								initial: 'syncPending',
 								on: { LOGOUT: '#application-readiness.running.loggingOut' },
 								states: {
 									syncPending: {
-										tags: 'localSaved',
+										meta: { status: 'localSaved' },
 										invoke: {
 											src: 'global',
 											input: ({ context }) => required(context.write),
@@ -474,10 +513,12 @@ export function createApplicationReadinessMachine<Session extends object>() {
 											onError: 'syncFailed'
 										}
 									},
-									synced: { tags: 'synced' },
+									synced: { meta: { status: 'synced' } },
 									syncFailed: {
-										tags: 'syncFailed',
-										on: { RETRY: '#application-readiness.running.library.reading' }
+										meta: { status: 'syncFailed' },
+										on: {
+											RETRY: { target: '#application-readiness.running.library', reenter: true }
+										}
 									}
 								}
 							}
@@ -486,7 +527,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				}
 			},
 			closing: {
-				tags: 'closing',
+				meta: { status: 'closing' },
 				entry: [
 					'clearPhrase',
 					({ context }) => context.host?.release(),
@@ -494,8 +535,17 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				],
 				on: { SESSION_ACQUIRED: {}, SESSION_STARTUP_FAILED: {}, SESSION_STARTING: {}, SHUTDOWN: {} }
 			},
+			finished: {
+				always: [
+					{ guard: ({ context }) => context.cleanupFailed, target: 'cleanupFailed' },
+					{ guard: ({ context }) => context.ownerFailed, target: 'ownerFailed' },
+					{ target: 'closed' }
+				]
+			},
+			cleanupFailed: { meta: { status: 'cleanupFailed' }, type: 'final', entry: 'clearResources' },
+			ownerFailed: { meta: { status: 'ownerFailed' }, type: 'final', entry: 'clearResources' },
 			closed: {
-				tags: 'closed',
+				meta: { status: 'closed' },
 				type: 'final',
 				entry: assign({
 					host: undefined,
@@ -522,23 +572,12 @@ export type ApplicationStatus =
 	| 'closing'
 	| 'closed'
 	| 'working'
+	| 'ownerFailed'
+	| 'cleanupFailed'
 type ApplicationSnapshot<Session extends object> = SnapshotFrom<
 	ReturnType<typeof createApplicationReadinessMachine<Session>>
 >
-// Status tags are mutually exclusive and owned by the corresponding machine states.
-const statuses: ApplicationStatus[] = [
-	'starting',
-	'signedOut',
-	'synced',
-	'syncFailed',
-	'localSaved',
-	'rootFailed',
-	'conflict',
-	'openingLibrary',
-	'unavailable',
-	'closing',
-	'closed'
-]
+type MachineStatus = Exclude<ApplicationStatus, 'configuration'>
 export function selectApplicationView<Session extends object>(
 	snapshot: ApplicationSnapshot<Session> | undefined,
 	configured: boolean
@@ -546,20 +585,23 @@ export function selectApplicationView<Session extends object>(
 	const status: ApplicationStatus = !configured
 		? 'configuration'
 		: snapshot
-			? (statuses.find((tag) => snapshot.hasTag(tag)) ?? 'working')
+			? (Object.values(snapshot.getMeta()).find((meta) => meta !== undefined)?.status ?? 'working')
 			: 'starting'
 	return {
 		status,
 		feedback: snapshot?.context.feedback === 'none' ? undefined : snapshot?.context.feedback,
 		showIdentityForm: snapshot?.can({ type: 'CREATE' }) ?? false,
 		canLogout: snapshot?.can({ type: 'LOGOUT' }) ?? false,
-		canRetry: snapshot?.can({ type: 'RETRY' }) ?? false
+		canRetry: snapshot?.can({ type: 'RETRY' }) ?? false,
+		requiresReload: snapshot?.matches('ownerFailed') || snapshot?.matches('cleanupFailed') || false
 	}
 }
 export function selectRecoveryBinding<Session extends object>(
 	snapshot: ApplicationSnapshot<Session> | undefined
 ) {
 	return snapshot?.matches({ running: 'library' }) &&
+		!snapshot.context.ownerFailed &&
+		!snapshot.context.cleanupFailed &&
 		snapshot.context.observation.status === 'ready'
 		? snapshot.context.observation.recovery
 		: undefined

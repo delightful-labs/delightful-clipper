@@ -17,7 +17,8 @@ const english = {
 	conflict: 'The existing library has an incompatible format. It was not overwritten.',
 	unavailable: 'The account is unavailable. Retry to reconnect.',
 	configuration: 'Account service is not configured for this deployment.',
-	identityFailed: 'The account operation failed. Your existing account was not replaced.',
+	identityFailed:
+		'The account operation could not be completed. Check the current account status before retrying.',
 	restoreInvalid: 'That recovery phrase is invalid. Check it and try again.',
 	restoreFailed: 'The account could not be restored. Check the phrase and connection, then retry.',
 	retry: 'Retry',
@@ -32,7 +33,9 @@ const english = {
 	recoveryFailed: 'The recovery phrase could not be shown. Try again.',
 	recoveryUnavailable: 'Account recovery is unavailable.',
 	closing: 'Closing your account…',
-	closeFailed: 'The account could not be closed safely. Retry.',
+	ownerFailed: 'The account session stopped unexpectedly. Reload the page to reconnect.',
+	cleanupFailed: 'Session cleanup could not be confirmed. Reload the page before continuing.',
+	reload: 'Reload page',
 	closed: 'Account closed.'
 }
 const i18n = createInstance()

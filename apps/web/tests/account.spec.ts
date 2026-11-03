@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, chromium } from '@playwright/test'
 import { startLocalJazzServer } from 'jazz-tools/testing'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -47,6 +47,14 @@ test('creates, reloads and restores the same account into an independent browser
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await restored.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
+		const recoveredPhrase = await restored
+			.getByRole('dialog')
+			.getByLabel('Recovery phrase', { exact: true })
+			.inputValue()
+		await restored.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		// Assert a boolean after closing the dialog so failures cannot print credentials.
+		expect(recoveredPhrase === phrase).toBe(true)
 		// Stop the real authority: the SDK transport can live in a SharedWorker.
 		await authority.stop()
 		await restored.reload()
@@ -70,4 +78,30 @@ test('invalid restoration does not create an account', async ({ page }) => {
 	).toBeVisible()
 	await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeVisible()
 	await expect(page.getByLabel('Recovery phrase', { exact: true })).toHaveValue('')
+})
+
+test('retains the account and library after closing every page and browser process with the authority offline', async () => {
+	const profile = await mkdtemp(join(tmpdir(), 'clipper-cold-profile-'))
+	let context = await chromium.launchPersistentContext(profile, { headless: true })
+	try {
+		const page = await context.newPage()
+		await page.goto('http://127.0.0.1:5180')
+		await page.getByRole('button', { name: 'Create account', exact: true }).click()
+		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await authority.stop()
+		await context.close()
+		// Persistent-context close exits its browser process, including its workers.
+		context = await chromium.launchPersistentContext(profile, { headless: true })
+		const reopened = await context.newPage()
+		await reopened.goto('http://127.0.0.1:5180')
+		await expect(
+			reopened.getByText('Library saved on this device. Sync pending.', { exact: true })
+		).toBeVisible()
+		authority = await startAuthority()
+		await reopened.reload()
+		await expect(reopened.getByText('Private library synced.', { exact: true })).toBeVisible()
+	} finally {
+		await context.close()
+		await rm(profile, { recursive: true, force: true })
+	}
 })

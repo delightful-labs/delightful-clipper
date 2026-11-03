@@ -29,7 +29,7 @@ Run from the repository root:
 | `pnpm build`                        | Production build with the Netlify adapter.                                                     |
 | `pnpm verify`                       | Vendor, format, lint, type/Svelte checks, unit/policy tests and build.                         |
 
-Oxlint is not claimed to lint Svelte templates; `svelte-check` and the Svelte compiler cover those components. Run `pnpm test:unit` for coordinator lifecycle and native authorization tests. Run `pnpm exec playwright install chromium` once, then `pnpm test:e2e` for account creation, reload, recovery and authority disconnection/reconnection. Browser tests use synthetic accounts, a disposable authority and separate browser profiles; recovery traces/screenshots are disabled.
+Oxlint is not claimed to lint Svelte templates; `svelte-check` and the Svelte compiler cover those components. Run `pnpm test:unit` for coordinator lifecycle and native authorization tests. Run `pnpm exec playwright install chromium` once, then `pnpm test:e2e` for account creation, reload, recovery identity equality, authority disconnection/reconnection and a cold browser-process restart with the authority offline (web shell remains reachable). Browser tests use synthetic accounts, a disposable authority and separate browser profiles; recovery traces/screenshots are disabled.
 
 ## Workspace and CI
 

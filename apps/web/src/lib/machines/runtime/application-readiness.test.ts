@@ -90,11 +90,13 @@ function ready(accountId: string, root: RootAccess): AccountObservation {
 		}
 	}
 }
-function root(local: Promise<void>, global: Promise<void>): RootAccess {
+function root(local: Promise<void>, global: Promise<void>) {
+	const localWait = vi.fn(() => local)
 	return {
 		read: async () => 'compatible',
-		ensure: () => ({ local: () => local, global: () => global })
-	}
+		ensure: () => ({ local: localWait, global: () => global }),
+		localWait
+	} satisfies RootAccess & { localWait: typeof localWait }
 }
 
 describe('account/root ownership', () => {
@@ -121,9 +123,10 @@ describe('account/root ownership', () => {
 	it('does not call a locally pending root saved or synced', async () => {
 		const local = Promise.withResolvers<void>(),
 			global = Promise.withResolvers<void>()
-		const { host } = fixture(ready('owner', root(local.promise, global.promise)))
+		const access = root(local.promise, global.promise)
+		const { host } = fixture(ready('owner', access))
 		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
-		await waitFor(actor, (snapshot) => snapshot.matches({ running: { library: 'local' } }))
+		await vi.waitFor(() => expect(access.localWait).toHaveBeenCalledOnce())
 		expect(actor.getSnapshot().matches({ running: { library: 'ready' } })).toBe(false)
 		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('openingLibrary')
 		local.resolve()
@@ -141,9 +144,10 @@ describe('account/root ownership', () => {
 	})
 	it('drains a pending root write before releasing the DLF attachment', async () => {
 		const local = Promise.withResolvers<void>()
-		const { host } = fixture(ready('owner', root(local.promise, Promise.resolve())))
+		const access = root(local.promise, Promise.resolve())
+		const { host } = fixture(ready('owner', access))
 		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
-		await waitFor(actor, (snapshot) => snapshot.matches({ running: { library: 'local' } }))
+		await vi.waitFor(() => expect(access.localWait).toHaveBeenCalledOnce())
 		actor.send({ type: 'SHUTDOWN' })
 		expect(host.release).not.toHaveBeenCalled()
 		local.resolve()
@@ -152,12 +156,16 @@ describe('account/root ownership', () => {
 	})
 	it('does not publish an old binding after account replacement', async () => {
 		const first = Promise.withResolvers<void>()
-		const initial = ready('first', root(first.promise, Promise.resolve()))
+		const access = root(first.promise, Promise.resolve())
+		const initial = ready('first', access)
 		const next = ready('second', root(Promise.resolve(), Promise.resolve()))
 		const { host, emit } = fixture(initial)
 		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
-		await waitFor(actor, (snapshot) => snapshot.matches({ running: { library: 'local' } }))
+		await vi.waitFor(() => expect(access.localWait).toHaveBeenCalledOnce())
 		emit(next)
+		expect(actor.getSnapshot().context.observation).toBe(next)
+		expect(actor.getSnapshot().matches({ running: { library: 'ready' } })).toBe(false)
+		first.resolve()
 		await waitFor(actor, (snapshot) =>
 			snapshot.matches({ running: { library: { ready: 'synced' } } })
 		)
@@ -238,5 +246,107 @@ describe('account/root ownership', () => {
 		expect(host.readiness.capability.retry).not.toHaveBeenCalled()
 		actor.send({ type: 'SHUTDOWN' })
 		await waitFor(actor, (snapshot) => snapshot.status === 'done')
+	})
+	it.each(['create', 'logout', 'restore'])(
+		'drains %s after acquisition-owner failure and requires reload',
+		async (operation) => {
+			const pending = Promise.withResolvers<void>()
+			const access = root(Promise.resolve(), Promise.resolve())
+			const { host } = fixture(
+				operation === 'logout' ? ready('owner', access) : { status: 'signed-out' }
+			)
+			const mutate = vi.fn(() => pending.promise)
+			const bound = {
+				...host,
+				create: mutate,
+				logout: mutate,
+				restoration: {
+					...host.restoration,
+					capability: {
+						...host.restoration.capability,
+						parsePhrase: async () => 'synthetic credential',
+						restoreIdentity: mutate
+					}
+				}
+			}
+			const { owner, attach } = startup(async () => bound)
+			const actor = createActor(applicationReadinessMachine, { input: attach() }).start()
+			await waitFor(actor, (snapshot) =>
+				operation === 'logout'
+					? snapshot.matches({ running: { library: { ready: 'synced' } } })
+					: snapshot.matches({ running: 'signedOut' })
+			)
+			actor.send(
+				operation === 'create'
+					? { type: 'CREATE' }
+					: operation === 'logout'
+						? { type: 'LOGOUT' }
+						: { type: 'RESTORE', phrase: 'synthetic phrase' }
+			)
+			await vi.waitFor(() => expect(mutate).toHaveBeenCalledOnce())
+			owner.stop()
+			expect(host.release).not.toHaveBeenCalled()
+			expect(actor.getSnapshot().status).toBe('active')
+			expect(actor.getSnapshot().can({ type: 'RETRY' })).toBe(false)
+			pending.resolve()
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			expect(selectApplicationView(actor.getSnapshot(), true)).toMatchObject({
+				status: 'ownerFailed',
+				canRetry: false,
+				requiresReload: true
+			})
+			expect(host.release).toHaveBeenCalledOnce()
+			expect(actor.getSnapshot().context.host).toBeUndefined()
+		}
+	)
+	it('does not offer acquisition retry after its owner has stopped', async () => {
+		const { host } = fixture({ status: 'signed-out' })
+		const { owner, attach } = startup(async () => host)
+		owner.stop()
+		const actor = createActor(applicationReadinessMachine, { input: attach() }).start()
+		await waitFor(actor, (snapshot) => snapshot.status === 'done')
+		expect(selectApplicationView(actor.getSnapshot(), true)).toMatchObject({
+			status: 'ownerFailed',
+			canRetry: false,
+			requiresReload: true
+		})
+	})
+	it('reports observer cleanup uncertainty instead of successful closure', async () => {
+		const { host } = fixture({ status: 'signed-out' })
+		const bound = {
+			...host,
+			readiness: {
+				...host.readiness,
+				capability: {
+					...host.readiness.capability,
+					subscribe: () => () => {
+						throw new Error('Synthetic cleanup failure')
+					}
+				}
+			}
+		}
+		const actor = createActor(applicationReadinessMachine, { input: input(bound) }).start()
+		await waitFor(actor, (snapshot) => snapshot.matches({ running: 'signedOut' }))
+		actor.send({ type: 'SHUTDOWN' })
+		await waitFor(actor, (snapshot) => snapshot.status === 'done')
+		expect(selectApplicationView(actor.getSnapshot(), true)).toMatchObject({
+			status: 'cleanupFailed',
+			requiresReload: true
+		})
+		expect(host.release).toHaveBeenCalledOnce()
+		expect(actor.getSnapshot().context.host).toBeUndefined()
+	})
+	it('retains a pending root receipt when its acquisition owner fails', async () => {
+		const pending = Promise.withResolvers<void>()
+		const access = root(pending.promise, Promise.resolve())
+		const { host } = fixture(ready('owner', access))
+		const { owner, attach } = startup(async () => host)
+		const actor = createActor(applicationReadinessMachine, { input: attach() }).start()
+		await vi.waitFor(() => expect(access.localWait).toHaveBeenCalledOnce())
+		owner.stop()
+		expect(host.release).not.toHaveBeenCalled()
+		pending.resolve()
+		await waitFor(actor, (snapshot) => snapshot.status === 'done')
+		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('ownerFailed')
 	})
 })
