@@ -1,6 +1,6 @@
 # Implementation tasks and acceptance status
 
-Updated 2026-11-02. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
+Updated 2026-11-03. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
 ## Completed foundation
 
@@ -8,19 +8,19 @@ Updated 2026-11-02. This is the current implementation checklist; the product re
 - [x] Integrate DLF session acquisition/readiness, account creation, recovery and restoration with one runtime owner.
 - [x] Implement canonical private library bootstrap with separate local/global settlement and teardown drain.
 - [x] Qualify session/root actors, authority policies and Chromium account reload/restoration/offline root restart.
-- [x] Add immutable owner-scoped storage operations, manifests, byte parts, text snapshots and document publication records.
-- [x] Reuse DLF transaction resource ownership for bounded intent → parts → verification → publication stages.
-- [x] Add bounded gzip/SHA-256 codecs, repository save/read actors and separate remote-acceptance receipts.
-- [x] Exercise real-authority multipart/Unicode round-trip, duplicate operation blocking, account read denial, immutable-row denial, atomic foreign-library rejection, staging invisibility and oversize rejection in repository tests.
+- [x] Add immutable owner-scoped storage operations, native byte assets, text snapshots and document publication records.
+- [x] Reuse DLF transaction resource ownership for bounded intent → atomic native snapshot/asset/document publication stages.
+- [x] Add bounded domain preparation with operation fingerprints, repository save/read actors and separate remote-acceptance receipts.
+- [x] Exercise real-authority native-byte/Unicode round-trip, duplicate operation blocking, account read denial, immutable-row denial, atomic foreign-library rejection, staging invisibility and oversize rejection in repository tests.
 
 ## Storage qualification before enabling a product write flow
 
-- [ ] Harden malformed-manifest validation: safe-integer lengths, part bounds before hashing, deterministic part identity checks.
+- [x] Remove the redundant custom manifest/part codec; validate native asset bounds and parent consistency.
 - [ ] Clear retained read-actor content at terminal states and qualify scope loss during every asynchronous boundary.
-- [ ] Qualify parent-reference consistency and partial/corrupt assets while preserving verified text.
-- [ ] Exercise shutdown during acquisition/commit/local wait, unknown settlement without replay, and late remote rejection; treat missing stage output as unknown.
-- [ ] Save unuploaded text/bytes with the authority stopped, close the complete browser process, reopen the same profile and verify exact local content.
-- [ ] Reconnect and verify that content in a separately restored account profile.
+- [x] Qualify parent-reference consistency and missing/invalid native assets while preserving readable text.
+- [x] Exercise shutdown during acquisition/commit/local wait, unknown settlement without replay, and late remote rejection; treat missing stage output as unknown.
+- [x] Save unuploaded text/bytes with the authority stopped, close the complete browser process, reopen the same profile and verify exact local content.
+- [x] Reconnect and verify that content in a separately restored account profile.
 - [ ] Wire consuming actor ownership and drain into the eventual product capture flow; no storage write UI is currently enabled.
 
 ## Subsequent product and release work
@@ -36,4 +36,4 @@ Typography presets, the DUI image viewer, custom fonts, reading-time estimation 
 
 ## Validation for the storage PR
 
-`pnpm verify` passed: vendor verification, formatting, lint, TypeScript/Svelte checks (zero diagnostics), 22 unit tests across four files and the Netlify production build. `pnpm test:e2e` passed all three existing Chromium session/root tests. The build still warns about a large application chunk and emits duplicate WASM assets as tracked above. The unchecked storage lifecycle/browser scenarios above are not claimed as passed.
+`pnpm verify` passes vendor verification, formatting, lint, TypeScript/Svelte checks, 40 unit tests and the Netlify production build. All five Chromium tests pass. The native 600 KiB payload survives a complete offline browser restart, then syncs to an independently restored account profile. The web shell stays served. Scope-loss and terminal-cleanup tests cover the exercised boundaries; exhaustive scope replacement at every SDK boundary remains open. Large bundle/duplicate WASM warnings remain tracked above.

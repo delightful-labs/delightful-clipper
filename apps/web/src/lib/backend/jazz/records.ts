@@ -4,13 +4,13 @@ import { createWorkspaceCreationTransaction } from 'delightful-local-first/works
 import type { PreparedSave, StorageIntent, SyncReceipt } from '../../contracts/storage.js'
 import { createSaveRecordMachine } from '../../machines/storage/save.js'
 import { createReadRecordMachine } from '../../machines/storage/read.js'
-import { decodeAsset, prepareSave, verifyParts, verifyText } from '../../storage/codec.js'
+import { prepareSave } from '../../storage/prepare.js'
 import { app } from './schema.js'
 
 type Resource = { transaction: Transaction<'mergeable'>; write: WriteHandle | undefined }
-type Stage = 'intent' | 'parts' | 'publish'
+type Stage = 'intent' | 'publish'
 export function createLibraryRecords(
-	db: Pick<Db, 'one' | 'all' | 'beginTransaction'>,
+	db: Pick<Db, 'one' | 'beginTransaction'>,
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
@@ -52,15 +52,11 @@ export function createLibraryRecords(
 				if (stage === 'intent') {
 					const { id, ...intent } = draft.intent
 					resource.transaction.insert(app.storageOperations, intent, { id })
-					const { id: manifestId, ...manifest } = draft.manifest
-					resource.transaction.insert(app.blobManifests, manifest, { id: manifestId })
 				}
-				if (stage === 'parts')
-					for (const part of draft.parts) {
-						const { id, ...payload } = part
-						resource.transaction.insert(app.blobParts, payload, { id })
-					}
+
 				if (stage === 'publish') {
+					const { id: assetId, ...asset } = draft.asset
+					resource.transaction.insert(app.assets, asset, { id: assetId })
 					const { id: snapshotId, ...snapshot } = draft.snapshot
 					resource.transaction.insert(app.snapshots, snapshot, { id: snapshotId })
 					const { id, ...document } = draft.document
@@ -83,14 +79,6 @@ export function createLibraryRecords(
 			rollback: (resource) => resource.transaction.rollback()
 		})
 	}
-	const parts = async (id: string) => {
-		check()
-		const rows = await db.all(app.blobParts.where({ manifestId: id, libraryId }).limit(6), {
-			tier: ReadTier.LocalFirstUnlessEmpty
-		})
-		check()
-		return rows
-	}
 	return {
 		binding: Object.freeze({}),
 		saveMachine: createSaveRecordMachine({
@@ -100,13 +88,7 @@ export function createLibraryRecords(
 				return prepareSave(libraryId, request)
 			},
 			intent: stageLogic('intent'),
-			parts: stageLogic('parts'),
-			publish: stageLogic('publish'),
-			readParts: parts,
-			verify: async (input) => {
-				await verifyParts(input)
-				check()
-			}
+			publish: stageLogic('publish')
 		}),
 		readMachine: createReadRecordMachine({
 			isCurrent,
@@ -126,17 +108,14 @@ export function createLibraryRecords(
 				check()
 				return row
 			},
-			manifest: async (id) => {
+			asset: async (id) => {
 				check()
-				const row = await db.one(app.blobManifests.where({ id, libraryId }), {
+				const row = await db.one(app.assets.where({ id, libraryId }), {
 					tier: ReadTier.LocalFirstUnlessEmpty
 				})
 				check()
 				return row
-			},
-			parts,
-			verifyText,
-			decode: decodeAsset
+			}
 		})
 	}
 }

@@ -35,7 +35,7 @@ Design dependencies may require building a small underlying module earlier; that
 - DLF owns identity/recovery; Clipper owns library/domain data; DUI owns generic presentation. Generic DLF creation remains separate work.
 - Current SDK bearer is obtained only inside the trusted request adapter; no config/token snapshots in UI, logs, workers or content scripts. Public server verification binds to the app and canonical registry. Dedicated proof minting returned null in the tested managed-session path; do not export roots as a workaround.
 - Readability baseline: full inert DOM for fetched HTML, correctly serialized capture input for the lightweight worker parser. Collect/sanitize footnote targets before pruning and construct final text/anchor mapping afterward. No third-party extraction service.
-- i18next runtime instances; worker MiniSearch; compressed owner-scoped byte assets. Pin investigated versions and qualify on the selected runtime.
+- i18next runtime instances; worker MiniSearch; native owner-scoped Jazz byte assets. Pin investigated versions and qualify on the selected runtime.
 - Desktop Chrome/Firefox extensions, supported Android PWA share intake, iOS Add Link. Actual minimum versions and all device claims require qualification.
 
 ## Security/deployment work is implementation, not another discovery loop

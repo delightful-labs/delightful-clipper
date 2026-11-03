@@ -3,6 +3,7 @@ import { startLocalJazzServer } from 'jazz-tools/testing'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { app } from '../src/lib/backend/jazz/schema.js'
 import permissions from '../src/lib/backend/jazz/permissions.js'
 
@@ -113,7 +114,13 @@ test('saves new content offline, restarts the browser, and syncs to a restored p
 	let context = await chromium.launchPersistentContext(profile, { headless: true })
 	const independent = await browser.newContext()
 	const operationId = crypto.randomUUID()
-	const expected = { text: 'Exact offline text café 🦊', bytes: [0, 1, 2, 255] }
+	const expected = {
+		text: 'Exact offline text café 🦊',
+		byteLength: 600 * 1024,
+		bytesHash: createHash('sha256')
+			.update(Uint8Array.from({ length: 600 * 1024 }, (_, index) => index % 256))
+			.digest('hex')
+	}
 	try {
 		const page = await context.newPage()
 		await page.goto('http://127.0.0.1:5180')

@@ -3,7 +3,7 @@ import { createActor, toPromise } from 'xstate'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import { createSaveRecordMachine } from './save.js'
 import { storageSyncMachine } from './sync.js'
-import { prepareSave } from '../../storage/codec.js'
+import { prepareSave } from '../../storage/prepare.js'
 import type { PreparedSave, SyncReceipt } from '../../contracts/storage.js'
 
 function deferred() {
@@ -69,10 +69,7 @@ it.each(['open', 'commit', 'local', 'uncertain', 'account'] as const)(
 				isCurrent: () => current,
 				prepare: async () => draft,
 				intent: stage,
-				parts: stage,
-				publish: stage,
-				readParts: async () => draft.parts,
-				verify: async () => {}
+				publish: stage
 			}),
 			{ input: request }
 		).start()

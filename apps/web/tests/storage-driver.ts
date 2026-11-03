@@ -8,7 +8,7 @@ export async function save(operationId: string) {
 				operationId,
 				title: 'Restart proof',
 				text: 'Exact offline text café 🦊',
-				bytes: new Uint8Array([0, 1, 2, 255]),
+				bytes: Uint8Array.from({ length: 600 * 1024 }, (_, index) => index % 256),
 				mediaType: 'application/octet-stream'
 			}
 		}).start()
@@ -22,7 +22,16 @@ export async function read(id: string) {
 	if (result.kind !== 'available') return null
 	return {
 		text: result.text,
-		bytes: result.asset.kind === 'available' ? Array.from(result.asset.bytes) : null
+		byteLength: result.asset.kind === 'available' ? result.asset.bytes.byteLength : null,
+		bytesHash:
+			result.asset.kind === 'available'
+				? Array.from(
+						new Uint8Array(
+							await crypto.subtle.digest('SHA-256', new Uint8Array(result.asset.bytes))
+						),
+						(byte) => byte.toString(16).padStart(2, '0')
+					).join('')
+				: null
 	}
 }
 export { requestCapture } from '../src/lib/backend/jazz/account.js'
