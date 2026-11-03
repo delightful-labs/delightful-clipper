@@ -16,9 +16,7 @@ export async function save(operationId: string) {
 	return result.kind
 }
 export async function read(id: string) {
-	const result = await toPromise(
-		createActor(currentLibraryRecords().readMachine, { input: { id } }).start()
-	)
+	const result = await currentLibraryRecords().read(id, new AbortController().signal)
 	if (result.kind !== 'available') return null
 	return {
 		text: result.text,

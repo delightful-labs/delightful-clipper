@@ -1,3 +1,4 @@
+import type { LibraryCapability } from './library.js'
 import type { SessionOwnerRef } from 'delightful-local-first/session/workflow'
 import type {
 	SessionScope,
@@ -26,6 +27,7 @@ export type AccountObservation =
 			status: 'ready'
 			binding: object
 			accountId: string
+			library?: LibraryCapability
 			root: RootAccess
 			recovery: RecoveryBinding
 	  }>

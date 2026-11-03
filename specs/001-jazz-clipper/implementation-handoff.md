@@ -1,10 +1,10 @@
 # Implementation handoff
 
-**Status**: Workspace tooling, DLF account creation/restoration/recovery and the canonical private library root are implemented. The current storage PR adds bounded immutable text/byte repository capabilities without product UI. Storage cold-restart/cross-profile acceptance and lifecycle fault qualification remain open in [tasks.md](tasks.md). Capture and reader workflows remain unbuilt. Product scope is settled; this is not release approval.
+**Status**: Foundation storage and hosted authenticated gateway are implemented and qualified. The Add Link batch adds a runtime-owned preview → explicit local save → minimal text reader, immutable source provenance and final-destination duplicate checks. Offline UI saves survive a full Chromium restart and sync to a restored profile while the shell remains served. Images, full reader/annotation workflows, service-worker shell and platform/release qualification remain open. See [tasks.md](tasks.md) and [add-link-implementation.md](add-link-implementation.md).
 
 ## First batch: application foundation and durable private root
 
-Items 1–5 are implemented for the session/private-root path; item 6 is implemented as a bounded repository capability in the current PR. Item 7 remains partially qualified. See [session-implementation.md](session-implementation.md), [storage-implementation.md](storage-implementation.md) and [tasks.md](tasks.md) for evidence and remaining work. Tooling commands and scope are documented in [docs/tooling.md](../../docs/tooling.md).
+Items 1–5 are implemented for the session/private-root path; item 6 is implemented as a bounded repository capability in the current PR. Item 7 has storage/restart evidence; full offline shell and platform qualification remain open. See [session-implementation.md](session-implementation.md), [storage-implementation.md](storage-implementation.md) and [tasks.md](tasks.md) for evidence and remaining work. Tooling commands and scope are documented in [docs/tooling.md](../../docs/tooling.md).
 
 Build only the new workspace/toolchain and the smallest browser session → canonical private library → local text/bytes → reopen path. Start from the spec-only `main`; the old prototype remains preserved on the archive branch. The canonical root remains domain-owned; storage transactions reuse DLF’s generic transaction resource owner without introducing workspaces.
 

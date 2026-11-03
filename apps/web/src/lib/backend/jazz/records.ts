@@ -1,3 +1,5 @@
+import { createActor, toPromise } from 'xstate'
+import type { ReadResult } from '../../contracts/storage.js'
 import { ReadTier } from 'jazz-tools'
 import type { Db, Transaction, WriteHandle } from 'jazz-tools'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
@@ -10,7 +12,7 @@ import { app } from './schema.js'
 type Resource = { transaction: Transaction<'mergeable'>; write: WriteHandle | undefined }
 type Stage = 'intent' | 'publish'
 export function createLibraryRecords(
-	db: Pick<Db, 'one' | 'beginTransaction'>,
+	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
@@ -61,6 +63,10 @@ export function createLibraryRecords(
 					resource.transaction.insert(app.snapshots, snapshot, { id: snapshotId })
 					const { id, ...document } = draft.document
 					resource.transaction.insert(app.documents, document, { id })
+					if (draft.source) {
+						const { id: sourceId, ...source } = draft.source
+						resource.transaction.insert(app.articleSources, source, { id: sourceId })
+					}
 				}
 				return {
 					global: () => {
@@ -79,7 +85,7 @@ export function createLibraryRecords(
 			rollback: (resource) => resource.transaction.rollback()
 		})
 	}
-	return {
+	const records = {
 		binding: Object.freeze({}),
 		saveMachine: createSaveRecordMachine({
 			isCurrent,
@@ -118,4 +124,65 @@ export function createLibraryRecords(
 			}
 		})
 	}
+	return {
+		...records,
+		isCurrent,
+		lookup: async (id: string) => {
+			check()
+			const row = await db.one(app.documents.where({ id, libraryId }), {
+				tier: ReadTier.LocalFirstUnlessEmpty
+			})
+			check()
+			if (row) return 'available' as const
+			const intent = await db.one(app.storageOperations.where({ id, libraryId }), {
+				tier: ReadTier.LocalFirstUnlessEmpty
+			})
+			check()
+			return intent ? ('uncertain' as const) : ('missing' as const)
+		},
+		subscribe: (
+			next: (rows: import('../../contracts/storage.js').DocumentHeader[]) => void,
+			error: () => void
+		) =>
+			db.subscribe(
+				app.documents.where({ libraryId }),
+				{
+					onUpdate: (rows) => {
+						if (isCurrent()) next(rows)
+					},
+					onError: error
+				},
+				{ tier: ReadTier.LocalFirst }
+			),
+		read: async (id: string, signal: AbortSignal): Promise<ReadResult> => {
+			signal.throwIfAborted()
+			const delivered: { value: ReadResult } = { value: { kind: 'unavailable' } }
+			const actor = createActor(records.readMachine, { input: { id } })
+			const subscription = actor.on('record', ({ result }) => {
+				if (!signal.aborted && isCurrent()) delivered.value = result
+			})
+			const abort = () => actor.send({ type: 'SHUTDOWN' })
+			signal.addEventListener('abort', abort, { once: true })
+			try {
+				actor.start()
+				if (signal.aborted) abort()
+				await toPromise(actor)
+				const result = delivered.value
+				if (result.kind === 'available') {
+					const source = await db.one(app.articleSources.where({ id, libraryId }), {
+						tier: ReadTier.LocalFirst
+					})
+					if (signal.aborted || !isCurrent()) return { kind: 'unavailable' }
+					if (source && source.documentId === id) return { ...result, source }
+				}
+				return result
+			} finally {
+				signal.removeEventListener('abort', abort)
+				subscription.unsubscribe()
+				actor.stop()
+			}
+		}
+	}
 }
+
+export type LibraryRecords = ReturnType<typeof createLibraryRecords>

@@ -350,3 +350,68 @@ describe('account/root ownership', () => {
 		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('ownerFailed')
 	})
 })
+
+it.each(['logout', 'shutdown', 'replacement'] as const)(
+	'drains library writes before %s releases its account binding',
+	async (mode) => {
+		const pending = Promise.withResolvers<import('../../contracts/storage.js').SaveResult>()
+		const base = ready('owner', root(Promise.resolve(), Promise.resolve()))
+		if (base.status !== 'ready') throw new Error('Expected ready')
+		const id = crypto.randomUUID()
+		let signal: AbortSignal | undefined
+		const library: import('../../contracts/library.js').LibraryCapability = {
+			isCurrent: () => true,
+			subscribe: () => () => {},
+			read: async () => ({ kind: 'missing' }),
+			prepare: async () => ({
+				kind: 'preview',
+				candidate: {
+					id,
+					title: 'Private',
+					text: 'private text',
+					html: '<p>private text</p>',
+					finalUrl: 'https://example.com/',
+					submittedUrl: 'https://example.com/',
+					provenance: '{}',
+					imagesMissing: false
+				}
+			}),
+			save: (_request, abort) => {
+				signal = abort
+				return pending.promise
+			}
+		}
+		const observation = { ...base, library }
+		const { host, emit } = fixture(observation)
+		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
+		await waitFor(actor, (s) => s.matches({ running: { library: 'ready' } }))
+		const { selectLibraryActor } = await import('./application-readiness.js')
+		const product = selectLibraryActor(actor.getSnapshot())
+		if (!product) throw new Error('Missing library owner')
+		product.send({ type: 'ADD', url: 'https://example.com/' })
+		await waitFor(product, (s) => s.matches({ running: { capture: 'preview' } }))
+		product.send({ type: 'SAVE' })
+		if (mode === 'replacement') emit(ready('other', root(Promise.resolve(), Promise.resolve())))
+		else actor.send({ type: mode === 'logout' ? 'LOGOUT' : 'SHUTDOWN' })
+		await waitFor(actor, (s) => s.matches({ running: { library: { ready: 'stopping' } } }))
+		expect(signal?.aborted).toBe(true)
+		expect(selectLibraryActor(actor.getSnapshot())).toBeUndefined()
+		expect(host.logout).not.toHaveBeenCalled()
+		expect(host.release).not.toHaveBeenCalled()
+		pending.resolve({ kind: 'unknown', operationId: id })
+		if (mode === 'shutdown') await waitFor(actor, (s) => s.status === 'done')
+		else if (mode === 'logout')
+			await waitFor(actor, () => vi.mocked(host.logout).mock.calls.length === 1)
+		else
+			await waitFor(
+				actor,
+				(s) =>
+					s.context.observation.status === 'ready' &&
+					s.context.observation.accountId === 'other' &&
+					!s.matches({ running: { library: { ready: 'stopping' } } })
+			)
+		expect(product.getSnapshot().status).toBe('done')
+		expect(product.getSnapshot().context.preview).toBeUndefined()
+		actor.send({ type: 'SHUTDOWN' })
+	}
+)

@@ -1,3 +1,4 @@
+import type { ReadResult } from '../../contracts/storage.js'
 import { expect, it } from 'vitest'
 import { createActor, toPromise, waitFor } from 'xstate'
 import { createReadRecordMachine } from './read.js'
@@ -21,6 +22,7 @@ it.each([
 		mediaType: 'application/octet-stream'
 	})
 	let current = true
+	const delivered: { value: ReadResult } = { value: { kind: 'unavailable' } }
 	const actor = createActor(
 		createReadRecordMachine({
 			isCurrent: () => current,
@@ -39,13 +41,20 @@ it.each([
 				return draft.asset
 			}
 		}),
-		{ input: { id: draft.document.id } }
-	).start()
+		{
+			input: { id: draft.document.id }
+		}
+	)
+	actor.on('record', ({ result }) => {
+		delivered.value = result
+	})
+	actor.start()
 	if (mode === 'shutdown') {
 		await waitFor(actor, (s) => s.matches('asset'))
 		actor.send({ type: 'SHUTDOWN' })
 	}
-	const result = await toPromise(actor)
+	await toPromise(actor)
+	const result = delivered.value
 	expect(result.kind).toBe(
 		['success', 'missingAsset', 'invalidAsset'].includes(mode)
 			? 'available'
@@ -63,4 +72,68 @@ it.each([
 	expect(context.document).toBeUndefined()
 	expect(context.snapshot).toBeUndefined()
 	expect(context.asset).toBeUndefined()
+	expect(context.result).toEqual({ kind: result.kind })
+	expect(actor.getSnapshot().output).toEqual({ kind: result.kind })
 })
+
+it.each(['document', 'snapshot', 'asset'] as const)(
+	'discards late content on scope loss during %s',
+	async (boundary) => {
+		const draft = await prepareSave(crypto.randomUUID(), {
+			operationId: crypto.randomUUID(),
+			title: 'Private',
+			text: 'private',
+			bytes: new Uint8Array([1]),
+			mediaType: 'text/plain'
+		})
+		let current = true
+		const pending = Promise.withResolvers<void>()
+		const called: string[] = []
+		let result: ReadResult | undefined
+		const block = async (name: string) => {
+			called.push(name)
+			if (name === boundary) await pending.promise
+		}
+		const actor = createActor(
+			createReadRecordMachine({
+				isCurrent: () => current,
+				document: async () => {
+					await block('document')
+					return draft.document
+				},
+				snapshot: async () => {
+					await block('snapshot')
+					return draft.snapshot
+				},
+				asset: async () => {
+					await block('asset')
+					return draft.asset
+				}
+			}),
+			{
+				input: { id: draft.document.id }
+			}
+		)
+		actor.on('record', (event) => {
+			result = event.result
+		})
+		actor.start()
+		await waitFor(actor, (s) => s.matches(boundary))
+		current = false
+		pending.resolve()
+		await toPromise(actor)
+		expect(result).toEqual({ kind: 'unavailable' })
+		expect(called).toEqual(
+			['document', 'snapshot', 'asset'].slice(
+				0,
+				['document', 'snapshot', 'asset'].indexOf(boundary) + 1
+			)
+		)
+		expect(actor.getSnapshot().context).toMatchObject({
+			document: undefined,
+			snapshot: undefined,
+			asset: undefined,
+			result: { kind: 'unavailable' }
+		})
+	}
+)

@@ -225,3 +225,165 @@ test('authenticates capture requests with the existing account and rejects missi
 		authority = await startAuthority()
 	}
 })
+
+/** Fixture gateway responses; native persistence, browser processes and Jazz sync stay real. */
+async function fixtureArticle(page: import('@playwright/test').Page) {
+	let extractions = 0
+	await page.route('**/api/capture/*', async (route) => {
+		const input: { operationId: string; url: string } = route.request().postDataJSON()
+		const common = {
+			operationId: input.operationId,
+			finalUrl: 'https://example.com/saved?order=1&keep=2'
+		}
+		if (route.request().url().endsWith('/resolve'))
+			await route.fulfill({
+				json: {
+					...common,
+					submittedUrl: input.url,
+					redirects: [],
+					resolvedAt: new Date().toISOString()
+				}
+			})
+		else {
+			extractions++
+			await route.fulfill({
+				json: {
+					...common,
+					provenance: {
+						submittedUrl: input.url,
+						redirects: [],
+						resolvedAt: new Date().toISOString()
+					},
+					canonicalCandidate: 'https://unrelated.example/',
+					candidate: {
+						title: 'UI saved article',
+						text: 'Exact UI text café 🦊\nLiteral <script> stays text.',
+						html: '<p>Exact UI text café 🦊</p><p>Literal &lt;script&gt; stays text.</p>',
+						assetCandidates: [
+							{ sourceUrl: 'https://images.example/pixel.png', alt: 'Unavailable image' }
+						],
+						partialEvidence: ['assetsNotFetched'],
+						parserVersion: 'fixture',
+						normalizationVersion: '1'
+					}
+				}
+			})
+		}
+	})
+	return () => extractions
+}
+
+test('Add Link previews, saves and detects a resolved duplicate without replacing content', async ({
+	page
+}) => {
+	const extractions = await fixtureArticle(page)
+	await page.goto('/')
+	await page.getByRole('button', { name: 'Create account', exact: true }).click()
+	await expect(page.getByRole('heading', { name: 'Add Link', exact: true })).toBeVisible()
+	await page.getByLabel('Article URL', { exact: true }).fill('https://short.example/#intro')
+	await page.getByRole('button', { name: 'Get article', exact: true }).click()
+	await expect(page.getByRole('region', { name: 'Article preview' })).toContainText(
+		'Exact UI text café 🦊'
+	)
+	await page.getByRole('button', { name: 'Save article', exact: true }).click()
+	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
+	await page.getByRole('button', { name: 'Open saved article', exact: true }).click()
+	await expect(page.getByRole('article')).toContainText('Literal <script> stays text.')
+	await page
+		.getByLabel('Article URL', { exact: true })
+		.fill('https://example.com/saved?order=1&keep=2#different')
+	await page.getByRole('button', { name: 'Get article', exact: true }).click()
+	await expect(page.getByText('Already saved.', { exact: true })).toBeVisible()
+	expect(extractions()).toBe(1)
+	await expect(
+		page
+			.getByRole('region', { name: 'Saved articles' })
+			.getByRole('button', { name: 'UI saved article', exact: true })
+	).toHaveCount(1)
+	await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+	await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeVisible()
+	await expect(page.getByText('UI saved article', { exact: true })).toHaveCount(0)
+	await expect(page.getByRole('article')).toHaveCount(0)
+})
+
+test('UI preview saves offline, survives a full browser restart and syncs to a restored profile', async ({
+	browser
+}) => {
+	const profile = await mkdtemp(join(tmpdir(), 'clipper-ui-profile-'))
+	let context = await chromium.launchPersistentContext(profile, { headless: true })
+	const independent = await browser.newContext()
+	try {
+		const page = await context.newPage()
+		await fixtureArticle(page)
+		await page.goto('http://127.0.0.1:5180')
+		await page.getByRole('button', { name: 'Create account', exact: true }).click()
+		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
+		const phrase = await page
+			.getByRole('dialog')
+			.getByLabel('Recovery phrase', { exact: true })
+			.inputValue()
+		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const restored = await independent.newPage()
+		await restored.goto('http://127.0.0.1:5180')
+		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await page
+			.getByLabel('Article URL', { exact: true })
+			.fill('https://example.com/saved?order=1&keep=2')
+		await page.getByRole('button', { name: 'Get article', exact: true }).click()
+		await expect(page.getByRole('button', { name: 'Save article', exact: true })).toBeVisible()
+		await authority.stop()
+		await page.getByRole('button', { name: 'Save article', exact: true }).click()
+		await expect(
+			page.getByText('Article saved on this device. Sync pending.', { exact: true })
+		).toBeVisible()
+		await context.close()
+		context = await chromium.launchPersistentContext(profile, { headless: true })
+		const reopened = await context.newPage()
+		await reopened.goto('http://127.0.0.1:5180')
+		await reopened
+			.getByRole('region', { name: 'Saved articles' })
+			.getByRole('button', { name: 'UI saved article', exact: true })
+			.click()
+		await expect(reopened.getByRole('article')).toContainText('Exact UI text café 🦊')
+		await expect(reopened.getByRole('article')).toContainText('Literal <script> stays text.')
+		authority = await startAuthority()
+		await reopened.reload()
+		await restored.reload()
+		await restored
+			.getByRole('region', { name: 'Saved articles' })
+			.getByRole('button', { name: 'UI saved article', exact: true })
+			.click({ timeout: 30000 })
+		await expect(restored.getByRole('article')).toContainText('Exact UI text café 🦊')
+	} finally {
+		await independent.close()
+		await context.close()
+		await rm(profile, { recursive: true, force: true })
+	}
+})
+
+test('canceling an Add Link request prevents a late preview and leaves the form usable', async ({
+	page
+}) => {
+	let release!: () => void
+	const pending = new Promise<void>((resolve) => {
+		release = resolve
+	})
+	await page.route('**/api/capture/resolve', async (route) => {
+		await pending
+		await route.fulfill({ status: 503, json: { code: 'gatewayUnavailable' } }).catch(() => {})
+	})
+	await page.goto('/')
+	await page.getByRole('button', { name: 'Create account', exact: true }).click()
+	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/')
+	await page.getByRole('button', { name: 'Get article', exact: true }).click()
+	await expect(
+		page.getByText('Resolving and extracting the article…', { exact: true })
+	).toBeVisible()
+	await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+	release()
+	await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled()
+	await expect(page.getByRole('button', { name: 'Save article', exact: true })).toHaveCount(0)
+})

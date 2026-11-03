@@ -4,7 +4,16 @@ import type {
 	WorkspaceCreationResult
 } from 'delightful-local-first/workspace/creation/contracts'
 
+export type ArticleSource = {
+	documentId: string
+	id: string
+	libraryId: string
+	finalUrl: string
+	submittedUrl: string
+	provenance: string
+}
 export type SaveRequest = {
+	source?: Omit<ArticleSource, 'id' | 'libraryId' | 'documentId'>
 	operationId: string
 	title: string
 	text: string
@@ -42,6 +51,7 @@ export type StorageIntent = {
 	createdAt: string
 }
 export type PreparedSave = {
+	source?: ArticleSource
 	intent: StorageIntent
 	asset: StoredAsset
 	snapshot: TextSnapshot
@@ -67,7 +77,13 @@ export type AssetResult =
 	| { kind: 'unavailable'; reason: 'missing' | 'invalid' }
 export type ReadResult =
 	| { kind: 'missing' | 'unavailable' | 'corrupt' }
-	| { kind: 'available'; document: DocumentHeader; text: string; asset: AssetResult }
+	| {
+			kind: 'available'
+			document: DocumentHeader
+			text: string
+			asset: AssetResult
+			source?: ArticleSource
+	  }
 export type ReadCapabilities = {
 	isCurrent: () => boolean
 	document: (id: string) => Promise<DocumentHeader | null>

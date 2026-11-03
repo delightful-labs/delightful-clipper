@@ -16,23 +16,24 @@ Updated 2026-11-03. This is the current implementation checklist; the product re
 ## Storage qualification before enabling a product write flow
 
 - [x] Remove the redundant custom manifest/part codec; validate native asset bounds and parent consistency.
-- [ ] Clear retained read-actor content at terminal states and qualify scope loss during every asynchronous boundary.
+- [x] Clear retained read-actor content/output at terminal states and qualify scope loss at document, snapshot and asset completions.
 - [x] Qualify parent-reference consistency and missing/invalid native assets while preserving readable text.
 - [x] Exercise shutdown during acquisition/commit/local wait, unknown settlement without replay, and late remote rejection; treat missing stage output as unknown.
 - [x] Save unuploaded text/bytes with the authority stopped, close the complete browser process, reopen the same profile and verify exact local content.
 - [x] Reconnect and verify that content in a separately restored account profile.
-- [ ] Wire consuming actor ownership and drain into the eventual product capture flow; no storage write UI is currently enabled.
+- [x] Wire runtime-owned Add Link/save/read actors and drain local writes before logout, replacement and shutdown.
 
 ## Gateway foundation
 
 - [x] Add authenticated, bounded resolve/extract endpoints with public-address pinning and redirect revalidation.
 - [x] Add inert Readability extraction, explicit DOMPurify allowlists and referenced footnote preservation.
 - [x] Qualify local transport/cancellation/address/sanitizer fixtures and a live authenticated public HTTPS extraction.
-- [ ] Qualify Netlify-hosted native verifier packaging and actual public-only transport before enabling the deployment flag. Connector access currently requires authentication.
+- [x] Qualify Netlify native verifier packaging, public extraction/redirects and direct private-address rejection through CLI-driven hosted tests. Production gateway stays disabled; controlled hosted private-redirect fixtures remain a release check.
 
 ## Subsequent product and release work
 
-- [ ] Build the authenticated public-source gateway and Add Link workflow, including redirect/short-link identity, destination-pinned transport and extraction/sanitization bounds.
+- [x] Build authenticated Add Link → preview → explicit local save → minimal text reader, with final-destination duplicate checks, provenance and honest remote status.
+- [ ] Complete image acquisition, richer saved reader requirements and durable pre-save intake recovery; the current preview is ephemeral.
 - [ ] Implement desktop extension intake and annotation anchoring with sender validation, packaged runtime assets and restart reconciliation.
 - [ ] Implement retained reader, note/highlight, image, organization, search and deletion requirements.
 - [ ] Add and qualify the service-worker/offline app shell; existing browser tests keep the web server available.
@@ -44,3 +45,7 @@ Typography presets, the DUI image viewer, custom fonts, reading-time estimation 
 ## Validation for the storage PR
 
 `pnpm verify` passes vendor verification, formatting, lint, TypeScript/Svelte checks, 40 unit tests and the Netlify production build. All five Chromium tests pass. The native 600 KiB payload survives a complete offline browser restart, then syncs to an independently restored account profile. The web shell stays served. Scope-loss and terminal-cleanup tests cover the exercised boundaries; exhaustive scope replacement at every SDK boundary remains open. Large bundle/duplicate WASM warnings remain tracked above.
+
+## Add Link and minimal reader batch
+
+See [add-link-implementation.md](add-link-implementation.md). `pnpm verify` and eight Chromium browser tests pass, including UI preview → authority offline → Save → full browser restart → exact text → restored-profile sync. The gateway responses in that UI restart test are fixtures; storage/authority/process boundaries are real. Actual hosted gateway/reader validation is recorded separately. Full offline shell startup, images, concurrent-capture reconciliation, rich reader controls and broader platform qualification remain open. No image completeness or production enablement claim follows from text availability.
