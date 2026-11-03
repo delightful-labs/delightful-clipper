@@ -1,11 +1,13 @@
-import { JSDOM, VirtualConsole } from 'jsdom'
 import { Readability } from '@mozilla/readability'
 import createDOMPurify from 'dompurify'
 import { CaptureError } from './errors.js'
 import { sourceUrl } from './destination.js'
-export function extract(body: Uint8Array, mediaType: string, url: string) {
+export async function extract(body: Uint8Array, mediaType: string, url: string) {
 	if (!/^(text\/html|application\/xhtml\+xml|text\/plain)(;|$)/i.test(mediaType))
 		throw new CaptureError('unsupportedMedia', 415)
+	const { JSDOM, VirtualConsole } = await import('jsdom').catch(() => {
+		throw new CaptureError('gatewayUnavailable', 503, true)
+	})
 	const virtualConsole = new VirtualConsole()
 	const plain = /^text\/plain/i.test(mediaType)
 	let text = ''

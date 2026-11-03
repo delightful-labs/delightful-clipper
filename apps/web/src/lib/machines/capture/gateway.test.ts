@@ -123,3 +123,22 @@ it('keeps an issued fetch owned until explicit cancellation settles', async () =
 	expect(result.kind).toBe('failed')
 	expect(deps.extract).not.toHaveBeenCalled()
 })
+
+it('preserves an asynchronous parser runtime outage as a retryable service failure', async () => {
+	const deps = fixture()
+	const actor = createActor(
+		createGatewayMachine({
+			...deps,
+			extract: async () => {
+				throw new CaptureError('gatewayUnavailable', 503, true)
+			}
+		}),
+		{ input: input() }
+	).start()
+	const result = await toPromise(actor)
+	expect(result.kind).toBe('failed')
+	if (result.kind !== 'failed' || !(result.error instanceof CaptureError))
+		throw new Error('Expected classified service failure')
+	expect(result.error.status).toBe(503)
+	expect(result.error.retryable).toBe(true)
+})

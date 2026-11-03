@@ -22,11 +22,11 @@ node_bundler = "esbuild"
 external_node_modules = ["jazz-napi"]
 # The pinned package ships all platforms inline; keep Netlify's Linux x64 binary.
 included_files = [
-  "!**/jazz-napi.darwin-*.node",
-  "!**/jazz-napi.win32-*.node",
-  "!**/jazz-napi.linux-arm64-gnu.node",
-  "!node_modules/.pnpm/**/jazz-napi.darwin-*.node",
-  "!node_modules/.pnpm/**/jazz-napi.win32-*.node",
-  "!node_modules/.pnpm/**/jazz-napi.linux-arm64-gnu.node",
-  "!node_modules/.pnpm/@garden-co+jazz-napi-*/**/*.node"
+	"!**/jazz-napi.darwin-*.node",
+	"!**/jazz-napi.win32-*.node",
+	"!**/jazz-napi.linux-arm64-gnu.node",
+	"!node_modules/.pnpm/**/jazz-napi.darwin-*.node",
+	"!node_modules/.pnpm/**/jazz-napi.win32-*.node",
+	"!node_modules/.pnpm/**/jazz-napi.linux-arm64-gnu.node",
+	"!node_modules/.pnpm/@garden-co+jazz-napi-*/**/*.node"
 ]
