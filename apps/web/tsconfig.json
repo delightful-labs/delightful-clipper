@@ -6,5 +6,6 @@
 		"exactOptionalPropertyTypes": true,
 		"noUncheckedIndexedAccess": true,
 		"skipLibCheck": true
-	}
+	},
+	"exclude": ["src/service-worker"]
 }

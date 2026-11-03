@@ -8,7 +8,7 @@
 	import { Button, StatusMessage, Textarea } from 'delightful-ui'
 	import { createApplicationReadinessMachine, selectApplicationView, selectRecoveryBinding,selectLibraryActor } from '../machines/runtime/application-readiness.js'
 	import { accountInput, type Session } from '../backend/jazz/account.js'
-	import { t, recoveryMessages } from '../localization/index.js'
+	import { t, action, recoveryMessages } from '../localization/index.js'
 
 	const applicationReadinessMachine = createApplicationReadinessMachine<Session>()
 	let { appId, serverUrl, gatewayEnabled }: { appId: string; serverUrl: string;gatewayEnabled:boolean } = $props()
@@ -34,29 +34,29 @@
 	})
 </script>
 
-<section aria-label={t('title')}>
-	<StatusMessage text={t(view.status)} />
+<section aria-label={t('app.title')}>
+	<StatusMessage text={t(`account.status.${view.status}`)} />
 	{#if view.feedback}
-		<StatusMessage variant="error" text={t(view.feedback)} />
+		<StatusMessage variant="error" text={t(`account.feedback.${view.feedback}`)} />
 	{/if}
 	{#if view.showIdentityForm}
-		<Button type="button" onclick={() => send({type:'CREATE'})}>{t('create')}</Button>
+		<Button type="button" onclick={() => send({type:'CREATE'})}>{action('create','account')}</Button>
 		<form onsubmit={(event) => {
 			event.preventDefault()
 			const value = phrase
 			phrase = ''
 			send({type:'RESTORE',phrase:value})
 		}}>
-			<Textarea label={t('phrase')} bind:value={phrase} autocomplete="off" spellcheck={false} required />
-			<Button type="submit">{t('restore')}</Button>
+			<Textarea label={t('account.recovery.phrase_label')} bind:value={phrase} autocomplete="off" spellcheck={false} required />
+			<Button type="submit">{action('restore','account')}</Button>
 		</form>
 	{/if}
 	{#if recovery}
 		<RecoveryPhrase source={recovery.source} capability={recovery.capability} messages={recoveryMessages()} />
 	{/if}
-	{#if view.requiresReload}<Button type="button" onclick={() => window.location.reload()}>{t('reload')}</Button>{/if}
-	{#if view.canRetry}<Button type="button" onclick={() => send({type:'RETRY'})}>{t('retry')}</Button>{/if}
-	{#if view.canLogout}<Button type="button" onclick={() => send({type:'LOGOUT'})}>{t('logout')}</Button>{/if}
+	{#if view.requiresReload}<Button type="button" onclick={() => window.location.reload()}>{action('reload','page')}</Button>{/if}
+	{#if view.canRetry}<Button type="button" onclick={() => send({type:'RETRY'})}>{t('actions.retry')}</Button>{/if}
+	{#if view.canLogout}<Button type="button" onclick={() => send({type:'LOGOUT'})}>{t('actions.sign_out')}</Button>{/if}
 </section>
 
 {#if library}

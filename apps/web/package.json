@@ -7,7 +7,7 @@
 		"dev": "pnpm build:parser-worker && vite dev",
 		"build": "vite build && pnpm build:parser-worker",
 		"preview": "vite preview",
-		"check": "svelte-kit sync && svelte-check --tsconfig tsconfig.json --fail-on-warnings",
+		"check": "svelte-kit sync && svelte-check --tsconfig tsconfig.json --fail-on-warnings && tsc --project src/service-worker/tsconfig.json",
 		"prepare": "svelte-kit sync",
 		"deploy:jazz": "jazz-tools deploy --schema-dir src/lib/backend/jazz",
 		"dev:agent": "pnpm build:parser-worker && vite dev --mode agent --port 5180",

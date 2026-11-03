@@ -1,3 +1,4 @@
+import { offlineAssets } from './tooling/offline-assets.js'
 import adapter from '@sveltejs/adapter-netlify'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { defineConfig } from 'vite'
@@ -29,6 +30,7 @@ export default defineConfig(({ command, mode }) => {
 			]
 		},
 		plugins: [
+			offlineAssets(),
 			jazzSvelteKit({
 				server:
 					command === 'serve' &&
@@ -51,7 +53,14 @@ export default defineConfig(({ command, mode }) => {
 				schemaDir: 'src/lib/backend/jazz',
 				inspector: false
 			}),
-			sveltekit({ adapter: adapter(), paths: { relative: false } })
+			sveltekit({
+				adapter: adapter(),
+				paths: { relative: false },
+				serviceWorker: { register: false },
+				...(process.env.CLIPPER_SHELL_VERSION
+					? { version: { name: process.env.CLIPPER_SHELL_VERSION } }
+					: {})
+			})
 		],
 		server: {
 			host: '127.0.0.1',

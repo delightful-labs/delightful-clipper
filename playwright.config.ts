@@ -2,6 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
 	testDir: './apps/web/tests',
+	testIgnore: ['**/offline/**'],
 	fullyParallel: false,
 	workers: 1,
 	timeout: 45000,

@@ -23,7 +23,8 @@
 		"test:e2e": "playwright test",
 		"dev:agent": "pnpm --filter @delightful-clipper/web dev:agent",
 		"build:deploy-preview": "pnpm --filter @delightful-clipper/web build:deploy-preview",
-		"deploy:jazz": "pnpm --filter @delightful-clipper/web deploy:jazz"
+		"deploy:jazz": "pnpm --filter @delightful-clipper/web deploy:jazz",
+		"test:offline": "node --experimental-strip-types apps/web/tests/offline-build.ts && playwright test --config playwright.offline.config.ts"
 	},
 	"devDependencies": {
 		"@types/node": "24.19.2",

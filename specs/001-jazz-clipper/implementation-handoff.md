@@ -1,6 +1,6 @@
 # Implementation handoff
 
-**Status**: Foundation storage and hosted authenticated gateway are implemented and qualified. The Add Link batch adds a runtime-owned preview → explicit local save → minimal text reader, immutable source provenance and final-destination duplicate checks. Offline UI saves survive a full Chromium restart and sync to a restored profile while the shell remains served. Images, full reader/annotation workflows, service-worker shell and platform/release qualification remain open. See [tasks.md](tasks.md) and [add-link-implementation.md](add-link-implementation.md).
+**Status**: Foundation storage and hosted authenticated gateway are implemented and qualified. The Add Link batch adds a runtime-owned preview → explicit local save → minimal text reader, immutable source provenance and final-destination duplicate checks. Offline UI saves survive a full Chromium restart and sync to a restored profile. The offline-shell batch additionally qualifies cold startup with both servers stopped and HTTP cache cleared; see [offline-shell-implementation.md](offline-shell-implementation.md). Images, full reader/annotation workflows and broader platform/release qualification remain open. See [tasks.md](tasks.md) and [add-link-implementation.md](add-link-implementation.md).
 
 ## First batch: application foundation and durable private root
 

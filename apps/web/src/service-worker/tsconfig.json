@@ -1,0 +1,10 @@
+{
+	"extends": "$app/tsconfig/service-worker",
+	"include": ["./*.ts"],
+	"compilerOptions": {
+		"strict": true,
+		"exactOptionalPropertyTypes": true,
+		"skipLibCheck": true,
+		"noUncheckedIndexedAccess": true
+	}
+}

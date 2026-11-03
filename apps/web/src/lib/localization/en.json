@@ -1,0 +1,121 @@
+{
+	"app": {
+		"title": "Delightful Clipper"
+	},
+	"actions": {
+		"add_subject": "Add {{subject}}",
+		"get_subject": "Get {{subject}}",
+		"save_subject": "Save {{subject}}",
+		"open_subject": "Open {{subject}}",
+		"close_subject": "Close {{subject}}",
+		"create_subject": "Create {{subject}}",
+		"restore_subject": "Restore {{subject}}",
+		"show_subject": "Show {{subject}}",
+		"reload_subject": "Reload {{subject}}",
+		"cancel": "Cancel",
+		"close": "Close",
+		"retry": "Retry",
+		"sign_out": "Sign out"
+	},
+	"nouns": {
+		"account_one": "account",
+		"account_other": "accounts",
+		"article_one": "article",
+		"article_other": "articles",
+		"saved_article_one": "saved article",
+		"saved_article_other": "saved articles",
+		"library_one": "library",
+		"library_other": "libraries",
+		"link_one": "link",
+		"link_other": "links",
+		"page_one": "page",
+		"page_other": "pages",
+		"note_one": "note",
+		"note_other": "notes",
+		"highlight_one": "highlight",
+		"highlight_other": "highlights",
+		"image_one": "image",
+		"image_other": "images",
+		"tag_one": "tag",
+		"tag_other": "tags",
+		"recovery_phrase_one": "recovery phrase",
+		"recovery_phrase_other": "recovery phrases",
+		"original_one": "original",
+		"original_other": "originals"
+	},
+	"account": {
+		"status": {
+			"starting": "Opening your account…",
+			"signedOut": "Create an account or restore your existing account with its recovery phrase.",
+			"working": "Updating your account…",
+			"openingLibrary": "Preparing your private library…",
+			"localSaved": "Library saved on this device. Sync pending.",
+			"synced": "Private library synced.",
+			"syncFailed": "Library saved on this device, but sync failed. Retry when connected.",
+			"rootFailed": "The library could not be saved on this device. Retry to continue.",
+			"conflict": "The existing library has an incompatible format. It was not overwritten.",
+			"unavailable": "The account is unavailable. Retry to reconnect.",
+			"configuration": "Account service is not configured for this deployment.",
+			"closing": "Closing your account…",
+			"ownerFailed": "The account session stopped unexpectedly. Reload the page to reconnect.",
+			"cleanupFailed": "Session cleanup could not be confirmed. Reload the page before continuing.",
+			"closed": "Account closed."
+		},
+		"feedback": {
+			"identityFailed": "The account operation could not be completed. Check the current account status before retrying.",
+			"restoreInvalid": "That recovery phrase is invalid. Check it and try again.",
+			"restoreFailed": "The account could not be restored. Check the phrase and connection, then retry."
+		},
+		"recovery": {
+			"description": "Keep your recovery phrase somewhere safe so you can restore this account on another device.",
+			"heading": "Account recovery phrase",
+			"warning": "Anyone with this phrase can access your account. Keep it private.",
+			"phrase_label": "Recovery phrase",
+			"pending": "Loading recovery phrase…",
+			"failed": "The recovery phrase could not be shown. Try again.",
+			"unavailable": "Account recovery is unavailable."
+		}
+	},
+	"capture": {
+		"status": {
+			"pending": "Resolving and extracting the article…",
+			"saving": "Saving on this device…",
+			"saved": "Article saved on this device. Sync pending.",
+			"synced": "Article synced.",
+			"rejected": "The server rejected this save. Local content may remain available; it is not confirmed on other devices.",
+			"unknown": "Save outcome is uncertain. Check the saved article before trying again. No write was replayed.",
+			"duplicate": "Already saved.",
+			"save_failed": "The article could not be saved on this device. Check available storage before trying again.",
+			"canceled": "Saving stopped. Check the saved article before trying again.",
+			"failed": "The article could not be fetched. Check the URL and connection, then try again."
+		},
+		"errors": {
+			"source_too_large": "This article exceeds the current save limit. Nothing was saved.",
+			"invalid_url": "Enter a valid public HTTP or HTTPS URL.",
+			"session_unavailable": "Your account could not be authenticated. Reconnect before trying again.",
+			"rate_limited": "Too many capture requests. Wait a minute before trying again."
+		},
+		"preview_heading": "Article preview",
+		"url_label": "Article URL",
+		"text_only": "Text preview and reading are available. Images are not downloaded in this version.",
+		"disabled": "Adding links is not enabled on this deployment."
+	},
+	"library": {
+		"heading": "Saved articles",
+		"empty": "No saved articles on this device yet.",
+		"list_failed": "The saved article list is unavailable. Reload to reconnect.",
+		"sync_pending": "Sync pending."
+	},
+	"reader": {
+		"heading": "Saved article",
+		"loading": "Opening saved article…",
+		"unavailable": "This article is not available on this device. Reconnect and open it again."
+	},
+	"offline": {
+		"preparing": "Preparing offline startup…",
+		"ready": "Offline startup prepared on this browser.",
+		"update": "An update is ready. Close all Clipper tabs and reopen to apply it safely.",
+		"failed": "Offline startup could not be prepared. You can continue online and retry.",
+		"unsupported": "Offline startup is unavailable in this browser."
+	}
+}

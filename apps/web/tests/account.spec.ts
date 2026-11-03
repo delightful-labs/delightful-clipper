@@ -279,7 +279,7 @@ test('Add Link previews, saves and detects a resolved duplicate without replacin
 	const extractions = await fixtureArticle(page)
 	await page.goto('/')
 	await page.getByRole('button', { name: 'Create account', exact: true }).click()
-	await expect(page.getByRole('heading', { name: 'Add Link', exact: true })).toBeVisible()
+	await expect(page.getByRole('heading', { name: 'Add link', exact: true })).toBeVisible()
 	await page.getByLabel('Article URL', { exact: true }).fill('https://short.example/#intro')
 	await page.getByRole('button', { name: 'Get article', exact: true }).click()
 	await expect(page.getByRole('region', { name: 'Article preview' })).toContainText(

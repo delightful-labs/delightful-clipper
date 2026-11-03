@@ -36,8 +36,8 @@ Updated 2026-11-03. This is the current implementation checklist; the product re
 - [ ] Complete image acquisition, richer saved reader requirements and durable pre-save intake recovery; the current preview is ephemeral.
 - [ ] Implement desktop extension intake and annotation anchoring with sender validation, packaged runtime assets and restart reconciliation.
 - [ ] Implement retained reader, note/highlight, image, organization, search and deletion requirements.
-- [ ] Add and qualify the service-worker/offline app shell; existing browser tests keep the web server available.
-- [ ] Resolve duplicate approximately 19.3 MB WASM outputs and measure startup/download performance.
+- [x] Qualify the production service-worker shell in Chromium with web and Jazz stopped, HTTP cache cleared and a complete browser-process restart. Keep broader platform qualification open.
+- [x] Emit one browser WASM binary, verify one initial network transfer and immutable reuse across updates; record local startup measurements in offline-shell-implementation.md.
 - [ ] Qualify Netlify deployment, accessibility and all claimed browser/mobile targets against the spec’s acceptance criteria.
 
 Typography presets, the DUI image viewer, custom fonts, reading-time estimation and other accepted deferrals remain outside MVP. This checklist does not expand scope.
@@ -49,3 +49,7 @@ Typography presets, the DUI image viewer, custom fonts, reading-time estimation 
 ## Add Link and minimal reader batch
 
 See [add-link-implementation.md](add-link-implementation.md). `pnpm verify` and eight Chromium browser tests pass, including UI preview → authority offline → Save → full browser restart → exact text → restored-profile sync. The gateway responses in that UI restart test are fixtures; storage/authority/process boundaries are real. Actual hosted gateway/reader validation is recorded separately. Full offline shell startup, images, concurrent-capture reconciliation, rich reader controls and broader platform qualification remain open. No image completeness or production enablement claim follows from text availability.
+
+## Offline shell batch
+
+See [offline-shell-implementation.md](offline-shell-implementation.md). DLF remains the session/readiness/recovery/persistence integration; Clipper caches only its public build artifacts and prerendered root. Five production Chromium tests cover complete offline browser startup and exact reading with both servers stopped, restored-profile sync, waiting updates across multiple tabs, cache isolation/cleanup, installation failure and retry without replacing the DLF account. The HTTP cache is cleared; the service-worker cache supplies the root response. These are Chromium desktop results, not mobile/Firefox support or eviction-proof storage claims.
