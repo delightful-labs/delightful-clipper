@@ -43,7 +43,7 @@ type Context<Session extends object> = {
 	write: RootWrite | undefined
 	phrase: string
 	attempt: number
-	productExit: 'logout' | 'shutdown' | 'replace'
+	productExit: 'logout' | 'shutdown' | 'replace' | 'restore'
 	feedback: 'none' | 'identityFailed' | 'restoreFailed' | 'restoreInvalid'
 }
 function required<T>(value: T | undefined): T {
@@ -521,6 +521,10 @@ export function createApplicationReadinessMachine<Session extends object>() {
 											: undefined,
 									onDone: [
 										{
+											guard: ({ context }) => context.productExit === 'restore',
+											target: '#application-readiness.running.restoring'
+										},
+										{
 											guard: ({ context }) => context.productExit === 'logout',
 											target: '#application-readiness.running.loggingOut'
 										},
@@ -532,6 +536,18 @@ export function createApplicationReadinessMachine<Session extends object>() {
 									]
 								},
 								on: {
+									RESTORE: {
+										target: '.stopping',
+										actions: [
+											assign(({ context, event }) => ({
+												productExit: 'restore' as const,
+												phrase: event.phrase,
+												attempt: context.attempt + 1,
+												feedback: 'none' as const
+											})),
+											sendTo('library', { type: 'SHUTDOWN' })
+										]
+									},
 									LOGOUT: {
 										target: '.stopping',
 										actions: [
@@ -563,6 +579,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 										meta: { status: 'closing' },
 										on: {
 											LOGOUT: {},
+											RESTORE: {},
 											SHUTDOWN: { actions: assign({ productExit: 'shutdown' }) },
 											OBSERVED: { actions: 'rememberObservation' }
 										}
@@ -654,7 +671,11 @@ export function selectApplicationView<Session extends object>(
 		status,
 		feedback: snapshot?.context.feedback === 'none' ? undefined : snapshot?.context.feedback,
 		showIdentityForm: snapshot?.can({ type: 'CREATE' }) ?? false,
-		canLogout: snapshot?.can({ type: 'LOGOUT' }) ?? false,
+		canLogout:
+			snapshot?.context.observation.status === 'ready' &&
+			snapshot.context.observation.signedIn === true &&
+			snapshot.can({ type: 'LOGOUT' }),
+		canRestore: snapshot?.can({ type: 'RESTORE', phrase: '' }) ?? false,
 		canRetry: snapshot?.can({ type: 'RETRY' }) ?? false,
 		requiresReload: snapshot?.matches('ownerFailed') || snapshot?.matches('cleanupFailed') || false
 	}

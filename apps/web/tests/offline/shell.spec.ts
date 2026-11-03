@@ -123,7 +123,6 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const restored = await independent.newPage()
 		await restored.goto('http://127.0.0.1:5190')
 		await ready(restored)
-		await restored.getByRole('button', { name: 'Sign out', exact: true }).click()
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()

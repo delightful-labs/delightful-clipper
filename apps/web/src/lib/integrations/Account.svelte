@@ -41,6 +41,8 @@
 	{/if}
 	{#if view.showIdentityForm}
 		<Button type="button" onclick={() => send({type:'CREATE'})}>{action('create','account')}</Button>
+	{/if}
+	{#if view.canRestore}
 		<form onsubmit={(event) => {
 			event.preventDefault()
 			const value = phrase

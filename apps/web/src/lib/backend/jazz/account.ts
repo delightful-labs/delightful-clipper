@@ -40,6 +40,7 @@ function bindHost(session: Session): AccountHost {
 			status: 'ready',
 			binding: Object.freeze({}),
 			accountId: account.id,
+			signedIn: !['urn:jazz:local-first', 'urn:jazz:anonymous'].includes(account.identity.issuer),
 			library: createLibraryCapability(
 				createLibraryRecords(db, account.id, () => {
 					try {

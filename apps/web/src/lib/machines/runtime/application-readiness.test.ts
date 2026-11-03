@@ -226,6 +226,7 @@ describe('account/root ownership', () => {
 		actor.send({ type: 'SHUTDOWN' })
 		expect(retry).toHaveBeenCalledOnce()
 		expect(host.release).not.toHaveBeenCalled()
+		expect(host.restoration.capability.restoreIdentity).not.toHaveBeenCalled()
 		pending.resolve()
 		await waitFor(actor, (snapshot) => snapshot.status === 'done')
 		expect(host.release).toHaveBeenCalledOnce()
@@ -346,13 +347,14 @@ describe('account/root ownership', () => {
 		await vi.waitFor(() => expect(access.localWait).toHaveBeenCalledOnce())
 		owner.stop()
 		expect(host.release).not.toHaveBeenCalled()
+		expect(host.restoration.capability.restoreIdentity).not.toHaveBeenCalled()
 		pending.resolve()
 		await waitFor(actor, (snapshot) => snapshot.status === 'done')
 		expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('ownerFailed')
 	})
 })
 
-it.each(['logout', 'shutdown', 'replacement'] as const)(
+it.each(['logout', 'shutdown', 'replacement', 'restore'] as const)(
 	'drains library writes before %s releases its account binding',
 	async (mode) => {
 		const pending = Promise.withResolvers<import('../../contracts/storage.js').SaveResult>()
@@ -385,14 +387,18 @@ it.each(['logout', 'shutdown', 'replacement'] as const)(
 		await waitFor(product, (s) => s.matches({ running: { capture: 'preview' } }))
 		product.send({ type: 'SAVE' })
 		if (mode === 'replacement') emit(ready('other', root(Promise.resolve(), Promise.resolve())))
+		else if (mode === 'restore') actor.send({ type: 'RESTORE', phrase: 'invalid synthetic phrase' })
 		else actor.send({ type: mode === 'logout' ? 'LOGOUT' : 'SHUTDOWN' })
 		await waitFor(actor, (s) => s.matches({ running: { library: { ready: 'stopping' } } }))
 		expect(shutdown).toHaveBeenCalledOnce()
 		expect(selectLibraryActor(actor.getSnapshot())).toBeUndefined()
 		expect(host.logout).not.toHaveBeenCalled()
 		expect(host.release).not.toHaveBeenCalled()
+		expect(host.restoration.capability.restoreIdentity).not.toHaveBeenCalled()
 		pending.resolve({ kind: 'unknown', operationId: id })
 		if (mode === 'shutdown') await waitFor(actor, (s) => s.status === 'done')
+		else if (mode === 'restore')
+			await waitFor(actor, (s) => s.context.feedback === 'restoreInvalid')
 		else if (mode === 'logout')
 			await waitFor(actor, () => vi.mocked(host.logout).mock.calls.length === 1)
 		else
@@ -406,5 +412,22 @@ it.each(['logout', 'shutdown', 'replacement'] as const)(
 		expect(product.getSnapshot().status).toBe('done')
 		expect(product.getSnapshot().context.preview).toBeUndefined()
 		actor.send({ type: 'SHUTDOWN' })
+	}
+)
+
+it.each([false, true])(
+	'shows sign-out only for an explicitly signed-in identity (%s)',
+	async (signedIn) => {
+		const base = ready('owner', root(Promise.resolve(), Promise.resolve()))
+		if (base.status !== 'ready') throw new Error('Expected ready')
+		const { host } = fixture({ ...base, signedIn })
+		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
+		await waitFor(actor, (s) => s.matches({ running: { library: 'ready' } }))
+		expect(selectApplicationView(actor.getSnapshot(), true)).toMatchObject({
+			canLogout: signedIn,
+			canRestore: true
+		})
+		actor.send({ type: 'SHUTDOWN' })
+		await waitFor(actor, (s) => s.status === 'done')
 	}
 )

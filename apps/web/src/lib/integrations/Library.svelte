@@ -4,7 +4,7 @@
  import type {ActorRefFrom,SnapshotFrom} from 'xstate'
  import {normalizedSource} from '../capture/source.js'
  import {libraryMachine} from '../machines/capture/library.js'
- import {Button,StatusMessage} from 'delightful-ui'
+ import {Button,StatusMessage,InputText} from 'delightful-ui'
  import {t,action} from '../localization/index.js'
  let {actor,gatewayEnabled}:{actor:ActorRefFrom<typeof libraryMachine>;gatewayEnabled:boolean}=$props()
  let snapshot=$state<SnapshotFrom<typeof libraryMachine>>()
@@ -21,8 +21,7 @@
  <h2>{action('add','link')}</h2>
  {#if !gatewayEnabled}<StatusMessage text={t('capture.disabled')}/>{/if}
  <form onsubmit={event=>{event.preventDefault();actor.send({type:'ADD',url})}}>
- <label for="article-url">{t('capture.url_label')}</label>
- <input id="article-url" name="url" type="url" bind:value={url} required maxlength="8192" autocomplete="url" disabled={!canAdd}/>
+ <InputText label={t('capture.url_label')} id="article-url" name="url" type="url" bind:value={url} required maxlength={8192} autocomplete="url" disabled={!canAdd}/>
  <Button type="submit" disabled={!canAdd}>{action('get','article')}</Button>
  </form>
  {#if snapshot?.matches({running:{capture:'preparing'}})}<StatusMessage text={t('capture.status.pending')}/>{/if}
@@ -64,5 +63,5 @@
 {/if}
 {/if}
 <style>
- section{margin-block:1.5rem}form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}input{flex:1;min-width:12rem;padding:.6rem;font:inherit}li{margin-block:.75rem}li span{display:block;font-size:.875rem}.preview{white-space:pre-wrap;max-height:20rem;overflow:auto}
+ section{margin-block:1.5rem}form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}li{margin-block:.75rem}li span{display:block;font-size:.875rem}.preview{white-space:pre-wrap;max-height:20rem;overflow:auto}
 </style>
