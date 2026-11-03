@@ -105,3 +105,98 @@ test('retains the account and library after closing every page and browser proce
 		await rm(profile, { recursive: true, force: true })
 	}
 })
+
+test('saves new content offline, restarts the browser, and syncs to a restored profile', async ({
+	browser
+}) => {
+	const profile = await mkdtemp(join(tmpdir(), 'clipper-content-profile-'))
+	let context = await chromium.launchPersistentContext(profile, { headless: true })
+	const independent = await browser.newContext()
+	const operationId = crypto.randomUUID()
+	const expected = { text: 'Exact offline text café 🦊', bytes: [0, 1, 2, 255] }
+	try {
+		const page = await context.newPage()
+		await page.goto('http://127.0.0.1:5180')
+		await page.getByRole('button', { name: 'Create account', exact: true }).click()
+		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
+		const phrase = await page
+			.getByRole('dialog')
+			.getByLabel('Recovery phrase', { exact: true })
+			.inputValue()
+		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const restored = await independent.newPage()
+		await restored.goto('http://127.0.0.1:5180')
+		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await authority.stop()
+		expect(
+			await page.evaluate(async (id) => {
+				const path = '/tests/storage-driver.ts'
+				return (await import(/* @vite-ignore */ path)).save(id)
+			}, operationId)
+		).toBe('saved')
+		await context.close()
+		context = await chromium.launchPersistentContext(profile, { headless: true })
+		const reopened = await context.newPage()
+		await reopened.goto('http://127.0.0.1:5180')
+		await expect(
+			reopened.getByText('Library saved on this device. Sync pending.', { exact: true })
+		).toBeVisible()
+		expect(
+			await reopened.evaluate(async (id) => {
+				const path = '/tests/storage-driver.ts'
+				return (await import(/* @vite-ignore */ path)).read(id)
+			}, operationId)
+		).toEqual(expected)
+		authority = await startAuthority()
+		await reopened.reload()
+		await restored.reload()
+		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect
+			.poll(
+				() =>
+					restored.evaluate(async (id) => {
+						const path = '/tests/storage-driver.ts'
+						return (await import(/* @vite-ignore */ path)).read(id)
+					}, operationId),
+				{ timeout: 30000 }
+			)
+			.toEqual(expected)
+	} finally {
+		await independent.close()
+		await context.close()
+		await rm(profile, { recursive: true, force: true })
+	}
+})
+
+test('authenticates capture requests with the existing account and rejects missing or forged bearers', async ({
+	page,
+	request
+}) => {
+	await page.goto('/')
+	await page.getByRole('button', { name: 'Create account', exact: true }).click()
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	expect((await request.post('/api/capture/resolve')).status()).toBe(401)
+	expect(
+		(
+			await request.post('/api/capture/resolve', { headers: { Authorization: 'Bearer forged' } })
+		).status()
+	).toBe(401)
+	// The capture implementation remains a later batch; passing authentication
+	// reaches routing (404), while the same request without its managed bearer is 401.
+	expect(
+		await page.evaluate(async () => {
+			const path = '/tests/storage-driver.ts'
+			const { requestCapture } = await import(/* @vite-ignore */ path)
+			return (
+				await requestCapture('resolve', {
+					protocolVersion: 1,
+					operationId: crypto.randomUUID(),
+					url: 'https://example.com'
+				})
+			).status
+		})
+	).toBe(404)
+})

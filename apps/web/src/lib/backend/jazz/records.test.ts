@@ -5,6 +5,7 @@ import type { PolicyTestApp } from 'jazz-tools/testing'
 import { app } from './schema.js'
 import permissions from './permissions.js'
 import { createLibraryRecords } from './records.js'
+import { storageSyncMachine } from '../../machines/storage/sync.js'
 import { BYTE_LIMIT, prepareSave } from '../../storage/codec.js'
 
 let fixture: PolicyTestApp
@@ -125,4 +126,19 @@ it('rejects oversized input before writing an operation journal', async () => {
 	const result = await toPromise(createActor(store.saveMachine, { input }).start())
 	expect(result.kind).toBe('failed')
 	expect(await db.one(app.storageOperations.where({ id: input.operationId }))).toBeNull()
+})
+
+it('reports authority rejection through sync while preserving the immutable saved record', async () => {
+	const { db, store } = await owner('records-remote-reject')
+	const input = request()
+	const saved = await toPromise(createActor(store.saveMachine, { input }).start())
+	if (saved.kind !== 'saved') throw new Error('Expected local save')
+	await Promise.all(saved.receipts.map((receipt) => receipt.global()))
+	const write = db.update(app.documents, input.operationId, { title: 'Forbidden replacement' })
+	const actor = createActor(storageSyncMachine, {
+		input: [{ global: () => write.wait({ tier: 'global' }) }]
+	}).start()
+	await toPromise(actor)
+	expect(actor.getSnapshot().value).toBe('rejected')
+	expect((await db.one(app.documents.where({ id: input.operationId })))?.title).toBe(input.title)
 })

@@ -22,6 +22,13 @@ function requireValue<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Incomplete storage record')
 	return value
 }
+const clearContent = assign<Context, { type: 'SHUTDOWN' }, undefined, { type: 'SHUTDOWN' }, never>({
+	document: undefined,
+	snapshot: undefined,
+	manifest: undefined,
+	parts: [],
+	asset: { kind: 'unavailable', reason: 'missingParts' }
+})
 export function createReadRecordMachine(capability: ReadCapabilities) {
 	const actors = {
 		document: fromPromise(({ input }: { input: string }) => capability.document(input)),
@@ -163,17 +170,25 @@ export function createReadRecordMachine(capability: ReadCapabilities) {
 								text: requireValue(context.snapshot).text,
 								asset: context.asset
 							}
-						: { kind: 'unavailable' }
+						: { kind: 'unavailable' },
+					document: undefined,
+					snapshot: undefined,
+					manifest: undefined,
+					parts: [],
+					asset: { kind: 'unavailable', reason: 'missingParts' }
 				}))
 			},
-			missing: { type: 'final', entry: assign({ result: { kind: 'missing' } }) },
+			missing: { type: 'final', entry: [assign({ result: { kind: 'missing' } }), clearContent] },
 			corrupt: {
 				type: 'final',
-				entry: assign(() => ({
-					result: { kind: capability.isCurrent() ? 'corrupt' : 'unavailable' }
-				}))
+				entry: [
+					assign(() => ({
+						result: { kind: capability.isCurrent() ? 'corrupt' : 'unavailable' }
+					})),
+					clearContent
+				]
 			},
-			unavailable: { type: 'final' }
+			unavailable: { type: 'final', entry: clearContent }
 		}
 	})
 }

@@ -24,7 +24,7 @@ function stageResultKind(
 	output: StageResult | undefined,
 	isCurrent: () => boolean
 ): Exclude<SaveResult['kind'], 'saved'> {
-	if (output?.settlement.kind === 'unresolved') return 'unknown'
+	if (!output || output.settlement.kind === 'unresolved') return 'unknown'
 	if (!isCurrent()) return 'scopeChanged'
 	if (output?.outcome === 'blocked') return 'blocked'
 	if (output?.outcome === 'closed') return 'interrupted'
@@ -104,7 +104,7 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 				input,
 				onDone: [
 					{
-						guard: ({ event }) => event.output?.settlement.kind === 'unresolved',
+						guard: ({ event }) => !event.output || event.output.settlement.kind === 'unresolved',
 						target: 'finishing',
 						actions: assign(({ context, event }) =>
 							stageOutput({ context, event: { output: event.output } })

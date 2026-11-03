@@ -121,17 +121,35 @@ export async function verifyParts(input: {
 	const { manifest } = input
 	const parts = [...input.parts].sort((a, b) => a.ordinal - b.ordinal)
 	if (
+		!uuid.test(manifest.id) ||
+		!uuid.test(manifest.libraryId) ||
+		manifest.operationId !== manifest.id ||
+		!manifest.mediaType.trim() ||
+		manifest.mediaType.length > 150 ||
 		manifest.encoding !== 'gzip-v1' ||
 		!Number.isSafeInteger(manifest.partCount) ||
 		manifest.partCount < 1 ||
 		manifest.partCount > 5 ||
+		!Number.isSafeInteger(manifest.byteLength) ||
 		manifest.byteLength > BYTE_LIMIT + PART_SIZE ||
 		manifest.byteLength < 1 ||
+		!Number.isSafeInteger(manifest.originalByteLength) ||
 		manifest.originalByteLength > BYTE_LIMIT ||
 		manifest.originalByteLength < 0 ||
+		manifest.partCount !== Math.ceil(manifest.byteLength / PART_SIZE) ||
 		parts.length !== manifest.partCount
 	)
 		throw new Error('Invalid asset manifest')
+	if (!/^[0-9a-f]{64}$/.test(manifest.hash)) throw new Error('Invalid asset digest')
+	for (const [ordinal, part] of parts.entries()) {
+		if (
+			part.ordinal !== ordinal ||
+			part.id !== (await partId(manifest.operationId, ordinal)) ||
+			part.byteLength !== Math.min(PART_SIZE, manifest.byteLength - ordinal * PART_SIZE) ||
+			part.payload.byteLength !== part.byteLength
+		)
+			throw new Error('Invalid asset part bounds')
+	}
 	const hashes = await Promise.all(parts.map((part) => hash(part.payload)))
 	let offset = 0
 	const output = new Uint8Array(manifest.byteLength)

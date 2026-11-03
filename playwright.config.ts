@@ -12,6 +12,8 @@ export default defineConfig({
 		reuseExistingServer: false,
 		env: {
 			CLIPPER_TEST: 'true',
+			JAZZ_ACCOUNT_REGISTRY:
+				'http://127.0.0.1:5181/apps/2db98ae3-fcf1-41e8-b7d3-9818496bde60/accounts',
 			PUBLIC_JAZZ_APP_ID: '2db98ae3-fcf1-41e8-b7d3-9818496bde60',
 			PUBLIC_JAZZ_SERVER_URL: 'http://127.0.0.1:5181'
 		},
