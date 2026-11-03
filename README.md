@@ -1,6 +1,6 @@
 # Delightful Clipper
 
-A private, local-first web article reader and browser clipper. The workspace tooling and minimal SvelteKit shell are ready; product workflows are not implemented yet.
+A private, local-first web article reader and browser clipper. The web foundation supports account creation, recovery, session reload and an owner-only private library root. Article capture, reading and extensions remain unbuilt.
 
 ```sh
 pnpm install --frozen-lockfile

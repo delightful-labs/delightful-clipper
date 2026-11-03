@@ -1,7 +1,1 @@
-<svelte:head>
-	<title>Delightful Clipper</title>
-</svelte:head>
-
-<main>
-	<h1>Delightful Clipper</h1>
-</main>
+<!-- The session/private-root foundation is owned by the application layout. -->

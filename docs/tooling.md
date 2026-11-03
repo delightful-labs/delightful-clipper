@@ -1,6 +1,6 @@
 # Tooling
 
-The tooling PR establishes the workspace and a minimal client-rendered web shell. Identity, storage, capture, extensions, service workers, reader features and deployment remain separate work.
+The workspace includes a client-rendered account and private-library foundation. Capture, extensions, service workers, reader features and deployment remain separate work.
 
 ## Runtime and packages
 
@@ -27,14 +27,22 @@ Run from the repository root:
 | `pnpm format` / `pnpm format:check` | Oxfmt write/check; existing specification documents and generated/vendor files are excluded.   |
 | `pnpm verify:vendor`                | Archive digest and installed entry-point checks.                                               |
 | `pnpm build`                        | Production build with the Netlify adapter.                                                     |
-| `pnpm verify`                       | Vendor, format, lint, type/Svelte checks and build.                                            |
+| `pnpm verify`                       | Vendor, format, lint, type/Svelte checks, unit/policy tests and build.                         |
 
-Oxlint is not claimed to lint Svelte templates; `svelte-check` and the Svelte compiler cover those components. There is no artificial passing test script: add meaningful unit/browser suites with the workflows they verify. This PR's shell can be checked manually in a browser.
+Oxlint is not claimed to lint Svelte templates; `svelte-check` and the Svelte compiler cover those components. Run `pnpm test:unit` for coordinator lifecycle and native authorization tests. Run `pnpm exec playwright install chromium` once, then `pnpm test:e2e` for account creation, reload, recovery and authority disconnection/reconnection. Browser tests use synthetic accounts, a disposable authority and separate browser profiles; recovery traces/screenshots are disabled.
 
 ## Workspace and CI
 
 `apps/web` owns the web build. `apps/*` and `packages/*` are workspace locations; do not create empty domain packages or extension stubs merely to fill the planned directory tree. Add shared packages when there is implementation to own.
 
-GitHub Actions runs a frozen install and `pnpm verify` for PRs and main, with Node/pnpm pinned and read-only repository permissions. Action revisions are pinned to verified upstream commits. No credentials or live Jazz server are needed for these tooling checks.
+GitHub Actions runs a frozen install and `pnpm verify` for PRs and main, with Node/pnpm pinned and read-only repository permissions. Action revisions are pinned to verified upstream commits. No production credentials are needed. Tests start disposable local Jazz authorities; the browser job installs Chromium.
 
 Netlify uses `apps/web` as its build base and `build` as the publish directory, matching the adapter's generated functions/config. `NODE_VERSION` and `PNPM_VERSION` match local/CI pins. The local build verifies adapter output, not a deployed preview, native gateway packaging or destination-safe network transport. No deployment command is part of this setup.
+
+## Account service configuration
+
+`pnpm dev` starts the local Jazz authority on port 5174 and the web app on 5173. Development uses the production library schema and permissions, with inspector disabled. Checks/builds do not start the authority.
+
+Production requires `PUBLIC_JAZZ_APP_ID` and `PUBLIC_JAZZ_SERVER_URL` at build time. These are public service coordinates, not administrator credentials. Without them the app displays a configuration status. Deploy the schema/policies to the intended Jazz service using `pnpm --filter @delightful-clipper/web deploy:jazz` with separately provisioned Jazz deployment credentials. This repository change does not deploy a service.
+
+The build emits the Jazz WASM asset and passes its bundled URL to the runtime. The app distinguishes local root persistence from remote acceptance. This proves cached account/root behavior while the authority is unavailable; it does not provide an offline app shell or article availability. See the [session implementation](../specs/001-jazz-clipper/session-implementation.md) for ownership and failure behavior.
