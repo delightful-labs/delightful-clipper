@@ -1,0 +1,56 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { previewEnvironment, provision, waitForApp } from './preview-runtime.js'
+
+afterEach(() => {
+	vi.unstubAllEnvs()
+	vi.unstubAllGlobals()
+})
+const app = { appId: '77777777-7777-4777-8777-777777777777', adminSecret: 'test-admin-secret' }
+it('replaces inherited service coordinates and strips deployment secrets from the frontend build', () => {
+	for (const key of ['JAZZ_ADMIN_SECRET', 'BACKEND_SECRET', 'JAZZ_BACKEND_SECRET'])
+		vi.stubEnv(key, 'production-secret')
+	vi.stubEnv('PUBLIC_JAZZ_APP_ID', 'production-app')
+	vi.stubEnv('JAZZ_ACCOUNT_REGISTRY', 'https://production.example/accounts')
+	const env = previewEnvironment(app.appId)
+	expect(env.PUBLIC_JAZZ_APP_ID).toBe(app.appId)
+	expect(env.JAZZ_ACCOUNT_REGISTRY).toBe(`https://v2.sync.jazz.tools/apps/${app.appId}/accounts`)
+	expect(env.PUBLIC_JAZZ_SERVER_URL).toBe('https://v2.sync.jazz.tools/')
+	for (const key of ['JAZZ_ADMIN_SECRET', 'BACKEND_SECRET', 'JAZZ_BACKEND_SECRET'])
+		expect(env[key]).toBeUndefined()
+})
+it.each([
+	null,
+	{},
+	{ appId: 'invalid', adminSecret: 'secret' },
+	{ appId: app.appId, adminSecret: '' }
+])('rejects invalid provisioning response', async (body) => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Response.json(body))
+	)
+	await expect(provision(new AbortController().signal)).rejects.toThrow(
+		'Invalid provisioning response'
+	)
+})
+it('accepts generated credentials and never sends an inherited bearer', async () => {
+	const fetcher = vi.fn(async () => Response.json(app))
+	vi.stubGlobal('fetch', fetcher)
+	expect(await provision(new AbortController().signal)).toEqual(app)
+	expect(fetcher.mock.calls[0]).toBeDefined()
+})
+it.each([404, 502, 503, 504])('waits for cold routing after HTTP %s', async (status) => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => new Response(null, { status }))
+	)
+	expect(await waitForApp(app, new AbortController().signal)).toBe('pending')
+})
+it('stops on authorization errors instead of retrying deployment', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => new Response(null, { status: 401 }))
+	)
+	await expect(waitForApp(app, new AbortController().signal)).rejects.toThrow(
+		'Jazz readiness request failed'
+	)
+})

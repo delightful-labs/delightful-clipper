@@ -6,3 +6,9 @@ publish = "build"
 [build.environment]
 NODE_VERSION = "24.22.2"
 PNPM_VERSION = "10.22.0"
+
+[context.production]
+command = "pnpm deploy:jazz && pnpm build"
+
+[context.deploy-preview]
+command = "pnpm build:deploy-preview"
