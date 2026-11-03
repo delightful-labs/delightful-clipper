@@ -1,8 +1,7 @@
 <script lang="ts">
  import {onMount} from 'svelte'
- import SavedContent from './SavedContent.svelte'
  import type {ActorRefFrom,SnapshotFrom} from 'xstate'
- import {normalizedSource} from '../capture/source.js'
+ import {articleHref,isArticleId} from '../reader/routes.js'
  import {libraryMachine} from '../machines/capture/library.js'
  import {Button,StatusMessage,InputText} from 'delightful-ui'
  import {t,action} from '../localization/index.js'
@@ -12,9 +11,9 @@
  const capture=$derived(snapshot?.context)
  const canAdd=$derived(gatewayEnabled&&snapshot?.can({type:'ADD',url}))
  const sync=$derived(capture?.sync[capture.captureId])
- const originalUrl=$derived.by(()=>{if(capture?.reader?.kind!=='available'||!capture.reader.source)return undefined;try{return normalizedSource(capture.reader.source.finalUrl)}catch{return undefined}})
+
  const feedback=$derived(capture?.failure==='sourceTooLarge'?'capture.errors.source_too_large':capture?.failure==='invalidUrl'?'capture.errors.invalid_url':capture?.failure==='sessionUnavailable'?'capture.errors.session_unavailable':capture?.failure==='rateLimited'?'capture.errors.rate_limited':'capture.status.failed')
- onMount(()=>{snapshot=actor.getSnapshot();const subscription=actor.subscribe(next=>snapshot=next);return()=>{subscription.unsubscribe();url=''}})
+ onMount(()=>{snapshot=actor.getSnapshot();url=snapshot.context.url;const subscription=actor.subscribe(next=>snapshot=next);return()=>{subscription.unsubscribe();url=''}})
 </script>
 {#if capture}
 <section aria-label={action('add','link')}>
@@ -34,25 +33,17 @@
  {#if snapshot?.matches({running:{capture:'uncertain'}})}<StatusMessage variant="error" text={t('capture.status.unknown')}/>{/if}
  {#if snapshot?.matches({running:{capture:'saved'}})}<StatusMessage variant={sync==='rejected'?'error':'info'} text={t(sync==='accepted'?'capture.status.synced':sync==='rejected'?'capture.status.rejected':'capture.status.saved')}/>{/if}
  {#if snapshot?.matches({running:{capture:'saved'}})||snapshot?.matches({running:{capture:'duplicate'}})||snapshot?.matches({running:{capture:'uncertain'}})||snapshot?.matches({running:{capture:'canceled'}})}
- <Button type="button" onclick={()=>actor.send({type:'OPEN',id:capture?.captureId ?? ''})}>{action('open','saved_article')}</Button>
+ {#if isArticleId(capture.captureId)}<a href={articleHref(capture.captureId)}>{action('open','saved_article')}</a>{/if}
  {/if}
 </section>
 <section aria-label={t('library.heading')}>
  <h2>{t('library.heading')}</h2>
  {#if capture.listFailed}<StatusMessage variant="error" text={t('library.list_failed')}/>{/if}
  {#if !capture.rows.length}<p>{t('library.empty')}</p>{/if}
- <ul>{#each capture.rows as row (row.id)}<li><Button type="button" disabled={capture.writing&&row.id===capture.captureId} onclick={()=>actor.send({type:'OPEN',id:row.id})}>{row.title}</Button>{#if capture.sync[row.id]}<span>{t(capture.sync[row.id]==='rejected'?'capture.status.rejected':capture.sync[row.id]==='accepted'?'capture.status.synced':'library.sync_pending')}</span>{/if}</li>{/each}</ul>
+ <ul>{#each capture.rows as row (row.id)}<li>{#if capture.writing&&row.id===capture.captureId}{row.title}{:else}<a href={articleHref(row.id)}>{row.title}</a>{/if}{#if capture.sync[row.id]}<span>{t(capture.sync[row.id]==='rejected'?'capture.status.rejected':capture.sync[row.id]==='accepted'?'capture.status.synced':'library.sync_pending')}</span>{/if}</li>{/each}</ul>
 </section>
-{#if snapshot?.matches({running:{reading:'loading'}})}<StatusMessage text={t('reader.loading')}/>{/if}
-{#if capture.reader}
- <section aria-label={t('reader.heading')}>
- <Button type="button" onclick={()=>actor.send({type:'CLOSE_READER'})}>{action('close','article')}</Button>
- {#if capture.reader.kind==='available'}
- <article><h2>{capture.reader.document.title}</h2>{#if originalUrl}<a href={originalUrl} rel="noreferrer">{action('open','original')}</a>{/if}<StatusMessage text={t('capture.text_only')}/><SavedContent asset={capture.reader.asset} text={capture.reader.text} sourceUrl={originalUrl}/></article>
- {:else}<StatusMessage variant="error" text={t('reader.unavailable')}/>{/if}
- </section>
 {/if}
-{/if}
+
 <style>
  section{margin-block:1.5rem}form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}li{margin-block:.75rem}li span{display:block;font-size:.875rem}
 </style>

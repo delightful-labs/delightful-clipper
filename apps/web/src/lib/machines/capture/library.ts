@@ -309,7 +309,6 @@ export const libraryMachine = setup<
 					on: {
 						OPEN: {
 							target: '.loading',
-							reenter: true,
 							actions: assign({
 								readerId: ({ event }) => event.id,
 								readerGeneration: ({ context }) => context.readerGeneration + 1,

@@ -14,7 +14,6 @@
 	<h1>{t('app.title')}</h1>
  <OfflineShell onAdmission={()=>{admitted=true}}/>
  {#if admitted}
-	<Account appId={PUBLIC_JAZZ_APP_ID} serverUrl={PUBLIC_JAZZ_SERVER_URL} gatewayEnabled={CAPTURE_GATEWAY_ENABLED} />
+	<Account appId={PUBLIC_JAZZ_APP_ID} serverUrl={PUBLIC_JAZZ_SERVER_URL} gatewayEnabled={CAPTURE_GATEWAY_ENABLED}>{@render children()}</Account>
  {/if}
-	{@render children()}
 </main>

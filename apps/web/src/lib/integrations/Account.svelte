@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Library from './Library.svelte'
- import { onMount } from 'svelte'
+ import { onMount, setContext, type Snippet } from 'svelte'
+ import {libraryContextKey,type LibraryContext} from '../runtime/library-context.js'
 	import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 	import { createActor } from 'xstate'
 	import type { SnapshotFrom } from 'xstate'
@@ -11,7 +11,7 @@
 	import { t, action, recoveryMessages } from '../localization/index.js'
 
 	const applicationReadinessMachine = createApplicationReadinessMachine<Session>()
-	let { appId, serverUrl, gatewayEnabled }: { appId: string; serverUrl: string;gatewayEnabled:boolean } = $props()
+	let { appId, serverUrl, gatewayEnabled,children }: { appId: string; serverUrl: string;gatewayEnabled:boolean;children:Snippet } = $props()
 	let snapshot = $state<SnapshotFrom<typeof applicationReadinessMachine>>()
 	let phrase = $state('')
 	let send = $state<(event: {type: 'CREATE' | 'LOGOUT' | 'RETRY'} | {type: 'RESTORE'; phrase: string}) => void>(() => {})
@@ -19,6 +19,7 @@
 	const view = $derived(selectApplicationView(snapshot, configured))
 	const recovery = $derived(selectRecoveryBinding(snapshot))
  const library=$derived(selectLibraryActor(snapshot))
+ setContext<LibraryContext>(libraryContextKey,{get actor(){return library},get gatewayEnabled(){return gatewayEnabled}})
 
 	onMount(() => {
 		if (!appId || !serverUrl) return
@@ -61,8 +62,4 @@
 	{#if view.canLogout}<Button type="button" onclick={() => send({type:'LOGOUT'})}>{t('actions.sign_out')}</Button>{/if}
 </section>
 
-{#if library}
- {#key library}
- <Library actor={library} {gatewayEnabled}/>
- {/key}
-{/if}
+{@render children()}

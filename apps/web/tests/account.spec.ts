@@ -227,14 +227,15 @@ test('authenticates capture requests with the existing account and rejects missi
 /** Fixture gateway responses; native persistence, browser processes and Jazz sync stay real. */
 async function fixtureArticle(
 	page: import('@playwright/test').Page,
-	beforeExtract?: () => Promise<void>
+	beforeExtract?: () => Promise<void>,
+	finalUrl = 'https://example.com/saved?order=1&keep=2'
 ) {
 	let extractions = 0
 	await page.route('**/api/capture/*', async (route) => {
 		const input: { operationId: string; url: string } = route.request().postDataJSON()
 		const common = {
 			operationId: input.operationId,
-			finalUrl: 'https://example.com/saved?order=1&keep=2'
+			finalUrl
 		}
 		if (route.request().url().endsWith('/resolve'))
 			await route.fulfill({
@@ -291,7 +292,7 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await expect(page.getByRole('region', { name: 'Article preview' })).toHaveCount(0)
 	await expect(page.getByRole('article')).toHaveCount(0)
 	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
-	await page.getByRole('button', { name: 'Open saved article', exact: true }).click()
+	await page.getByRole('link', { name: 'Open saved article', exact: true }).click()
 	await expect(page.getByRole('article')).toContainText('Literal <script> stays text.')
 	const reader = page.getByRole('article')
 	await expect(reader.getByRole('heading', { name: 'Structured heading' })).toBeVisible()
@@ -302,6 +303,9 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await expect(external).not.toHaveAttribute('target')
 	await reader.getByRole('link', { name: 'Citation', exact: true }).click()
 	await expect(reader.locator('li')).toBeFocused()
+	await expect(page).toHaveURL(/\/articles\/[0-9a-f-]+/)
+	await expect(page.getByRole('region', { name: 'Saved articles' })).toHaveCount(0)
+	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	expect(await page.evaluate(() => Reflect.get(globalThis, 'readerCompromised'))).toBeUndefined()
 
 	await page
@@ -314,8 +318,12 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await expect(
 		page
 			.getByRole('region', { name: 'Saved articles' })
-			.getByRole('button', { name: 'UI saved article', exact: true })
+			.getByRole('link', { name: 'UI saved article', exact: true })
 	).toHaveCount(1)
+	await page
+		.getByRole('region', { name: 'Saved articles' })
+		.getByRole('link', { name: 'UI saved article', exact: true })
+		.click()
 	await page.route('https://external.example/next', (route) =>
 		route.fulfill({ contentType: 'text/html', body: '<p>External destination</p>' })
 	)
@@ -324,6 +332,8 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await expect(page).toHaveURL('https://external.example/next')
 	expect(page.context().pages()).toHaveLength(pagesBefore)
 	await page.goBack()
+	await expect(page.getByRole('article')).toContainText('Exact UI text café 🦊')
+	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
 	await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)
 	await expect(page.getByRole('article')).toHaveCount(0)
@@ -365,7 +375,7 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 		await reopened.goto('http://127.0.0.1:5180')
 		await reopened
 			.getByRole('region', { name: 'Saved articles' })
-			.getByRole('button', { name: 'UI saved article', exact: true })
+			.getByRole('link', { name: 'UI saved article', exact: true })
 			.click()
 		await expect(reopened.getByRole('article')).toContainText('Exact UI text café 🦊')
 		await expect(reopened.getByRole('article')).toContainText('Literal <script> stays text.')
@@ -379,7 +389,7 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 		await restored.reload()
 		await restored
 			.getByRole('region', { name: 'Saved articles' })
-			.getByRole('button', { name: 'UI saved article', exact: true })
+			.getByRole('link', { name: 'UI saved article', exact: true })
 			.click({ timeout: 30000 })
 		await expect(restored.getByRole('article')).toContainText('Exact UI text café 🦊')
 		await expect(
@@ -426,11 +436,11 @@ test('reader falls back to exact text when a saved asset is not HTML', async ({ 
 	expect(result).toBe('saved')
 	await page
 		.getByRole('region', { name: 'Saved articles' })
-		.getByRole('button', { name: 'Restart proof', exact: true })
+		.getByRole('link', { name: 'Restart proof', exact: true })
 		.click()
 	await expect(page.getByRole('article')).toContainText('Exact offline text café 🦊')
 	await expect(page.getByRole('article').locator('.reader')).toHaveClass(/plain/)
-	await page.getByRole('button', { name: 'Close article', exact: true }).click()
+	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	await expect(page.getByRole('article')).toHaveCount(0)
 })
 
@@ -464,4 +474,85 @@ test('first use opens a stable local library with the authority unavailable and 
 	} finally {
 		authority = await startAuthority()
 	}
+})
+
+test('reader links support new tabs, direct reload and owner-scoped missing content', async ({
+	page,
+	browser
+}) => {
+	await fixtureArticle(page)
+	await page.goto('/')
+	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/saved')
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
+	const link = page
+		.getByRole('region', { name: 'Saved articles' })
+		.getByRole('link', { name: 'UI saved article', exact: true })
+	const href = await link.getAttribute('href')
+	expect(href).toMatch(/^\/articles\/[0-9a-f-]+$/)
+	const [tab] = await Promise.all([
+		page.context().waitForEvent('page'),
+		link.click({ modifiers: ['ControlOrMeta'] })
+	])
+	try {
+		await expect(tab.getByRole('article')).toContainText('Exact UI text café 🦊')
+		await expect(tab.getByRole('region', { name: 'Saved articles' })).toHaveCount(0)
+		await expect(page).toHaveURL('http://127.0.0.1:5180/')
+		await tab.reload()
+		await expect(tab).toHaveURL(new RegExp(href! + '$'))
+		await expect(tab.getByRole('article')).toContainText('Exact UI text café 🦊')
+		const stranger = await browser.newContext()
+		try {
+			const denied = await stranger.newPage()
+			await denied.goto('http://127.0.0.1:5180' + href)
+			await expect(
+				denied.getByText(
+					'This article is not available on this device. Reconnect and open it again.',
+					{ exact: true }
+				)
+			).toBeVisible()
+			await expect(denied.getByRole('article')).toHaveCount(0)
+		} finally {
+			await stranger.close()
+		}
+	} finally {
+		await tab.close()
+	}
+})
+
+test('capture continues when the initiating library page is replaced by a reader route', async ({
+	page
+}) => {
+	await fixtureArticle(page)
+	await page.goto('/')
+	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/first')
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
+	const first = page
+		.getByRole('region', { name: 'Saved articles' })
+		.getByRole('link', { name: 'UI saved article', exact: true })
+	const gate = Promise.withResolvers<void>(),
+		entered = Promise.withResolvers<void>()
+	await page.unroute('**/api/capture/*')
+	const extractions = await fixtureArticle(
+		page,
+		async () => {
+			entered.resolve()
+			await gate.promise
+		},
+		'https://example.com/second'
+	)
+	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/second')
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await entered.promise
+	await first.click()
+	await expect(page.getByRole('article')).toContainText('Exact UI text café 🦊')
+	gate.resolve()
+	await page.getByRole('link', { name: 'Open library', exact: true }).click()
+	await expect(
+		page
+			.getByRole('region', { name: 'Saved articles' })
+			.getByRole('link', { name: 'UI saved article', exact: true })
+	).toHaveCount(2)
+	expect(extractions()).toBe(1)
 })

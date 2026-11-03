@@ -97,3 +97,5 @@ Local Vite uses `.svelte-kit/local`, agent Vite uses `.svelte-kit/agent`, and br
 Automatic local identities do not show Sign out. Optional recovery-phrase restoration is available from the local library and drains issued library writes before the DLF restoration operation. Sign-out presentation requires an explicitly signed-in identity; this does not introduce a new sign-in provider flow.
 
 Add Link now saves automatically after extraction and duplicate checks. The earlier preview/Save step is removed; successful local save stays in the library with an explicit Open action. Network extraction still needs connectivity; local publication and pending remote acceptance remain separate.
+
+Saved articles open as SvelteKit pages at `/articles/[id]`. The root layout owns the local-first runtime across library/reader navigation. Browser Back and normal new-tab links work; direct offline reader navigations use only the cached public shell while document reads remain owner scoped in Jazz.

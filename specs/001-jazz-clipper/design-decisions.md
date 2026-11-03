@@ -4,6 +4,8 @@
 
 ## Reader, navigation and accessibility
 
+The library is `/`; saved articles use dedicated SvelteKit `/articles/[id]` pages with normal same-tab links. Direct URLs, reload, browser Back/Forward and normal new-tab actions must work. The layout owns account/library/capture lifetimes so route navigation cannot discard pending captures; reader departure cancels reads and clears visible content. Owner-scoped article data is loaded from the existing local-first client runtime, never embedded in public server/prerender output. Offline reader navigation may reuse the public app shell, without caching private route responses.
+
 Use locally available system serif and system sans-serif stacks as the two launch font choices. No remote font download, font upload or preset manager. Initial controls: font size 16–32 CSS px (20 default), line height 1.3–2.0 (1.6 default), and maximum text width 40–90ch (65ch default), constrained to the available viewport. Browser zoom and user stylesheet overrides remain functional; these control ranges are not limits on browser magnification. Shared account preferences retain offline cached values.
 
 Distraction-free mode has a persistent, focusable Show controls/Exit control usable by touch and keyboard. Focus within a control prevents it from hiding. Do not depend on hover, pointer movement, color alone or an undiscoverable gesture. Escape closes the topmost transient popover first; it does not discard a note draft. After closing a popover, return focus to its trigger when it still exists, otherwise to the corresponding article/annotation heading.

@@ -279,3 +279,41 @@ it('automatically saves prepared content once and leaves the reader closed', asy
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })
+
+it('keeps a pending capture alive while opening and closing a reader', async () => {
+	const pending = deferred<string>()
+	let signal: AbortSignal | undefined
+	const { actor } = fixture({
+		resolve: (_url, _id, abort) => {
+			signal = abort
+			return pending.promise
+		}
+	})
+	actor.send({ type: 'ADD', url: candidate.finalUrl })
+	expect(actor.getSnapshot().matches({ running: { capture: 'preparing' } })).toBe(true)
+	actor.send({ type: 'OPEN', id: candidate.id })
+	expect(actor.getSnapshot().matches({ running: { capture: 'preparing' } })).toBe(true)
+	expect(signal?.aborted).toBe(false)
+	actor.send({ type: 'CLOSE_READER' })
+	expect(actor.getSnapshot().matches({ running: { capture: 'preparing' } })).toBe(true)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+
+it('keeps the issued save child owned while opening and closing a reader', async () => {
+	const pending = deferred<SaveResult>()
+	const shutdown = vi.fn()
+	const { actor } = fixture({ save: () => pending.promise, shutdown })
+	await add(actor)
+	const child = actor.getSnapshot().context.saveRef
+	actor.send({ type: 'OPEN', id: crypto.randomUUID() })
+	expect(actor.getSnapshot().context.saveRef).toBe(child)
+	expect(actor.getSnapshot().context.writing).toBe(true)
+	expect(shutdown).not.toHaveBeenCalled()
+	actor.send({ type: 'CLOSE_READER' })
+	expect(actor.getSnapshot().context.saveRef).toBe(child)
+	actor.send({ type: 'SHUTDOWN' })
+	expect(shutdown).toHaveBeenCalledOnce()
+	pending.resolve({ kind: 'unknown', operationId: candidate.id })
+	await toPromise(actor)
+})

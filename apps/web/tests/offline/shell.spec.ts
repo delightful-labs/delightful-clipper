@@ -148,6 +148,10 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await expect(
 			page.getByText('Article saved on this device. Sync pending.', { exact: true })
 		).toBeVisible()
+		const readerPath = await page
+			.getByRole('link', { name: 'Open saved article', exact: true })
+			.getAttribute('href')
+		expect(readerPath).toMatch(/^\/articles\/[0-9a-f-]+$/)
 		await context.close()
 		await ui.stop()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
@@ -155,13 +159,9 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const reopened = await context.newPage()
 		await clearHttpCache(reopened)
 		const offlineStarted = performance.now()
-		const response = await reopened.goto('http://127.0.0.1:5190')
+		const response = await reopened.goto('http://127.0.0.1:5190' + readerPath)
 		expect(response?.fromServiceWorker()).toBe(true)
 		await ready(reopened)
-		await reopened
-			.getByRole('region', { name: 'Saved articles' })
-			.getByRole('button', { name: 'Completely offline article', exact: true })
-			.click()
 		await expect(reopened.getByRole('article')).toContainText('Exact offline shell text café 🦊')
 		await expect(
 			reopened.getByRole('article').getByRole('heading', { name: 'Offline structure' })
@@ -180,11 +180,13 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await context.setOffline(false)
 		await ui.start()
 		await startAuthority()
-		await reopened.reload()
+		const sourceReload = await reopened.reload()
+		expect(sourceReload?.status()).toBe(200)
+		expect(sourceReload?.fromServiceWorker()).toBe(true)
 		await restored.reload()
 		await restored
 			.getByRole('region', { name: 'Saved articles' })
-			.getByRole('button', { name: 'Completely offline article', exact: true })
+			.getByRole('link', { name: 'Completely offline article', exact: true })
 			.click({ timeout: 30000 })
 		await expect(restored.getByRole('article')).toContainText('Exact offline shell text café 🦊')
 		await expect(
