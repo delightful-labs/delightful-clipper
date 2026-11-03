@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { createActor } from 'xstate'
 import { createMachineObserver } from '../../diagnostics/machines.js'
+import { consoleSink } from '../../diagnostics/console-sink.js'
 import { createLogger } from 'delightful-local-first/diagnostics/logger'
 import { createArticleQueueMachine } from './article-queue.js'
 import { extractedCandidate, resolvedUrl } from '../../capture/source.js'
@@ -127,7 +128,7 @@ self.onmessage = (event: MessageEvent<WorkerInput>) => {
 	const message = event.data
 	if (message.type === 'INIT') {
 		const inspectMachines = createMachineObserver(
-			createLogger('clipper:article-worker', { enabled: message.debug }),
+			createLogger('clipper:article-worker', { enabled: message.debug, sink: consoleSink }),
 			message.debug
 		)
 		// The lock lasts until the host has drained SDK writes and terminates this worker.
