@@ -107,3 +107,33 @@ export function currentLibraryRecords() {
 		return now.status === 'ready' && now.account === account && now.client === client
 	})
 }
+
+/** Read the managed bearer immediately before dispatch; results belong to this binding. */
+export async function requestCapture(
+	operation: 'resolve' | 'extract' | 'asset',
+	body: unknown,
+	signal?: AbortSignal
+) {
+	const session = registry.getCurrentJazzSession()
+	const snapshot = session?.getSnapshot()
+	if (!session || snapshot?.status !== 'ready' || !snapshot.account || !snapshot.client)
+		throw new Error('Account scope unavailable')
+	const { account, client } = snapshot
+	const token = client.db.getConfig().jwtToken
+	if (!token) throw new Error('Authentication unavailable')
+	const response = await fetch(`/api/capture/${operation}`, {
+		method: 'POST',
+		credentials: 'omit',
+		redirect: 'error',
+		cache: 'no-store',
+		signal: signal ?? null,
+		headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	})
+	const now = session.getSnapshot()
+	if (now.status !== 'ready' || now.account !== account || now.client !== client) {
+		await response.body?.cancel()
+		throw new Error('Account scope expired')
+	}
+	return response
+}

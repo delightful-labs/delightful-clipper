@@ -19,21 +19,15 @@ export default s.definePermissions(app, ({ policy, session, allOf }) => {
 	policy.storageOperations.allowInsert.where((row) => owns(row.libraryId))
 	policy.storageOperations.allowUpdate.never()
 	policy.storageOperations.allowDelete.never()
-	const manifestOwner = (libraryId: RowRefValue, operationId: RowRefValue) =>
-		allOf([owns(libraryId), policy.storageOperations.exists.where({ id: operationId, libraryId })])
-	policy.blobManifests.allowRead.where((row) => owns(row.libraryId))
-	policy.blobManifests.allowInsert.where((row) => manifestOwner(row.libraryId, row.operationId))
-	policy.blobManifests.allowUpdate.never()
-	policy.blobManifests.allowDelete.never()
-	policy.blobParts.allowRead.where((row) => owns(row.libraryId))
-	policy.blobParts.allowInsert.where((row) =>
+	policy.assets.allowRead.where((row) => owns(row.libraryId))
+	policy.assets.allowInsert.where((row) =>
 		allOf([
 			owns(row.libraryId),
-			policy.blobManifests.exists.where({ id: row.manifestId, libraryId: row.libraryId })
+			policy.storageOperations.exists.where({ id: row.operationId, libraryId: row.libraryId })
 		])
 	)
-	policy.blobParts.allowUpdate.never()
-	policy.blobParts.allowDelete.never()
+	policy.assets.allowUpdate.never()
+	policy.assets.allowDelete.never()
 	policy.snapshots.allowRead.where((row) => owns(row.libraryId))
 	policy.snapshots.allowInsert.where((row) =>
 		allOf([
@@ -60,8 +54,8 @@ export default s.definePermissions(app, ({ policy, session, allOf }) => {
 				documentId: row.operationId,
 				libraryId: row.libraryId
 			}),
-			policy.blobManifests.exists.where({
-				id: row.manifestId,
+			policy.assets.exists.where({
+				id: row.assetId,
 				operationId: row.operationId,
 				libraryId: row.libraryId
 			})

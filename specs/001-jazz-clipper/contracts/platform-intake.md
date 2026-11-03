@@ -16,13 +16,13 @@ A privileged extension fetch may obtain cross-origin image bytes only with the a
 
 ## Service-worker cache boundary
 
-Cache versioned shell, worker/WASM and bundled localization/font assets needed offline. The service worker must support navigation fallback for installed deep links, avoid caching auth/gateway responses, and upgrade the shell without dropping user article rows or byte parts. SW Cache API and Jazz data storage have distinct owners and cleanup policies. Permanent deletion removes corresponding derived indexes/asset availability; normal shell upgrade does not.
+Cache versioned shell, worker/WASM and bundled localization/font assets needed offline. The service worker must support navigation fallback for installed deep links, avoid caching auth/gateway responses, and upgrade the shell without dropping user article rows or native asset rows. SW Cache API and Jazz data storage have distinct owners and cleanup policies. Permanent deletion removes corresponding derived indexes/asset availability; normal shell upgrade does not.
 
 ## Local completion levels
 
 - Intake durable: URL/journal persisted locally; article may still be pending.
-- Text readable offline: metadata and normalized body/manifest/parts verified locally durable.
-- Images locally complete: every chosen asset byte manifest verified on this device; unavailable assets listed separately.
+- Text readable offline: metadata and normalized body/native assets confirmed locally durable.
+- Images locally complete: every chosen native asset bytes available on this device; unavailable assets listed separately.
 - Sync pending/accepted/rejected: independent network/authority outcome, not inferred from local completion.
 
 Browser quota/eviction remains a platform limitation. Request persistent storage when appropriate and report inability to persist, but do not claim that every browser guarantees indefinite offline storage. Storage-usage management UI remains deferred.

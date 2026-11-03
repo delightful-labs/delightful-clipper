@@ -5,7 +5,8 @@ import type { PolicyTestApp } from 'jazz-tools/testing'
 import { app } from './schema.js'
 import permissions from './permissions.js'
 import { createLibraryRecords } from './records.js'
-import { BYTE_LIMIT, prepareSave } from '../../storage/codec.js'
+import { storageSyncMachine } from '../../machines/storage/sync.js'
+import { BYTE_LIMIT, prepareSave } from '../../storage/prepare.js'
 
 let fixture: PolicyTestApp
 beforeAll(async () => {
@@ -42,20 +43,20 @@ function request(bytes = new Uint8Array([7, 8, 9, 10])) {
 		mediaType: 'application/octet-stream'
 	}
 }
-it('publishes text and multiple verified byte parts only after local persistence', async () => {
+it('publishes text and native byte payload only after local persistence', async () => {
 	const { db, store } = await owner('records-owner')
 	const input = request(randomBytes(600 * 1024))
 	const result = await toPromise(createActor(store.saveMachine, { input }).start())
 	expect(result.kind).toBe('saved')
 	if (result.kind !== 'saved') throw new Error('Expected local save')
 	await Promise.all(result.receipts.map((receipt) => receipt.global()))
-	expect(await db.all(app.blobParts.where({ manifestId: input.operationId }))).toHaveLength(3)
+	expect(await db.all(app.assets.where({ id: input.operationId }))).toHaveLength(1)
 	const read = await toPromise(
 		createActor(store.readMachine, { input: { id: input.operationId } }).start()
 	)
 	expect(read.kind).toBe('available')
 	if (read.kind !== 'available' || read.asset.kind !== 'available')
-		throw new Error('Expected locally verified asset')
+		throw new Error('Expected native asset')
 	expect(read.text).toBe(input.text)
 	expect(read.asset.bytes.length).toBe(input.bytes.length)
 	expect(read.asset.bytes.every((byte, index) => byte === input.bytes[index])).toBe(true)
@@ -73,11 +74,11 @@ it('denies foreign reads, forged parents, immutable changes and partial publicat
 	const foreignRows = await Promise.all([
 		b.db.one(app.documents.where({ id: input.operationId })),
 		b.db.one(app.snapshots.where({ id: input.operationId })),
-		b.db.one(app.blobManifests.where({ id: input.operationId })),
+		b.db.one(app.assets.where({ id: input.operationId })),
 		b.db.one(app.storageOperations.where({ id: input.operationId }))
 	])
 	for (const row of foreignRows) expect(row).toBeNull()
-	expect(await b.db.all(app.blobParts.where({ manifestId: input.operationId }))).toEqual([])
+	expect(await b.db.all(app.assets.where({ id: input.operationId }))).toEqual([])
 	const deny = /denied|rejected/i
 	await expect(
 		a.db.update(app.documents, input.operationId, { title: 'Overwrite' }).wait({ tier: 'global' })
@@ -87,12 +88,10 @@ it('denies foreign reads, forged parents, immutable changes and partial publicat
 	).rejects.toThrow(deny)
 	await expect(
 		b.db
-			.insert(app.blobParts, {
+			.insert(app.assets, {
 				libraryId: b.id,
-				manifestId: input.operationId,
-				ordinal: 0,
-				byteLength: 1,
-				hash: 'forged',
+				operationId: input.operationId,
+				mediaType: 'application/octet-stream',
 				payload: new Uint8Array([1])
 			})
 			.wait({ tier: 'global' })
@@ -101,8 +100,8 @@ it('denies foreign reads, forged parents, immutable changes and partial publicat
 	const tx = a.db.beginTransaction()
 	const { id, ...intent } = draft.intent
 	tx.insert(app.storageOperations, intent, { id })
-	const { id: manifestId, ...manifest } = draft.manifest
-	tx.insert(app.blobManifests, { ...manifest, libraryId: b.id }, { id: manifestId })
+	const { id: assetId, ...asset } = draft.asset
+	tx.insert(app.assets, { ...asset, libraryId: b.id }, { id: assetId })
 	await expect(tx.commit().wait({ tier: 'global' })).rejects.toThrow(deny)
 	expect(await a.db.one(app.storageOperations.where({ id }))).toBeNull()
 })
@@ -112,8 +111,8 @@ it('does not publish a complete document from staging metadata alone', async () 
 	const tx = db.beginTransaction()
 	const { id: operationId, ...intent } = draft.intent
 	tx.insert(app.storageOperations, intent, { id: operationId })
-	const { id: manifestId, ...manifest } = draft.manifest
-	tx.insert(app.blobManifests, manifest, { id: manifestId })
+	const { id: assetId, ...asset } = draft.asset
+	tx.insert(app.assets, asset, { id: assetId })
 	await tx.commit().wait({ tier: 'global' })
 	expect(
 		(await toPromise(createActor(store.readMachine, { input: { id: operationId } }).start())).kind
@@ -125,4 +124,40 @@ it('rejects oversized input before writing an operation journal', async () => {
 	const result = await toPromise(createActor(store.saveMachine, { input }).start())
 	expect(result.kind).toBe('failed')
 	expect(await db.one(app.storageOperations.where({ id: input.operationId }))).toBeNull()
+})
+
+it('reports authority rejection through sync while preserving the immutable saved record', async () => {
+	const { db, store } = await owner('records-remote-reject')
+	const input = request()
+	const saved = await toPromise(createActor(store.saveMachine, { input }).start())
+	if (saved.kind !== 'saved') throw new Error('Expected local save')
+	await Promise.all(saved.receipts.map((receipt) => receipt.global()))
+	const write = db.update(app.documents, input.operationId, { title: 'Forbidden replacement' })
+	const actor = createActor(storageSyncMachine, {
+		input: [{ global: () => write.wait({ tier: 'global' }) }]
+	}).start()
+	await toPromise(actor)
+	expect(actor.getSnapshot().value).toBe('rejected')
+	expect((await db.one(app.documents.where({ id: input.operationId })))?.title).toBe(input.title)
+})
+
+it('rejects an invalid native publication atomically and keeps only its operation journal', async () => {
+	const { db, id, store } = await owner('native-publication-rejection')
+	const input = request()
+	const draft = await prepareSave(id, input)
+	const { id: operationId, ...intent } = draft.intent
+	await db.insert(app.storageOperations, intent, { id: operationId }).wait({ tier: 'global' })
+	const tx = db.beginTransaction()
+	const { id: assetId, ...asset } = draft.asset
+	const { id: snapshotId, ...snapshot } = draft.snapshot
+	const { id: documentId, ...document } = draft.document
+	tx.insert(app.assets, asset, { id: assetId })
+	tx.insert(app.snapshots, { ...snapshot, documentId: crypto.randomUUID() }, { id: snapshotId })
+	tx.insert(app.documents, document, { id: documentId })
+	await expect(tx.commit().wait({ tier: 'global' })).rejects.toThrow(/denied|rejected/i)
+	expect(await db.one(app.assets.where({ id: assetId }))).toBeNull()
+	expect(await db.one(app.snapshots.where({ id: snapshotId }))).toBeNull()
+	expect(await db.one(app.documents.where({ id: documentId }))).toBeNull()
+	expect(await db.one(app.storageOperations.where({ id: operationId }))).not.toBeNull()
+	expect((await toPromise(createActor(store.saveMachine, { input }).start())).kind).toBe('blocked')
 })

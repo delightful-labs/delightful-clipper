@@ -1,38 +1,30 @@
 import { assign, fromPromise, setup } from 'xstate'
 import type {
-	AssetResult,
 	DocumentHeader,
-	Manifest,
-	Part,
 	ReadCapabilities,
 	ReadResult,
+	StoredAsset,
 	TextSnapshot
 } from '../../contracts/storage.js'
-
+import { BYTE_LIMIT, TEXT_LIMIT } from '../../storage/prepare.js'
 type Context = {
 	id: string
 	document: DocumentHeader | undefined
 	snapshot: TextSnapshot | undefined
-	manifest: Manifest | undefined
-	parts: Part[]
-	asset: AssetResult
+	asset: StoredAsset | undefined
 	result: ReadResult
 }
-function requireValue<T>(value: T | undefined): T {
-	if (value === undefined) throw new Error('Incomplete storage record')
+function required<T>(value: T | undefined): T {
+	if (value === undefined) throw new Error('Incomplete record')
 	return value
 }
 export function createReadRecordMachine(capability: ReadCapabilities) {
 	const actors = {
 		document: fromPromise(({ input }: { input: string }) => capability.document(input)),
 		snapshot: fromPromise(({ input }: { input: string }) => capability.snapshot(input)),
-		manifest: fromPromise(({ input }: { input: string }) => capability.manifest(input)),
-		parts: fromPromise(({ input }: { input: string }) => capability.parts(input)),
-		verifyText: fromPromise(({ input }: { input: TextSnapshot }) => capability.verifyText(input)),
-		decode: fromPromise(({ input }: { input: { manifest: Manifest; parts: Part[] } }) =>
-			capability.decode(input)
-		)
+		asset: fromPromise(({ input }: { input: string }) => capability.asset(input))
 	}
+	const clear = { document: undefined, snapshot: undefined, asset: undefined }
 	return setup<
 		Context,
 		{ type: 'SHUTDOWN' },
@@ -47,15 +39,7 @@ export function createReadRecordMachine(capability: ReadCapabilities) {
 	>({ actors }).createMachine({
 		id: 'read-record',
 		initial: 'document',
-		context: ({ input }) => ({
-			id: input.id,
-			document: undefined,
-			snapshot: undefined,
-			manifest: undefined,
-			parts: [],
-			asset: { kind: 'unavailable', reason: 'missingParts' },
-			result: { kind: 'unavailable' }
-		}),
+		context: ({ input }) => ({ id: input.id, ...clear, result: { kind: 'unavailable' } }),
 		output: ({ context }) => context.result,
 		on: { SHUTDOWN: '.unavailable' },
 		states: {
@@ -76,104 +60,81 @@ export function createReadRecordMachine(capability: ReadCapabilities) {
 			snapshot: {
 				invoke: {
 					src: 'snapshot',
-					input: ({ context }) => requireValue(context.document).snapshotId,
+					input: ({ context }) => required(context.document).snapshotId,
 					onDone: [
 						{ guard: ({ event }) => event.output === null, target: 'unavailable' },
 						{
-							target: 'verifyText',
+							guard: ({ context, event }) =>
+								event.output?.formatVersion !== '1' ||
+								event.output.id !== required(context.document).snapshotId ||
+								event.output.libraryId !== required(context.document).libraryId ||
+								event.output.documentId !== required(context.document).operationId ||
+								new TextEncoder().encode(event.output.text).byteLength > TEXT_LIMIT,
+							target: 'corrupt'
+						},
+						{
+							target: 'asset',
 							actions: assign({ snapshot: ({ event }) => event.output ?? undefined })
 						}
 					],
 					onError: 'unavailable'
 				}
 			},
-			verifyText: {
+			asset: {
 				invoke: {
-					src: 'verifyText',
-					input: ({ context }) => requireValue(context.snapshot),
-					onDone: [
-						{ guard: ({ event }) => event.output, target: 'manifest' },
-						{ target: 'corrupt' }
-					],
-					onError: 'corrupt'
-				}
-			},
-			manifest: {
-				invoke: {
-					src: 'manifest',
-					input: ({ context }) => requireValue(context.document).manifestId,
-					onDone: [
-						{ guard: ({ event }) => event.output === null, target: 'available' },
-						{
-							target: 'parts',
-							actions: assign({ manifest: ({ event }) => event.output ?? undefined })
-						}
-					],
-					onError: 'available'
-				}
-			},
-			parts: {
-				invoke: {
-					src: 'parts',
-					input: ({ context }) => requireValue(context.manifest).id,
-					onDone: { target: 'checkParts', actions: assign({ parts: ({ event }) => event.output }) },
-					onError: 'available'
-				}
-			},
-			checkParts: {
-				always: [
-					{
-						guard: ({ context }) =>
-							context.parts.length !== requireValue(context.manifest).partCount,
-						target: 'available'
-					},
-					{ target: 'decode' }
-				]
-			},
-			decode: {
-				invoke: {
-					src: 'decode',
-					input: ({ context }) => ({
-						manifest: requireValue(context.manifest),
-						parts: context.parts
-					}),
+					src: 'asset',
+					input: ({ context }) => required(context.document).assetId,
 					onDone: {
 						target: 'available',
-						actions: assign({
-							asset: ({ context, event }) => ({
-								kind: 'available',
-								bytes: event.output,
-								mediaType: requireValue(context.manifest).mediaType
-							})
-						})
+						actions: assign({ asset: ({ event }) => event.output ?? undefined })
 					},
-					onError: {
-						target: 'available',
-						actions: assign({ asset: { kind: 'unavailable', reason: 'integrityMismatch' } })
-					}
+					onError: 'available'
 				}
 			},
 			available: {
 				type: 'final',
-				entry: assign(({ context }) => ({
-					result: capability.isCurrent()
-						? {
-								kind: 'available',
-								document: requireValue(context.document),
-								text: requireValue(context.snapshot).text,
-								asset: context.asset
-							}
-						: { kind: 'unavailable' }
+				entry: assign(({ context }) => {
+					const document = required(context.document),
+						snapshot = required(context.snapshot),
+						asset = context.asset
+					const valid =
+						asset &&
+						asset.id === document.assetId &&
+						asset.libraryId === document.libraryId &&
+						asset.operationId === document.operationId &&
+						asset.payload.byteLength <= BYTE_LIMIT &&
+						asset.mediaType.trim().length > 0 &&
+						asset.mediaType.length <= 150
+					return {
+						...clear,
+						result: capability.isCurrent()
+							? {
+									kind: 'available',
+									document,
+									text: snapshot.text,
+									asset: valid
+										? { kind: 'available', bytes: asset.payload, mediaType: asset.mediaType }
+										: { kind: 'unavailable', reason: asset ? 'invalid' : 'missing' }
+								}
+							: { kind: 'unavailable' }
+					}
+				})
+			},
+			missing: {
+				type: 'final',
+				entry: assign(() => ({
+					...clear,
+					result: { kind: capability.isCurrent() ? 'missing' : 'unavailable' }
 				}))
 			},
-			missing: { type: 'final', entry: assign({ result: { kind: 'missing' } }) },
 			corrupt: {
 				type: 'final',
 				entry: assign(() => ({
+					...clear,
 					result: { kind: capability.isCurrent() ? 'corrupt' : 'unavailable' }
 				}))
 			},
-			unavailable: { type: 'final' }
+			unavailable: { type: 'final', entry: assign({ ...clear, result: { kind: 'unavailable' } }) }
 		}
 	})
 }
