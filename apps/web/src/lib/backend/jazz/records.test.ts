@@ -1,6 +1,4 @@
 import { readRecord } from '../../machines/storage/read.test-support.js'
-import { preparationMachine } from '../../machines/capture/preparation.js'
-import type { LibraryCapability } from '../../contracts/library.js'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import { createPolicyTestApp } from 'jazz-tools/testing'
@@ -201,77 +199,4 @@ it('publishes immutable source provenance with its document and denies foreign o
 			})
 			.wait({ tier: 'global' })
 	).rejects.toThrow(/denied|rejected/i)
-})
-
-it('reuses verified destination identity and treats a stranded intent as uncertain without replay', async () => {
-	const { createLibraryCapability } = await import('./library.js')
-	const { db, id, store } = await owner('source-identity')
-	let extracts = 0
-	const request = async (mode: 'resolve' | 'extract', body: unknown) => {
-		if (!body || typeof body !== 'object' || !('operationId' in body))
-			throw new Error('Invalid request')
-		const base = { operationId: body.operationId, finalUrl: 'https://example.com/one' }
-		return Response.json(
-			mode === 'resolve'
-				? base
-				: {
-						...base,
-						canonicalCandidate: 'https://unrelated.example/',
-						candidate: {
-							title: 'First snapshot',
-							text: 'Original text',
-							html: '<p>Original text</p>'
-						}
-					}
-		)
-	}
-	const capability = createLibraryCapability(store, id, (mode, body) => {
-		if (mode === 'extract') extracts++
-		return request(mode, body)
-	})
-	const prepare = (capability: LibraryCapability, url: string) =>
-		toPromise(createActor(preparationMachine, { input: { capability, url } }).start())
-	const first = await prepare(capability, 'https://short.example/#a')
-	if (first.kind !== 'ready') throw new Error('Expected prepared content')
-	const candidate = first.candidate
-	const save = {
-		operationId: candidate.id,
-		title: candidate.title,
-		text: candidate.text,
-		bytes: new TextEncoder().encode(candidate.html),
-		mediaType: 'text/html',
-		source: {
-			finalUrl: candidate.finalUrl,
-			submittedUrl: candidate.submittedUrl,
-			provenance: candidate.provenance
-		}
-	}
-	const saved = await toPromise(createActor(store.saveMachine, { input: save }).start())
-	if (saved.kind !== 'saved') throw new Error('Expected save')
-	await Promise.all(saved.receipts.map((receipt) => receipt.global()))
-	expect(await prepare(capability, 'https://example.com/one#b')).toEqual({
-		kind: 'duplicate',
-		id: candidate.id
-	})
-	expect(extracts).toBe(1)
-	expect(await readRecord(store.readCapabilities, candidate.id)).toMatchObject({
-		kind: 'available',
-		text: 'Original text',
-		source: { submittedUrl: 'https://short.example/#a' }
-	})
-	const { articleId } = await import('../../capture/source.js')
-	const stranded = await articleId(id, 'https://example.com/two')
-	const draft = await prepareSave(id, { ...save, operationId: stranded })
-	const { id: operationId, ...intent } = draft.intent
-	await db.insert(app.storageOperations, intent, { id: operationId }).wait({ tier: 'global' })
-	const strandedCapability = createLibraryCapability(store, id, async (_mode, body) => {
-		if (!body || typeof body !== 'object' || !('operationId' in body))
-			throw new Error('Invalid request')
-		return Response.json({ operationId: body.operationId, finalUrl: 'https://example.com/two' })
-	})
-	expect(await prepare(strandedCapability, 'https://example.com/two')).toEqual({
-		kind: 'uncertain',
-		id: stranded
-	})
-	expect(await db.one(app.documents.where({ id: stranded }))).toBeNull()
 })

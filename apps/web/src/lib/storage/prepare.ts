@@ -34,6 +34,7 @@ export async function prepareSave(libraryId: string, request: SaveRequest): Prom
 		)
 	)
 	return {
+		...(request.articleId ? { articleId: request.articleId } : {}),
 		...(request.source
 			? { source: { id: operationId, documentId: operationId, libraryId, ...request.source } }
 			: {}),

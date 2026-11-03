@@ -4,24 +4,9 @@ Updated 2026-11-03. This is the current implementation checklist; the product re
 
 ## Current handoff — PR #12
 
-The current feature branch is `feat/durable-capture-foundation`, PR [#12](https://github.com/delightful-labs/delightful-clipper/pull/12), targeting `main`. Reader PR #11 has merged into `main` at `aa36551`, and that baseline is incorporated. The foundation includes immutable capture evidence and the bounded admission capability; the application queue/recovery workflow remains unbuilt. Check the live PR state before continuing: if merged, start a new feature branch from current `main`; otherwise keep related work on this PR. Do not merge without explicit user authorization.
+The current branch is `feat/durable-capture-foundation`, PR [#12](https://github.com/delightful-labs/delightful-clipper/pull/12), targeting main. Reader PR #11 is incorporated. Do not merge without explicit authorization.
 
-Admission now uses existing Jazz intake records exclusively. The custom IndexedDB journal/checkpoint protocol and its implementation-specific tests are removed. A fresh command confirms local settlement through the native receipt; read-only recovery returns native data without a receipt and never inserts on absence. Full application queue/retry acceptance remains open.
-
-Current validation: `pnpm verify` passes 260 tests/29 files plus vendor, formatting, lint, type and production-build checks. All 13 Chromium tests and five production offline regressions pass, run sequentially. Native intake survives an offline authority and full browser-process restart, recovers without a fabricated receipt, and syncs to a restored profile without a custom journal. Missing-ID recovery remains read-only. Tests specific to the deleted checkpoint implementation were removed; native policy/decoder and uncertainty/drain tests remain.
-
-Historical reader-baseline validation: `pnpm verify` passes 235 unit tests across 26 files, strict application/service-worker checks, formatting, lint, vendor checks and production build; `pnpm test:e2e` passes 12 Chromium tests; `pnpm test:offline` passes five production tests. Final formatting/lint/diff checks also pass. Offline tests now retain static SVG and native disclosures through a full browser-process restart with web/Jazz stopped and HTTP cache cleared, then sync to a separately restored profile. Gateway responses are fixtures in these restart tests; persistence, authority, browser and sync boundaries are real. These results supersede historical counts below. Hosted real-extraction evidence predates the SVG change; do not describe it as hosted SVG qualification. CI tooling/types/build and browser jobs pass for `f0e5738`; Netlify preview deploy `6aea3b05b5dae0f3763471f2` is ready. This establishes deployment checks, not a new hosted manual SVG exercise. Check any subsequent commit separately.
-
-- [x] Open a usable local library without signup using DLF/Jazz `initial: 'local-first'`; hide Sign out for automatic local identities.
-- [x] Use DUI URL input and one-step Add Link with automatic local saving and explicit Open.
-- [x] Use dedicated SvelteKit reader routes with layout-owned capture/save lifetimes, direct loads, new tabs/history and public-shell offline deep links.
-- [x] Keep localized workflow feedback in the owning machines; components render supplied text/severity.
-- [x] Enable Oxfmt Svelte formatting, including embedded CSS.
-- [x] Preserve native `details`/`summary` and `open`; verify keyboard toggling.
-- [x] Preserve static inline SVG shapes/text/geometry/solid paints with namespace-specific sanitization at extraction and display; strip active/external/reference features and bound SVG attribute lengths.
-- [x] Test actual Readability preservation, malicious persisted markup, rendered SVG geometry, no remote resource loads, offline restart and restored-profile SVG reading.
-
-Next bounded work: typed gateway source/failure evidence (D3), queue/job integration and publication reconciliation (D4), bounded scheduling (D5), approved-copy link-only projection (D6) and application acceptance (D7). The design and schema/admission capability are in place, but FR-002/054/056/057 remain open. Preserve unknown-write non-replay and local-versus-remote receipts; keep images and annotations separate. See the handoff and durable-capture design for constraints.
+The accepted implementation saves URL articles immediately and processes missing content in a dedicated serial Web Worker. The old intake graph and custom IndexedDB journal are removed. See [durable-capture-design.md](durable-capture-design.md). Current source validation: `pnpm verify`, 209 unit tests/27 files, vendor, format, lint, types and production build pass. All 15 Chromium integration tests and five production offline tests pass, run sequentially.
 
 ## Completed foundation
 
@@ -34,22 +19,16 @@ Next bounded work: typed gateway source/failure evidence (D3), queue/job integra
 - [x] Add bounded domain preparation with operation fingerprints, repository save/read actors and separate remote-acceptance receipts.
 - [x] Exercise real-authority native-byte/Unicode round-trip, duplicate operation blocking, account read denial, immutable-row denial, atomic foreign-library rejection, staging invisibility and oversize rejection in repository tests.
 
-## Durable capture foundation continuation
+## URL-first capture
 
-Design and remaining dependency-ordered work: [durable-capture-design.md](durable-capture-design.md). This is a schema/admission capability, not a completed durable intake feature. Reader PR #11 is merged and incorporated; preserve its corrections when continuing.
-
-- [x] Define immutable native intake, observation and required-document completion tables without changing successful document/snapshot publication.
-- [x] Enforce canonical-owner reads/inserts, same-library parents, format version `1`, immutable evidence and atomic graph validation with the real Jazz test authority.
-- [x] Model native intake/operation identities, account/generation ownership, admission/shutdown boundaries, publication uncertainty, retry budget and application acceptance before adding asynchronous capture recovery.
-- [x] Add bounded native intake/evidence decoders; native adapter reads reject invalid owner-written evidence instead of projecting absence.
-- [x] Use DLF-owned native Jazz intake/observation/completion transaction leaves and explicit fresh/read-only recovery admission (D2 capability); remove the duplicate IndexedDB store and checkpoint protocol.
-- [x] Qualify native admission local/global separation, read-only recovery/non-replay, shutdown drain, terminal buffer cleanup and Jazz intake persistence through Chromium process restart/restored-profile sync.
-- [ ] Wire those capabilities into the capture queue and every projection boundary; model required native execution evidence and deployment qualification (D1 remainder, D4).
-- [ ] Implement typed source/failure evidence, durable execution/reconciliation and bounded retry scheduling (D3–D5).
-- [ ] Obtain required exact copy approval and implement link-only library projection/Retry (D6).
-- [ ] Qualify actual application termination/restart, connectivity resume, same-item completion, multi-tab takeover and restored-profile outcomes (D7).
-
-The existing Add Link workflow still does not write these tables. New browser admission checks invoke the real capability through a test driver; they qualify that capability, not automatic recovery of the UI capture workflow. The production offline suite remains a regression check, not a new production-shell queue-recovery proof.
+- [x] Save a native article containing just its URL through the common save operation.
+- [x] Accept optional supplied content through that same operation without fetching it again.
+- [x] Run capture sequencing in a dedicated module-worker XState machine, one article at a time.
+- [x] Keep trusted SDK/authentication resources in a bounded host and drain writes on shutdown.
+- [x] Resume missing-content articles after restart; retain URL entries on failure/cancel and Retry the same object.
+- [x] Serialize same-profile tabs with Web Locks; retain native uncertain-write non-replay barriers across profiles.
+- [x] Reuse immutable existing content and approved catalog copy.
+- [ ] Complete full backoff policy, comprehensive failed-redirect provenance and broader platform/deployment qualification.
 
 ## Storage qualification before enabling a product write flow
 
@@ -72,7 +51,7 @@ The existing Add Link workflow still does not write these tables. New browser ad
 
 - [x] Build authenticated Add Link → automatic local save → saved reader, with final-destination duplicate checks, provenance and honest remote status.
 - [x] Render saved HTML structure with a shared sanitizer allowlist, isolated internal anchors, normal same-tab article links and literal-text fallback; qualify offline restart and restored-profile rendering.
-- [ ] Complete image acquisition, richer saved reader requirements and durable pre-save intake recovery; pre-save work remains ephemeral.
+- [ ] Complete image acquisition and richer saved reader requirements. URL articles now persist before fetching; full retry scheduling remains open.
 - [ ] Implement desktop extension intake and annotation anchoring with sender validation, packaged runtime assets and restart reconciliation.
 - [ ] Implement retained reader, note/highlight, image, organization, search and deletion requirements.
 - [x] Qualify the production service-worker shell in Chromium with web and Jazz stopped, HTTP cache cleared and a complete browser-process restart. Keep broader platform qualification open.
@@ -124,7 +103,7 @@ A real local 503 was traced to shared SvelteKit generated environment files poin
 
 User direction replaces the initial preview/confirm flow: Add Link resolves/extracts, performs final-destination duplicate/intent checks and automatically starts the existing local save actor. There is no preview state or SAVE event in the library workflow. The prepared candidate is private transient state, cleared on settlement/shutdown. Existing local/sync/uncertain/rejected messages and explicit Open remain; completion stays in the library. Existing saved snapshots are never replaced, and unknown intents are reconciled rather than replayed. FR-053 now records this interaction requirement.
 
-Tests cover a single ADD causing exactly one save, a closed reader until Open, cancellation at preparation boundaries, shutdown/cancel/identity-change drain, uncertain child outcomes and late rejection. UI offline fixtures disconnect the authority just before delivering extraction results, so automatic publication is local/offline without a second user action. Durable pre-save recovery and failed-capture link-only entries remain subsequent work.
+Tests cover a single ADD causing exactly one save, a closed reader until Open, cancellation at preparation boundaries, shutdown/cancel/identity-change drain, uncertain child outcomes and late rejection. UI offline fixtures disconnect the authority just before delivering extraction results, so automatic publication is local/offline without a second user action. Historical limitation: this batch predated the URL-first worker implementation described above.
 
 
 ## Dedicated reader routes

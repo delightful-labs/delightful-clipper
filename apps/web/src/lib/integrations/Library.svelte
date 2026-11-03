@@ -12,7 +12,7 @@
 	let snapshot = $state<SnapshotFrom<typeof libraryMachine>>()
 	let url = $state('')
 	const capture = $derived(snapshot?.context)
-	const canAdd = $derived(gatewayEnabled && snapshot?.can({ type: 'ADD', url }))
+	const canAdd = $derived(snapshot?.can({ type: 'ADD', url }))
 	const view = $derived(selectLibraryView(snapshot, gatewayEnabled))
 
 	onMount(() => {
@@ -29,7 +29,6 @@
 {#if capture}
 	<section aria-label={action('add', 'link')}>
 		<h2>{action('add', 'link')}</h2>
-		{#if view.disabledMessage}<StatusMessage {...view.disabledMessage} />{/if}
 		<form
 			onsubmit={(event) => {
 				event.preventDefault()
@@ -51,9 +50,8 @@
 		</form>
 
 		{#if view.captureMessage}<StatusMessage {...view.captureMessage} />{/if}
-		{#if snapshot?.can({ type: 'CANCEL' })}<Button
-				type="button"
-				onclick={() => actor.send({ type: 'CANCEL' })}>{t('actions.cancel')}</Button
+		{#if view.canCancel}<Button type="button" onclick={() => actor.send({ type: 'CANCEL' })}
+				>{t('actions.cancel')}</Button
 			>{/if}
 		{#if view.canOpenCapture && isArticleId(capture.captureId)}<a
 				href={articleHref(capture.captureId)}>{action('open', 'saved_article')}</a
@@ -64,11 +62,23 @@
 		{#if view.listMessage}<StatusMessage {...view.listMessage} />{/if}
 		{#if view.emptyMessage}<p>{view.emptyMessage.text}</p>{/if}
 		<ul>
-			{#each capture.rows as row (row.id)}<li>
-					{#if capture.writing && row.id === capture.captureId}{row.title}{:else}<a
-							href={articleHref(row.id)}>{row.title}</a
-						>{/if}{#if view.syncMessages[row.id]}<span>{view.syncMessages[row.id]?.text}</span>{/if}
-				</li>{/each}
+			{#each capture.rows as row (row.id)}
+				{@const rowMessage = view.rowMessages[row.id]}
+				<li>
+					{#if view.readable[row.id]}<a href={articleHref(row.id)}>{row.title}</a>{:else}<span
+							>{row.title}</span
+						>
+						{#if row.url}<a href={row.url} rel="noreferrer">{action('open', 'original')}</a>{/if}
+						{#if row.failure}<Button
+								type="button"
+								onclick={() => actor.send({ type: 'RETRY', id: row.id })}
+								>{t('actions.retry')}</Button
+							>{/if}
+					{/if}
+					{#if rowMessage}<StatusMessage {...rowMessage} />{/if}
+					{#if view.syncMessages[row.id]}<span>{view.syncMessages[row.id]?.text}</span>{/if}
+				</li>
+			{/each}
 		</ul>
 	</section>
 {/if}

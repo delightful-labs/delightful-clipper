@@ -13,6 +13,7 @@ export type ArticleSource = {
 	provenance: string
 }
 export type SaveRequest = {
+	articleId?: string
 	source?: Omit<ArticleSource, 'id' | 'libraryId' | 'documentId'>
 	operationId: string
 	title: string
@@ -53,6 +54,7 @@ export type StorageIntent = {
 	createdAt: string
 }
 export type PreparedSave = {
+	articleId?: string
 	source?: ArticleSource
 	intent: StorageIntent
 	asset: StoredAsset

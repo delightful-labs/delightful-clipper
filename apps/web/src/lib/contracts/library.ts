@@ -1,39 +1,25 @@
 import type { ActorLogic, ActorRef, Snapshot } from 'xstate'
-import type { Candidate } from '../capture/source.js'
-import type {
-	DocumentHeader,
-	ReadCapabilities,
-	ReadReport,
-	SaveRequest,
-	SaveResult,
-	SyncReport
-} from './storage.js'
-export type CapturePreparation =
-	| { kind: 'ready'; candidate: Candidate }
-	| { kind: 'duplicate' | 'uncertain'; id: string }
-	| { kind: 'scopeChanged' }
-export type SaveRef = ActorRef<Snapshot<SaveResult>, { type: 'SHUTDOWN' }>
-export type SaveSpawner = <S extends Snapshot<SaveResult>>(
-	logic: ActorLogic<S, { type: 'SHUTDOWN' }, SaveRequest>,
-	options: { input: SaveRequest }
+import type { ArticleSaveResult, LibraryArticle, SaveArticleRequest } from './articles.js'
+import type { QueueOpen, QueueReport } from './article-worker.js'
+import type { ReadCapabilities, ReadReport, SyncReport } from './storage.js'
+export type SaveRef = ActorRef<Snapshot<ArticleSaveResult>, { type: 'SHUTDOWN' }>
+export type SaveSpawner = <S extends Snapshot<ArticleSaveResult>>(
+	logic: ActorLogic<S, { type: 'SHUTDOWN' }, SaveArticleRequest>,
+	options: { input: SaveArticleRequest }
 ) => ActorRef<S, { type: 'SHUTDOWN' }>
 export type LibraryCapability = {
 	isCurrent: () => boolean
-	resolve: (url: string, requestId: string, signal: AbortSignal) => Promise<string>
-	identify: (url: string, signal: AbortSignal) => Promise<string>
-	hasDocument: (id: string, signal: AbortSignal) => Promise<boolean>
-	hasIntent: (id: string, signal: AbortSignal) => Promise<boolean>
-	extract: (url: string, requestId: string, signal: AbortSignal) => Promise<Omit<Candidate, 'id'>>
-	/** The machine supplies its own spawn; this binding never owns an actor lifecycle. */
-	spawnSave: (spawn: SaveSpawner, request: SaveRequest) => SaveRef
+	spawnSave: (spawn: SaveSpawner, request: SaveArticleRequest) => SaveRef
 	read: ReadCapabilities
-	subscribe: (next: (rows: DocumentHeader[]) => void, error: () => void) => () => void
+	subscribe: (next: (rows: LibraryArticle[]) => void, error: () => void) => () => void
+	worker: QueueOpen
 }
 export type LibraryEvent =
 	| ReadReport
+	| SyncReport
+	| QueueReport
 	| { type: 'ADD'; url: string }
 	| { type: 'CANCEL' | 'SHUTDOWN' | 'CLOSE_READER' }
-	| { type: 'OPEN'; id: string }
-	| { type: 'ROWS'; rows: DocumentHeader[] }
+	| { type: 'OPEN' | 'RETRY'; id: string }
+	| { type: 'ROWS'; rows: LibraryArticle[] }
 	| { type: 'LIST_FAILED' }
-	| SyncReport

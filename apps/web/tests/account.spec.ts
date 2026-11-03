@@ -82,95 +82,6 @@ test('invalid restoration preserves the current local library', async ({ page })
 	await expect(page.getByLabel('Recovery phrase', { exact: true })).toHaveValue('')
 })
 
-test('retains an offline Jazz intake across process restart and syncs it without a separate journal', async ({
-	browser
-}) => {
-	const profile = await mkdtemp(join(tmpdir(), 'clipper-intake-profile-'))
-	let context = await chromium.launchPersistentContext(profile, { headless: true })
-	const independent = await browser.newContext()
-	const id = crypto.randomUUID(),
-		uncertainId = crypto.randomUUID()
-	const url = 'https://example.com/article?b=2&a=1#note'
-	try {
-		const page = await context.newPage()
-		await page.goto('http://127.0.0.1:5180')
-		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
-		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const phrase = await page
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
-		const restored = await independent.newPage()
-		await restored.goto('http://127.0.0.1:5180')
-		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
-		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
-		await authority.stop()
-		expect(
-			await page.evaluate(async (id) => {
-				const path = '/tests/intake-driver.ts'
-				return (await import(/* @vite-ignore */ path)).admit(id, false)
-			}, id)
-		).toBe('admitted')
-		await context.close()
-		context = await chromium.launchPersistentContext(profile, { headless: true })
-		const reopened = await context.newPage()
-		await reopened.goto('http://127.0.0.1:5180')
-		await expect(
-			reopened.getByText('Library saved on this device. Sync pending.', { exact: true })
-		).toBeVisible()
-		expect(
-			await reopened.evaluate(async (id) => {
-				const path = '/tests/intake-driver.ts'
-				return (await import(/* @vite-ignore */ path)).read(id)
-			}, id)
-		).toBe(url)
-		expect(
-			await reopened.evaluate(async (id) => {
-				const path = '/tests/intake-driver.ts'
-				return (await import(/* @vite-ignore */ path)).recover(id)
-			}, uncertainId)
-		).toEqual({ kind: 'uncertain', url: null, hasReceipts: false })
-		expect(
-			await reopened.evaluate(async (id) => {
-				const path = '/tests/intake-driver.ts'
-				return (await import(/* @vite-ignore */ path)).read(id)
-			}, uncertainId)
-		).toBeNull()
-		expect(
-			await reopened.evaluate(async (id) => {
-				const path = '/tests/intake-driver.ts'
-				return (await import(/* @vite-ignore */ path)).recover(id)
-			}, id)
-		).toEqual({ kind: 'recovered', url, hasReceipts: false })
-		expect(
-			await reopened.evaluate(async () =>
-				(await indexedDB.databases()).some((db) => db.name === 'clipper.capture-intake.1')
-			)
-		).toBe(false)
-
-		authority = await startAuthority()
-		await reopened.reload()
-		await restored.reload()
-		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
-		await expect
-			.poll(
-				() =>
-					restored.evaluate(async (id) => {
-						const path = '/tests/intake-driver.ts'
-						return (await import(/* @vite-ignore */ path)).read(id)
-					}, id),
-				{ timeout: 30000 }
-			)
-			.toBe(url)
-	} finally {
-		await context.close()
-		await independent.close()
-		await rm(profile, { recursive: true, force: true })
-	}
-})
-
 test('retains the account and library after closing every page and browser process with the authority offline', async () => {
 	const profile = await mkdtemp(join(tmpdir(), 'clipper-cold-profile-'))
 	let context = await chromium.launchPersistentContext(profile, { headless: true })
@@ -466,7 +377,9 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 		await page.getByRole('button', { name: 'Add link', exact: true }).click()
 
 		await expect(
-			page.getByText('Article saved on this device. Sync pending.', { exact: true })
+			page
+				.getByRole('region', { name: 'Saved articles' })
+				.getByRole('link', { name: 'UI saved article', exact: true })
 		).toBeVisible()
 		await context.close()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
@@ -501,7 +414,7 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 	}
 })
 
-test('canceling an Add Link request prevents a late save and leaves the form usable', async ({
+test('canceling background extraction retains the saved URL and leaves the form usable', async ({
 	page
 }) => {
 	let release!: () => void
@@ -516,7 +429,7 @@ test('canceling an Add Link request prevents a late save and leaves the form usa
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/')
 	await page.getByRole('button', { name: 'Add link', exact: true }).click()
 	await expect(
-		page.getByText('Resolving and extracting the article…', { exact: true })
+		page.getByText('Resolving and extracting the article…', { exact: true }).first()
 	).toBeVisible()
 	await page.getByRole('button', { name: 'Cancel', exact: true }).click()
 	release()
@@ -654,4 +567,142 @@ test('capture continues when the initiating library page is replaced by a reader
 			.getByRole('link', { name: 'UI saved article', exact: true })
 	).toHaveCount(2)
 	expect(extractions()).toBe(1)
+})
+
+test('Add Link persists article objects before a worker processes their content serially', async ({
+	page,
+	context
+}) => {
+	const gate = Promise.withResolvers<void>()
+	let active = 0,
+		max = 0,
+		count = 0
+	await page.route('**/api/capture/*', async (route) => {
+		const input: { operationId: string; url: string } = route.request().postDataJSON()
+		const base = { operationId: input.operationId, finalUrl: input.url }
+		if (route.request().url().endsWith('/resolve')) {
+			await route.fulfill({ json: base })
+			return
+		}
+		active++
+		max = Math.max(max, active)
+		count++
+		try {
+			if (count === 1) await gate.promise
+			await route.fulfill({
+				json: {
+					...base,
+					candidate: {
+						title: input.url.endsWith('/one') ? 'Queued one' : 'Queued two',
+						text: 'Queued content',
+						html: '<p>Queued content</p>'
+					}
+				}
+			})
+		} finally {
+			active--
+		}
+	})
+	const started = page.waitForEvent('worker', {
+		predicate: (w) => w.url().includes('article-worker.ts')
+	})
+	await page.goto('/')
+	const worker = await started
+	expect(await worker.evaluate(() => typeof document)).toBe('undefined')
+	const urls = ['https://example.com/one', 'https://example.com/two']
+	await page.getByLabel('Article URL', { exact: true }).fill(urls[0] ?? '')
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect.poll(() => count).toBe(1)
+	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
+	const other = await context.newPage()
+	await other.goto('/')
+	await expect(other.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
+	await other.getByLabel('Article URL', { exact: true }).fill(urls[1] ?? '')
+	await other.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(other.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
+	await expect(page.getByRole('link', { name: 'Open original', exact: true })).toHaveCount(2)
+	const rows = await page.evaluate(async (urls) => {
+		const path = '/tests/article-driver.ts'
+		return (await import(/* @vite-ignore */ path)).inspect(urls)
+	}, urls)
+	expect(
+		rows.map(
+			(r: { url: string; contentId: string | null } | null) =>
+				r && { url: r.url, contentId: r.contentId }
+		)
+	).toEqual(urls.map((url) => ({ url, contentId: null })))
+	expect(count).toBe(1)
+	gate.resolve()
+	await expect(page.getByRole('link', { name: 'Queued one', exact: true })).toBeVisible()
+	await expect(page.getByRole('link', { name: 'Queued two', exact: true })).toBeVisible()
+	expect(max).toBe(1)
+	expect(count).toBe(2)
+	await other.close()
+})
+
+test('the article save operation accepts supplied content without fetching the URL', async ({
+	page
+}) => {
+	const requests: string[] = []
+	await page.route('**/api/capture/*', async (route) => {
+		requests.push(route.request().url())
+		await route.abort()
+	})
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const result = await page.evaluate(async () => {
+		const path = '/tests/article-driver.ts'
+		return (await import(/* @vite-ignore */ path)).supplied('https://example.com/supplied')
+	})
+	expect(result.ready).toBe(true)
+	expect(requests).toEqual([])
+	await page.goto('/articles/' + result.id)
+	await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
+})
+
+test('a worker resumes a URL-only article after complete browser restart', async () => {
+	const profile = await mkdtemp(join(tmpdir(), 'clipper-pending-article-'))
+	let context = await chromium.launchPersistentContext(profile, { headless: true })
+	const entered = Promise.withResolvers<void>(),
+		gate = Promise.withResolvers<void>()
+	const url = 'https://example.com/resume'
+	try {
+		const page = await context.newPage()
+		await page.route('**/api/capture/*', async (route) => {
+			entered.resolve()
+			await gate.promise
+			await route.abort().catch(() => {})
+		})
+		await page.goto('http://127.0.0.1:5180')
+		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await page.getByLabel('Article URL', { exact: true }).fill(url)
+		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+		await entered.promise
+		await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
+		const before = await page.evaluate(async (url) => {
+			const path = '/tests/article-driver.ts'
+			return (await import(/* @vite-ignore */ path)).inspect([url])
+		}, url)
+		expect(before[0]?.contentId).toBeNull()
+		await context.close()
+		gate.resolve()
+		context = await chromium.launchPersistentContext(profile, { headless: true })
+		const reopened = await context.newPage()
+		await fixtureArticle(reopened, undefined, url)
+		await reopened.goto('http://127.0.0.1:5180')
+		await expect(
+			reopened.getByRole('link', { name: 'UI saved article', exact: true })
+		).toBeVisible()
+		const after = await reopened.evaluate(async (url) => {
+			const path = '/tests/article-driver.ts'
+			return (await import(/* @vite-ignore */ path)).inspect([url])
+		}, url)
+		expect(after[0]?.id).toBe(before[0]?.id)
+		expect(after[0]?.originalSavedAt).toBe(before[0]?.originalSavedAt)
+		expect(after[0]?.contentId).toBeTruthy()
+	} finally {
+		gate.resolve()
+		await context.close()
+		await rm(profile, { recursive: true, force: true })
+	}
 })

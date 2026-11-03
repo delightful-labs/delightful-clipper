@@ -1,15 +1,15 @@
 import { assign, fromPromise, setup } from 'xstate'
 import type { LibraryCapability, SaveSpawner } from '../../contracts/library.js'
 import type { Candidate } from '../../capture/source.js'
-import type { SaveRequest, SaveResult } from '../../contracts/storage.js'
+import type { SaveArticleRequest, ArticleSaveResult } from '../../contracts/articles.js'
 /** Controlled child still obeys SHUTDOWN → drain → done, rather than an abortable promise. */
 export function controlledSave(
-	work: (request: SaveRequest) => Promise<SaveResult>,
+	work: (request: SaveArticleRequest) => Promise<ArticleSaveResult>,
 	shutdown: () => void = () => {}
 ) {
-	const actors = { work: fromPromise(({ input }: { input: SaveRequest }) => work(input)) }
+	const actors = { work: fromPromise(({ input }: { input: SaveArticleRequest }) => work(input)) }
 	return setup<
-		{ request: SaveRequest; result: SaveResult | undefined },
+		{ request: SaveArticleRequest; result: ArticleSaveResult | undefined },
 		{ type: 'SHUTDOWN' },
 		typeof actors,
 		{},
@@ -17,8 +17,8 @@ export function controlledSave(
 		{},
 		never,
 		string,
-		SaveRequest,
-		SaveResult
+		SaveArticleRequest,
+		ArticleSaveResult
 	>({ actors }).createMachine({
 		initial: 'running',
 		context: ({ input }) => ({ request: input, result: undefined }),
@@ -47,19 +47,14 @@ export function testLibraryCapability(
 	candidate: Candidate,
 	overrides: Partial<LibraryCapability> = {}
 ): LibraryCapability {
-	const save = controlledSave(async (request) => ({
+	const save = controlledSave(async () => ({
 		kind: 'saved',
-		operationId: request.operationId,
+		operationId: candidate.id,
 		receipts: []
 	}))
 	return {
 		isCurrent: () => true,
-		resolve: async () => candidate.finalUrl,
-		identify: async () => candidate.id,
-		hasDocument: async () => false,
-		hasIntent: async () => false,
-		extract: async () => candidate,
-		spawnSave: (spawn: SaveSpawner, request: SaveRequest) => spawn(save, { input: request }),
+		spawnSave: (spawn: SaveSpawner, request: SaveArticleRequest) => spawn(save, { input: request }),
 		read: {
 			isCurrent: () => true,
 			document: async () => null,
@@ -68,6 +63,14 @@ export function testLibraryCapability(
 			source: async () => null
 		},
 		subscribe: () => () => {},
+		worker: (report) => ({
+			send: (event) => {
+				if (event.type === 'STOP') report({ type: 'BACKGROUND_CLOSED' })
+			},
+			stop: async () => {
+				report({ type: 'BACKGROUND_CLOSED' })
+			}
+		}),
 		...overrides
 	}
 }

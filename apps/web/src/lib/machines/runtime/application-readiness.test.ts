@@ -422,7 +422,7 @@ it.each(['logout', 'shutdown', 'replacement', 'restore'] as const)(
 					!s.matches({ running: { library: { ready: 'stopping' } } })
 			)
 		expect(product.getSnapshot().status).toBe('done')
-		expect(product.getSnapshot().context.candidate).toBeUndefined()
+		expect(product.getSnapshot().context.url).toBe('')
 		actor.send({ type: 'SHUTDOWN' })
 	}
 )
