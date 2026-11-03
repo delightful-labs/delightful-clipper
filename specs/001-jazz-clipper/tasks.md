@@ -66,3 +66,10 @@ This is partial reader implementation: TOC, footnote popovers, persisted reading
 
 
 Validation: `pnpm verify` passes all 219 unit tests across 26 files, strict application/service-worker typing, lint, formatting, vendor checks and the production build. Nine Chromium integration tests cover retained structure, footnote focus, dangerous-markup removal, no remote image requests, normal same-tab links, exact-text fallback and account/reader cleanup. Five production offline tests include structured headings and footnote navigation with both servers stopped after a full browser restart and HTTP-cache clearing, then structured rendering in the separately restored profile. Gateway extraction responses are fixtures in those UI restart checks; storage, account, browser and sync boundaries are real.
+
+
+## Local-first startup correction
+
+Use Finance's existing DLF/Jazz startup configuration, `initial: 'local-first'`, to silently initialize a local identity only when needed. A fresh browser opens the private library without a Create account action; stored identities continue to reopen. Explicit sign-out still exposes manual creation/restoration, and restoration follows the existing drain/identity-change path. Local root readiness remains separate from global acceptance. No custom guest identity, account migration, new credential storage or new locale copy is introduced.
+
+Browser checks cover fresh startup without signup, startup with the authority unavailable and identity retention across reload, local/offline save, complete browser restart, independently restored-profile sync, deliberate sign-out/invalid restoration, and gateway authentication through the same managed identity. The previous requirement to click Create account was an omitted startup option, not a required Jazz/DLF boundary.

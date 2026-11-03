@@ -104,7 +104,6 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await page.goto('http://127.0.0.1:5190')
 		await ready(page)
 		const preparedMs = Math.round(performance.now() - started)
-		await page.getByRole('button', { name: 'Create account', exact: true }).click()
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		const wasmRequests = ui.requests.filter((request) => request.path.endsWith('.wasm'))
 		expect(wasmRequests).toHaveLength(1)
@@ -124,6 +123,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const restored = await independent.newPage()
 		await restored.goto('http://127.0.0.1:5190')
 		await ready(restored)
+		await restored.getByRole('button', { name: 'Sign out', exact: true }).click()
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
@@ -289,7 +289,7 @@ test('failed update installation discards its partial cache and keeps the old bu
 		await clearHttpCache(page)
 		expect((await page.reload())?.fromServiceWorker()).toBe(true)
 		await ready(page)
-		await expect(page.getByRole('button', { name: 'Create account', exact: true })).toBeVisible()
+		await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
 	} finally {
 		await context.close()
 		await rm(profile, { recursive: true, force: true })
@@ -316,7 +316,6 @@ test('first-install failure admits the DLF account path and retry prepares offli
 				exact: true
 			})
 		).toBeVisible({ timeout: 45000 })
-		await page.getByRole('button', { name: 'Create account', exact: true }).click()
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		expect((await page.evaluate(() => caches.keys())).some((name) => name.startsWith(prefix))).toBe(
 			false

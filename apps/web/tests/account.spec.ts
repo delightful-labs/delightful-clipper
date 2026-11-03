@@ -27,12 +27,12 @@ test.afterAll(async () => {
 	if (dataDir) await rm(dataDir, { recursive: true, force: true })
 })
 
-test('creates, reloads and restores the same account into an independent browser context', async ({
+test('starts locally without signup, reloads and restores the same account into an independent browser context', async ({
 	page,
 	browser
 }) => {
 	await page.goto('/')
-	await page.getByRole('button', { name: 'Create account', exact: true }).click()
+	await expect(page.getByRole('button', { name: 'Create account', exact: true })).toHaveCount(0)
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	await page.reload()
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
@@ -45,6 +45,7 @@ test('creates, reloads and restores the same account into an independent browser
 	try {
 		const restored = await second.newPage()
 		await restored.goto('http://127.0.0.1:5180')
+		await restored.getByRole('button', { name: 'Sign out', exact: true }).click()
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
@@ -70,8 +71,11 @@ test('creates, reloads and restores the same account into an independent browser
 	}
 })
 
-test('invalid restoration does not create an account', async ({ page }) => {
+test('invalid restoration after explicit sign-out does not create another account', async ({
+	page
+}) => {
 	await page.goto('/')
+	await page.getByRole('button', { name: 'Sign out', exact: true }).click()
 	await page.getByLabel('Recovery phrase', { exact: true }).fill('not a valid recovery phrase')
 	await page.getByRole('button', { name: 'Restore account', exact: true }).click()
 	await expect(
@@ -87,7 +91,6 @@ test('retains the account and library after closing every page and browser proce
 	try {
 		const page = await context.newPage()
 		await page.goto('http://127.0.0.1:5180')
-		await page.getByRole('button', { name: 'Create account', exact: true }).click()
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await authority.stop()
 		await context.close()
@@ -124,7 +127,6 @@ test('saves new content offline, restarts the browser, and syncs to a restored p
 	try {
 		const page = await context.newPage()
 		await page.goto('http://127.0.0.1:5180')
-		await page.getByRole('button', { name: 'Create account', exact: true }).click()
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
 		const phrase = await page
@@ -134,6 +136,7 @@ test('saves new content offline, restarts the browser, and syncs to a restored p
 		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
 		const restored = await independent.newPage()
 		await restored.goto('http://127.0.0.1:5180')
+		await restored.getByRole('button', { name: 'Sign out', exact: true }).click()
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
@@ -183,7 +186,6 @@ test('authenticates capture requests with the existing account and rejects missi
 	request
 }) => {
 	await page.goto('/')
-	await page.getByRole('button', { name: 'Create account', exact: true }).click()
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	const missing = await request.post('/api/capture/resolve')
 	expect(missing.status()).toBe(401)
@@ -282,7 +284,6 @@ test('Add Link previews, saves and detects a resolved duplicate without replacin
 		if (request.url().includes('images.example')) remoteRequests.push(request.url())
 	})
 	await page.goto('/')
-	await page.getByRole('button', { name: 'Create account', exact: true }).click()
 	await expect(page.getByRole('heading', { name: 'Add link', exact: true })).toBeVisible()
 	await page.getByLabel('Article URL', { exact: true }).fill('https://short.example/#intro')
 	await page.getByRole('button', { name: 'Get article', exact: true }).click()
@@ -340,7 +341,6 @@ test('UI preview saves offline, survives a full browser restart and syncs to a r
 		const page = await context.newPage()
 		await fixtureArticle(page)
 		await page.goto('http://127.0.0.1:5180')
-		await page.getByRole('button', { name: 'Create account', exact: true }).click()
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
 		const phrase = await page
@@ -350,6 +350,7 @@ test('UI preview saves offline, survives a full browser restart and syncs to a r
 		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
 		const restored = await independent.newPage()
 		await restored.goto('http://127.0.0.1:5180')
+		await restored.getByRole('button', { name: 'Sign out', exact: true }).click()
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
@@ -408,7 +409,6 @@ test('canceling an Add Link request prevents a late preview and leaves the form 
 		await route.fulfill({ status: 503, json: { code: 'gatewayUnavailable' } }).catch(() => {})
 	})
 	await page.goto('/')
-	await page.getByRole('button', { name: 'Create account', exact: true }).click()
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/')
 	await page.getByRole('button', { name: 'Get article', exact: true }).click()
 	await expect(
@@ -422,7 +422,6 @@ test('canceling an Add Link request prevents a late preview and leaves the form 
 
 test('reader falls back to exact text when a saved asset is not HTML', async ({ page }) => {
 	await page.goto('/')
-	await page.getByRole('button', { name: 'Create account', exact: true }).click()
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	const result = await page.evaluate(async () => {
 		const path = '/tests/storage-driver.ts'
@@ -438,4 +437,35 @@ test('reader falls back to exact text when a saved asset is not HTML', async ({ 
 	await expect(page.getByRole('article').locator('.reader')).toHaveClass(/plain/)
 	await page.getByRole('button', { name: 'Close article', exact: true }).click()
 	await expect(page.getByRole('article')).toHaveCount(0)
+})
+
+test('first use opens a stable local library with the authority unavailable and no signup', async ({
+	page
+}) => {
+	await authority.stop()
+	try {
+		await page.goto('/')
+		await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
+		await expect(
+			page.getByText('Library saved on this device. Sync pending.', { exact: true })
+		).toBeVisible()
+		await expect(page.getByRole('button', { name: 'Create account', exact: true })).toHaveCount(0)
+		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
+		const phrase = await page
+			.getByRole('dialog')
+			.getByLabel('Recovery phrase', { exact: true })
+			.inputValue()
+		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		await page.reload()
+		await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
+		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
+		const reopenedPhrase = await page
+			.getByRole('dialog')
+			.getByLabel('Recovery phrase', { exact: true })
+			.inputValue()
+		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		expect(phrase.length > 0 && phrase === reopenedPhrase).toBe(true)
+	} finally {
+		authority = await startAuthority()
+	}
 })
