@@ -23,6 +23,7 @@ export async function fetchHop(
 			url,
 			{
 				method: 'GET',
+				rejectUnauthorized: true,
 				agent: false,
 				signal,
 				maxHeaderSize: 16 * 1024,
