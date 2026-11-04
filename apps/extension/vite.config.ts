@@ -25,8 +25,6 @@ export default defineConfig(({ mode }) => {
 		env.EXTENSION_JAZZ_SERVER_URL ?? env.PUBLIC_JAZZ_SERVER_URL ?? 'https://v2.sync.jazz.tools/'
 	)
 	const appId = env.EXTENSION_JAZZ_APP_ID ?? env.PUBLIC_JAZZ_APP_ID
-	if (!z.uuid().safeParse(appId).success)
-		throw new Error('Extension requires a valid public Jazz app ID')
 	const localWeb: Record<string, string> = {
 		'http://127.0.0.1:5174': 'http://127.0.0.1:5173/',
 		'http://localhost:5174': 'http://localhost:5173/'
@@ -40,6 +38,11 @@ export default defineConfig(({ mode }) => {
 			svelte(),
 			{
 				name: 'clipper-extension-manifest',
+				buildStart() {
+					// svelte-check loads this config without building a deployable extension.
+					if (!z.uuid().safeParse(appId).success)
+						throw new Error('Extension requires a valid public Jazz app ID')
+				},
 				generateBundle() {
 					this.emitFile({
 						type: 'asset',
@@ -68,7 +71,7 @@ export default defineConfig(({ mode }) => {
 			]
 		},
 		define: {
-			__CLIPPER_APP_ID__: JSON.stringify(appId),
+			__CLIPPER_APP_ID__: JSON.stringify(appId ?? ''),
 			__CLIPPER_SERVER__: JSON.stringify(server.href),
 			__CLIPPER_WEB__: JSON.stringify(web.href)
 		},
