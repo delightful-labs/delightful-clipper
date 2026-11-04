@@ -152,3 +152,91 @@ it('detaches safely before an asynchronous native spawn error arrives', async ()
 	expect(events).toEqual([])
 	expect(port.isAlive()).toBe(false)
 })
+
+it.skipIf(process.platform !== 'linux')(
+	'completes when a Linux process group contains only an intentionally unreaped zombie',
+	async () => {
+		let supervisor: number | undefined, zombie: number | undefined, group: number | undefined
+		const signals: string[] = []
+		const script = `
+import os, signal, sys, time
+owned_group = os.getpgrp()
+read_fd, write_fd = os.pipe()
+supervisor = os.fork()
+if supervisor == 0:
+    os.setpgid(0, 0)
+    os.close(read_fd)
+    zombie = os.fork()
+    if zombie == 0:
+        os.close(write_fd)
+        os.setpgid(0, owned_group)
+        os._exit(0)
+    def release(*args):
+        os.waitpid(zombie, 0)
+        os._exit(0)
+    signal.signal(signal.SIGTERM, release)
+    for _ in range(500):
+        with open('/proc/' + str(zombie) + '/stat') as stat:
+            if stat.read().rsplit(')', 1)[1].split()[0] == 'Z':
+                break
+        time.sleep(0.01)
+    else:
+        os._exit(2)
+    null = os.open('/dev/null', os.O_RDWR)
+    for fd in (0, 1, 2):
+        os.dup2(null, fd)
+    os.write(write_fd, str(zombie).encode())
+    os.close(write_fd)
+    time.sleep(30)
+    release()
+os.close(write_fd)
+zombie = os.read(read_fd, 128).decode()
+os.close(read_fd)
+print('ZOMBIE:' + str(supervisor) + ':' + zombie + ':' + str(owned_group), file=sys.stderr, flush=True)
+os._exit(0)
+`
+		const actor = createActor(
+			createProcessMachine((_input, report) => {
+				const port = openNodeProcess(
+					{ file: '/usr/bin/python3', args: ['-c', script], env: {}, stderr: 'pipe' },
+					(event) => {
+						if (event.type === 'STDERR') {
+							const match = event.text.match(/ZOMBIE:(\d+):(\d+):(\d+)/)
+							if (match) {
+								supervisor = Number(match[1])
+								zombie = Number(match[2])
+								group = Number(match[3])
+							}
+						}
+						report(event)
+					}
+				)
+				return {
+					...port,
+					signal: (value) => {
+						signals.push(value)
+						port.signal(value)
+					}
+				}
+			}),
+			{ input: { command: 'fixture', env: {} } }
+		).start()
+		try {
+			await eventually(() => expect(actor.getSnapshot().status).toBe('done'))
+			expect(supervisor).toBeDefined()
+			expect(zombie).toBeDefined()
+			expect(group).toBeDefined()
+			// The kernel still knows this group: waiting for ESRCH would never complete.
+			expect(() => process.kill(-group!, 0)).not.toThrow()
+			expect(await toPromise(actor)).toMatchObject({
+				outcome: 'succeeded',
+				code: 0,
+				cleanupFailed: false
+			})
+			expect(signals).toEqual([])
+		} finally {
+			actor.stop()
+			if (supervisor !== undefined) process.kill(supervisor, 'SIGTERM')
+		}
+	}
+)

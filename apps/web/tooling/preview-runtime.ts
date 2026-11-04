@@ -1,5 +1,6 @@
 import { previewAppSchema } from './preview-schema.ts'
 import { createActor, toPromise } from 'xstate'
+import type { SnapshotFrom } from 'xstate'
 import { createProcessMachine } from './process-machine.ts'
 import { openPreviewProcess } from './process-io.ts'
 import type { PreviewJazzApp } from './preview-machine.ts'
@@ -79,6 +80,13 @@ export function previewEnvironment(appId: string): NodeJS.ProcessEnv {
 }
 
 const processMachine = createProcessMachine(openPreviewProcess)
+function processPhase(snapshot: SnapshotFrom<typeof processMachine>) {
+	const value = snapshot.value
+	if (typeof value === 'string') return value
+	const lifecycle = value.owning.lifecycle
+	if (typeof lifecycle === 'string') return lifecycle
+	return Object.keys(lifecycle).join(',')
+}
 /** Attach the caller's abort signal; the process machine owns escalation and close settlement. */
 export async function run(
 	command: string,
@@ -87,6 +95,14 @@ export async function run(
 ): Promise<void> {
 	signal.throwIfAborted()
 	const actor = createActor(processMachine, { input: { command, env } })
+	// Deduplicate presentation only; polling substates must not flood hosted build logs.
+	let lastPhase: string | undefined
+	const subscription = actor.subscribe((snapshot) => {
+		const phase = processPhase(snapshot)
+		if (phase === lastPhase) return
+		lastPhase = phase
+		console.info(`[preview-build] ${command} process ${phase}.`)
+	})
 	const abort = () => {
 		if (actor.getSnapshot().status === 'active') actor.send({ type: 'CANCEL' })
 	}
@@ -104,6 +120,7 @@ export async function run(
 		}
 	} finally {
 		signal.removeEventListener('abort', abort)
+		subscription.unsubscribe()
 		actor.stop()
 	}
 }

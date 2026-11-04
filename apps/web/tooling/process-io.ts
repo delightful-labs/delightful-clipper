@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { linuxProcessGroupAlive } from './process-scope.ts'
 import type { ProcessEvent, ProcessOpen, ProcessPort } from './process-machine.ts'
 type NativeInput = {
 	file: string
@@ -47,7 +48,7 @@ export function openNodeProcess(
 			if (pid === undefined) return false
 			try {
 				process.kill(pid, 0)
-				return true
+				return process.platform === 'linux' ? linuxProcessGroupAlive(-pid) : true
 			} catch (error) {
 				if (hasErrorCode(error, 'ESRCH')) return false
 				if (hasErrorCode(error, 'EPERM')) return true
