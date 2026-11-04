@@ -4,15 +4,16 @@ import { createArticleQueueMachine } from './article-queue.js'
 import type { Article } from '../../contracts/articles.js'
 import type { QueueCapability } from '../../contracts/article-worker.js'
 const libraryId = crypto.randomUUID()
-function row(url: string): Article {
+function row(url: string, overrides: Partial<Article> = {}): Article {
 	return {
 		id: crypto.randomUUID(),
 		libraryId,
 		url,
-		originalSavedAt: new Date().toISOString(),
+		originalSavedAt: '2026-11-03T12:00:00.000Z',
 		contentId: null,
 		operationId: null,
-		failure: null
+		failure: null,
+		...overrides
 	}
 }
 function cap(overrides: Partial<QueueCapability> = {}): QueueCapability {
@@ -37,51 +38,73 @@ function cap(overrides: Partial<QueueCapability> = {}): QueueCapability {
 		...overrides
 	}
 }
-it('processes articles missing content one at a time and leaves the persisted rows as the source of work', async () => {
-	const gate = Promise.withResolvers<void>()
-	const order: string[] = []
-	let active = 0,
-		max = 0
-	const save = vi.fn(async () => ({
-		kind: 'saved' as const,
-		operationId: crypto.randomUUID(),
-		ready: true
-	}))
-	const actor = createActor(
-		createArticleQueueMachine(
-			cap({
-				extract: async (url, id) => {
-					active++
-					max = Math.max(max, active)
-					order.push(url)
-					if (order.length === 1) await gate.promise
-					active--
-					return {
-						id,
-						title: 'Article',
-						text: 'Text',
-						html: '<p>Text</p>',
-						finalUrl: url,
-						submittedUrl: url,
-						provenance: '{}',
-						imagesMissing: false
-					}
-				},
-				save
-			})
-		)
-	).start()
-	const rows = [row('https://example.com/one'), row('https://example.com/two')]
-	actor.send({ type: 'ROWS', rows })
-	await waitFor(actor, (s) => s.matches('extracting'))
-	expect(order).toHaveLength(1)
-	gate.resolve()
-	await waitFor(actor, () => save.mock.calls.length === 2)
-	expect(max).toBe(1)
-	expect(order).toEqual(rows.map((r) => r.url))
-	actor.send({ type: 'STOP' })
-	await toPromise(actor)
-})
+it.each([
+	{
+		name: 'oldest saved time before ID order',
+		firstTime: '2026-11-03T12:00:00.000Z',
+		secondTime: '2026-11-03T12:00:01.000Z',
+		firstId: '00000000-0000-4000-8000-000000000002',
+		secondId: '00000000-0000-4000-8000-000000000001'
+	},
+	{
+		name: 'ID order for equal saved times',
+		firstTime: '2026-11-03T12:00:00.000Z',
+		secondTime: '2026-11-03T12:00:00.000Z',
+		firstId: '00000000-0000-4000-8000-000000000001',
+		secondId: '00000000-0000-4000-8000-000000000002'
+	}
+])(
+	'processes missing content serially using $name',
+	async ({ firstTime, secondTime, firstId, secondId }) => {
+		const gate = Promise.withResolvers<void>()
+		const order: string[] = []
+		let active = 0,
+			max = 0
+		const save = vi.fn(async () => ({
+			kind: 'saved' as const,
+			operationId: crypto.randomUUID(),
+			ready: true
+		}))
+		const actor = createActor(
+			createArticleQueueMachine(
+				cap({
+					extract: async (url, id) => {
+						active++
+						max = Math.max(max, active)
+						order.push(url)
+						if (order.length === 1) await gate.promise
+						active--
+						return {
+							id,
+							title: 'Article',
+							text: 'Text',
+							html: '<p>Text</p>',
+							finalUrl: url,
+							submittedUrl: url,
+							provenance: '{}',
+							imagesMissing: false
+						}
+					},
+					save
+				})
+			)
+		).start()
+		// Deliberately reverse subscription order; persistence metadata determines processing order.
+		const rows = [
+			row('https://example.com/two', { id: secondId, originalSavedAt: secondTime }),
+			row('https://example.com/one', { id: firstId, originalSavedAt: firstTime })
+		]
+		actor.send({ type: 'ROWS', rows })
+		await waitFor(actor, (s) => s.matches('extracting'))
+		expect(order).toHaveLength(1)
+		gate.resolve()
+		await waitFor(actor, () => save.mock.calls.length === 2)
+		expect(max).toBe(1)
+		expect(order).toEqual(['https://example.com/one', 'https://example.com/two'])
+		actor.send({ type: 'STOP' })
+		await toPromise(actor)
+	}
+)
 it('reconciles a reserved publication before fetching and never replays an unknown one', async () => {
 	const resolve = vi.fn(async (url: string) => url),
 		save = vi.fn(async () => ({ kind: 'saved' as const, operationId: '', ready: true })),
