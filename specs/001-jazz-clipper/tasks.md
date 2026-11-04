@@ -6,7 +6,7 @@ Updated 2026-11-03. This is the current implementation checklist; the product re
 
 The current branch is `feat/durable-capture-foundation`, PR [#12](https://github.com/delightful-labs/delightful-clipper/pull/12), targeting main. Reader PR #11 is incorporated. Do not merge without explicit authorization.
 
-The accepted implementation saves URL articles immediately and processes missing content in a dedicated serial Web Worker. The old intake graph and custom IndexedDB journal are removed. See [durable-capture-design.md](durable-capture-design.md). Current source validation: `pnpm verify`, 221 unit tests/30 files, vendor, format, lint, types and production build pass. All 23 browser integration tests pass, including eight Chromium/Firefox schema-upgrade scenarios. The five production offline tests last passed with the preceding logging integration; no production code changed in this test-only batch.
+The accepted implementation saves URL articles immediately and processes missing content in a dedicated serial Web Worker. The old intake graph and custom IndexedDB journal are removed. See [durable-capture-design.md](durable-capture-design.md). Current source validation: `pnpm verify`, 233 unit tests/32 files, vendor, format, lint, types and production build pass. All 23 browser integration tests pass, including eight Chromium/Firefox schema-upgrade scenarios. All five production offline tests also pass after the worker-host machine refactor, run sequentially with source and browser checks.
 
 ## Completed foundation
 

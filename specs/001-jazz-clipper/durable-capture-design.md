@@ -18,6 +18,20 @@ A separate XState machine runs inside a dedicated module Web Worker. It observes
 
 A narrow main-thread host owns the trusted Jazz session, authenticated network request leaves and native transaction actors. Bearers and account handles never cross into the worker. Abort cancels network requests. Shutdown drains issued native writes before terminating the worker or releasing the session. Stale account bindings cannot update another library.
 
+The main-thread host is itself an XState machine (`createArticleWorkerHostMachine`). Its states are:
+
+```mermaid
+stateDiagram-v2
+    [*] --> opening
+    opening --> running: worker resource acquired
+    opening --> draining: stop or startup failure
+    running --> draining: stop or resource failure
+    draining --> releasing: every call child settled
+    releasing --> closed: worker disposal acknowledged
+```
+
+The host owns a child machine per RPC or Retry metadata write. Network cancellation aborts its controller but keeps the child invoked until response cleanup settles. Lookup reads are drained. Native save/failure children receive SHUTDOWN and retain ownership until local settlement; shutdown never waits for remote acceptance. The host rejects new calls while draining, ignores late account-scoped outcomes, then explicitly disposes the worker resource before notifying the library that it is closed. Terminal request/controller references and owner call maps are cleared. Browser construction, event listeners/subscription handles and bounded response-byte reading remain I/O leaves. The repository's `QueueOpen` adapter only starts the machine and exposes send/completion; it carries no closing flag, task set or write lifecycle. Capture sequencing remains in the dedicated worker.
+
 Web Locks serialize workers for the same library across same-origin tabs in a browser profile. They are not global cross-device locks. Independent profiles can contend; native intent reconciliation and immutable publication remain necessary. Workers run while the application is open; a service worker does not run the capture queue after the browser closes. Pending URL rows resume on reopening.
 
 ## Failure and retry
