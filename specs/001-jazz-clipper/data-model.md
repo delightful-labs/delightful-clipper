@@ -1,10 +1,10 @@
 # Clipper logical data model
 
-**Status**: proposed Jazz table mapping; owner authorization, schema deployment and durability proof are gates. Field names below are contracts for planning, not claims of existing package exports.
+**Updated**: 2026-11-04. Logical model for the full accepted product, not a claim that every row below exists. Current article/root/immutable content and intent schemas and owner policies are implemented in `apps/web/src/lib/backend/jazz`; notes, annotations, tags, positions and preferences remain future work. See tasks.md for implementation evidence.
 
 ## Identity and authorization
 
-Every source-of-truth row carries or inherits an enforced `libraryId`/owner relation. The library belongs to one DLF/Jazz account. Every client read/write and byte-part relationship must enforce the same owner server-side; UI filters are insufficient. Tags, annotations, snapshots and assets cannot reference another owner's rows. No public grants or collaborative roles are introduced.
+Every source-of-truth row carries or inherits an enforced `libraryId`/owner relation. The library belongs to one DLF/Jazz account. Every client read/write and native asset relationship must enforce the same owner server-side; UI filters are insufficient. Tags, annotations, snapshots and assets cannot reference another owner's rows. No public grants or collaborative roles are introduced.
 
 ## Records
 
@@ -29,10 +29,10 @@ Every source-of-truth row carries or inherits an enforced `libraryId`/owner rela
 PWA Add Link saves native `articles` directly, with optional content through the same operation. Existing immutable documents/snapshots/assets hold readable content. A dedicated worker processes missing-content articles serially. No separate intake graph or IndexedDB journal is selected. See [durable-capture-design.md](durable-capture-design.md). Pre-session external intake remains a distinct future boundary.
 
 - Availability ledger keyed by account/representation/asset: native row availability and local write settlement; derive offline-complete only when required native text/byte values are locally available.
-- Capture journal for external share/extension intake before account readiness. Raw URL is retained, account binding occurs explicitly; never assign a signed-out capture silently to a different user. Journal records have TTL only for abandoned intake after a documented policy, not automatic Trash expiry.
+- Chromium source references: at most eight small Chrome-storage records containing version/ID, tab/document, URL and ready/issued phase, with account ID on issued markers. They hold no article HTML or credentials and are not a second article database. The trusted offscreen runtime waits for identity, serializes saves and never replays issued references. Pre-session mobile-share handoff remains a separate future qualification; never silently attach old-account work to a new account.
 - Worker search checkpoint: account, schema/index versions, source sequence/hash and serialized index. Discard/rebuild on mismatch; maintain separate default/Trash scopes without losing retained text.
 - Note draft: parent identity, local edit sequence, draft text and last durable acknowledgment. Never clear on an unconfirmed persistence result.
-- Runtime execution coordination for capture/assets remains to be qualified. A local lock/lease is not a global lock, and does not authorize replay of an uncertain native operation. No separate durable checkpoint store is selected for PWA capture.
+- Same-profile web capture uses Web Locks; Chromium extension launch/save queues and offscreen lifetime are implemented. Future asset coordination still needs qualification. A local lock/lease is not a global lock, and does not authorize replay of an uncertain native operation. No separate durable checkpoint store is selected for PWA capture.
 
 ## State and durability rules
 

@@ -1,19 +1,28 @@
 # Quickstart and validation guide
 
-**Status**: Local-first DLF/Jazz startup, private native text/byte storage, authenticated public-source extraction, automatic Add Link saving, routed structured reader and production offline shell are implemented. Static SVG and native disclosures are supported under the shared sanitizer. Full product/release acceptance remains open. Start with [implementation-handoff.md](implementation-handoff.md) and [tasks.md](tasks.md) for PR/branch status, current checks and remaining work.
+**Status**: Local-first DLF/Jazz startup, private native text/byte storage, authenticated public-source extraction, automatic Add Link saving, routed structured reader, production offline shell and Chromium direct toolbar clipping are implemented. Static SVG and native disclosures are supported under the shared sanitizer. Full product/release acceptance remains open. Start with [implementation-handoff.md](implementation-handoff.md) and [tasks.md](tasks.md) for PR/branch status, current checks and remaining work.
 
 ## Current review
 
-PR [#11](https://github.com/delightful-labs/delightful-clipper/pull/11), branch `feat/structured-saved-reader`, includes the latest reader corrections. Recheck whether it has merged before continuing; if merged, use a fresh feature branch from current `main`. Read repository agreements and localization memory before editing. The archived prototype and isolated foundation proof are not the implementation baseline.
+PR [#13](https://github.com/delightful-labs/delightful-clipper/pull/13), branch `feat/browser-clipper`, is open and unmerged. Runtime commit `dfc675c` passes Linux CI and the Netlify preview; subsequent documentation-only edits do not change that evidence. PR #12 is merged into main at `3149ea4`. Recheck status before continuing: stay on the open feature PR, or branch from updated main if it has merged. Never merge without explicit authorization. Start with the handoff’s “Resume here” section; no next product feature has been selected. Read repository agreements and localization memory before editing. The archived prototype is not the implementation baseline.
 
 ## Prerequisites for the implementation phase
 
 - Node 24 LTS and pnpm 10.22.0; exact frontend/adapter lock aligned with DLF/DUI peers.
 - A packaged DLF artifact exposing the granular entry points and matching DUI dependency; owner-scoped Jazz schema deployment and private-account credentials handled through DLF.
 - Netlify development/preview environment with the authenticated, public-only first-party fetch boundary enabled. No production deployment or account mutation is implied by this guide.
-- Chrome desktop and Firefox/macOS extension packages with explicit host permissions and trusted session UI. Android Chrome PWA installation; iOS Safari Add Link fallback.
+- For the current extension: desktop Chromium and the unpacked MV3 package. Firefox packaging, Android incoming PWA sharing and iOS device/offline qualification remain future release work; iOS Add Link is the selected fallback.
 
-Tooling now provides root `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`, `pnpm lint`, `pnpm format:check`, `pnpm verify:vendor` and `pnpm verify`. Node 24.22.2/pnpm 10.22.0 and the lockfile are pinned. Run `pnpm test:unit` for machine and native authorization/repository tests and `pnpm test:e2e` for Chromium session/root integration tests. Tests start disposable local Jazz authorities; they require permission to bind local ports. Use `CAPTURE_GATEWAY_ENABLED=true pnpm dev` for actual local capture (web 5173/Jazz 5174). `pnpm test:offline` runs production cold-restart/sync qualification. Run verification and browser suites sequentially; agent mode and E2E share ports 5180/5181. Extension builds remain subsequent work.
+Tooling now provides root `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`, `pnpm lint`, `pnpm format:check`, `pnpm verify:vendor` and `pnpm verify`. Node 24.22.2/pnpm 10.22.0 and the lockfile are pinned. Run `pnpm test:unit` for machine and native authorization/repository tests and `pnpm test:e2e` for Chromium session/root integration tests. Tests start disposable local Jazz authorities; they require permission to bind local ports. Use `CAPTURE_GATEWAY_ENABLED=true pnpm dev` for actual local capture (web 5173/Jazz 5174). `pnpm test:offline` runs production cold-restart/sync qualification. Run verification and browser suites sequentially; agent mode and E2E share ports 5180/5181. Run `pnpm build:extension` for the unpacked package and `pnpm test:extension` for the eight real extension browser scenarios. Fixture packages go to `apps/extension/.test-build`; they do not overwrite the installed `dist` build.
+
+## Try the current Chromium clipper
+
+1. Run `pnpm build:extension`. The default development services are Jazz 5174 and web 5173; use explicit `EXTENSION_JAZZ_APP_ID`, `EXTENSION_JAZZ_SERVER_URL` and `EXTENSION_WEB_URL` to target another matching deployment.
+2. Open `chrome://extensions`, enable Developer mode and Load unpacked from `apps/extension/dist`, or Reload the existing Delightful Clipper extension. The manifest version is 0.0.2.
+3. On an HTTP(S) article, click the extension. Saving starts directly; the original page gets a bar with machine-owned status, Open article and Close. Close only hides the bar.
+4. Use the extension’s Options page for existing DLF recovery/restoration. Restore the same account as the web app to share a library; credentials never enter the source page. Re-clipping preserves an existing snapshot.
+
+Current checks: `pnpm verify` (429 local passes, one platform-specific skip, 60 files), 24 web integration tests, five production offline tests and eight extension tests. Linux CI and Netlify pass on the runtime baseline linked in the handoff. Chrome MCP separately checked bar presentation/dismissal on an isolated page; native saves were exercised in disposable extension profiles. This is not proof of Firefox/mobile support, store approval or every crash point.
 
 ## Future acceptance scenarios
 
@@ -30,4 +39,4 @@ Tooling now provides root `pnpm dev`, `pnpm build`, `pnpm preview`, `pnpm check`
 
 ## Validation reporting
 
-When implementation is authorized, record commands, package versions, device/browser versions, fixture set, observed results, and remaining failures. Evaluate SC-003's 90% rate against a declared representative set, counting ambiguous/unresolved outcomes honestly. Accessibility checks cover keyboard focus, touch, zoom/reflow, labels, contrast and overlapping annotations; avoid CSS-class assertions. Current implementation evidence and outstanding scenarios are tracked in [tasks.md](tasks.md).
+For each further batch, record commands, package versions, device/browser versions, fixture set, observed results, and remaining failures. Evaluate SC-003's 90% rate against a declared representative set, counting ambiguous/unresolved outcomes honestly. Accessibility checks cover keyboard focus, touch, zoom/reflow, labels, contrast and overlapping annotations; avoid CSS-class assertions. Current implementation evidence and outstanding scenarios are tracked in [tasks.md](tasks.md).

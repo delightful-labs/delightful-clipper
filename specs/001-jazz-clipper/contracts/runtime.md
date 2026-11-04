@@ -1,17 +1,17 @@
 # Runtime, extension and worker contracts
 
-**Status**: proposed typed boundaries; SDK bindings require plan G1–G5 proof. Not implementation code.
+**Updated**: 2026-11-04. Article saving and Chromium IPC below are implemented; annotation/note/image/search operations remain design contracts. TypeScript schemas in the source are authoritative for actual message shapes. See the handoff for platform evidence.
 
 ## Shared envelope
 
-Every command/report includes `protocolVersion`, `requestId`, `operationId`, nonsecret `accountBinding`, and `generation`. Persistent account identifiers are not authorization credentials. Runtime attachment tokens stay nonserializable inside DLF integration. Ignore stale reports; validate payload schema, byte limits and sender origin before accepting external messages. Root account handles and recovery data never cross content scripts or workers.
+Commands/reports carry the identities and scope required by their boundary; do not add a universal metadata envelope or claim every current message has the same fields. Native article operations use stable operation IDs and bound capabilities; Chrome source references use version, UUID, tab/document IDs and observed URL; bar progress adds ordered revisions. Future annotation protocols must explicitly bind account/representation/request generations. Persistent account identifiers are not authorization credentials. Runtime attachment tokens stay nonserializable inside DLF integration. Ignore stale reports; validate payload schema, byte limits and sender origin before accepting external messages. Root account handles and recovery data never enter source-page code or extraction/image/search workers; the trusted SDK broker remains owned by the DLF/session integration.
 
 ## Host/domain boundary
 
 | Capability | Input | Output and guarantees |
 | --- | --- | --- |
 | bindPrivateLibrary | DLF ready session/client capability, binding generation | owner-scoped repository; readiness is not proof of write permission or fresh remote data |
-| journalCapture | URL or bounded rendered HTML, entry point, operation ID | locally durable intake ID before caller view closes |
+| saveArticle | URL and optional supplied content | native URL article/local receipt; readable content and remote acceptance reported separately; no second article-intake journal |
 | resolveSourceIdentity | submitted URL + browser observations | validated destination/provenance/canonical evidence or recoverable unresolved result |
 | persistSnapshot | capture/document ID, sanitized normalized output + native byte assets | stable snapshot reference after local durability; explicit remote pending/accepted/rejected |
 | saveNote | parent identity, edit sequence, literal text | local acknowledgment for that sequence; separate remote sync report; draft retained on error |
@@ -24,13 +24,17 @@ Every command/report includes `protocolVersion`, `requestId`, `operationId`, non
 
 ## Trusted extension protocol
 
-Content → background/UI: `CAPTURE_REQUEST`, `CREATE_HIGHLIGHT`, `GET_ANNOTATIONS`, `OPEN_CLIPPER`, bounded page URL/title/base, serialized selected quote/positions, captured markup where needed. Highlight commands target observed source plus account binding; no arbitrary repository method names or executable strings.
+The current protocol is defined in `apps/extension/src/protocol.ts` and enforced by background/runtime state machines:
 
-Background → trusted UI: `INTAKE_AVAILABLE`, `FETCH_RESULT`, `PERMISSION_REQUIRED`, `RUNTIME_UNAVAILABLE`. Source permissions are requested through a user action; deny produces a useful pending/link-only state. Browser messages verify extension sender/tab/document; host webpage `postMessage` alone is insufficient authority.
+- The toolbar action is the entry point; there is no source-page capture RPC bridge.
+- Background → offscreen: `RUN` with a reference ID; trusted `ACCOUNT_CHANGED` forwarded from Options. Sender validation admits the extension background, not arbitrary pages.
+- Offscreen → background: `CAPTURE` for the validated source reference, `ISSUE` before native dispatch, `REMOVE` after local publication, `WAITING` for account-owner feedback and `PROGRESS` for clip/receipt feedback. Only the trusted offscreen page can mark or remove references or report statuses.
+- Options → background: `ACCOUNT_CHANGED` with the selected account ID; credentials stay in the trusted DLF UI.
+- Background → source: document-targeted credential-free serialization and bar projection. Bar messages are literal text/safe links, correlated by capture ID/revision; Close never initiates a native operation. Untrusted captured HTML is never rendered in extension UI.
 
-Trusted UI → content: sanitized annotation summaries and explicit resolved ranges for that tab's document; link state and capture status. Never write arbitrary captured HTML into extension privileged UI. Opening the trusted app is explicit and labeled; extension clipping does not automatically navigate away.
+One offscreen document owns the SDK/application session and extraction workers; the sleeping MV3 background is not the SDK lifetime owner. Bounded Chrome references contain source metadata and a pre-dispatch issued marker, not captured HTML. Native intent/publication records own article durability and unknown-write recovery. Restart does not rehydrate and replay old writes, and lost dispatch acknowledgements are not treated as definite failures.
 
-A bounded persistent journal survives MV3 suspension. Rehydrate active operations from journal on runtime wake. A stopped service worker is not evidence that an issued fetch/write was canceled. Cancellation retains acquired resources until cleanup settles. No blanket remote code or remote-eval dependency in the extension package.
+Future annotation commands (`CREATE_HIGHLIGHT`, `GET_ANNOTATIONS`, resolved-range reports) still require account/source/representation-bound design and tests. They are not accepted by the shipped protocol and must not be described as implemented.
 
 ## Worker interfaces
 
@@ -48,7 +52,7 @@ Plain keywords, AND by default, no query language or fuzzy matching UI. Search a
 
 ## UI/localization contracts
 
-UI sees literal note text, safe link parts and view-model status descriptors. Linkify only HTTP(S), escape all literal content, preserve standard navigation and browser new-tab gestures. Reader DOM uses stable content projection boundaries; controls/footnote popovers remain outside anchor text. Fonts are bundled/available choices; no custom font upload or named presets. Shared i18next descriptors include key/args; no translated text cached as durable domain errors.
+UI sees literal note text, safe link parts and view-model status descriptors. Linkify only HTTP(S), escape all literal content, preserve standard navigation and browser new-tab gestures. Reader DOM uses stable content projection boundaries; controls/footnote popovers remain outside anchor text. Fonts are bundled/available choices; no custom font upload or named presets. Owning machines call i18next and expose ready-to-render text/severity; components must not map workflow codes to translation keys. Do not persist translated text as durable domain errors, and do not add/change catalog wording without explicit user approval under localization memory.
 
 ## Error and outcome vocabulary
 
