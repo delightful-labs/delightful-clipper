@@ -47,6 +47,7 @@ async function extension(profile: string) {
 			'--enable-unsafe-extension-debugging'
 		]
 	})
+	context.setDefaultTimeout(15000)
 	const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'))
 	await expect.poll(() => worker.evaluate(() => chrome.action.onClicked.hasListeners())).toBe(true)
 	return { context, id: new URL(worker.url()).host, worker }
@@ -101,18 +102,32 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 			path: '/tmp/clipper-extension-bar-review.png',
 			clip: { x: 0, y: 0, width: 1100, height: 240 }
 		})
-		const phrase = await recovery(context, id)
+		const phrase = await test.step(
+			'read recovery controls in trusted options',
+			() => recovery(context, id),
+			{ timeout: 15000 }
+		)
 		const web = await browser.newContext()
+		web.setDefaultTimeout(15000)
 		try {
 			const reader = await web.newPage()
 			let fetches = 0
 			reader.on('request', (request) => {
 				if (request.url().includes('/api/capture/')) fetches++
 			})
-			await reader.goto('/')
-			await reader.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-			await reader.getByRole('button', { name: 'Restore account', exact: true }).click()
-			await reader.getByRole('link', { name: 'Rendered browser article', exact: true }).click()
+			await test.step(
+				'restore the extension account in the web replica',
+				async () => {
+					await reader.goto('/')
+					await reader.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+					await reader.getByRole('button', { name: 'Restore account', exact: true }).click()
+					await expect(
+						reader.getByRole('link', { name: 'Rendered browser article', exact: true })
+					).toBeVisible({ timeout: 15000 })
+					await reader.getByRole('link', { name: 'Rendered browser article', exact: true }).click()
+				},
+				{ timeout: 25000 }
+			)
 			await expect(
 				reader.getByText('Only present after JavaScript rendering.', { exact: false })
 			).toBeVisible()
@@ -122,25 +137,31 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 				'href',
 				'http://127.0.0.1:5230/related'
 			)
-			await source.locator('#rendered').evaluate((element) => {
-				element.textContent = 'Changed source must not replace the snapshot.'
-			})
-			await clip(context, id, source)
-			await expect(source.getByRole('status')).toHaveText('Already saved.')
-			await expect(source.locator('delightful-clipper-bar')).toHaveCount(1)
-			await reader.reload()
-			await expect(
-				reader.getByText('Only present after JavaScript rendering.', { exact: false })
-			).toBeVisible()
-			await expect(reader.locator('body')).not.toContainText(
-				'Changed source must not replace the snapshot.'
+			await test.step(
+				'clip the changed source again and preserve the original snapshot',
+				async () => {
+					await source.locator('#rendered').evaluate((element) => {
+						element.textContent = 'Changed source must not replace the snapshot.'
+					})
+					await clip(context, id, source)
+					await expect(source.getByRole('status')).toHaveText('Already saved.')
+					await expect(source.locator('delightful-clipper-bar')).toHaveCount(1)
+					await reader.reload()
+					await expect(
+						reader.getByText('Only present after JavaScript rendering.', { exact: false })
+					).toBeVisible()
+					await expect(reader.locator('body')).not.toContainText(
+						'Changed source must not replace the snapshot.'
+					)
+					expect(fetches).toBe(0)
+				},
+				{ timeout: 15000 }
 			)
-			expect(fetches).toBe(0)
 		} finally {
-			await web.close()
+			await test.step('close the web replica', () => web.close(), { timeout: 10000 })
 		}
 	} finally {
-		await context.close()
+		await test.step('close the extension browser', () => context.close(), { timeout: 10000 })
 	}
 })
 
