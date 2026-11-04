@@ -1,15 +1,6 @@
-import { isUuid, isRecord } from '../../validation/values.js'
+import { captureRequestSchema } from '../../contracts/capture-input.js'
 import { CaptureError } from './errors.js'
 import { sourceUrl } from './destination.js'
-function isCaptureRequestBody(
-	value: unknown
-): value is { protocolVersion: 1; operationId: string; url: string } {
-	if (!isRecord(value)) return false
-	if (value.protocolVersion !== 1) return false
-	if (!isUuid(value.operationId)) return false
-	if (typeof value.url !== 'string') return false
-	return Object.keys(value).every((key) => ['protocolVersion', 'operationId', 'url'].includes(key))
-}
 export async function readCaptureInput(request: Request, signal: AbortSignal) {
 	if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json'))
 		throw new CaptureError('invalidInput', 400)
@@ -48,6 +39,7 @@ export async function readCaptureInput(request: Request, signal: AbortSignal) {
 	} catch {
 		throw new CaptureError('invalidInput', 400)
 	}
-	if (!isCaptureRequestBody(input)) throw new CaptureError('invalidInput', 400)
-	return { operationId: input.operationId, url: sourceUrl(input.url).href }
+	const parsed = captureRequestSchema.safeParse(input)
+	if (!parsed.success) throw new CaptureError('invalidInput', 400)
+	return { operationId: parsed.data.operationId, url: sourceUrl(parsed.data.url).href }
 }

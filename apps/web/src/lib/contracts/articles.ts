@@ -1,15 +1,8 @@
 import type { ActorLogic, Snapshot } from 'xstate'
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { SaveRequest, SaveResult, SyncReceipt, DocumentHeader } from './storage.js'
-export type Article = {
-	id: string
-	libraryId: string
-	url: string
-	originalSavedAt: string
-	contentId: string | null
-	operationId: string | null
-	failure: string | null
-}
+export type { Article } from '../capture/article-schema.js'
+import type { Article } from '../capture/article-schema.js'
 export type ArticleContent = {
 	title: string
 	text: string

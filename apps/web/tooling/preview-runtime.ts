@@ -1,4 +1,4 @@
-import { isUuid } from '../src/lib/validation/values.ts'
+import { previewAppSchema } from './preview-schema.ts'
 import { createActor, toPromise } from 'xstate'
 import { createProcessMachine } from './process-machine.ts'
 import { openPreviewProcess } from './process-io.ts'
@@ -7,17 +7,9 @@ import type { PreviewJazzApp } from './preview-machine.ts'
 const serverUrl = 'https://v2.sync.jazz.tools/'
 const provisionUrl = 'https://v2.dashboard.jazz.tools/api/apps/generate'
 function credentials(value: unknown): PreviewJazzApp {
-	if (
-		!value ||
-		typeof value !== 'object' ||
-		!('appId' in value) ||
-		!('adminSecret' in value) ||
-		!isUuid(value.appId) ||
-		typeof value.adminSecret !== 'string' ||
-		!value.adminSecret.trim()
-	)
-		throw new Error('Invalid provisioning response')
-	return { appId: value.appId, adminSecret: value.adminSecret }
+	const parsed = previewAppSchema.safeParse(value)
+	if (!parsed.success) throw new Error('Invalid provisioning response')
+	return parsed.data
 }
 
 export async function provision(signal: AbortSignal): Promise<PreviewJazzApp> {

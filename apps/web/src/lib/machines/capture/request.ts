@@ -2,7 +2,8 @@ import { assign, fromCallback, fromPromise, setup } from 'xstate'
 import type { ActorLogic, Snapshot } from 'xstate'
 import type { GatewayInput, GatewayResult } from './gateway.js'
 import { CaptureError } from '../../server/capture/errors.js'
-export type CaptureInput = { operationId: string; url: string }
+export type { CaptureInput } from '../../contracts/capture-input.js'
+import type { CaptureInput } from '../../contracts/capture-input.js'
 export type RequestInput = {
 	request: Request
 	accountId: string | undefined

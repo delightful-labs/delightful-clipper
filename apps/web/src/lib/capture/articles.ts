@@ -1,23 +1,17 @@
-import { isLowercaseUuid } from '../validation/values.js'
+import { articleSchema } from './article-schema.js'
+import { lowercaseUuidSchema } from '../validation/values.js'
 import { articleId, normalizedSource } from './source.js'
 import type { Article, ArticleDraft, SaveArticleRequest } from '../contracts/articles.js'
 export function uuid(value: unknown): string {
-	if (!isLowercaseUuid(value)) throw new Error('invalidRecord')
-	return value
+	const parsed = lowercaseUuidSchema.safeParse(value)
+	if (!parsed.success) throw new Error('invalidRecord')
+	return parsed.data
 }
-export function articleRecord(value: Article, libraryId: string): Article {
-	if (
-		value.libraryId !== libraryId ||
-		value.url.length > 8192 ||
-		!Number.isFinite(Date.parse(value.originalSavedAt)) ||
-		(value.failure !== null && value.failure.length > 100)
-	)
-		throw new Error('invalidRecord')
-	uuid(value.id)
-	normalizedSource(value.url)
-	if (value.contentId !== null) uuid(value.contentId)
-	if (value.operationId !== null) uuid(value.operationId)
-	return { ...value }
+export function articleRecord(value: unknown, libraryId: string): Article {
+	const parsed = articleSchema.safeParse(value)
+	if (!parsed.success || parsed.data.libraryId !== libraryId) throw new Error('invalidRecord')
+	normalizedSource(parsed.data.url)
+	return parsed.data
 }
 export async function prepareArticle(
 	libraryId: string,

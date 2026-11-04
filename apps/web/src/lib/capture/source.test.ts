@@ -43,3 +43,32 @@ it('bounds preview content and retains canonical evidence without changing ident
 		)
 	).toThrow()
 })
+it('keeps envelope and content failures distinct while retaining extraction evidence', () => {
+	const data = {
+		operationId: 'request',
+		finalUrl: 'https://example.com/',
+		candidate: {
+			title: ' Title ',
+			text: ' exact ',
+			html: '<p>exact</p>',
+			parserVersion: 'qualified-parser',
+			partialEvidence: ['partial'],
+			assetCandidates: [{}]
+		}
+	}
+	const result = extractedCandidate(data, 'request', 'https://short.example/')
+	expect(result.title).toBe(' Title ')
+	expect(result.text).toBe(' exact ')
+	expect(result.imagesMissing).toBe(true)
+	expect(result.provenance).toContain('qualified-parser')
+	expect(() => extractedCandidate({ ...data, candidate: [] }, 'request', data.finalUrl)).toThrow(
+		'invalidResponse'
+	)
+	expect(() =>
+		extractedCandidate(
+			{ ...data, candidate: { ...data.candidate, title: 42 } },
+			'request',
+			data.finalUrl
+		)
+	).toThrow('sourceTooLarge')
+})

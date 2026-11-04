@@ -1,31 +1,37 @@
-import type { SaveRequest } from '../contracts/storage.js'
-import { isNonblankString, isUtf8WithinLimit, isUuid } from '../validation/values.js'
+import { z } from 'zod'
+import { nonblankStringSchema, utf8StringSchema, uuidSchema } from '../validation/values.js'
 export const TEXT_LIMIT = 64 * 1024
 export const BYTE_LIMIT = 1024 * 1024
+export const titleSchema = nonblankStringSchema(500)
+export const mediaTypeSchema = nonblankStringSchema(150)
+export const textSchema = utf8StringSchema(TEXT_LIMIT)
+export const htmlSchema = utf8StringSchema(BYTE_LIMIT)
+export const extractedTextSchema = textSchema.refine((value) => !!value.trim())
+export const sourceMetadataSchema = z.object({
+	finalUrl: z.string().max(8192),
+	submittedUrl: z.string().max(8192),
+	provenance: z.string().max(32768)
+})
+export const savePayloadSchema = z.object({
+	operationId: uuidSchema,
+	title: titleSchema,
+	text: textSchema,
+	bytes: z.instanceof(Uint8Array).refine((value) => value.byteLength <= BYTE_LIMIT),
+	mediaType: mediaTypeSchema
+})
+export const saveRequestSchema = savePayloadSchema.extend({
+	articleId: z.string().optional(),
+	source: sourceMetadataSchema.optional()
+})
+export type SourceMetadata = z.infer<typeof sourceMetadataSchema>
+export type SaveRequest = z.infer<typeof saveRequestSchema>
+// Boolean adapters let existing actor guards reuse the same schemas without throwing/logging Zod errors.
 export function isValidTitle(value: unknown): value is string {
-	return isNonblankString(value, 500)
+	return titleSchema.safeParse(value).success
 }
 export function isValidMediaType(value: unknown): value is string {
-	return isNonblankString(value, 150)
+	return mediaTypeSchema.safeParse(value).success
 }
 export function isBoundedText(value: unknown): value is string {
-	return isUtf8WithinLimit(value, TEXT_LIMIT)
-}
-export function isBoundedHtml(value: unknown): value is string {
-	return isUtf8WithinLimit(value, BYTE_LIMIT)
-}
-export function isValidExtractedText(value: unknown): value is string {
-	return isBoundedText(value) && !!value.trim()
-}
-export function isBoundedSaveRequest(request: SaveRequest) {
-	if (!isUuid(request.operationId)) return false
-	if (!isValidTitle(request.title)) return false
-	if (!isValidMediaType(request.mediaType)) return false
-	return isBoundedText(request.text) && request.bytes.byteLength <= BYTE_LIMIT
-}
-export function isBoundedSourceMetadata(source: SaveRequest['source']) {
-	if (!source) return true
-	if (source.finalUrl.length > 8192) return false
-	if (source.submittedUrl.length > 8192) return false
-	return source.provenance.length <= 32768
+	return textSchema.safeParse(value).success
 }

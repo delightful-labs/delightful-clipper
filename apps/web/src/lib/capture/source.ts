@@ -1,5 +1,9 @@
-import { isValidTitle, isValidExtractedText, isBoundedHtml } from '../storage/policy.js'
-import { usesHttpProtocol, hasCredentials, isRecord } from '../validation/values.js'
+import {
+	resolutionResponseSchema,
+	extractionEnvelopeSchema,
+	extractedContentSchema
+} from '../contracts/capture-response.js'
+import { usesHttpProtocol, hasCredentials } from '../validation/values.js'
 export function normalizedSource(value: string) {
 	if (value.length > 8192) throw new Error('invalidUrl')
 	const url = new URL(value)
@@ -32,30 +36,23 @@ export type Candidate = {
 	provenance: string
 	imagesMissing: boolean
 }
-function object(value: unknown): Record<string, unknown> {
-	if (!isRecord(value)) throw new Error('invalidResponse')
-	return value
-}
 export function resolvedUrl(value: unknown, requestId: string) {
-	const data = object(value)
-	if (data.operationId !== requestId || typeof data.finalUrl !== 'string')
-		throw new Error('invalidResponse')
-	return normalizedSource(data.finalUrl)
+	const parsed = resolutionResponseSchema.safeParse(value)
+	if (!parsed.success || parsed.data.operationId !== requestId) throw new Error('invalidResponse')
+	return normalizedSource(parsed.data.finalUrl)
 }
 export function extractedCandidate(
 	value: unknown,
 	requestId: string,
 	submittedUrl: string
 ): Omit<Candidate, 'id'> {
-	const data = object(value),
-		candidate = object(data.candidate)
+	const envelope = extractionEnvelopeSchema.safeParse(value)
+	if (!envelope.success) throw new Error('invalidResponse')
+	const data = envelope.data
 	const finalUrl = resolvedUrl(value, requestId)
-	if (
-		!isValidTitle(candidate.title) ||
-		!isValidExtractedText(candidate.text) ||
-		!isBoundedHtml(candidate.html)
-	)
-		throw new Error('sourceTooLarge')
+	const parsed = extractedContentSchema.safeParse(data.candidate)
+	if (!parsed.success) throw new Error('sourceTooLarge')
+	const candidate = parsed.data
 	const provenance = JSON.stringify({
 		submittedUrl,
 		observation: data.provenance,

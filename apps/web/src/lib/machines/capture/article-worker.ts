@@ -1,3 +1,4 @@
+import { captureErrorSchema } from '../../contracts/capture-response.js'
 /// <reference lib="webworker" />
 import { createActor } from 'xstate'
 import { createMachineObserver } from '../../diagnostics/machines.js'
@@ -59,29 +60,9 @@ function json(bytes: Uint8Array, status: number): unknown {
 		throw new Error('invalidResponse')
 	}
 	if (status < 200 || status >= 300) {
-		if (
-			value &&
-			typeof value === 'object' &&
-			'code' in value &&
-			typeof value.code === 'string' &&
-			[
-				'invalidInput',
-				'permissionDenied',
-				'sessionUnavailable',
-				'gatewayUnavailable',
-				'rateLimited',
-				'redirectBlocked',
-				'redirectLoop',
-				'fetchTimeout',
-				'sourceUnavailable',
-				'parseFailed',
-				'sourceTooLarge',
-				'unsupportedMedia',
-				'canceled'
-			].includes(value.code)
-		)
-			throw new Error(value.code)
-		throw new Error('invalidResponse')
+		const parsed = captureErrorSchema.safeParse(value)
+		if (!parsed.success) throw new Error('invalidResponse')
+		throw new Error(parsed.data.code)
 	}
 	return value
 }

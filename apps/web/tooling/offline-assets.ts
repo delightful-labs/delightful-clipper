@@ -1,21 +1,9 @@
+import { z } from 'zod'
 import type { Plugin } from 'vite'
-type Manifest = Record<string, { file: string; assets?: string[] }>
-function isManifest(value: unknown): value is Manifest {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		Object.values(value).every(
-			(entry) =>
-				entry &&
-				typeof entry === 'object' &&
-				'file' in entry &&
-				typeof entry.file === 'string' &&
-				(!('assets' in entry) ||
-					(Array.isArray(entry.assets) &&
-						entry.assets.every((asset: unknown) => typeof asset === 'string')))
-		)
-	)
-}
+const manifestSchema = z.record(
+	z.string(),
+	z.looseObject({ file: z.string(), assets: z.array(z.string()).optional() })
+)
 /** One immutable binary path for page and worker output; expose worker dependencies to Kit. */
 export function offlineAssets(): Plugin {
 	return {
@@ -40,9 +28,11 @@ export function offlineAssets(): Plugin {
 						? output.source
 						: new TextDecoder().decode(output.source)
 				)
-				if (!isManifest(decoded)) this.error('Invalid client asset manifest')
+				const parsed = manifestSchema.safeParse(decoded)
+				if (!parsed.success) this.error('Invalid client asset manifest')
+				const manifest = parsed.data
 				const listed = new Set(
-					Object.values(decoded).flatMap((entry) => [entry.file, ...(entry.assets ?? [])])
+					Object.values(manifest).flatMap((entry) => [entry.file, ...(entry.assets ?? [])])
 				)
 				for (const asset of Object.values(bundle))
 					if (
@@ -51,8 +41,8 @@ export function offlineAssets(): Plugin {
 						!asset.fileName.endsWith('.map') &&
 						!listed.has(asset.fileName)
 					)
-						decoded[`_offline:${asset.fileName}`] = { file: asset.fileName }
-				output.source = JSON.stringify(decoded)
+						manifest[`_offline:${asset.fileName}`] = { file: asset.fileName }
+				output.source = JSON.stringify(manifest)
 			}
 		}
 	}

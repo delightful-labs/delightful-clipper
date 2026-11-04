@@ -1,6 +1,6 @@
 import type { PreparedSave, SaveRequest } from '../contracts/storage.js'
 export { TEXT_LIMIT, BYTE_LIMIT } from './policy.js'
-import { isBoundedSaveRequest, isBoundedSourceMetadata } from './policy.js'
+import { saveRequestSchema } from './policy.js'
 const encoder = new TextEncoder()
 async function hash(bytes: Uint8Array): Promise<string> {
 	const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))
@@ -8,20 +8,26 @@ async function hash(bytes: Uint8Array): Promise<string> {
 }
 /** Domain intent fingerprint for reconciliation; Jazz owns byte storage and integrity. */
 export async function prepareSave(libraryId: string, request: SaveRequest): Promise<PreparedSave> {
-	const { operationId, title, text, mediaType } = request
-	if (!isBoundedSaveRequest(request)) throw new Error('Invalid bounded storage request')
-	if (!isBoundedSourceMetadata(request.source)) throw new Error('Invalid source metadata')
-	const payload = new Uint8Array(request.bytes)
+	const parsed = saveRequestSchema.safeParse(request)
+	if (!parsed.success) {
+		const sourceOnly = parsed.error.issues.every((issue) => issue.path[0] === 'source')
+		throw new Error(sourceOnly ? 'Invalid source metadata' : 'Invalid bounded storage request')
+	}
+	const { operationId, title, text, mediaType } = parsed.data
+	const input = parsed.data
+	const payload = new Uint8Array(input.bytes)
+	const fingerprintSource = request.source ? { ...request.source } : null
 	const createdAt = new Date().toISOString()
 	const payloadHash = await hash(
 		encoder.encode(
-			JSON.stringify([title, text, await hash(payload), mediaType, request.source ?? null])
+			// Preserve the legacy metadata key order in durable intent fingerprints.
+			JSON.stringify([title, text, await hash(payload), mediaType, fingerprintSource])
 		)
 	)
 	return {
-		...(request.articleId ? { articleId: request.articleId } : {}),
-		...(request.source
-			? { source: { id: operationId, documentId: operationId, libraryId, ...request.source } }
+		...(input.articleId ? { articleId: input.articleId } : {}),
+		...(input.source
+			? { source: { id: operationId, documentId: operationId, libraryId, ...input.source } }
 			: {}),
 		intent: { id: operationId, libraryId, payloadHash, createdAt },
 		asset: { id: operationId, libraryId, operationId, mediaType, payload },
