@@ -38,6 +38,29 @@ type Context = {
 	backgroundCancelable: boolean
 	background: Record<string, WorkflowMessage>
 }
+function canUseLibrary(context: Context) {
+	return !context.closing && !!context.capability?.isCurrent()
+}
+function canStartSave(context: Context) {
+	return canUseLibrary(context) && !context.writing
+}
+function hasWatchableReceipts(result: ArticleSaveResult) {
+	if (result.kind !== 'saved' && result.kind !== 'duplicate') return false
+	return result.receipts.length > 0
+}
+function shouldReopenReader(context: Context, rows: LibraryArticle[]) {
+	if (!context.readerId) return false
+	if (context.reader?.kind === 'available') return false
+	return rows.some((row) => row.id === context.readerId && !!row.contentId)
+}
+function isValidSourceUrl(url: string) {
+	try {
+		normalizedSource(url)
+		return true
+	} catch {
+		return false
+	}
+}
 type Meta = {
 	captureMessage?: (c: Context) => WorkflowMessage
 	readerMessage?: (c: Context) => WorkflowMessage
@@ -113,7 +136,7 @@ export const libraryMachine = setup<
 	typeof actors,
 	{},
 	{ close: undefined; watch: undefined; updateRows: undefined },
-	{},
+	{ canUseLibrary: undefined },
 	never,
 	string,
 	LibraryCapability | undefined,
@@ -122,6 +145,7 @@ export const libraryMachine = setup<
 	Meta
 >({
 	actors,
+	guards: { canUseLibrary: ({ context }) => canUseLibrary(context) },
 	actions: {
 		close: enqueueActions(({ context, enqueue }) => {
 			if (context.saveRef) enqueue.sendTo(context.saveRef, { type: 'SHUTDOWN' })
@@ -205,10 +229,7 @@ export const libraryMachine = setup<
 				SHUTDOWN: { actions: 'close' },
 				WATCH_RECEIPTS: {
 					guard: ({ context, event }) =>
-						!context.closing &&
-						!!context.capability?.isCurrent() &&
-						(event.result.kind === 'saved' || event.result.kind === 'duplicate') &&
-						event.result.receipts.length > 0,
+						canUseLibrary(context) && hasWatchableReceipts(event.result),
 					actions: [
 						assign({
 							sync: ({ context, event }) => ({
@@ -226,18 +247,14 @@ export const libraryMachine = setup<
 				ROWS: [
 					{
 						guard: ({ context, event }) =>
-							!context.closing &&
-							!!context.capability?.isCurrent() &&
-							!!context.readerId &&
-							context.reader?.kind !== 'available' &&
-							event.rows.some((r) => r.id === context.readerId && !!r.contentId),
+							canUseLibrary(context) && shouldReopenReader(context, event.rows),
 						actions: [
 							'updateRows',
 							raise(({ context }) => ({ type: 'OPEN', id: context.readerId }))
 						]
 					},
 					{
-						guard: ({ context }) => !context.closing && !!context.capability?.isCurrent(),
+						guard: 'canUseLibrary',
 						actions: 'updateRows'
 					}
 				],
@@ -248,7 +265,7 @@ export const libraryMachine = setup<
 					actions: assign({ failure: 'captureFailed' })
 				},
 				BACKGROUND_STATUS: {
-					guard: ({ context }) => !context.closing && !!context.capability?.isCurrent(),
+					guard: 'canUseLibrary',
 					actions: assign({
 						backgroundId: ({ event }) => event.id,
 						backgroundCancelable: ({ event }) => event.cancelable,
@@ -259,7 +276,7 @@ export const libraryMachine = setup<
 					})
 				},
 				BACKGROUND_SAVED: {
-					guard: ({ context }) => !context.closing && !!context.capability?.isCurrent(),
+					guard: 'canUseLibrary',
 					actions: [
 						'watch',
 						assign({
@@ -287,7 +304,7 @@ export const libraryMachine = setup<
 					actions: sendTo('worker', ({ event }) => ({ type: 'RETRY', id: event.id }))
 				},
 				SYNC: {
-					guard: ({ context }) => !context.closing && !!context.capability?.isCurrent(),
+					guard: 'canUseLibrary',
 					actions: assign({
 						sync: ({ context, event }) => ({ ...context.sync, [event.id]: event.status })
 					})
@@ -299,16 +316,7 @@ export const libraryMachine = setup<
 					on: {
 						ADD: [
 							{
-								guard: ({ context, event }) => {
-									if (context.closing || context.writing || !context.capability?.isCurrent())
-										return false
-									try {
-										normalizedSource(event.url)
-										return true
-									} catch {
-										return false
-									}
-								},
+								guard: ({ context, event }) => canStartSave(context) && isValidSourceUrl(event.url),
 								target: '.saving',
 								actions: assign({ url: ({ event }) => event.url, failure: '', captureReady: false })
 							},
@@ -458,9 +466,7 @@ export const libraryMachine = setup<
 						},
 						READ_RESULT: {
 							guard: ({ context, event }) =>
-								event.generation === context.readerGeneration &&
-								!context.closing &&
-								!!context.capability?.isCurrent(),
+								event.generation === context.readerGeneration && canUseLibrary(context),
 							target: '.shown',
 							actions: assign({ reader: ({ event }) => event.result })
 						}

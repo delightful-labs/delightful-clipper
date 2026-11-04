@@ -1,3 +1,4 @@
+import { isUuid } from '../src/lib/validation/values.ts'
 import { createActor, toPromise } from 'xstate'
 import { createProcessMachine } from './process-machine.ts'
 import { openPreviewProcess } from './process-io.ts'
@@ -11,8 +12,7 @@ function credentials(value: unknown): PreviewJazzApp {
 		typeof value !== 'object' ||
 		!('appId' in value) ||
 		!('adminSecret' in value) ||
-		typeof value.appId !== 'string' ||
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.appId) ||
+		!isUuid(value.appId) ||
 		typeof value.adminSecret !== 'string' ||
 		!value.adminSecret.trim()
 	)

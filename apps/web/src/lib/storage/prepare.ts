@@ -1,6 +1,6 @@
 import type { PreparedSave, SaveRequest } from '../contracts/storage.js'
-export const TEXT_LIMIT = 64 * 1024
-export const BYTE_LIMIT = 1024 * 1024
+export { TEXT_LIMIT, BYTE_LIMIT } from './policy.js'
+import { isBoundedSaveRequest, isBoundedSourceMetadata } from './policy.js'
 const encoder = new TextEncoder()
 async function hash(bytes: Uint8Array): Promise<string> {
 	const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))
@@ -9,23 +9,8 @@ async function hash(bytes: Uint8Array): Promise<string> {
 /** Domain intent fingerprint for reconciliation; Jazz owns byte storage and integrity. */
 export async function prepareSave(libraryId: string, request: SaveRequest): Promise<PreparedSave> {
 	const { operationId, title, text, mediaType } = request
-	if (
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operationId) ||
-		!title.trim() ||
-		title.length > 500 ||
-		!mediaType.trim() ||
-		mediaType.length > 150 ||
-		encoder.encode(text).byteLength > TEXT_LIMIT ||
-		request.bytes.byteLength > BYTE_LIMIT
-	)
-		throw new Error('Invalid bounded storage request')
-	if (
-		request.source &&
-		(request.source.finalUrl.length > 8192 ||
-			request.source.submittedUrl.length > 8192 ||
-			request.source.provenance.length > 32768)
-	)
-		throw new Error('Invalid source metadata')
+	if (!isBoundedSaveRequest(request)) throw new Error('Invalid bounded storage request')
+	if (!isBoundedSourceMetadata(request.source)) throw new Error('Invalid source metadata')
 	const payload = new Uint8Array(request.bytes)
 	const createdAt = new Date().toISOString()
 	const payloadHash = await hash(

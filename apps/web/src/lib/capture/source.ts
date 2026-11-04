@@ -1,9 +1,9 @@
-import { BYTE_LIMIT, TEXT_LIMIT } from '../storage/prepare.js'
+import { isValidTitle, isValidExtractedText, isBoundedHtml } from '../storage/policy.js'
+import { usesHttpProtocol, hasCredentials, isRecord } from '../validation/values.js'
 export function normalizedSource(value: string) {
 	if (value.length > 8192) throw new Error('invalidUrl')
 	const url = new URL(value)
-	if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
-		throw new Error('invalidUrl')
+	if (!usesHttpProtocol(url) || hasCredentials(url)) throw new Error('invalidUrl')
 	url.hash = ''
 	return url.href
 }
@@ -32,11 +32,8 @@ export type Candidate = {
 	provenance: string
 	imagesMissing: boolean
 }
-function isObject(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
 function object(value: unknown): Record<string, unknown> {
-	if (!isObject(value)) throw new Error('invalidResponse')
+	if (!isRecord(value)) throw new Error('invalidResponse')
 	return value
 }
 export function resolvedUrl(value: unknown, requestId: string) {
@@ -54,14 +51,9 @@ export function extractedCandidate(
 		candidate = object(data.candidate)
 	const finalUrl = resolvedUrl(value, requestId)
 	if (
-		typeof candidate.title !== 'string' ||
-		!candidate.title.trim() ||
-		candidate.title.length > 500 ||
-		typeof candidate.text !== 'string' ||
-		!candidate.text.trim() ||
-		new TextEncoder().encode(candidate.text).length > TEXT_LIMIT ||
-		typeof candidate.html !== 'string' ||
-		new TextEncoder().encode(candidate.html).length > BYTE_LIMIT
+		!isValidTitle(candidate.title) ||
+		!isValidExtractedText(candidate.text) ||
+		!isBoundedHtml(candidate.html)
 	)
 		throw new Error('sourceTooLarge')
 	const provenance = JSON.stringify({

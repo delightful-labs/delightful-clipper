@@ -1,7 +1,17 @@
+import { usesHttpProtocol, hasCredentials } from '../../validation/values.js'
 import ipaddr from 'ipaddr.js'
 import { isIP } from 'node:net'
 import { Resolver } from 'node:dns/promises'
 import { CaptureError } from './errors.js'
+export function usesAllowedPort(url: URL) {
+	if (!url.port) return true
+	return url.port === (url.protocol === 'https:' ? '443' : '80')
+}
+export function isMissingDnsRecord(error: unknown) {
+	if (!(error instanceof Error)) return false
+	if (!('code' in error)) return false
+	return ['ENODATA', 'ENOTFOUND'].includes(String(error.code))
+}
 export function sourceUrl(value: string): URL {
 	if (new TextEncoder().encode(value).length > 8192) throw new CaptureError('invalidInput', 400)
 	let url: URL
@@ -10,12 +20,7 @@ export function sourceUrl(value: string): URL {
 	} catch {
 		throw new CaptureError('invalidInput', 400)
 	}
-	if (
-		!['http:', 'https:'].includes(url.protocol) ||
-		url.username ||
-		url.password ||
-		(url.port && url.port !== (url.protocol === 'https:' ? '443' : '80'))
-	)
+	if (!usesHttpProtocol(url) || hasCredentials(url) || !usesAllowedPort(url))
 		throw new CaptureError('redirectBlocked', 400)
 	url.hash = ''
 	return url
@@ -45,13 +50,7 @@ export async function resolveDestination(url: URL, signal: AbortSignal) {
 		const addresses: string[] = []
 		for (const result of results) {
 			if (result.status === 'fulfilled') addresses.push(...result.value)
-			else if (
-				!(
-					result.reason instanceof Error &&
-					'code' in result.reason &&
-					['ENODATA', 'ENOTFOUND'].includes(String(result.reason.code))
-				)
-			)
+			else if (!isMissingDnsRecord(result.reason))
 				throw new CaptureError('sourceUnavailable', 502, true)
 		}
 		if (!addresses.length) throw new CaptureError('sourceUnavailable', 502, true)

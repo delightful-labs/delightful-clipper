@@ -1,11 +1,8 @@
+import { isLowercaseUuid } from '../validation/values.js'
 import { articleId, normalizedSource } from './source.js'
 import type { Article, ArticleDraft, SaveArticleRequest } from '../contracts/articles.js'
 export function uuid(value: unknown): string {
-	if (
-		typeof value !== 'string' ||
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value)
-	)
-		throw new Error('invalidRecord')
+	if (!isLowercaseUuid(value)) throw new Error('invalidRecord')
 	return value
 }
 export function articleRecord(value: Article, libraryId: string): Article {

@@ -9,7 +9,12 @@ import type {
 	StoredAsset,
 	TextSnapshot
 } from '../../contracts/storage.js'
-import { BYTE_LIMIT, TEXT_LIMIT } from '../../storage/prepare.js'
+import {
+	isValidAsset,
+	isValidSource,
+	isValidDocument,
+	isValidSnapshot
+} from '../../storage/integrity.js'
 type Context = {
 	id: string
 	capability: ReadCapabilities | undefined
@@ -40,27 +45,15 @@ function available(context: Context): ReadResult {
 		snapshot = required(context.snapshot),
 		asset = context.asset,
 		source = context.source
-	const validAsset =
-		asset &&
-		asset.id === document.assetId &&
-		asset.libraryId === document.libraryId &&
-		asset.operationId === document.operationId &&
-		asset.payload.byteLength <= BYTE_LIMIT &&
-		asset.mediaType.trim().length > 0 &&
-		asset.mediaType.length <= 150
-	const validSource =
-		source &&
-		source.id === document.id &&
-		source.documentId === document.id &&
-		source.libraryId === document.libraryId
+
 	return {
 		kind: 'available',
 		document,
 		text: snapshot.text,
-		asset: validAsset
+		asset: isValidAsset(asset, document)
 			? { kind: 'available', bytes: asset.payload, mediaType: asset.mediaType }
 			: { kind: 'unavailable', reason: asset ? 'invalid' : 'missing' },
-		...(validSource ? { source } : {})
+		...(isValidSource(source, document) ? { source } : {})
 	}
 }
 const actors = {
@@ -129,10 +122,7 @@ export const readRecordMachine = model.createMachine({
 					{ guard: 'scopeLost', target: 'unavailable' },
 					{ guard: ({ event }) => event.output === null, target: 'missing' },
 					{
-						guard: ({ context, event }) =>
-							event.output?.id !== context.id ||
-							!event.output.title.trim() ||
-							event.output.title.length > 500,
+						guard: ({ context, event }) => !isValidDocument(event.output, context.id),
 						target: 'corrupt'
 					},
 					{
@@ -152,11 +142,7 @@ export const readRecordMachine = model.createMachine({
 					{ guard: ({ event }) => event.output === null, target: 'unavailable' },
 					{
 						guard: ({ context, event }) =>
-							event.output?.formatVersion !== '1' ||
-							event.output.id !== required(context.document).snapshotId ||
-							event.output.libraryId !== required(context.document).libraryId ||
-							event.output.documentId !== required(context.document).operationId ||
-							new TextEncoder().encode(event.output.text).length > TEXT_LIMIT,
+							!isValidSnapshot(event.output, required(context.document)),
 						target: 'corrupt'
 					},
 					{
