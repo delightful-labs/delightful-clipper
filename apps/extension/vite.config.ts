@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
 		return url
 	}
 	const server = serviceUrl(
-		env.EXTENSION_JAZZ_SERVER_URL ?? env.PUBLIC_JAZZ_SERVER_URL ?? 'https://v2.sync.jazz.tools/'
+		env.EXTENSION_JAZZ_SERVER_URL ?? env.PUBLIC_JAZZ_SERVER_URL ?? 'http://127.0.0.1:5174/'
 	)
 	const appId = env.EXTENSION_JAZZ_APP_ID ?? env.PUBLIC_JAZZ_APP_ID
 	const localWeb: Record<string, string> = {
