@@ -1,3 +1,5 @@
+import { createActor } from 'xstate'
+import { createArticleCollectionMachine } from '../../machines/capture/article-collection.js'
 import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
 import { ReadTier } from 'jazz-tools'
@@ -110,6 +112,28 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			return transactionReceipt(r)
 		}
 	})
+	const collection = createArticleCollectionMachine({
+		isCurrent,
+		articles: (next, error) =>
+			db.subscribe(
+				app.articles.where({ libraryId }),
+				{
+					onUpdate: (rows) => next(rows.map((row) => articleRecord(row, libraryId))),
+					onError: error
+				},
+				{ tier: ReadTier.LocalFirst }
+			),
+		documents: (next, error) =>
+			db.subscribe(
+				app.documents.where({ libraryId }),
+				{
+					onUpdate: next,
+					onError: error
+				},
+				{ tier: ReadTier.LocalFirst }
+			)
+	})
+
 	return {
 		libraryId,
 		read,
@@ -138,69 +162,14 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 				{ tier: ReadTier.LocalFirst }
 			),
 		subscribe: (next: (rows: LibraryArticle[]) => void, error: () => void) => {
-			let articles: Article[] = []
-			let documents: import('../../contracts/storage.js').DocumentHeader[] = []
-			const publish = () => {
-				if (!isCurrent()) return
-				const docs = new Map(documents.map((d) => [d.id, d]))
-				const output = new Map<string, LibraryArticle>()
-				for (const a of [...articles].sort(
-					(a, b) => a.originalSavedAt.localeCompare(b.originalSavedAt) || a.id.localeCompare(b.id)
-				)) {
-					const d = a.contentId ? docs.get(a.contentId) : undefined
-					const key = a.contentId ?? a.id
-					if (!output.has(key))
-						output.set(key, {
-							id: a.id,
-							title: d?.title ?? a.url,
-							url: a.url,
-							contentId: a.contentId,
-							originalSavedAt: a.originalSavedAt,
-							failure: a.failure
-						})
-					if (a.contentId) docs.delete(a.contentId)
-				}
-				for (const d of docs.values())
-					if (!output.has(d.id))
-						output.set(d.id, {
-							id: d.id,
-							title: d.title,
-							url: null,
-							contentId: d.id,
-							originalSavedAt: d.originalSavedAt,
-							failure: null
-						})
-				next(
-					[...output.values()].sort(
-						(a, b) => b.originalSavedAt.localeCompare(a.originalSavedAt) || a.id.localeCompare(b.id)
-					)
-				)
-			}
-			const a = db.subscribe(
-				app.articles.where({ libraryId }),
-				{
-					onUpdate: (rows) => {
-						articles = rows.map((row) => articleRecord(row, libraryId))
-						publish()
-					},
-					onError: error
-				},
-				{ tier: ReadTier.LocalFirst }
-			)
-			const d = db.subscribe(
-				app.documents.where({ libraryId }),
-				{
-					onUpdate: (rows) => {
-						documents = rows
-						publish()
-					},
-					onError: error
-				},
-				{ tier: ReadTier.LocalFirst }
-			)
+			const actor = createActor(
+				collection,
+
+				{ input: { next, error } }
+			).start()
 			return () => {
-				a()
-				d()
+				actor.send({ type: 'STOP' })
+				actor.stop()
 			}
 		}
 	}
