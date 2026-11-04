@@ -72,8 +72,11 @@ async function clip(context: BrowserContext, id: string, source: Page) {
 async function recovery(context: BrowserContext, id: string) {
 	const page = await context.newPage()
 	await page.goto(`chrome-extension://${id}/index.html`)
+	// Recovery is exposed during bootstrap; wait for local readiness before interacting with the settling form.
+	await expect(page.getByRole('button', { name: 'Restore account', exact: true })).toBeVisible()
 	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
 	const dialog = page.getByRole('dialog')
+	await expect(dialog).toBeVisible()
 	const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
 	await page.close()
