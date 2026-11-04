@@ -1,6 +1,8 @@
+import { transactionLifecycle, transactionReceipt } from './transaction.js'
+import type { TransactionResource } from './transaction.js'
 import type { ReadCapabilities } from '../../contracts/storage.js'
 import { ReadTier } from 'jazz-tools'
-import type { Db, Transaction, WriteHandle } from 'jazz-tools'
+import type { Db, WriteHandle } from 'jazz-tools'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import type { PreparedSave, StorageIntent, SyncReceipt } from '../../contracts/storage.js'
 import { createSaveRecordMachine } from '../../machines/storage/save.js'
@@ -9,11 +11,7 @@ import { app } from './schema.js'
 import { createArticleRecords } from './articles.js'
 import type { Article } from '../../contracts/articles.js'
 
-type Resource = {
-	transaction: Transaction<'mergeable'>
-	write: WriteHandle | undefined
-	article?: Article | null
-}
+type Resource = TransactionResource
 type Stage = 'intent' | 'publish'
 type StageRows = { intent: StorageIntent | null; article: Article | null }
 export function createLibraryRecords(
@@ -32,22 +30,18 @@ export function createLibraryRecords(
 			SyncReceipt,
 			WriteHandle
 		>({
-			open: () => {
-				check()
-				return { transaction: db.beginTransaction(), write: undefined }
-			},
+			...transactionLifecycle(db, check),
 			readLocal: async (resource, attempt) => {
 				check()
-				const row = await resource.transaction.one(
+				const row = await resource.tx.one(
 					app.storageOperations.where({ id: attempt.operationId, libraryId }),
 					{ tier: ReadTier.LocalFirst }
 				)
 				check()
 				const article = attempt.draft.articleId
-					? await resource.transaction.one(
-							app.articles.where({ id: attempt.draft.articleId, libraryId }),
-							{ tier: ReadTier.LocalFirst }
-						)
+					? await resource.tx.one(app.articles.where({ id: attempt.draft.articleId, libraryId }), {
+							tier: ReadTier.LocalFirst
+						})
 					: null
 				check()
 				resource.article = article
@@ -77,16 +71,16 @@ export function createLibraryRecords(
 				const { draft } = attempt
 				if (stage === 'intent') {
 					const { id, ...intent } = draft.intent
-					resource.transaction.insert(app.storageOperations, intent, { id })
+					resource.tx.insert(app.storageOperations, intent, { id })
 					if (draft.articleId) {
 						if (!draft.source) throw new Error('Missing article URL')
 						if (resource.article)
-							resource.transaction.update(app.articles, draft.articleId, {
+							resource.tx.update(app.articles, draft.articleId, {
 								operationId: id,
 								failure: null
 							})
 						else
-							resource.transaction.insert(
+							resource.tx.insert(
 								app.articles,
 								{
 									libraryId,
@@ -103,36 +97,23 @@ export function createLibraryRecords(
 
 				if (stage === 'publish') {
 					const { id: assetId, ...asset } = draft.asset
-					resource.transaction.insert(app.assets, asset, { id: assetId })
+					resource.tx.insert(app.assets, asset, { id: assetId })
 					const { id: snapshotId, ...snapshot } = draft.snapshot
-					resource.transaction.insert(app.snapshots, snapshot, { id: snapshotId })
+					resource.tx.insert(app.snapshots, snapshot, { id: snapshotId })
 					const { id, ...document } = draft.document
-					resource.transaction.insert(app.documents, document, { id })
+					resource.tx.insert(app.documents, document, { id })
 					if (draft.articleId)
-						resource.transaction.update(app.articles, draft.articleId, {
+						resource.tx.update(app.articles, draft.articleId, {
 							contentId: id,
 							failure: null
 						})
 					if (draft.source) {
 						const { id: sourceId, ...source } = draft.source
-						resource.transaction.insert(app.articleSources, source, { id: sourceId })
+						resource.tx.insert(app.articleSources, source, { id: sourceId })
 					}
 				}
-				return {
-					global: () => {
-						if (!resource.write) throw new Error('Missing committed receipt')
-						return resource.write.wait({ tier: 'global' })
-					}
-				}
-			},
-			commit: (resource) => {
-				check()
-				const write = resource.transaction.commit()
-				resource.write = write
-				return write
-			},
-			persistLocal: (write) => write.wait({ tier: 'local' }),
-			rollback: (resource) => resource.transaction.rollback()
+				return transactionReceipt(resource)
+			}
 		})
 	}
 	const records = {

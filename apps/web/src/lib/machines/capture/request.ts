@@ -109,7 +109,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 		)
 	}
 	type FullContext = Context & { result: GatewayResult | undefined }
-	return setup<
+	const model = setup<
 		FullContext,
 		{ type: 'CANCEL' },
 		typeof actors,
@@ -132,7 +132,22 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 				return { interruption: context.interruption ?? 'deadline' }
 			})
 		}
-	}).createMachine({
+	})
+	const interruptedStage = (next: 'reading' | 'capturing' | 'encoding') =>
+		model.createStateConfig({
+			always: [
+				{
+					guard: ({ context }) => interrupted(context),
+					target: 'releasing',
+					actions: assign({ response: ({ context }) => failure(context, undefined) })
+				},
+				{ target: next }
+			]
+		})
+	const failed = ({ context, event }: { context: FullContext; event: { error: unknown } }) => ({
+		response: failure(context, event.error)
+	})
+	return model.createMachine({
 		id: 'capture-request',
 		initial: 'owning',
 		context: ({ input }) => {
@@ -160,36 +175,9 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 				on: { CANCEL: { actions: 'cancel' } },
 				initial: 'authorizing',
 				states: {
-					beforeReading: {
-						always: [
-							{
-								guard: ({ context }) => interrupted(context),
-								target: 'releasing',
-								actions: assign({ response: ({ context }) => failure(context, undefined) })
-							},
-							{ target: 'reading' }
-						]
-					},
-					beforeCapturing: {
-						always: [
-							{
-								guard: ({ context }) => interrupted(context),
-								target: 'releasing',
-								actions: assign({ response: ({ context }) => failure(context, undefined) })
-							},
-							{ target: 'capturing' }
-						]
-					},
-					beforeEncoding: {
-						always: [
-							{
-								guard: ({ context }) => interrupted(context),
-								target: 'releasing',
-								actions: assign({ response: ({ context }) => failure(context, undefined) })
-							},
-							{ target: 'encoding' }
-						]
-					},
+					beforeReading: interruptedStage('reading'),
+					beforeCapturing: interruptedStage('capturing'),
+					beforeEncoding: interruptedStage('encoding'),
 					authorizing: {
 						invoke: {
 							src: 'authorize',
@@ -197,7 +185,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 							onDone: 'acquiring',
 							onError: {
 								target: 'releasing',
-								actions: assign({ response: ({ context, event }) => failure(context, event.error) })
+								actions: assign(({ context, event }) => failed({ context, event }))
 							}
 						}
 					},
@@ -211,7 +199,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 							},
 							onError: {
 								target: 'releasing',
-								actions: assign({ response: ({ context, event }) => failure(context, event.error) })
+								actions: assign(({ context, event }) => failed({ context, event }))
 							}
 						}
 					},
@@ -228,7 +216,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 							},
 							onError: {
 								target: 'releasing',
-								actions: assign({ response: ({ context, event }) => failure(context, event.error) })
+								actions: assign(({ context, event }) => failed({ context, event }))
 							}
 						}
 					},
@@ -246,7 +234,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 							},
 							onError: {
 								target: 'releasing',
-								actions: assign({ response: ({ context, event }) => failure(context, event.error) })
+								actions: assign(({ context, event }) => failed({ context, event }))
 							}
 						}
 					},
@@ -267,7 +255,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 							},
 							onError: {
 								target: 'releasing',
-								actions: assign({ response: ({ context, event }) => failure(context, event.error) })
+								actions: assign(({ context, event }) => failed({ context, event }))
 							}
 						}
 					},

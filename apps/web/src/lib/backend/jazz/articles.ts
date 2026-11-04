@@ -1,5 +1,7 @@
+import { transactionLifecycle, transactionReceipt } from './transaction.js'
+import type { TransactionResource } from './transaction.js'
 import { ReadTier } from 'jazz-tools'
-import type { Db, Transaction, WriteHandle } from 'jazz-tools'
+import type { Db, WriteHandle } from 'jazz-tools'
 import type { ActorLogic, Snapshot } from 'xstate'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import { createSaveArticleMachine } from '../../machines/storage/save-article.js'
@@ -7,7 +9,7 @@ import { articleRecord, prepareArticle, uuid } from '../../capture/articles.js'
 import type { Article, ArticleDraft, LibraryArticle } from '../../contracts/articles.js'
 import type { SaveRequest, SaveResult, SyncReceipt } from '../../contracts/storage.js'
 import { app } from './schema.js'
-type Resource = { tx: Transaction<'mergeable'>; write?: WriteHandle; article?: Article | null }
+type Resource = TransactionResource
 export function createArticleRecords<S extends Snapshot<SaveResult>>(
 	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
@@ -49,10 +51,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			SyncReceipt,
 			WriteHandle
 		>({
-			open: () => {
-				check()
-				return { tx: db.beginTransaction() }
-			},
+			...transactionLifecycle(db, check),
 			readLocal: async (r, a) => {
 				check()
 				const row = await r.tx.one(app.articles.where({ id: a.draft.article.id, libraryId }), {
@@ -79,21 +78,8 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 					if (r.article) r.tx.update(app.articles, id, values)
 					else r.tx.insert(app.articles, { ...row, ...values }, { id })
 				} else r.tx.insert(app.articles, row, { id })
-				return {
-					global: () => {
-						if (!r.write) throw new Error('Missing article receipt')
-						return r.write.wait({ tier: 'global' })
-					}
-				}
-			},
-			commit: (r) => {
-				check()
-				const write = r.tx.commit()
-				r.write = write
-				return write
-			},
-			persistLocal: (w) => w.wait({ tier: 'local' }),
-			rollback: (r) => r.tx.rollback()
+				return transactionReceipt(r)
+			}
 		})
 	}
 	const failure = createWorkspaceCreationTransaction<
@@ -103,10 +89,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 		SyncReceipt,
 		WriteHandle
 	>({
-		open: () => {
-			check()
-			return { tx: db.beginTransaction() }
-		},
+		...transactionLifecycle(db, check),
 		readLocal: async (r, a) => {
 			check()
 			const row = await r.tx.one(app.articles.where({ id: uuid(a.draft.id), libraryId }), {
@@ -124,21 +107,8 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			if (a.draft.code !== null && a.draft.code.length > 100)
 				throw new Error('Invalid article failure')
 			r.tx.update(app.articles, a.draft.id, { failure: a.draft.code })
-			return {
-				global: () => {
-					if (!r.write) throw new Error('Missing receipt')
-					return r.write.wait({ tier: 'global' })
-				}
-			}
-		},
-		commit: (r) => {
-			check()
-			const w = r.tx.commit()
-			r.write = w
-			return w
-		},
-		persistLocal: (w) => w.wait({ tier: 'local' }),
-		rollback: (r) => r.tx.rollback()
+			return transactionReceipt(r)
+		}
 	})
 	return {
 		libraryId,

@@ -57,6 +57,10 @@ export function createArticleWorkerCallMachine<
 		closing: boolean
 		output: CallOutput
 	}
+	const complete = (context: Context, outcome: Omit<CallOutput, 'id'>): CallOutput => ({
+		id: context.output.id,
+		...(!context.closing && cap.isCurrent() ? outcome : {})
+	})
 	const actors = {
 		network: fromPromise(
 			({
@@ -93,6 +97,9 @@ export function createArticleWorkerCallMachine<
 					if (self.getSnapshot().children[id]) enqueue.sendTo(id, { type: 'SHUTDOWN' })
 			})
 		}
+	})
+	const failed = ({ context, event }: { context: Context; event: { error: unknown } }) => ({
+		output: complete(context, { error: errorCode(event.error) })
 	})
 	return model.createMachine({
 		id: 'article-worker-call',
@@ -147,20 +154,12 @@ export function createArticleWorkerCallMachine<
 					onDone: {
 						target: 'done',
 						actions: assign({
-							output: ({ context, event }) => ({
-								id: context.output.id,
-								...(!context.closing && cap.isCurrent() ? { reply: event.output } : {})
-							})
+							output: ({ context, event }) => complete(context, { reply: event.output })
 						})
 					},
 					onError: {
 						target: 'done',
-						actions: assign({
-							output: ({ context, event }) => ({
-								id: context.output.id,
-								...(!context.closing && cap.isCurrent() ? { error: errorCode(event.error) } : {})
-							})
-						})
+						actions: assign(({ context, event }) => failed({ context, event }))
 					}
 				}
 			},
@@ -176,20 +175,12 @@ export function createArticleWorkerCallMachine<
 					onDone: {
 						target: 'done',
 						actions: assign({
-							output: ({ context, event }) => ({
-								id: context.output.id,
-								...(!context.closing && cap.isCurrent() ? { reply: event.output } : {})
-							})
+							output: ({ context, event }) => complete(context, { reply: event.output })
 						})
 					},
 					onError: {
 						target: 'done',
-						actions: assign({
-							output: ({ context, event }) => ({
-								id: context.output.id,
-								...(!context.closing && cap.isCurrent() ? { error: errorCode(event.error) } : {})
-							})
-						})
+						actions: assign(({ context, event }) => failed({ context, event }))
 					}
 				}
 			},
@@ -207,33 +198,23 @@ export function createArticleWorkerCallMachine<
 						actions: assign({
 							output: ({ context, event }) => {
 								const result = required<ArticleSaveResult>(event.output)
-								return {
-									id: context.output.id,
-									...(!context.closing && cap.isCurrent()
-										? {
-												result,
-												reply: {
-													method: 'save' as const,
-													result: {
-														kind: result.kind,
-														operationId: result.operationId,
-														ready: 'ready' in result && result.ready === true
-													}
-												}
-											}
-										: {})
-								}
+								return complete(context, {
+									result,
+									reply: {
+										method: 'save',
+										result: {
+											kind: result.kind,
+											operationId: result.operationId,
+											ready: 'ready' in result && result.ready === true
+										}
+									}
+								})
 							}
 						})
 					},
 					onError: {
 						target: 'done',
-						actions: assign({
-							output: ({ context, event }) => ({
-								id: context.output.id,
-								...(!context.closing && cap.isCurrent() ? { error: errorCode(event.error) } : {})
-							})
-						})
+						actions: assign(({ context, event }) => failed({ context, event }))
 					}
 				}
 			},
@@ -266,26 +247,17 @@ export function createArticleWorkerCallMachine<
 							assign({
 								output: ({ context }) => {
 									const call = required(context.call)
-									return {
-										id: context.output.id,
-										...(!context.closing && cap.isCurrent()
-											? call.type === 'RETRY'
-												? { retry: call.id }
-												: { reply: { method: 'fail' as const } }
-											: {})
-									}
+									return complete(
+										context,
+										call.type === 'RETRY' ? { retry: call.id } : { reply: { method: 'fail' } }
+									)
 								}
 							})
 						]
 					},
 					onError: {
 						target: 'done',
-						actions: assign({
-							output: ({ context, event }) => ({
-								id: context.output.id,
-								...(!context.closing && cap.isCurrent() ? { error: errorCode(event.error) } : {})
-							})
-						})
+						actions: assign(({ context, event }) => failed({ context, event }))
 					}
 				}
 			},

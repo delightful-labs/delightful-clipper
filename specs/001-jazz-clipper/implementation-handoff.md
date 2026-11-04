@@ -109,3 +109,11 @@ Worker lock acquisition/control routing, the HTTP request wrapper and preview su
 Final validation for this batch: all 24 browser integration cases and five production offline checks pass, sequentially after `pnpm verify`. The browser suite includes the new cross-tab Retry regression and the existing eight Chromium/Firefox schema-upgrade cases.
 
 Netlify entry-point correction: the subprocess refactor introduced `.js` runtime imports into directly executed TypeScript tooling. Node's type stripping does not remap those extensions. Runtime imports now use `.ts`; a subprocess regression invokes the actual Netlify entry point with a non-preview context and verifies its expected refusal without provisioning. `pnpm verify` passes 248 tests/35 files plus formatting, lint, strict types and production build. Browser/offline paths are unchanged by this tooling-only correction.
+
+## Simplification and shared diagnostics follow-up
+
+Request interruption stages share a typed state helper and error projection. Worker calls share completion admission and error projection, preserving suppression during shutdown and account changes. Native article/content adapters share transaction acquisition, commit, local settlement, rollback and deferred global receipt mechanics; operation eligibility and mutations remain in their domain adapters.
+
+Future DLF work: qualify and export a reusable XState machine observer plus bounded error sanitization alongside the existing shared logger. Clipper currently owns these in `apps/web/src/lib/diagnostics/machines.ts`; the logger itself already comes from DLF. Preserve explicit opt-in and the exclusion of actor context, input, event payloads, credentials and source content. Keep Clipper-specific failure/status classification configurable. Do not move this into DLF merely by copying Clipper's domain rules; add shared tests and update the pinned archive only after the reusable API is qualified.
+
+Simplification validation: `pnpm verify` passes all 248 tests/35 files and source/build checks. All 24 browser cases and five production offline checks pass sequentially afterward. Existing cancellation, shutdown, stale-scope, unknown-write and native receipt regressions remain unchanged.
