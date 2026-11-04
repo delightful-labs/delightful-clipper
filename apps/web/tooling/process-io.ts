@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import type { ProcessOpen } from './process-machine.js'
+import type { ProcessOpen } from './process-machine.ts'
 /** Spawn, signal and event translation only; grace-period/escalation policy belongs to the machine. */
 export const openPreviewProcess: ProcessOpen = (input, report) => {
 	const grouped = process.platform !== 'win32'

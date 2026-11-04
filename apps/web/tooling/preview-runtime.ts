@@ -1,6 +1,6 @@
 import { createActor, toPromise } from 'xstate'
-import { createProcessMachine } from './process-machine.js'
-import { openPreviewProcess } from './process-io.js'
+import { createProcessMachine } from './process-machine.ts'
+import { openPreviewProcess } from './process-io.ts'
 import type { PreviewJazzApp } from './preview-machine.ts'
 
 const serverUrl = 'https://v2.sync.jazz.tools/'

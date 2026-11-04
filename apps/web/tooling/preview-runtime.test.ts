@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { afterEach, expect, it, vi } from 'vitest'
 import { previewEnvironment, provision, waitForApp } from './preview-runtime.js'
 
@@ -53,4 +54,22 @@ it('stops on authorization errors instead of retrying deployment', async () => {
 	await expect(waitForApp(app, new AbortController().signal)).rejects.toThrow(
 		'Jazz readiness request failed'
 	)
+})
+
+it('loads the real Node TypeScript entry point and refuses non-preview context without provisioning', () => {
+	const result = spawnSync(
+		process.execPath,
+		['--experimental-strip-types', 'tooling/netlify-preview.ts'],
+		{
+			cwd: new URL('../', import.meta.url),
+			env: { ...process.env, CONTEXT: 'production' },
+			encoding: 'utf8',
+			timeout: 10000
+		}
+	)
+	expect(result.error).toBeUndefined()
+	expect(result.status).toBe(1)
+	expect(result.stdout).toContain('"refused"')
+	expect(result.stderr).toContain('refused; deployment stopped.')
+	expect(result.stderr).not.toContain('ERR_MODULE_NOT_FOUND')
 })
