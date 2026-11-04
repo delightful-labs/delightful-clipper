@@ -69,3 +69,39 @@ export function matchingContent(value: unknown, capture: Capture) {
 	const parsed = contentSchema.safeParse(value)
 	return parsed.success && sameSource(parsed.data.finalUrl, capture.url)
 }
+
+export const runSchema = z.strictObject({
+	target: z.literal('runtime'),
+	type: z.literal('RUN'),
+	id: z.uuid()
+})
+export const referenceMessageSchema = z.discriminatedUnion('type', [
+	z.strictObject({ type: z.literal('ISSUE'), id: z.uuid(), accountId: z.uuid() }),
+	z.strictObject({ type: z.literal('REMOVE'), id: z.uuid() })
+])
+export const progressSchema = z.strictObject({
+	type: z.literal('PROGRESS'),
+	capture: captureSchema,
+	revision: z.number().int().nonnegative(),
+	message: z.strictObject({ text: z.string().max(4096), variant: z.enum(['info', 'error']) }),
+	articleId: z.uuid().optional()
+})
+export function backgroundSender(sender: chrome.runtime.MessageSender, id: string, page: string) {
+	return sender.id === id && !sender.tab && (!sender.url || sender.url === page)
+}
+
+export const waitingSchema = z.strictObject({
+	type: z.literal('WAITING'),
+	id: z.uuid(),
+	revision: z.number().int().nonnegative(),
+	message: progressSchema.shape.message
+})
+
+export const accountChangedSchema = z.strictObject({
+	type: z.literal('ACCOUNT_CHANGED'),
+	accountId: z.uuid()
+})
+export const runtimeMessageSchema = z.union([
+	runSchema,
+	accountChangedSchema.extend({ target: z.literal('runtime') })
+])

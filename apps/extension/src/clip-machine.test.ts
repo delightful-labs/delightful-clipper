@@ -58,7 +58,6 @@ function fixture(
 				options.read ?? { capture: { ...capture, phase: options.phase ?? 'ready' }, source },
 			issue,
 			remove,
-			dismiss: () => {},
 			extract
 		}),
 		{ clock, input: { id } }
@@ -67,8 +66,6 @@ function fixture(
 }
 it('supplies content through the common URL save operation after durable admission', async () => {
 	const f = fixture()
-	await waitFor(f.actor, (s) => s.can({ type: 'SAVE' }))
-	f.actor.send({ type: 'SAVE' })
 	await waitFor(f.actor, (s) => s.matches('saved') || s.matches('unknown') || s.matches('closed'))
 	expect(f.issue).toHaveBeenCalledOnce()
 	expect(f.work).toHaveBeenCalledWith({ url: capture.url, content })
@@ -89,8 +86,6 @@ it('never recaptures or saves an operation marked issued on reopening', async ()
 it('drains the issued marker without starting a native save after shutdown', async () => {
 	const gate = Promise.withResolvers<void>()
 	const f = fixture({ mark: gate.promise })
-	await waitFor(f.actor, (s) => s.can({ type: 'SAVE' }))
-	f.actor.send({ type: 'SAVE' })
 	await vi.waitFor(() => expect(f.issue).toHaveBeenCalledOnce())
 	f.actor.send({ type: 'SHUTDOWN' })
 	expect(f.actor.getSnapshot().status).toBe('active')
@@ -103,8 +98,6 @@ it('drains the issued marker without starting a native save after shutdown', asy
 it('drains native saving on repeated shutdown without clearing an uncertain capture', async () => {
 	const gate = Promise.withResolvers<ArticleSaveResult>()
 	const f = fixture({ write: gate.promise })
-	await waitFor(f.actor, (s) => s.can({ type: 'SAVE' }))
-	f.actor.send({ type: 'SAVE' })
 	await vi.waitFor(() => expect(f.work).toHaveBeenCalledOnce())
 	f.actor.send({ type: 'SHUTDOWN' })
 	f.actor.send({ type: 'SHUTDOWN' })
@@ -118,7 +111,7 @@ it('drains native saving on repeated shutdown without clearing an uncertain capt
 	f.actor.send({ type: 'SHUTDOWN' })
 	f.owner.send({ type: 'SHUTDOWN' })
 })
-it('bounds a stalled extraction and offers an explicit URL-only save', async () => {
+it('bounds a stalled extraction and saves the native URL article', async () => {
 	let aborted: AbortSignal | undefined
 	const f = fixture({
 		extract: (signal) => {
@@ -129,20 +122,24 @@ it('bounds a stalled extraction and offers an explicit URL-only save', async () 
 	await vi.waitFor(() => expect(f.extract).toHaveBeenCalledOnce())
 	f.clock.increment(15000)
 	expect(aborted?.aborted).toBe(true)
-	expect(f.actor.getSnapshot().can({ type: 'SAVE' })).toBe(true)
-	f.actor.send({ type: 'SAVE' })
 	await waitFor(f.actor, (s) => s.matches('saved') || s.matches('unknown') || s.matches('closed'))
 	expect(f.work).toHaveBeenCalledWith({ url: capture.url })
 	f.actor.send({ type: 'SHUTDOWN' })
 	f.owner.send({ type: 'SHUTDOWN' })
 })
 
-it('explicitly dismisses an unsubmitted capture without invoking a native save', async () => {
-	const f = fixture()
-	await waitFor(f.actor, (s) => s.can({ type: 'SAVE' }))
-	f.actor.send({ type: 'CLOSE' })
+it('shutdown during extraction aborts the worker before any native write', async () => {
+	let aborted: AbortSignal | undefined
+	const f = fixture({
+		extract: (signal) => {
+			aborted = signal
+			return new Promise(() => {})
+		}
+	})
+	await vi.waitFor(() => expect(f.extract).toHaveBeenCalledOnce())
+	f.actor.send({ type: 'SHUTDOWN' })
 	await waitFor(f.actor, (s) => s.status === 'done')
-	expect(f.remove).toHaveBeenCalledWith(id)
+	expect(aborted?.aborted).toBe(true)
 	expect(f.issue).not.toHaveBeenCalled()
 	expect(f.work).not.toHaveBeenCalled()
 	f.owner.send({ type: 'SHUTDOWN' })
@@ -152,11 +149,9 @@ it('does not publish worker content for a different source identity', async () =
 	const f = fixture({
 		extract: async () => ({ ...content, finalUrl: 'https://example.com/other' })
 	})
-	await waitFor(f.actor, (s) => s.can({ type: 'SAVE' }))
+	await waitFor(f.actor, (s) => s.matches('saved'))
 	expect(f.actor.getSnapshot().context.content).toBeUndefined()
 	expect(f.actor.getSnapshot().context.source).toBeUndefined()
-	f.actor.send({ type: 'SAVE' })
-	await waitFor(f.actor, (s) => s.matches('saved'))
 	expect(f.work).toHaveBeenCalledWith({ url: capture.url })
 	f.actor.send({ type: 'SHUTDOWN' })
 	f.owner.send({ type: 'SHUTDOWN' })
@@ -172,8 +167,6 @@ it('keeps remote rejection distinct from the confirmed local save', async () => 
 			receipts: [{ global: () => global.promise }]
 		})
 	})
-	await waitFor(f.actor, (s) => s.can({ type: 'SAVE' }))
-	f.actor.send({ type: 'SAVE' })
 	await waitFor(f.actor, (s) => s.matches('saved'))
 	global.reject(new Error('remote rejected'))
 	await waitFor(f.actor, (s) => s.context.message?.variant === 'error')

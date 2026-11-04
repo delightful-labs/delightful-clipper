@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Account from '../../web/src/lib/integrations/Account.svelte'
 	import { t } from '../../web/src/lib/localization/index.js'
-	import Clip from './Clip.svelte'
+	import Settings from './Settings.svelte'
 	import { extensionLibrary } from './library.js'
 	const appId = __CLIPPER_APP_ID__
 	const serverUrl = __CLIPPER_SERVER__
@@ -11,7 +11,7 @@
 <main>
 	<h1>{t('app.title')}</h1>
 	<Account {appId} {serverUrl} gatewayEnabled={false} libraryFactory={extensionLibrary}
-		><Clip /></Account
+		><Settings /></Account
 	>
 </main>
 

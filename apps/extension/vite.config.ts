@@ -51,9 +51,10 @@ export default defineConfig(({ mode }) => {
 							{
 								manifest_version: 3,
 								name: 'Delightful Clipper',
-								version: '0.0.1',
-								permissions: ['activeTab', 'scripting', 'storage'],
+								version: '0.0.2',
+								permissions: ['activeTab', 'scripting', 'storage', 'offscreen'],
 								action: { default_title: 'Delightful Clipper' },
+								options_ui: { page: 'index.html', open_in_tab: true },
 								background: { service_worker: 'background.js', type: 'module' },
 								content_security_policy: { extension_pages: csp }
 							},
@@ -79,7 +80,11 @@ export default defineConfig(({ mode }) => {
 		build: {
 			target: 'es2023',
 			rollupOptions: {
-				input: { index: resolve('index.html'), background: resolve('src/background.ts') },
+				input: {
+					index: resolve('index.html'),
+					runtime: resolve('runtime.html'),
+					background: resolve('src/background.ts')
+				},
 				output: { entryFileNames: '[name].js' }
 			}
 		}

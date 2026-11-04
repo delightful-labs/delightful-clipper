@@ -4,7 +4,7 @@ export function serializePage() {
 	const clone = document.documentElement.cloneNode(true)
 	if (!(clone instanceof HTMLElement)) throw new Error('unsupportedMedia')
 	for (const element of clone.querySelectorAll(
-		'script,style,iframe,frame,object,embed,form,input,textarea,select,button,template,meta,[hidden],[aria-hidden="true"]'
+		'delightful-clipper-bar,delightful-clipper-space,script,style,iframe,frame,object,embed,form,input,textarea,select,button,template,meta,[hidden],[aria-hidden="true"]'
 	))
 		element.remove()
 	for (const element of [clone, ...clone.querySelectorAll('*')])

@@ -6,7 +6,7 @@ Updated 2026-11-04. This is the current implementation checklist; the product re
 
 PR #12 is merged into main at `3149ea4`. Current work is on `feat/browser-clipper`, targeting main; do not merge without explicit authorization. See [implementation-handoff.md](implementation-handoff.md).
 
-URL-first saving and serial missing-content processing remain the web behavior. The Chromium clipper supplies rendered content through the same native save operation, using a trusted DLF session and packaged extraction worker. `pnpm verify` passes 418 unit tests with one platform-specific skip across 57 files, including strict extension checks and the production web build. All 24 web integration tests, five production offline tests and six real Chromium extension tests pass sequentially. Current evidence and limitations are in the handoff/tooling documentation.
+URL-first saving and serial missing-content processing remain the web behavior. The Chromium clipper supplies rendered content through the same native save operation, using a trusted DLF session and packaged extraction worker. `pnpm verify` passes 429 unit tests with one platform-specific skip across 60 files, including strict extension checks and the production web build. All 24 web integration tests, five production offline tests and eight real Chromium extension tests pass sequentially. Current evidence and limitations are in the handoff/tooling documentation.
 
 ## Chromium clipper MVP
 
@@ -14,8 +14,9 @@ URL-first saving and serial missing-content processing remain the web behavior. 
 - [x] Reuse DLF local-first identity/recovery and common native article save/receipt ownership.
 - [x] Bind toolbar capture to source tab/document; reject untrusted senders and navigated documents.
 - [x] Serialize an inert bounded page clone and extract rendered content in a packaged worker; share normalized reader text.
-- [x] Persist bounded source references before opening trusted UI; mark issued saves before dispatch and never replay uncertain writes.
-- [x] Preserve local/remote feedback and duplicate immutability; allow explicit Close without deleting native data.
+- [x] Save directly from toolbar activation using one trusted offscreen runtime; persist bounded source references and never replay uncertain writes.
+- [x] Preserve local/remote feedback and duplicate immutability; show an isolated top bar with Open article and Close; dismissal never cancels or deletes native data.
+- [x] Keep recovery in trusted Options; drain old-account work before reopening the hidden runtime after restoration.
 - [ ] Qualify Firefox packaging, store distribution and source annotations in subsequent batches.
 
 ## Completed foundation

@@ -9,7 +9,7 @@ import { t } from '../../web/src/lib/localization/index.js'
 import type { WorkflowMessage } from '../../web/src/lib/contracts/feedback.js'
 type Library = ActorRefFrom<typeof libraryMachine>
 type Event =
-	| { type: 'SAVE' | 'SHUTDOWN' | 'CLOSE' }
+	| { type: 'SHUTDOWN' }
 	| { type: 'LIBRARY'; snapshot: SnapshotFrom<typeof libraryMachine> }
 type Context = {
 	id: string
@@ -28,7 +28,6 @@ export type ClipCapability = {
 	extract: (source: Source, signal: AbortSignal) => Promise<unknown>
 	issue: (capture: Capture, accountId: string) => Promise<void>
 	remove: (id: string) => Promise<void>
-	dismiss: () => void
 }
 export function createClipMachine(cap: ClipCapability) {
 	const actors = {
@@ -69,7 +68,7 @@ export function createClipMachine(cap: ClipCapability) {
 		{ id: string }
 	>({
 		actors,
-		guards: { stopping: stateIn({ running: { control: 'stopping' } }), current: cap.current }
+		guards: { stopping: stateIn({ running: { issuing: 'stopping' } }), current: cap.current }
 	})
 	const message = (key: Parameters<typeof t>[0], variant: WorkflowMessage['variant'] = 'info') =>
 		model.assign({ message: (): WorkflowMessage => ({ text: t(key), variant }) })
@@ -96,7 +95,6 @@ export function createClipMachine(cap: ClipCapability) {
 			},
 			routing: {
 				always: [
-					{ guard: 'stopping', target: '#extension-clip.closed' },
 					{
 						guard: ({ context }) => context.capture?.phase === 'issued',
 						target: '#extension-clip.unknown'
@@ -108,7 +106,7 @@ export function createClipMachine(cap: ClipCapability) {
 			extracting: {
 				after: { 15000: 'linkOnly' },
 				entry: message('capture.status.pending'),
-				on: { SHUTDOWN: '#extension-clip.closed', CLOSE: '#extension-clip.discarding' },
+				on: { SHUTDOWN: '#extension-clip.closed' },
 				invoke: {
 					src: 'extract',
 					input: ({ context }) => context.source!,
@@ -127,22 +125,16 @@ export function createClipMachine(cap: ClipCapability) {
 				}
 			},
 			ready: {
-				entry: assign({ message: undefined }),
-				on: {
-					SAVE: { guard: 'current', target: 'issuing' },
-					SHUTDOWN: '#extension-clip.closed',
-					CLOSE: '#extension-clip.discarding'
-				}
+				always: [{ guard: 'current', target: 'issuing' }, { target: '#extension-clip.closed' }]
 			},
 			linkOnly: {
-				entry: [message('capture.status.failed', 'error'), assign({ source: undefined })],
-				on: {
-					SAVE: { guard: 'current', target: 'issuing' },
-					SHUTDOWN: '#extension-clip.closed',
-					CLOSE: '#extension-clip.discarding'
-				}
+				entry: assign({ source: undefined }),
+				always: [{ guard: 'current', target: 'issuing' }, { target: '#extension-clip.closed' }]
 			},
+
 			issuing: {
+				initial: 'active',
+				states: { active: { on: { SHUTDOWN: 'stopping' } }, stopping: { on: { SHUTDOWN: {} } } },
 				entry: message('capture.status.saving'),
 				invoke: {
 					src: 'issue',
@@ -161,7 +153,7 @@ export function createClipMachine(cap: ClipCapability) {
 					active: {
 						on: { SHUTDOWN: { target: 'stopping', actions: sendTo('save', { type: 'CANCEL' }) } }
 					},
-					stopping: {}
+					stopping: { on: { SHUTDOWN: {} } }
 				},
 				invoke: { id: 'save', src: 'save', input: ({ context }) => context },
 				on: {
@@ -190,6 +182,7 @@ export function createClipMachine(cap: ClipCapability) {
 				}
 			},
 			clearing: {
+				on: { SHUTDOWN: {} },
 				invoke: {
 					src: 'remove',
 					input: ({ context }) => context.id,
@@ -211,21 +204,10 @@ export function createClipMachine(cap: ClipCapability) {
 			articleId: undefined
 		}),
 		states: {
-			running: {
-				on: { SHUTDOWN: {} },
-				type: 'parallel',
-				states: {
-					control: {
-						initial: 'active',
-						states: { active: { on: { SHUTDOWN: 'stopping' } }, stopping: {} }
-					},
-					work
-				}
-			},
+			running: { ...work, on: { SHUTDOWN: '#extension-clip.closed' } },
 			saved: {
 				invoke: { src: 'feedback', input: () => cap.library },
 				on: {
-					CLOSE: 'discarding',
 					SHUTDOWN: 'closed',
 					LIBRARY: {
 						guard: ({ context, event }) => context.articleId === event.snapshot.context.captureId,
@@ -237,33 +219,17 @@ export function createClipMachine(cap: ClipCapability) {
 				entry: assign({ source: undefined, content: undefined })
 			},
 			unknown: {
-				on: { CLOSE: 'discarding', SHUTDOWN: 'closed' },
+				on: { SHUTDOWN: 'closed' },
 				entry: [
 					message('capture.status.unknown', 'error'),
 					assign({ source: undefined, content: undefined })
 				]
 			},
 			failed: {
-				on: { CLOSE: 'discarding', SHUTDOWN: 'closed' },
+				on: { SHUTDOWN: 'closed' },
 				entry: [
 					message('capture.status.save_failed', 'error'),
 					assign({ source: undefined, content: undefined })
-				]
-			},
-			discarding: {
-				on: { SHUTDOWN: {} },
-				invoke: {
-					src: 'remove',
-					input: ({ context }) => context.id,
-					onDone: 'dismissed',
-					onError: 'dismissed'
-				}
-			},
-			dismissed: {
-				type: 'final',
-				entry: [
-					assign({ source: undefined, content: undefined, capture: undefined }),
-					() => cap.dismiss()
 				]
 			},
 			closed: {

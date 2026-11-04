@@ -12,27 +12,38 @@ const capture = {
 	url,
 	phase: 'ready' as const
 }
-function fixture(pending: Capture[] = [], inspect?: Promise<unknown>) {
+function fixture(
+	pending: Capture[] = [],
+	inspect?: Promise<unknown>,
+	deliver: () => Promise<boolean> = async () => true
+) {
 	const persisted = vi.fn(async () => {})
-	const open = vi.fn(async () => {})
+	const dispatch = vi.fn(deliver)
+	const show = vi.fn(async () => {})
 	const actor = createActor(
 		createLaunchMachine({
 			inspect: async () => inspect ?? { documentId: 'document', frameId: 0, result: url },
 			pending: async () => pending,
 			persist: persisted,
-			open,
+			dispatch,
+			show,
+			runtimeExists: async () => false,
+			createRuntime: async () => {},
+			reject: async () => {},
 			id: () => id
 		})
 	).start()
-	return { actor, persisted, open }
+	return { actor, persisted, dispatch, show }
 }
-it('persists a document-bound reference before opening the trusted page', async () => {
+it('persists a document-bound reference before dispatching to the hidden runtime', async () => {
 	const f = fixture()
 	f.actor.send({ type: 'CLIP', tab: { id: 7, url } })
 	await waitFor(f.actor, (s) => s.matches('idle'))
 	expect(f.persisted).toHaveBeenCalledWith(capture)
-	expect(f.persisted.mock.invocationCallOrder[0]).toBeLessThan(f.open.mock.invocationCallOrder[0]!)
-	expect(f.open).toHaveBeenCalledWith(id)
+	expect(f.persisted.mock.invocationCallOrder[0]).toBeLessThan(
+		f.dispatch.mock.invocationCallOrder[0]!
+	)
+	expect(f.dispatch).toHaveBeenCalledWith(id)
 	f.actor.stop()
 })
 it('serializes launch ownership rather than issuing concurrent storage checks', async () => {
@@ -46,7 +57,7 @@ it('serializes launch ownership rather than issuing concurrent storage checks', 
 	expect(f.persisted).toHaveBeenCalledWith(capture)
 	f.actor.stop()
 })
-it('recovers existing pending work at the capacity bound without overwriting it', async () => {
+it('refuses new work at the capacity bound without replaying an old reference', async () => {
 	const pending = Array.from({ length: 8 }, (_, index) => ({
 		...capture,
 		id: `77777777-7777-4777-8777-${String(index).padStart(12, '0')}`
@@ -55,7 +66,7 @@ it('recovers existing pending work at the capacity bound without overwriting it'
 	f.actor.send({ type: 'CLIP', tab: { id: 7, url } })
 	await waitFor(f.actor, (s) => s.matches('idle'))
 	expect(f.persisted).not.toHaveBeenCalled()
-	expect(f.open).toHaveBeenCalledWith(pending[0]!.id)
+	expect(f.dispatch).not.toHaveBeenCalled()
 	f.actor.stop()
 })
 it('does not persist another document after a navigation race', async () => {
@@ -66,6 +77,20 @@ it('does not persist another document after a navigation race', async () => {
 	f.actor.send({ type: 'CLIP', tab: { id: 7, url } })
 	await waitFor(f.actor, (s) => s.matches('idle'))
 	expect(f.persisted).not.toHaveBeenCalled()
-	expect(f.open).toHaveBeenCalledWith('')
+	expect(f.dispatch).not.toHaveBeenCalled()
+	f.actor.stop()
+})
+
+it('does not replay an ambiguous runtime dispatch or claim that its native save failed', async () => {
+	const f = fixture([], undefined, async () => {
+		throw new Error('reply lost')
+	})
+	f.actor.send({ type: 'CLIP', tab: { id: 7, url } })
+	await waitFor(f.actor, (s) => s.matches('idle'))
+	expect(f.dispatch).toHaveBeenCalledOnce()
+	expect(f.show).toHaveBeenLastCalledWith(capture, {
+		text: expect.stringContaining('Save outcome is uncertain.'),
+		variant: 'error'
+	})
 	f.actor.stop()
 })
