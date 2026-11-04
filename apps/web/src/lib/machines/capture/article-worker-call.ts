@@ -81,7 +81,7 @@ export function createArticleWorkerCallMachine<
 		{ type: 'SHUTDOWN' },
 		typeof actors,
 		{},
-		{ close: undefined },
+		{ close: undefined; completeFailure: undefined },
 		{},
 		never,
 		string,
@@ -90,6 +90,15 @@ export function createArticleWorkerCallMachine<
 	>({
 		actors,
 		actions: {
+			completeFailure: assign({
+				output: ({ context }) => {
+					const call = required(context.call)
+					return complete(
+						context,
+						call.type === 'RETRY' ? { retry: call.id } : { reply: { method: 'fail' } }
+					)
+				}
+			}),
 			close: enqueueActions(({ context, self, enqueue }) => {
 				enqueue.assign({ closing: true })
 				context.abort?.abort()
@@ -236,25 +245,23 @@ export function createArticleWorkerCallMachine<
 							}
 						}
 					},
-					onDone: {
-						target: 'done',
-						actions: [
-							({ event }) => {
-								const result = required<FailureResult>(event.output)
-								if (result.settlement.kind === 'locallyPersisted')
-									void result.settlement.workspace.global().catch(() => {})
-							},
-							assign({
-								output: ({ context }) => {
-									const call = required(context.call)
-									return complete(
-										context,
-										call.type === 'RETRY' ? { retry: call.id } : { reply: { method: 'fail' } }
-									)
-								}
-							})
-						]
-					},
+					onDone: [
+						{
+							guard: ({ event }) =>
+								required<FailureResult>(event.output).settlement.kind === 'locallyPersisted',
+							target: 'done',
+							actions: [
+								({ event }) => {
+									const settlement = required<FailureResult>(event.output).settlement
+									if (settlement.kind !== 'locallyPersisted')
+										throw new Error('Expected local failure receipt')
+									void settlement.workspace.global().catch(() => {})
+								},
+								'completeFailure'
+							]
+						},
+						{ target: 'done', actions: 'completeFailure' }
+					],
 					onError: {
 						target: 'done',
 						actions: assign(({ context, event }) => failed({ context, event }))

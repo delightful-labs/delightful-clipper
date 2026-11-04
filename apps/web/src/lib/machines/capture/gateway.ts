@@ -37,10 +37,8 @@ export function createGatewayMachine(capability: {
 }) {
 	const actors = {
 		redirect: fromPromise(async ({ input }: { input: Context }) => {
-			if (input.redirects.length >= 8) throw new CaptureError('redirectLoop', 400)
 			if (!input.hop?.location) throw new CaptureError('sourceUnavailable', 502)
 			const target = sourceUrl(new URL(input.hop.location, input.current).href).href
-			if (input.visited.includes(target)) throw new CaptureError('redirectLoop', 400)
 			return target
 		}),
 		resolve: fromPromise(({ input }: { input: Context }) =>
@@ -53,7 +51,6 @@ export function createGatewayMachine(capability: {
 		extract: fromPromise(async ({ input }: { input: Context }) => {
 			input.signal.throwIfAborted()
 			if (!input.hop) throw new Error('Missing response')
-			if (input.mode === 'resolve') return undefined
 			try {
 				return await capability.extract(
 					input.hop.body,
@@ -131,8 +128,19 @@ export function createGatewayMachine(capability: {
 			routing: {
 				always: [
 					{
+						guard: ({ context }) => context.signal.aborted,
+						target: 'failed',
+						actions: assign({
+							output: ({ context }) => ({ kind: 'failed', error: context.signal.reason })
+						})
+					},
+					{
 						guard: ({ context }) => [301, 302, 303, 307, 308].includes(context.hop?.status ?? 0),
-						target: 'redirecting'
+						target: 'checkingRedirect'
+					},
+					{
+						guard: ({ context }) => context.hop?.status === 200 && context.mode === 'resolve',
+						target: 'resolved'
 					},
 					{ guard: ({ context }) => context.hop?.status === 200, target: 'extracting' },
 					{
@@ -143,27 +151,71 @@ export function createGatewayMachine(capability: {
 					}
 				]
 			},
+			checkingRedirect: {
+				always: [
+					{
+						guard: ({ context }) => context.redirects.length >= 8,
+						target: 'failed',
+						actions: assign({
+							output: { kind: 'failed', error: new CaptureError('redirectLoop', 400) }
+						})
+					},
+					{
+						guard: ({ context }) => !context.hop?.location,
+						target: 'failed',
+						actions: assign({
+							output: { kind: 'failed', error: new CaptureError('sourceUnavailable', 502) }
+						})
+					},
+					{ target: 'redirecting' }
+				]
+			},
 			redirecting: {
 				invoke: {
 					src: 'redirect',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'resolving',
-						actions: assign(({ context, event }) => ({
-							current: event.output,
-							visited: [...context.visited, event.output],
-							redirects: [
-								...context.redirects,
-								{ from: context.current, to: event.output, status: context.hop?.status ?? 302 }
-							],
-							hop: undefined
-						}))
-					},
+					onDone: [
+						{
+							guard: ({ context, event }) => context.visited.includes(event.output),
+							target: 'failed',
+							actions: assign({
+								output: { kind: 'failed', error: new CaptureError('redirectLoop', 400) }
+							})
+						},
+						{
+							target: 'resolving',
+							actions: assign(({ context, event }) => ({
+								current: event.output,
+								visited: [...context.visited, event.output],
+								redirects: [
+									...context.redirects,
+									{ from: context.current, to: event.output, status: context.hop?.status ?? 302 }
+								],
+								hop: undefined
+							}))
+						}
+					],
 					onError: {
 						target: 'failed',
 						actions: assign({ output: ({ event }) => ({ kind: 'failed', error: event.error }) })
 					}
 				}
+			},
+			resolved: {
+				entry: assign(({ context }) => ({
+					hop: undefined,
+					output: {
+						kind: 'success' as const,
+						finalUrl: context.current,
+						provenance: {
+							submittedUrl: context.url,
+							redirects: context.redirects,
+							resolvedAt: new Date().toISOString()
+						},
+						extraction: undefined
+					}
+				})),
+				always: 'done'
 			},
 			extracting: {
 				invoke: {

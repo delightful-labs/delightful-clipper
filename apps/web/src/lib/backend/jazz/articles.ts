@@ -1,3 +1,4 @@
+import { stageAttachment } from '../../machines/storage/mutations.js'
 import { createActor } from 'xstate'
 import { createArticleCollectionMachine } from '../../machines/capture/article-collection.js'
 import { transactionLifecycle, transactionReceipt } from './transaction.js'
@@ -45,45 +46,77 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 		check()
 		return row !== null
 	}
-	function stage(mode: 'ensure' | 'attach') {
-		return createWorkspaceCreationTransaction<
-			ArticleDraft,
-			Resource,
-			{ article: Article | null; available: boolean },
-			SyncReceipt,
-			WriteHandle
-		>({
-			...transactionLifecycle(db, check),
-			readLocal: async (r, a) => {
-				check()
-				const row = await r.tx.one(app.articles.where({ id: a.draft.article.id, libraryId }), {
+	const ensure = createWorkspaceCreationTransaction<
+		ArticleDraft,
+		Resource,
+		{ article: Article | null; available: boolean },
+		SyncReceipt,
+		WriteHandle
+	>({
+		...transactionLifecycle(db, check),
+		readLocal: async (r, a) => {
+			check()
+			const row = await r.tx.one(app.articles.where({ id: a.draft.article.id, libraryId }), {
+				tier: ReadTier.LocalFirst
+			})
+			check()
+			return { article: row, available: false }
+		},
+		assess: (rows) =>
+			!rows.article
+				? { outcome: 'eligible' }
+				: { outcome: 'blocked', reason: 'Article already exists or is unavailable' },
+		stage: (r, a) => {
+			check()
+			const { id, ...row } = articleRecord(a.draft.article, libraryId)
+			r.tx.insert(app.articles, row, { id })
+			return transactionReceipt(r)
+		}
+	})
+	const attach = createWorkspaceCreationTransaction<
+		ArticleDraft,
+		Resource,
+		{ article: Article | null; available: boolean },
+		SyncReceipt,
+		WriteHandle
+	>({
+		...transactionLifecycle(db, check),
+		readLocal: async (r, a) => {
+			check()
+			const article = await r.tx.one(app.articles.where({ id: a.draft.article.id, libraryId }), {
+				tier: ReadTier.LocalFirst
+			})
+			r.article = article
+			const available =
+				(await r.tx.one(app.documents.where({ id: a.draft.target, libraryId }), {
 					tier: ReadTier.LocalFirst
-				})
-				r.article = row
-				const available =
-					mode === 'attach' &&
-					(await r.tx.one(app.documents.where({ id: a.draft.target, libraryId }), {
-						tier: ReadTier.LocalFirst
-					})) !== null
-				check()
-				return { article: row, available }
-			},
-			assess: (rows) =>
-				(mode === 'ensure' ? !rows.article : !rows.article?.contentId && rows.available)
-					? { outcome: 'eligible' }
-					: { outcome: 'blocked', reason: 'Article already exists or is unavailable' },
-			stage: (r, a) => {
-				check()
-				const { id, ...row } = articleRecord(a.draft.article, libraryId)
-				if (mode === 'attach') {
-					const values = { contentId: a.draft.target, failure: null }
-					if (r.article) r.tx.update(app.articles, id, values)
-					else r.tx.insert(app.articles, { ...row, ...values }, { id })
-				} else r.tx.insert(app.articles, row, { id })
-				return transactionReceipt(r)
-			}
-		})
-	}
+				})) !== null
+			check()
+			return { article, available }
+		},
+		assess: (rows) =>
+			!rows.article?.contentId && rows.available
+				? { outcome: 'eligible' }
+				: { outcome: 'blocked', reason: 'Article already exists or is unavailable' },
+		stage: (r, a) =>
+			stageAttachment({
+				existingArticle: !!r.article,
+				attachContent: () => {
+					check()
+					r.tx.update(app.articles, a.draft.article.id, {
+						contentId: a.draft.target,
+						failure: null
+					})
+				},
+				createArticle: () => {
+					check()
+					const { id, ...row } = articleRecord(a.draft.article, libraryId)
+					r.tx.insert(app.articles, { ...row, contentId: a.draft.target, failure: null }, { id })
+				},
+				receipt: () => transactionReceipt(r)
+			})
+	})
+
 	const failure = createWorkspaceCreationTransaction<
 		{ id: string; code: string | null },
 		Resource,
@@ -146,8 +179,8 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			read,
 			document,
 			intent,
-			ensure: stage('ensure'),
-			attach: stage('attach'),
+			ensure,
+			attach,
 			content
 		}),
 		subscribePending: (next: (rows: Article[]) => void, error: () => void) =>

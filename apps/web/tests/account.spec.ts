@@ -279,6 +279,11 @@ async function fixtureArticle(
 test('Add Link automatically saves and detects a resolved duplicate without replacing content', async ({
 	page
 }) => {
+	const actionWarnings: string[] = []
+	page.on('console', (message) => {
+		if (message.type() === 'warning' && message.text().includes('Custom actions should not call'))
+			actionWarnings.push(message.text())
+	})
 	const extractions = await fixtureArticle(page)
 	const remoteRequests: string[] = []
 	page.on('request', (request) => {
@@ -347,6 +352,7 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
 	await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)
 	await expect(page.getByRole('article')).toHaveCount(0)
+	expect(actionWarnings).toEqual([])
 })
 
 test('UI Add Link saves automatically with the authority offline, survives a full browser restart and syncs to a restored profile', async ({

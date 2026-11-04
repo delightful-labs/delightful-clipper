@@ -1,4 +1,4 @@
-import { assign, enqueueActions, fromCallback, sendTo, setup, stopChild } from 'xstate'
+import { assign, enqueueActions, fromCallback, sendTo, setup, stopChild, raise } from 'xstate'
 import type { SnapshotFrom } from 'xstate'
 import { t } from '../../localization/index.js'
 import { normalizedSource } from '../../capture/source.js'
@@ -12,6 +12,11 @@ import { readRecordMachine } from '../storage/read.js'
 function required<T>(v: T | undefined): T {
 	if (v === undefined) throw new Error('Library unavailable')
 	return v
+}
+function savedResult(result: ArticleSaveResult) {
+	if (result.kind !== 'saved' && result.kind !== 'duplicate')
+		throw new Error('Expected locally saved result')
+	return result
 }
 type Context = {
 	capability: LibraryCapability | undefined
@@ -102,11 +107,12 @@ const actors = {
 export const libraryMachine = setup<
 	Context,
 	| LibraryEvent
+	| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
 	| { type: `xstate.done.actor.${string}`; actorId: string; output: ArticleSaveResult }
 	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown },
 	typeof actors,
 	{},
-	{ close: undefined; watch: undefined },
+	{ close: undefined; watch: undefined; updateRows: undefined },
 	{},
 	never,
 	string,
@@ -131,27 +137,33 @@ export const libraryMachine = setup<
 				backgroundCancelable: false
 			})
 		}),
-		watch: enqueueActions(({ event, enqueue }) => {
+		watch: raise(({ event }) => {
 			const result =
 				event.type === 'BACKGROUND_SAVED'
 					? event.result
 					: 'output' in event
 						? event.output
 						: undefined
-			if (
-				!result ||
-				(result.kind !== 'saved' && result.kind !== 'duplicate') ||
-				!result.receipts.length
-			)
-				return
-			enqueue.assign({
-				sync: ({ context }) => ({ ...context.sync, [result.operationId]: 'pending' })
-			})
-			enqueue.sendTo('receipts', {
-				type: 'WATCH',
-				id: result.operationId,
-				receipts: result.receipts
-			})
+			return { type: 'WATCH_RECEIPTS', result: required(result) }
+		}),
+		updateRows: assign(({ context, event }) => {
+			if (event.type !== 'ROWS') throw new Error('Expected collection rows')
+			return {
+				rows: event.rows,
+				background: Object.fromEntries(
+					Object.entries(context.background).filter(
+						([id, message]) =>
+							!(
+								message.variant === 'error' &&
+								event.rows.some((r) => r.id === id && r.contentId && !r.failure)
+							)
+					)
+				),
+				listFailed: false,
+				captureReady:
+					context.captureReady ||
+					event.rows.some((r) => r.id === context.captureId && !!r.contentId)
+			}
 		})
 	}
 }).createMachine({
@@ -191,33 +203,44 @@ export const libraryMachine = setup<
 			},
 			on: {
 				SHUTDOWN: { actions: 'close' },
-				ROWS: {
-					guard: ({ context }) => !context.closing && !!context.capability?.isCurrent(),
-					actions: enqueueActions(({ context, event, enqueue }) => {
-						enqueue.assign({
-							rows: event.rows,
-							background: Object.fromEntries(
-								Object.entries(context.background).filter(
-									([id, message]) =>
-										!(
-											message.variant === 'error' &&
-											event.rows.some((r) => r.id === id && r.contentId && !r.failure)
-										)
-								)
-							),
-							listFailed: false,
-							captureReady:
-								context.captureReady ||
-								event.rows.some((r) => r.id === context.captureId && !!r.contentId)
-						})
-						if (
-							context.readerId &&
-							context.reader?.kind !== 'available' &&
-							event.rows.some((r) => r.id === context.readerId && !!r.contentId)
-						)
-							enqueue.raise({ type: 'OPEN', id: context.readerId })
-					})
+				WATCH_RECEIPTS: {
+					guard: ({ context, event }) =>
+						!context.closing &&
+						!!context.capability?.isCurrent() &&
+						(event.result.kind === 'saved' || event.result.kind === 'duplicate') &&
+						event.result.receipts.length > 0,
+					actions: [
+						assign({
+							sync: ({ context, event }) => ({
+								...context.sync,
+								[event.result.operationId]: 'pending'
+							})
+						}),
+						sendTo('receipts', ({ event }) => ({
+							type: 'WATCH',
+							id: event.result.operationId,
+							receipts: savedResult(event.result).receipts
+						}))
+					]
 				},
+				ROWS: [
+					{
+						guard: ({ context, event }) =>
+							!context.closing &&
+							!!context.capability?.isCurrent() &&
+							!!context.readerId &&
+							context.reader?.kind !== 'available' &&
+							event.rows.some((r) => r.id === context.readerId && !!r.contentId),
+						actions: [
+							'updateRows',
+							raise(({ context }) => ({ type: 'OPEN', id: context.readerId }))
+						]
+					},
+					{
+						guard: ({ context }) => !context.closing && !!context.capability?.isCurrent(),
+						actions: 'updateRows'
+					}
+				],
 				LIST_FAILED: { actions: assign({ listFailed: true }) },
 				BACKGROUND_CLOSED: { actions: assign({ workerClosed: true }) },
 				BACKGROUND_ERROR: {
@@ -240,12 +263,17 @@ export const libraryMachine = setup<
 					actions: [
 						'watch',
 						assign({
-							background: ({ context, event }) => {
-								const next = { ...context.background }
-								if ('ready' in event.result && event.result.ready)
-									delete next[event.result.operationId]
-								return next
-							},
+							background: ({ context, event }) =>
+								Object.fromEntries(
+									Object.entries(context.background).filter(
+										([id]) =>
+											!(
+												id === event.result.operationId &&
+												'ready' in event.result &&
+												event.result.ready
+											)
+									)
+								),
 							captureReady: ({ context, event }) =>
 								context.captureReady ||
 								(event.result.operationId === context.captureId &&

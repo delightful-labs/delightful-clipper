@@ -35,6 +35,18 @@ export type HostCapability<
 	online: () => boolean
 	open: (report: (event: HostResourceEvent) => void) => HostResource
 }
+function required<T>(value: T | undefined): T {
+	if (value === undefined) throw new Error('Missing host result')
+	return value
+}
+function statusMessage(message: WorkerOutput) {
+	if (message.type !== 'STATUS') throw new Error('Expected worker status')
+	return message
+}
+function cancellationMessage(message: WorkerOutput) {
+	if (message.type !== 'CANCEL_CALL') throw new Error('Expected worker cancellation')
+	return message
+}
 /** Own worker admission, concurrent I/O children and drain-before-termination as modeled state. */
 export function createArticleWorkerHostMachine<
 	S extends Snapshot<ArticleSaveResult>,
@@ -53,7 +65,19 @@ export function createArticleWorkerHostMachine<
 		| HostResourceEvent
 		| { type: `xstate.done.actor.call:${string}`; actorId: string; output: CallOutput }
 		| { type: `xstate.error.actor.call:${string}`; actorId: string; error: unknown }
+	const task = (context: Context, event: Event) =>
+		'actorId' in event ? context.tasks[event.actorId] : undefined
+	const validCompletion = (context: Context, event: Event) =>
+		cap.isCurrent() && 'output' in event && !!task(context, event)
+	const completion = (event: Event): CallOutput => {
+		if (!('output' in event)) throw new Error('Expected completed call')
+		return event.output
+	}
+	const output = fromCallback<{ type: 'REPORT'; event: QueueReport }, HostInput['report']>(
+		({ input, receive }) => receive((event) => input(event.event))
+	)
 	const actors = {
+		output,
 		resource: fromCallback<HostResourceCommand>(({ receive, sendBack }) => {
 			let resource: HostResource | undefined
 			try {
@@ -98,6 +122,7 @@ export function createArticleWorkerHostMachine<
 			completeCall: undefined
 			shutdownCalls: undefined
 			reportError: undefined
+			reply: undefined
 		},
 		{},
 		never,
@@ -141,11 +166,24 @@ export function createArticleWorkerHostMachine<
 				for (const task of Object.values(context.tasks))
 					enqueue.sendTo(task.ref, { type: 'SHUTDOWN' })
 			}),
-			reportError: ({ context }) => context.report?.({ type: 'BACKGROUND_ERROR' })
+			reportError: sendTo('output', { type: 'REPORT', event: { type: 'BACKGROUND_ERROR' } }),
+			reply: sendTo('resource', ({ event }) => ({
+				type: 'POST',
+				message: {
+					type: 'REPLY',
+					id: completion(event).id,
+					reply: required(completion(event).reply)
+				}
+			}))
 		}
 	}).createMachine({
 		id: 'article-worker-host',
 		initial: 'owning',
+		invoke: {
+			id: 'output',
+			src: 'output',
+			input: ({ context }: { context: Context }) => required(context.report)
+		},
 		context: ({ input }) => ({
 			report: input.report,
 			tasks: {},
@@ -181,33 +219,47 @@ export function createArticleWorkerHostMachine<
 									message: { type: 'ROWS', rows: event.rows }
 								}))
 							},
-							CONNECTIVITY: {
-								actions: [
-									enqueueActions(({ context, event, enqueue }) => {
-										if (event.online && !context.online)
-											enqueue.sendTo('resource', { type: 'POST', message: { type: 'WAKE' } })
-									}),
-									assign({ online: ({ event }) => event.online })
-								]
-							},
-							WORKER_MESSAGE: {
-								guard: () => cap.isCurrent(),
-								actions: enqueueActions(({ context, event, enqueue }) => {
-									const message = event.message
-									if (message.type === 'CANCEL_CALL') {
-										for (const task of Object.values(context.tasks))
-											if (task.id === message.id) enqueue.sendTo(task.ref, { type: 'SHUTDOWN' })
-									}
-									if (message.type === 'STATUS')
-										context.report?.({
-											type: 'BACKGROUND_STATUS',
-											id: message.id,
-											message: message.message,
-											cancelable: message.cancelable
-										})
-									if (message.type === 'CALL') enqueue('startCall')
-								})
-							},
+							CONNECTIVITY: [
+								{
+									guard: ({ context, event }) => event.online && !context.online,
+									actions: [
+										sendTo('resource', { type: 'POST', message: { type: 'WAKE' } }),
+										assign({ online: ({ event }) => event.online })
+									]
+								},
+								{ actions: assign({ online: ({ event }) => event.online }) }
+							],
+							WORKER_MESSAGE: [
+								{
+									guard: ({ event }) => cap.isCurrent() && event.message.type === 'CANCEL_CALL',
+									actions: enqueueActions(({ context, event, enqueue }) => {
+										const id = cancellationMessage(event.message).id
+										for (const task of Object.values(context.tasks).filter(
+											(task) => task.id === id
+										))
+											enqueue.sendTo(task.ref, { type: 'SHUTDOWN' })
+									})
+								},
+								{
+									guard: ({ event }) => cap.isCurrent() && event.message.type === 'STATUS',
+									actions: sendTo('output', ({ event }) => {
+										const message = statusMessage(event.message)
+										return {
+											type: 'REPORT',
+											event: {
+												type: 'BACKGROUND_STATUS',
+												id: message.id,
+												message: message.message,
+												cancelable: message.cancelable
+											}
+										}
+									})
+								},
+								{
+									guard: ({ event }) => cap.isCurrent() && event.message.type === 'CALL',
+									actions: 'startCall'
+								}
+							],
 							RETRY: { guard: () => cap.isCurrent(), actions: 'startCall' },
 							CANCEL: {
 								guard: () => cap.isCurrent(),
@@ -217,60 +269,87 @@ export function createArticleWorkerHostMachine<
 								guard: () => cap.isCurrent(),
 								actions: sendTo('resource', { type: 'POST', message: { type: 'WAKE' } })
 							},
-							'xstate.done.actor.*': {
-								actions: enqueueActions(({ context, event, enqueue }) => {
-									if (
-										!('output' in event) ||
-										!('actorId' in event) ||
-										!context.tasks[event.actorId]
-									)
-										return
-									const task = context.tasks[event.actorId]
-									if (!task) return
-									const output = event.output
-									if (cap.isCurrent()) {
-										if (output.result)
-											context.report?.({ type: 'BACKGROUND_SAVED', result: output.result })
-										if (output.retry)
-											enqueue.sendTo('resource', {
-												type: 'POST',
-												message: { type: 'RETRY', id: output.retry }
-											})
-										else if (output.reply)
-											enqueue.sendTo('resource', {
-												type: 'POST',
-												message: { type: 'REPLY', id: output.id, reply: output.reply }
-											})
-										else if (output.error) {
-											if (task.retry) context.report?.({ type: 'BACKGROUND_ERROR' })
-											else if (task.id === output.id)
-												enqueue.sendTo('resource', {
-													type: 'POST',
-													message: { type: 'ERROR', id: output.id, code: output.error }
-												})
-										}
-									}
-									enqueue('completeCall')
-								})
-							},
-							'xstate.error.actor.*': {
-								actions: [
-									enqueueActions(({ context, event, enqueue }) => {
-										if (!('actorId' in event)) return
-										const task = context.tasks[event.actorId]
-										if (!task) return
-										if (cap.isCurrent()) {
-											if (task.retry) context.report?.({ type: 'BACKGROUND_ERROR' })
-											else
-												enqueue.sendTo('resource', {
-													type: 'POST',
-													message: { type: 'ERROR', id: task.id, code: 'captureFailed' }
-												})
-										}
-									}),
-									'completeCall'
-								]
-							}
+							'xstate.done.actor.*': [
+								{
+									guard: ({ context, event }) =>
+										validCompletion(context, event) && !!completion(event).retry,
+									actions: [
+										sendTo('resource', ({ event }) => ({
+											type: 'POST',
+											message: { type: 'RETRY', id: required(completion(event).retry) }
+										})),
+										'completeCall'
+									]
+								},
+								{
+									guard: ({ context, event }) =>
+										validCompletion(context, event) &&
+										!!completion(event).reply &&
+										!!completion(event).result,
+									actions: [
+										sendTo('output', ({ event }) => ({
+											type: 'REPORT',
+											event: {
+												type: 'BACKGROUND_SAVED',
+												result: required(completion(event).result)
+											}
+										})),
+										'reply',
+										'completeCall'
+									]
+								},
+								{
+									guard: ({ context, event }) =>
+										validCompletion(context, event) && !!completion(event).reply,
+									actions: ['reply', 'completeCall']
+								},
+								{
+									guard: ({ context, event }) =>
+										validCompletion(context, event) &&
+										!!completion(event).error &&
+										!!task(context, event)?.retry,
+									actions: ['reportError', 'completeCall']
+								},
+								{
+									guard: ({ context, event }) =>
+										validCompletion(context, event) &&
+										!!completion(event).error &&
+										task(context, event)?.id === completion(event).id,
+									actions: [
+										sendTo('resource', ({ event }) => ({
+											type: 'POST',
+											message: {
+												type: 'ERROR',
+												id: completion(event).id,
+												code: required(completion(event).error)
+											}
+										})),
+										'completeCall'
+									]
+								},
+								{ actions: 'completeCall' }
+							],
+							'xstate.error.actor.*': [
+								{
+									guard: ({ context, event }) => cap.isCurrent() && !!task(context, event)?.retry,
+									actions: ['reportError', 'completeCall']
+								},
+								{
+									guard: ({ context, event }) => cap.isCurrent() && !!task(context, event),
+									actions: [
+										sendTo('resource', ({ context, event }) => ({
+											type: 'POST',
+											message: {
+												type: 'ERROR',
+												id: required(task(context, event)).id,
+												code: 'captureFailed'
+											}
+										})),
+										'completeCall'
+									]
+								},
+								{ actions: 'completeCall' }
+							]
 						}
 					},
 					releasing: {
@@ -300,7 +379,7 @@ export function createArticleWorkerHostMachine<
 			closed: {
 				type: 'final',
 				entry: [
-					({ context }) => context.report?.({ type: 'BACKGROUND_CLOSED' }),
+					sendTo('output', { type: 'REPORT', event: { type: 'BACKGROUND_CLOSED' } }),
 					assign({ report: undefined, tasks: {} })
 				]
 			}

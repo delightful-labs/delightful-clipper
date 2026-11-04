@@ -26,6 +26,10 @@ export type RuntimeCapability = {
 	commandId: () => string
 	failed: () => void
 }
+function required<T>(value: T | undefined): T {
+	if (value === undefined) throw new Error('Missing active queue')
+	return value
+}
 /** The lock stays invoked after STOP; the host drains native writes before terminating this worker. */
 export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 	const queue = createArticleQueueMachine(cap.queue)
@@ -69,7 +73,7 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 		RuntimeEvent,
 		typeof actors,
 		{},
-		{ retain: undefined; apply: undefined },
+		{ retain: undefined; apply: undefined; applyShared: undefined },
 		{},
 		never,
 		string
@@ -87,16 +91,18 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 				enqueue.sendTo('channel', { type: 'PUBLISH', message: command })
 			}),
 			apply: enqueueActions(({ context, event, enqueue }) => {
-				if (!context.queue) return
-				if (event.type === 'SHARED') {
-					if (event.message.type !== 'COMMAND') return
-					enqueue.sendTo(context.queue, event.message.control)
-					enqueue.sendTo('channel', {
-						type: 'PUBLISH',
-						message: { type: 'ACK', id: event.message.id }
-					})
-				} else if (event.type === 'WAKE' || event.type === 'CANCEL' || event.type === 'RETRY')
-					enqueue.sendTo(context.queue, event)
+				if (event.type !== 'WAKE' && event.type !== 'CANCEL' && event.type !== 'RETRY')
+					throw new Error('Expected direct worker control')
+				enqueue.sendTo(required(context.queue), event)
+			}),
+			applyShared: enqueueActions(({ context, event, enqueue }) => {
+				if (event.type !== 'SHARED' || event.message.type !== 'COMMAND')
+					throw new Error('Expected shared command')
+				enqueue.sendTo(required(context.queue), event.message.control)
+				enqueue.sendTo('channel', {
+					type: 'PUBLISH',
+					message: { type: 'ACK', id: event.message.id }
+				})
 			})
 		}
 	}).createMachine({
@@ -119,26 +125,27 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 							CANCEL: { actions: 'retain' },
 							WAKE: { actions: 'retain' },
 							SHARED: {
+								guard: ({ event }) => event.message.type === 'ACK',
 								actions: assign(({ context, event }) => ({
-									pending:
-										event.message.type === 'ACK'
-											? Object.fromEntries(
-													Object.entries(context.pending).filter(([id]) => id !== event.message.id)
-												)
-											: context.pending
+									pending: Object.fromEntries(
+										Object.entries(context.pending).filter(([id]) => id !== event.message.id)
+									)
 								}))
 							},
 							LOCKED: 'active'
 						}
 					},
 					active: {
+						exit: enqueueActions(({ context, enqueue }) => {
+							enqueue.sendTo(required(context.queue), { type: 'STOP' })
+						}),
 						entry: [
 							assign({ queue: ({ spawn }) => spawn('queue', {}) }),
 							enqueueActions(({ context, enqueue }) => {
-								if (!context.queue) return
-								enqueue.sendTo(context.queue, { type: 'ROWS', rows: context.rows })
+								const queue = required(context.queue)
+								enqueue.sendTo(queue, { type: 'ROWS', rows: context.rows })
 								for (const command of Object.values(context.pending))
-									enqueue.sendTo(context.queue, command.control)
+									enqueue.sendTo(queue, command.control)
 								enqueue.assign({ pending: {} })
 							})
 						],
@@ -147,20 +154,22 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 								actions: [
 									assign({ rows: ({ event }) => event.rows }),
 									enqueueActions(({ context, event, enqueue }) => {
-										if (context.queue) enqueue.sendTo(context.queue, event)
+										enqueue.sendTo(required(context.queue), event)
 									})
 								]
 							},
 							RETRY: { actions: 'apply' },
 							CANCEL: { actions: 'apply' },
 							WAKE: { actions: 'apply' },
-							SHARED: { actions: 'apply' }
+							SHARED: {
+								guard: ({ event }) => event.message.type === 'COMMAND',
+								actions: 'applyShared'
+							}
 						}
 					},
 					stopped: {
-						entry: enqueueActions(({ context, enqueue }) => {
+						entry: enqueueActions(({ enqueue }) => {
 							enqueue.sendTo('lock', { type: 'CANCEL_ACQUIRE' })
-							if (context.queue) enqueue.sendTo(context.queue, { type: 'STOP' })
 							enqueue.assign({ rows: [], pending: {}, queue: undefined })
 						}),
 						on: { STOP: {}, LOCK_FAILED: {}, LOCKED: {} }

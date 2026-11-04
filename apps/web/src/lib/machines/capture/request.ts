@@ -25,6 +25,14 @@ function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Missing request resource')
 	return value
 }
+function gatewaySuccess(value: GatewayResult | undefined) {
+	if (value?.kind !== 'success') throw new Error('Expected successful gateway result')
+	return value
+}
+function gatewayFailure(value: GatewayResult | undefined) {
+	if (value?.kind !== 'failed') throw new Error('Expected failed gateway result')
+	return value.error
+}
 export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 	cap: RequestCapability<G>
 ) {
@@ -66,47 +74,18 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 			if (input.aborted) abort()
 			return () => input.removeEventListener('abort', abort)
 		}),
-		authorize: fromPromise(async ({ input }: { input: RequestInput }) => {
-			if (!input.accountId) throw new CaptureError('sessionUnavailable', 401)
-			if (!input.enabled) throw new CaptureError('gatewayUnavailable', 503, true)
-			const origin = input.request.headers.get('origin')
-			if (origin && origin !== new URL(input.request.url).origin)
-				throw new CaptureError('permissionDenied', 403)
-		}),
+
 		acquire: fromPromise(async ({ input }: { input: string }) => cap.acquire(input)),
 		read: fromPromise(({ input }: { input: { request: Request; signal: AbortSignal } }) =>
 			cap.read(input.request, input.signal)
 		),
 		gateway: cap.gateway,
-		encode: fromPromise(
-			async ({
-				input
-			}: {
-				input: { parsed: CaptureInput; result: GatewayResult; mode: RequestInput['mode'] }
-			}) => {
-				if (input.result.kind === 'failed') throw input.result.error
-				const result = input.result
-				const payload = JSON.stringify(
-					input.mode === 'resolve'
-						? {
-								operationId: input.parsed.operationId,
-								submittedUrl: input.parsed.url,
-								finalUrl: result.finalUrl,
-								redirects: result.provenance.redirects,
-								resolvedAt: result.provenance.resolvedAt
-							}
-						: {
-								operationId: input.parsed.operationId,
-								finalUrl: result.finalUrl,
-								provenance: result.provenance,
-								...result.extraction
-							}
-				)
-				if (new TextEncoder().encode(payload).length > 5 * 1024 * 1024)
-					throw new CaptureError('sourceTooLarge', 413)
-				return new Response(payload, { headers })
-			}
-		)
+		encode: fromPromise(async ({ input }: { input: unknown }) => {
+			const payload = JSON.stringify(input)
+			if (new TextEncoder().encode(payload).length > 5 * 1024 * 1024)
+				throw new CaptureError('sourceTooLarge', 413)
+			return new Response(payload, { headers })
+		})
 	}
 	type FullContext = Context & { result: GatewayResult | undefined }
 	const model = setup<
@@ -133,7 +112,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 			})
 		}
 	})
-	const interruptedStage = (next: 'reading' | 'capturing' | 'encoding') =>
+	const interruptedStage = (next: 'reading' | 'capturing' | 'routingResponse') =>
 		model.createStateConfig({
 			always: [
 				{
@@ -147,6 +126,25 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 	const failed = ({ context, event }: { context: FullContext; event: { error: unknown } }) => ({
 		response: failure(context, event.error)
 	})
+	const encoding = (payload: (args: { context: FullContext }) => unknown) =>
+		model.createStateConfig({
+			invoke: {
+				src: 'encode',
+				input: payload,
+				onDone: [
+					{
+						guard: ({ context }) => interrupted(context),
+						target: 'releasing',
+						actions: assign({ response: ({ context }) => failure(context, undefined) })
+					},
+					{ target: 'releasing', actions: assign({ response: ({ event }) => event.output }) }
+				],
+				onError: {
+					target: 'releasing',
+					actions: assign(({ context, event }) => failed({ context, event }))
+				}
+			}
+		})
 	return model.createMachine({
 		id: 'capture-request',
 		initial: 'owning',
@@ -177,17 +175,39 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 				states: {
 					beforeReading: interruptedStage('reading'),
 					beforeCapturing: interruptedStage('capturing'),
-					beforeEncoding: interruptedStage('encoding'),
+					beforeEncoding: interruptedStage('routingResponse'),
 					authorizing: {
-						invoke: {
-							src: 'authorize',
-							input: ({ context }) => required(context.input),
-							onDone: 'acquiring',
-							onError: {
+						always: [
+							{
+								guard: ({ context }) => !required(context.input).accountId,
 								target: 'releasing',
-								actions: assign(({ context, event }) => failed({ context, event }))
-							}
-						}
+								actions: assign({
+									response: ({ context }) =>
+										failure(context, new CaptureError('sessionUnavailable', 401))
+								})
+							},
+							{
+								guard: ({ context }) => !required(context.input).enabled,
+								target: 'releasing',
+								actions: assign({
+									response: ({ context }) =>
+										failure(context, new CaptureError('gatewayUnavailable', 503, true))
+								})
+							},
+							{
+								guard: ({ context }) => {
+									const request = required(context.input).request
+									const origin = request.headers.get('origin')
+									return !!origin && origin !== new URL(request.url).origin
+								},
+								target: 'releasing',
+								actions: assign({
+									response: ({ context }) =>
+										failure(context, new CaptureError('permissionDenied', 403))
+								})
+							},
+							{ target: 'acquiring' }
+						]
 					},
 					acquiring: {
 						invoke: {
@@ -238,27 +258,42 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 							}
 						}
 					},
-					encoding: {
-						invoke: {
-							src: 'encode',
-							input: ({ context }) => ({
-								parsed: required(context.parsed),
-								result: required(context.result),
-								mode: required(context.input).mode
-							}),
-							onDone: {
+					routingResponse: {
+						always: [
+							{
+								guard: ({ context }) => context.result?.kind === 'failed',
 								target: 'releasing',
 								actions: assign({
-									response: ({ context, event }) =>
-										interrupted(context) ? failure(context, undefined) : event.output
+									response: ({ context }) => failure(context, gatewayFailure(context.result))
 								})
 							},
-							onError: {
-								target: 'releasing',
-								actions: assign(({ context, event }) => failed({ context, event }))
-							}
-						}
+							{
+								guard: ({ context }) => required(context.input).mode === 'resolve',
+								target: 'encodingResolution'
+							},
+							{ target: 'encodingExtraction' }
+						]
 					},
+					encodingResolution: encoding(({ context }) => {
+						const result = gatewaySuccess(context.result),
+							parsed = required(context.parsed)
+						return {
+							operationId: parsed.operationId,
+							submittedUrl: parsed.url,
+							finalUrl: result.finalUrl,
+							redirects: result.provenance.redirects,
+							resolvedAt: result.provenance.resolvedAt
+						}
+					}),
+					encodingExtraction: encoding(({ context }) => {
+						const result = gatewaySuccess(context.result)
+						return {
+							operationId: required(context.parsed).operationId,
+							finalUrl: result.finalUrl,
+							provenance: result.provenance,
+							...result.extraction
+						}
+					}),
 					releasing: {
 						entry: ({ context }) => context.release?.(),
 						always: '#capture-request.closed'

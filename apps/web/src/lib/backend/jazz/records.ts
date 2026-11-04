@@ -1,3 +1,4 @@
+import { stageIntent, stagePublication } from '../../machines/storage/mutations.js'
 import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
 import type { ReadCapabilities } from '../../contracts/storage.js'
@@ -13,6 +14,10 @@ import type { Article } from '../../contracts/articles.js'
 
 type Resource = TransactionResource
 type StageRows = { intent: StorageIntent | null; article: Article | null }
+function required<T>(value: T | undefined): T {
+	if (value === undefined) throw new Error('Missing storage mutation input')
+	return value
+}
 /** Evaluated against rows read inside the same transaction as the mutation. */
 function canBindIntent(rows: StageRows, draft: PreparedSave) {
 	const articleEligible =
@@ -73,36 +78,39 @@ export function createLibraryRecords(
 			canBindIntent(rows, attempt.draft)
 				? { outcome: 'eligible' }
 				: { outcome: 'blocked', reason: 'Operation identity is not eligible' },
-		stage: (resource, attempt) => {
-			check()
-			const { draft } = attempt
-
-			const { id, ...intent } = draft.intent
-			resource.tx.insert(app.storageOperations, intent, { id })
-			if (draft.articleId) {
-				if (!draft.source) throw new Error('Missing article URL')
-				if (resource.article)
-					resource.tx.update(app.articles, draft.articleId, {
-						operationId: id,
+		stage: (resource, { draft }) =>
+			stageIntent({
+				articleLinked: !!draft.articleId,
+				existingArticle: !!resource.article,
+				insertIntent: () => {
+					check()
+					const { id, ...intent } = draft.intent
+					resource.tx.insert(app.storageOperations, intent, { id })
+				},
+				bindArticle: () => {
+					check()
+					resource.tx.update(app.articles, required(draft.articleId), {
+						operationId: draft.intent.id,
 						failure: null
 					})
-				else
+				},
+				createArticle: () => {
+					check()
 					resource.tx.insert(
 						app.articles,
 						{
 							libraryId,
-							url: draft.source.submittedUrl,
+							url: required(draft.source).submittedUrl,
 							originalSavedAt: draft.intent.createdAt,
 							contentId: null,
-							operationId: id,
+							operationId: draft.intent.id,
 							failure: null
 						},
-						{ id: draft.articleId }
+						{ id: required(draft.articleId) }
 					)
-			}
-
-			return transactionReceipt(resource)
-		}
+				},
+				receipt: () => transactionReceipt(resource)
+			})
 	})
 	const publish = createWorkspaceCreationTransaction<
 		PreparedSave,
@@ -117,28 +125,33 @@ export function createLibraryRecords(
 			canPublishContent(rows, attempt.draft, attempt.operationId)
 				? { outcome: 'eligible' }
 				: { outcome: 'blocked', reason: 'Operation identity is not eligible' },
-		stage: (resource, attempt) => {
-			check()
-			const { draft } = attempt
-
-			const { id: assetId, ...asset } = draft.asset
-			resource.tx.insert(app.assets, asset, { id: assetId })
-			const { id: snapshotId, ...snapshot } = draft.snapshot
-			resource.tx.insert(app.snapshots, snapshot, { id: snapshotId })
-			const { id, ...document } = draft.document
-			resource.tx.insert(app.documents, document, { id })
-			if (draft.articleId)
-				resource.tx.update(app.articles, draft.articleId, {
-					contentId: id,
-					failure: null
-				})
-			if (draft.source) {
-				const { id: sourceId, ...source } = draft.source
-				resource.tx.insert(app.articleSources, source, { id: sourceId })
-			}
-
-			return transactionReceipt(resource)
-		}
+		stage: (resource, { draft }) =>
+			stagePublication({
+				articleLinked: !!draft.articleId,
+				hasSource: !!draft.source,
+				publishContent: () => {
+					check()
+					const { id: assetId, ...asset } = draft.asset
+					resource.tx.insert(app.assets, asset, { id: assetId })
+					const { id: snapshotId, ...snapshot } = draft.snapshot
+					resource.tx.insert(app.snapshots, snapshot, { id: snapshotId })
+					const { id, ...document } = draft.document
+					resource.tx.insert(app.documents, document, { id })
+				},
+				attachContent: () => {
+					check()
+					resource.tx.update(app.articles, required(draft.articleId), {
+						contentId: draft.document.id,
+						failure: null
+					})
+				},
+				publishSource: () => {
+					check()
+					const { id, ...source } = required(draft.source)
+					resource.tx.insert(app.articleSources, source, { id })
+				},
+				receipt: () => transactionReceipt(resource)
+			})
 	})
 
 	const records = {

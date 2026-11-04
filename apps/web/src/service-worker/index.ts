@@ -1,3 +1,4 @@
+import { shellAssetMachine, shellReadMachine } from '../lib/machines/offline/asset.js'
 import { self } from '$app/service-worker'
 import { version } from '$app/env'
 import { assets, immutable } from '$app/manifest'
@@ -31,21 +32,25 @@ const port = {
 		// Drain every issued fetch/put before failed-install cleanup can delete the cache.
 		const outcomes = await Promise.allSettled(
 			Array.from(policy.paths, async (path) => {
-				const response =
-					(await reuse(path)) ??
-					(await fetch(
-						new Request(path, {
-							credentials: 'omit',
-							cache: 'no-cache',
-							redirect: 'error',
-							signal: AbortSignal.timeout(30000)
-						})
-					))
-				if (!publicAssetResponse(path, response)) {
-					await response.body?.cancel()
-					throw new Error('Invalid public shell response')
-				}
-				await cache.put(path, response)
+				const result = await toPromise(
+					createActor(shellAssetMachine, {
+						input: {
+							reuse: () => reuse(path),
+							fetch: () =>
+								fetch(
+									new Request(path, {
+										credentials: 'omit',
+										cache: 'no-cache',
+										redirect: 'error',
+										signal: AbortSignal.timeout(30000)
+									})
+								),
+							valid: (response) => publicAssetResponse(path, response),
+							store: (response) => cache.put(path, response)
+						}
+					}).start()
+				)
+				if (result !== 'ready') throw new Error('Shell asset unavailable')
 			})
 		)
 		if (outcomes.some((outcome) => outcome.status === 'rejected'))
@@ -75,11 +80,19 @@ self.addEventListener('activate', (event) => event.waitUntil(run('activate')))
 self.addEventListener('fetch', (event) => {
 	const key = shellKey(policy, event.request)
 	if (!key) return
-	// A cache miss falls back to network without caching arbitrary runtime responses.
 	event.respondWith(
-		caches
-			.open(policy.cacheName)
-			.then(async (cache) => (await cache.match(key)) ?? fetch(event.request))
+		toPromise(
+			createActor(shellReadMachine, {
+				input: {
+					cached: async () => (await caches.open(policy.cacheName)).match(key),
+					fetch: () => fetch(event.request)
+				}
+			}).start()
+		).then(({ response, error }) => {
+			if (error) throw error
+			if (!response) throw new Error('Missing shell response')
+			return response
+		})
 	)
 })
 // Deliberately no skipWaiting: old tabs keep their build until they have all closed.

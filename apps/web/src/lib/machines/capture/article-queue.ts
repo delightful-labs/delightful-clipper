@@ -1,5 +1,5 @@
 import { assign, fromPromise, setup } from 'xstate'
-import type { Article, ArticleContent } from '../../contracts/articles.js'
+import type { Article, ArticleContent, SaveArticleRequest } from '../../contracts/articles.js'
 import type { QueueCapability } from '../../contracts/article-worker.js'
 import { articleId } from '../../capture/source.js'
 import { t } from '../../localization/index.js'
@@ -44,18 +44,13 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 		extract: fromPromise(({ input, signal }: { input: Context; signal: AbortSignal }) =>
 			cap.extract(required(input.current).url, required(input.current).id, signal)
 		),
-		save: fromPromise(({ input }: { input: Context }) =>
-			cap.save({
-				url: required(input.current).url,
-				...(input.content ? { content: input.content } : { contentId: input.operationId })
-			})
-		),
+		save: fromPromise(({ input }: { input: SaveArticleRequest }) => cap.save(input)),
 		fail: fromPromise(({ input }: { input: Context }) =>
 			cap.fail(required(input.current).id, input.failure)
 		)
 	}
 	const input = ({ context }: { context: Context }) => context
-	return setup<Context, Event, typeof actors, {}, { problem: undefined }>({
+	const model = setup<Context, Event, typeof actors, {}, { problem: undefined }>({
 		actors,
 		actions: {
 			problem: assign({
@@ -63,7 +58,25 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 					'error' in event && event.error instanceof Error ? event.error.message : 'captureFailed'
 			})
 		}
-	}).createMachine({
+	})
+	const saveStep = (payload: (args: { context: Context }) => SaveArticleRequest) =>
+		model.createStateConfig({
+			invoke: {
+				src: 'save',
+				input: payload,
+				onDone: [
+					{
+						guard: ({ event }) =>
+							(event.output.kind === 'saved' || event.output.kind === 'duplicate') &&
+							event.output.ready,
+						target: 'idle'
+					},
+					{ target: 'failing', actions: assign({ failure: 'unknown' }) }
+				],
+				onError: { target: 'failing', actions: 'problem' }
+			}
+		})
+	return model.createMachine({
 		id: 'article-queue',
 		initial: 'idle',
 		context: {
@@ -236,21 +249,19 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 						message: { text: t('capture.status.saving'), variant: 'info' },
 						cancelable: false
 					}),
-				invoke: {
-					src: 'save',
-					input,
-					onDone: [
-						{
-							guard: ({ event }) =>
-								(event.output.kind === 'saved' || event.output.kind === 'duplicate') &&
-								event.output.ready,
-							target: 'idle'
-						},
-						{ target: 'failing', actions: assign({ failure: 'unknown' }) }
-					],
-					onError: { target: 'failing', actions: 'problem' }
-				}
+				always: [
+					{ guard: ({ context }) => !!context.content, target: 'savingContent' },
+					{ target: 'attachingExisting' }
+				]
 			},
+			savingContent: saveStep(({ context }) => ({
+				url: required(context.current).url,
+				content: required(context.content)
+			})),
+			attachingExisting: saveStep(({ context }) => ({
+				url: required(context.current).url,
+				contentId: context.operationId
+			})),
 			failing: {
 				entry: ({ context }) =>
 					cap.report({
