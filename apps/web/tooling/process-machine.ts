@@ -1,4 +1,14 @@
-import { assign, fromCallback, sendTo, setup, stateIn } from 'xstate'
+import {
+	assertEvent,
+	assign,
+	fromCallback,
+	sendTo,
+	setup,
+	stateIn,
+	raise,
+	and,
+	enqueueActions
+} from 'xstate'
 import { appendDiagnostic, deploymentHttpStatus } from './process-diagnostics.ts'
 export type ProcessInput = { command: string; env: NodeJS.ProcessEnv }
 export type ProcessEvent =
@@ -16,6 +26,8 @@ export type ProcessEvent =
 				| 'SCOPE_CHECK_FAILED'
 				| 'RELEASED'
 				| 'RELEASE_FAILED'
+				| 'SPAWN_FAILED'
+				| 'RUNTIME_FAILED'
 	  }
 export type ProcessResult = {
 	outcome: 'succeeded' | 'failed' | 'cancelled'
@@ -34,28 +46,16 @@ export type ProcessOpen = (
 	input: ProcessInput,
 	report: (event: ProcessEvent) => void
 ) => ProcessPort
-type Issue = 'spawn' | 'process' | 'signal' | 'scope' | 'release'
 type Context = {
 	input: ProcessInput | undefined
-	close: { code: number | null } | undefined
+	code: number | null
 	diagnostic: string
-	issues: Issue[]
 	result: ProcessResult | undefined
 }
 type Command = { type: 'SIGTERM' | 'SIGKILL' | 'CHECK_SCOPE' | 'RELEASE' }
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Missing process resource')
 	return value
-}
-function result(context: Context, outcome: ProcessResult['outcome']): ProcessResult {
-	return {
-		outcome,
-		code: context.close?.code ?? null,
-		startFailed: context.issues.includes('spawn'),
-		signalFailed: context.issues.includes('signal'),
-		cleanupFailed: context.issues.includes('scope') || context.issues.includes('release'),
-		httpStatus: deploymentHttpStatus(context.diagnostic)
-	}
 }
 /** Own spawn confirmation, group termination, stdio close and explicit resource release. */
 export function createProcessMachine(open: ProcessOpen) {
@@ -66,8 +66,8 @@ export function createProcessMachine(open: ProcessOpen) {
 		} catch {
 			sendBack({ type: 'OPEN_FAILED' })
 		}
-		receive((event) => {
-			if (event.type === 'RELEASE') {
+		const commands: Record<Command['type'], () => void> = {
+			RELEASE: () => {
 				const owned = port
 				port = undefined
 				try {
@@ -76,22 +76,25 @@ export function createProcessMachine(open: ProcessOpen) {
 				} catch {
 					sendBack({ type: 'RELEASE_FAILED' })
 				}
-				return
-			}
-			if (event.type === 'CHECK_SCOPE') {
+			},
+			CHECK_SCOPE: () => {
 				try {
-					sendBack({ type: port?.isAlive() ? 'SCOPE_PRESENT' : 'SCOPE_GONE' })
+					sendBack({ type: required(port).isAlive() ? 'SCOPE_PRESENT' : 'SCOPE_GONE' })
 				} catch {
 					sendBack({ type: 'SCOPE_CHECK_FAILED' })
 				}
-				return
-			}
+			},
+			SIGTERM: () => signal('SIGTERM'),
+			SIGKILL: () => signal('SIGKILL')
+		}
+		function signal(value: 'SIGTERM' | 'SIGKILL') {
 			try {
-				required(port).signal(event.type)
+				required(port).signal(value)
 			} catch {
 				sendBack({ type: 'SIGNAL_FAILED' })
 			}
-		})
+		}
+		receive((event) => commands[event.type]())
 		return () => {
 			// Emergency parent stop is unconditional abort; graceful release consumes the handle above.
 			const owned = port
@@ -111,32 +114,58 @@ export function createProcessMachine(open: ProcessOpen) {
 		ProcessEvent,
 		{ process: typeof processActor },
 		{},
-		{ issue: { kind: Issue }; recordClose: undefined },
-		{ cancelled: undefined },
+		{ recordClose: undefined; finish: { outcome: ProcessResult['outcome'] } },
+		{
+			cancelled: undefined
+			closed: undefined
+			successful: undefined
+			spawnFailed: undefined
+			signalFailed: undefined
+			cleanupFailed: undefined
+		},
 		never,
 		string,
 		ProcessInput,
 		ProcessResult
 	>({
 		actors: { process: processActor },
-		guards: { cancelled: stateIn({ owning: { cancellation: 'requested' } }) },
+		guards: {
+			spawnFailed: stateIn({ owning: { startup: 'failed' } }),
+			signalFailed: stateIn({ owning: { signaling: 'failed' } }),
+			cleanupFailed: stateIn({ owning: { cleanup: 'failed' } }),
+			cancelled: stateIn({ owning: { cancellation: 'requested' } }),
+			closed: stateIn({ owning: { completion: 'closed' } }),
+			successful: and([
+				stateIn({ owning: { completion: { closed: 'successful' } } }),
+				stateIn({ owning: { startup: 'healthy' } }),
+				stateIn({ owning: { runtime: 'healthy' } }),
+				stateIn({ owning: { signaling: 'healthy' } }),
+				stateIn({ owning: { cleanup: 'healthy' } })
+			])
+		},
 		actions: {
-			issue: assign(({ context }, { kind }) => ({
-				issues: [...new Set([...context.issues, kind])]
-			})),
+			finish: enqueueActions(({ context, check, enqueue }, { outcome }) => {
+				enqueue.assign({
+					result: {
+						outcome,
+						code: context.code,
+						httpStatus: deploymentHttpStatus(context.diagnostic),
+						startFailed: check('spawnFailed'),
+						signalFailed: check('signalFailed'),
+						cleanupFailed: check('cleanupFailed')
+					}
+				})
+			}),
 			recordClose: assign({
-				close: ({ event }) => {
-					if (event.type !== 'CLOSE') throw new Error('Expected process close')
-					return { code: event.code }
+				code: ({ event }) => {
+					assertEvent(event, 'CLOSE')
+					return event.code
 				}
 			})
 		}
 	})
 	const gone = [
-		{
-			guard: ({ context }: { context: Context }) => context.close !== undefined,
-			target: '#process-lifecycle.releasing'
-		},
+		{ guard: 'closed' as const, target: '#process-lifecycle.releasing' },
 		{ target: '#process-lifecycle.waitingForClose' }
 	]
 	const checkingScope = model.createStateConfig({
@@ -145,30 +174,21 @@ export function createProcessMachine(open: ProcessOpen) {
 			SCOPE_PRESENT: 'waiting',
 			SCOPE_GONE: gone,
 			SCOPE_CHECK_FAILED: {
-				target: 'waiting',
-				actions: { type: 'issue', params: { kind: 'scope' } }
+				target: 'waiting'
 			}
 		}
 	})
-	const terminal = (outcome: ProcessResult['outcome']) =>
-		model.createStateConfig({
-			type: 'final',
-			entry: assign({
-				result: ({ context }) => result(context, outcome),
-				input: undefined,
-				diagnostic: '',
-				close: undefined,
-				issues: []
-			})
-		})
+	const terminal = model.createStateConfig({
+		type: 'final',
+		entry: assign({ input: undefined, diagnostic: '', code: null })
+	})
 	return model.createMachine({
 		id: 'preview-process',
 		initial: 'owning',
 		context: ({ input }) => ({
 			input,
-			close: undefined,
+			code: null,
 			diagnostic: '',
-			issues: [],
 			result: undefined
 		}),
 		output: ({ context }) => required(context.result),
@@ -181,67 +201,84 @@ export function createProcessMachine(open: ProcessOpen) {
 						actions: assign({
 							diagnostic: ({ context, event }) => appendDiagnostic(context.diagnostic, event.text)
 						})
-					},
-					SIGNAL_FAILED: { actions: { type: 'issue', params: { kind: 'signal' } } }
+					}
 				},
 				states: {
 					cancellation: {
 						initial: 'active',
 						states: { active: { on: { CANCEL: 'requested' } }, requested: {} }
 					},
+					completion: {
+						initial: 'pending',
+						states: {
+							pending: {
+								on: {
+									CLOSE: [
+										{
+											guard: ({ event }) => event.code === 0,
+											target: 'closed.successful',
+											actions: 'recordClose'
+										},
+										{ target: 'closed.unsuccessful', actions: 'recordClose' }
+									]
+								}
+							},
+							closed: { initial: 'unsuccessful', states: { successful: {}, unsuccessful: {} } }
+						}
+					},
+					startup: {
+						initial: 'healthy',
+						states: { healthy: { on: { SPAWN_FAILED: 'failed' } }, failed: {} }
+					},
+					runtime: {
+						initial: 'healthy',
+						states: { healthy: { on: { RUNTIME_FAILED: 'failed' } }, failed: {} }
+					},
+					signaling: {
+						initial: 'healthy',
+						states: { healthy: { on: { SIGNAL_FAILED: 'failed' } }, failed: {} }
+					},
+					cleanup: {
+						initial: 'healthy',
+						states: {
+							healthy: { on: { SCOPE_CHECK_FAILED: 'failed', RELEASE_FAILED: 'failed' } },
+							failed: {}
+						}
+					},
 					lifecycle: {
 						id: 'process-lifecycle',
 						initial: 'opening',
 						on: {
-							CLOSE: { actions: 'recordClose' },
-							PROCESS_ERROR: { actions: { type: 'issue', params: { kind: 'process' } } }
+							PROCESS_ERROR: { actions: raise({ type: 'RUNTIME_FAILED' }) }
 						},
 						states: {
 							opening: {
 								on: {
-									SPAWNED: 'running',
-									CANCEL: 'cancellingBeforeSpawn',
+									SPAWNED: [{ guard: 'cancelled', target: 'terminating' }, { target: 'running' }],
 									OPEN_FAILED: {
 										target: 'releasing',
-										actions: { type: 'issue', params: { kind: 'spawn' } }
+										actions: raise({ type: 'SPAWN_FAILED' })
 									},
 									PROCESS_ERROR: {
 										target: 'failedSpawn',
-										actions: { type: 'issue', params: { kind: 'spawn' } }
+										actions: raise({ type: 'SPAWN_FAILED' })
 									},
 									CLOSE: {
 										target: 'checkingAfterClose',
-										actions: ['recordClose', { type: 'issue', params: { kind: 'spawn' } }]
-									}
-								}
-							},
-							cancellingBeforeSpawn: {
-								on: {
-									SPAWNED: 'terminating',
-									OPEN_FAILED: {
-										target: 'releasing',
-										actions: { type: 'issue', params: { kind: 'spawn' } }
-									},
-									PROCESS_ERROR: {
-										target: 'failedSpawn',
-										actions: { type: 'issue', params: { kind: 'spawn' } }
-									},
-									CLOSE: {
-										target: 'checkingAfterClose',
-										actions: ['recordClose', { type: 'issue', params: { kind: 'spawn' } }]
+										actions: raise({ type: 'SPAWN_FAILED' })
 									}
 								}
 							},
 							failedSpawn: {
-								on: { CLOSE: { target: 'checkingAfterClose', actions: 'recordClose' } }
+								on: { CLOSE: { target: 'checkingAfterClose' } }
 							},
 							running: {
 								on: {
 									CANCEL: 'terminating',
-									CLOSE: { target: 'checkingAfterClose', actions: 'recordClose' },
+									CLOSE: { target: 'checkingAfterClose' },
 									PROCESS_ERROR: {
 										target: 'terminating',
-										actions: { type: 'issue', params: { kind: 'process' } }
+										actions: raise({ type: 'RUNTIME_FAILED' })
 									}
 								}
 							},
@@ -251,53 +288,58 @@ export function createProcessMachine(open: ProcessOpen) {
 									SCOPE_GONE: 'releasing',
 									SCOPE_PRESENT: 'terminating',
 									SCOPE_CHECK_FAILED: {
-										target: 'terminating',
-										actions: { type: 'issue', params: { kind: 'scope' } }
+										target: 'terminating'
 									}
 								}
 							},
 							terminating: {
 								entry: sendTo('process', { type: 'SIGTERM' }),
-								on: { CLOSE: { target: '.checking', actions: 'recordClose' } },
+								on: { CLOSE: { target: '.checking' } },
 								after: { 5000: 'killing' },
 								initial: 'checking',
 								states: { checking: checkingScope, waiting: { after: { 100: 'checking' } } }
 							},
 							killing: {
 								entry: sendTo('process', { type: 'SIGKILL' }),
-								on: { CLOSE: { target: '.checking', actions: 'recordClose' } },
+								on: { CLOSE: { target: '.checking' } },
 								initial: 'checking',
 								states: { checking: checkingScope, waiting: { after: { 100: 'checking' } } }
 							},
-							waitingForClose: { on: { CLOSE: { target: 'releasing', actions: 'recordClose' } } },
+							waitingForClose: { on: { CLOSE: { target: 'releasing' } } },
 							releasing: {
 								entry: sendTo('process', { type: 'RELEASE' }),
 								on: {
 									RELEASED: 'selectingOutcome',
 									RELEASE_FAILED: {
-										target: 'selectingOutcome',
-										actions: { type: 'issue', params: { kind: 'release' } }
+										target: 'selectingOutcome'
 									}
 								}
 							},
 							selectingOutcome: {
 								always: [
-									{ guard: 'cancelled', target: '#preview-process.cancelled' },
 									{
-										guard: ({ context }) =>
-											context.close?.code === 0 && context.issues.length === 0,
-										target: '#preview-process.succeeded'
+										guard: 'cancelled',
+										target: '#preview-process.cancelled',
+										actions: { type: 'finish', params: { outcome: 'cancelled' } }
 									},
-									{ target: '#preview-process.failed' }
+									{
+										guard: 'successful',
+										target: '#preview-process.succeeded',
+										actions: { type: 'finish', params: { outcome: 'succeeded' } }
+									},
+									{
+										target: '#preview-process.failed',
+										actions: { type: 'finish', params: { outcome: 'failed' } }
+									}
 								]
 							}
 						}
 					}
 				}
 			},
-			succeeded: terminal('succeeded'),
-			failed: terminal('failed'),
-			cancelled: terminal('cancelled')
+			succeeded: terminal,
+			failed: terminal,
+			cancelled: terminal
 		}
 	})
 }

@@ -67,7 +67,7 @@ it('escalates once after the grace period and waits for close and the process sc
 	expect(f.actor.getSnapshot().context).toMatchObject({
 		input: undefined,
 		diagnostic: '',
-		close: undefined
+		code: null
 	})
 })
 it('cancels escalation only after close and scope disappearance', async () => {
@@ -200,6 +200,41 @@ it('does not release on a failed scope probe and reports cleanup failure after r
 	expect(await toPromise(f.actor)).toMatchObject({
 		outcome: 'failed',
 		startFailed: false,
+		cleanupFailed: true
+	})
+})
+
+it('keeps completion independent from descendant cleanup and ignores duplicate close data', async () => {
+	const f = fixture()
+	f.emit({ type: 'CLOSE', code: 7 })
+	expect(
+		f.actor.getSnapshot().matches({ owning: { completion: { closed: 'unsuccessful' } } })
+	).toBe(true)
+	expect(f.actor.getSnapshot().matches({ owning: { lifecycle: 'terminating' } })).toBe(true)
+	f.emit({ type: 'CLOSE', code: 0 })
+	f.gone()
+	f.clock.increment(100)
+	expect(await toPromise(f.actor)).toMatchObject({ outcome: 'failed', code: 7 })
+})
+
+it('retains independent failures through cleanup and cancellation', async () => {
+	const options = { throwOnSignal: true, throwOnProbe: true, pausedSpawn: true }
+	const f = fixture(options)
+	f.actor.send({ type: 'CANCEL' })
+	f.emit({ type: 'PROCESS_ERROR' })
+	f.emit({ type: 'CLOSE', code: -2 })
+	expect(f.actor.getSnapshot().matches({ owning: { startup: 'failed' } })).toBe(true)
+	expect(f.actor.getSnapshot().matches({ owning: { signaling: 'failed' } })).toBe(true)
+	expect(f.actor.getSnapshot().matches({ owning: { cleanup: 'failed' } })).toBe(true)
+	expect(f.release).not.toHaveBeenCalled()
+	options.throwOnProbe = false
+	f.gone()
+	f.clock.increment(100)
+	expect(await toPromise(f.actor)).toMatchObject({
+		outcome: 'cancelled',
+		code: -2,
+		startFailed: true,
+		signalFailed: true,
 		cleanupFailed: true
 	})
 })
