@@ -6,15 +6,19 @@ export type TransactionResource = {
 	write?: WriteHandle
 	article?: Article | null
 }
-/** Native transaction mechanics only; eligibility and mutations remain with each domain operation. */
-export function transactionLifecycle(db: Pick<Db, 'beginTransaction'>, check: () => void) {
+/** Scope is checked at transaction admission and the atomic commit boundary.
+ * The owning actor drains an opened transaction; domain I/O leaves do not police its lifetime. */
+export function transactionLifecycle(db: Pick<Db, 'beginTransaction'>, isCurrent: () => boolean) {
+	const assertCurrent = () => {
+		if (!isCurrent()) throw new Error('Library scope expired')
+	}
 	return {
 		open: (): TransactionResource => {
-			check()
+			assertCurrent()
 			return { tx: db.beginTransaction() }
 		},
 		commit: (resource: TransactionResource) => {
-			check()
+			assertCurrent()
 			const write = resource.tx.commit()
 			resource.write = write
 			return write

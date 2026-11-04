@@ -45,16 +45,22 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 		{ type: 'SHUTDOWN' },
 		typeof actors,
 		{},
-		{ shutdownChild: undefined },
-		{ stopping: undefined },
+		{ shutdownChild: undefined; scopeChanged: undefined },
+		{ stopping: undefined; scopeLost: undefined },
 		never,
 		string,
 		SaveRequest,
 		SaveResult
 	>({
 		actors,
-		guards: { stopping: stateIn({ running: { control: 'stopping' } }) },
+		guards: {
+			stopping: stateIn({ running: { control: 'stopping' } }),
+			scopeLost: () => !capability.isCurrent()
+		},
 		actions: {
+			scopeChanged: assign(({ context }) => ({
+				result: { kind: 'scopeChanged', operationId: context.operationId } satisfies SaveResult
+			})),
 			shutdownChild: enqueueActions(({ self, enqueue }) => {
 				for (const id of ['intent', 'publish']) {
 					const child = self.getSnapshot().children[id]
@@ -164,8 +170,18 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 						}
 					},
 					work: {
-						initial: 'preparing',
+						initial: 'admitting',
 						states: {
+							admitting: {
+								always: [
+									{
+										guard: 'scopeLost',
+										target: 'finishing',
+										actions: 'scopeChanged'
+									},
+									{ target: 'preparing' }
+								]
+							},
 							preparing: {
 								invoke: {
 									src: 'prepare',
@@ -176,19 +192,31 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 									onDone: [
 										{ guard: 'stopping', target: 'finishing' },
 										{
+											guard: 'scopeLost',
+											target: 'finishing',
+											actions: 'scopeChanged'
+										},
+										{
 											target: 'intent',
 											actions: assign({ prepared: ({ event }) => event.output, request: undefined })
 										}
 									],
-									onError: {
-										target: 'finishing',
-										actions: assign(({ context }) => ({
-											result: {
-												kind: 'failed',
-												operationId: context.operationId
-											} satisfies SaveResult
-										}))
-									}
+									onError: [
+										{
+											guard: 'scopeLost',
+											target: 'finishing',
+											actions: 'scopeChanged'
+										},
+										{
+											target: 'finishing',
+											actions: assign(({ context }) => ({
+												result: {
+													kind: 'failed',
+													operationId: context.operationId
+												} satisfies SaveResult
+											}))
+										}
+									]
 								}
 							},
 							intent: stage('intent', 'publish'),

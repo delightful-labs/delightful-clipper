@@ -14,37 +14,33 @@ import type { Article, ArticleDraft, LibraryArticle } from '../../contracts/arti
 import type { SaveRequest, SaveResult, SyncReceipt } from '../../contracts/storage.js'
 import { app } from './schema.js'
 type Resource = TransactionResource
+/** Reads stay bound to this DB/library; owning actors gate admission and late-result consumption.
+ * Native write admission and commit scope protection live in transactionLifecycle. */
 export function createArticleRecords<S extends Snapshot<SaveResult>>(
 	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean,
 	content: ActorLogic<S, { type: 'SHUTDOWN' }, SaveRequest>
 ) {
-	const check = () => {
-		if (!isCurrent()) throw new Error('Article scope expired')
-	}
 	const read = async (id: string) => {
-		check()
 		const row = await db.one(app.articles.where({ id: uuid(id), libraryId }), {
 			tier: ReadTier.LocalFirst
 		})
-		check()
+
 		return row ? articleRecord(row, libraryId) : null
 	}
 	const document = async (id: string) => {
-		check()
 		const row = await db.one(app.documents.where({ id: uuid(id), libraryId }), {
 			tier: ReadTier.LocalFirst
 		})
-		check()
+
 		return row
 	}
 	const intent = async (id: string) => {
-		check()
 		const row = await db.one(app.storageOperations.where({ id: uuid(id), libraryId }), {
 			tier: ReadTier.LocalFirst
 		})
-		check()
+
 		return row !== null
 	}
 	const ensure = createWorkspaceCreationTransaction<
@@ -54,13 +50,12 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 		SyncReceipt,
 		WriteHandle
 	>({
-		...transactionLifecycle(db, check),
+		...transactionLifecycle(db, isCurrent),
 		readLocal: async (r, a) => {
-			check()
 			const row = await r.tx.one(app.articles.where({ id: a.draft.article.id, libraryId }), {
 				tier: ReadTier.LocalFirst
 			})
-			check()
+
 			return { article: row, available: false }
 		},
 		assess: (rows) =>
@@ -68,7 +63,6 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 				? { outcome: 'eligible' }
 				: { outcome: 'blocked', reason: 'Article already exists or is unavailable' },
 		stage: (r, a) => {
-			check()
 			const { id, ...row } = articleRecord(a.draft.article, libraryId)
 			r.tx.insert(app.articles, row, { id })
 			return transactionReceipt(r)
@@ -81,9 +75,8 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 		SyncReceipt,
 		WriteHandle
 	>({
-		...transactionLifecycle(db, check),
+		...transactionLifecycle(db, isCurrent),
 		readLocal: async (r, a) => {
-			check()
 			const article = await r.tx.one(app.articles.where({ id: a.draft.article.id, libraryId }), {
 				tier: ReadTier.LocalFirst
 			})
@@ -92,7 +85,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 				(await r.tx.one(app.documents.where({ id: a.draft.target, libraryId }), {
 					tier: ReadTier.LocalFirst
 				})) !== null
-			check()
+
 			return { article, available }
 		},
 		assess: (rows) =>
@@ -103,14 +96,12 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			stageAttachment({
 				existingArticle: !!r.article,
 				attachContent: () => {
-					check()
 					r.tx.update(app.articles, a.draft.article.id, {
 						contentId: a.draft.target,
 						failure: null
 					})
 				},
 				createArticle: () => {
-					check()
 					const { id, ...row } = articleRecord(a.draft.article, libraryId)
 					r.tx.insert(app.articles, { ...row, contentId: a.draft.target, failure: null }, { id })
 				},
@@ -125,13 +116,12 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 		SyncReceipt,
 		WriteHandle
 	>({
-		...transactionLifecycle(db, check),
+		...transactionLifecycle(db, isCurrent),
 		readLocal: async (r, a) => {
-			check()
 			const row = await r.tx.one(app.articles.where({ id: uuid(a.draft.id), libraryId }), {
 				tier: ReadTier.LocalFirst
 			})
-			check()
+
 			return row
 		},
 		assess: (row) =>
@@ -139,7 +129,6 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 				? { outcome: 'eligible' }
 				: { outcome: 'blocked', reason: 'Article is complete or unavailable' },
 		stage: (r, a) => {
-			check()
 			if (a.draft.code !== null && a.draft.code.length > 100)
 				throw new Error('Invalid article failure')
 			r.tx.update(app.articles, a.draft.id, { failure: a.draft.code })
@@ -189,7 +178,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 				app.articles.where({ libraryId, contentId: null }),
 				{
 					onUpdate: (rows) => {
-						if (isCurrent()) next(rows.map((row) => articleRecord(row, libraryId)))
+						next(rows.map((row) => articleRecord(row, libraryId)))
 					},
 					onError: error
 				},

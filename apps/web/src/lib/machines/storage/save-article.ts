@@ -118,7 +118,7 @@ export function createSaveArticleMachine<
 		})
 	return model.createMachine({
 		id: 'save-article',
-		initial: 'preparing',
+		initial: 'admitting',
 		context: ({ input }) => ({
 			request: input,
 			draft: undefined,
@@ -129,6 +129,7 @@ export function createSaveArticleMachine<
 		output: ({ context }) => required(context.result),
 		on: { SHUTDOWN: { actions: 'close' } },
 		states: {
+			admitting: { always: [...interrupts, { target: 'preparing' }] },
 			preparing: {
 				invoke: {
 					src: 'prepare',
@@ -230,7 +231,7 @@ export function createSaveArticleMachine<
 						},
 						{ target: 'unknown' }
 					],
-					onError: 'unknown'
+					onError: [...interrupts, { target: 'unknown' }]
 				}
 			},
 			content: {

@@ -96,3 +96,55 @@ it('reports actual receipt rejection through the sync machine without invoking a
 	expect(actor.getSnapshot().value).toBe('rejected')
 	expect(global).toHaveBeenCalledTimes(1)
 })
+
+it.each(['before', 'resolve', 'reject'] as const)(
+	'keeps content-save scope enforcement in its owner during %s preparation',
+	async (mode) => {
+		const request = {
+			operationId: crypto.randomUUID(),
+			title: 'Title',
+			text: 'Old account content',
+			mediaType: 'text/plain',
+			bytes: new Uint8Array([1])
+		}
+		const draft = await prepareSave(crypto.randomUUID(), request)
+		let current = mode !== 'before'
+		const gate = Promise.withResolvers<void>(),
+			entered = Promise.withResolvers<void>()
+		const open = vi.fn(() => ({})),
+			commit = vi.fn(() => ({}))
+		const stage = createWorkspaceCreationTransaction<
+			PreparedSave,
+			object,
+			null,
+			SyncReceipt,
+			object
+		>({
+			open,
+			readLocal: async () => null,
+			assess: () => ({ outcome: 'eligible' }),
+			stage: () => ({ global: async () => {} }),
+			commit,
+			persistLocal: async () => {},
+			rollback: () => true
+		})
+		const prepare = vi.fn(async () => {
+			entered.resolve()
+			await gate.promise
+			return draft
+		})
+		const actor = createActor(
+			createSaveRecordMachine({ isCurrent: () => current, prepare, intent: stage, publish: stage }),
+			{ input: request }
+		).start()
+		if (mode !== 'before') {
+			await entered.promise
+			current = false
+			if (mode === 'reject') gate.reject(new Error('Old account preparation failed'))
+			else gate.resolve()
+		} else expect(prepare).not.toHaveBeenCalled()
+		expect((await toPromise(actor)).kind).toBe('scopeChanged')
+		expect(open).not.toHaveBeenCalled()
+		expect(commit).not.toHaveBeenCalled()
+	}
+)

@@ -30,30 +30,28 @@ function canPublishContent(rows: StageRows, draft: PreparedSave, operationId: st
 	)
 }
 
+/** Reads stay bound to this DB/library; owning actors gate admission and late-result consumption.
+ * Native write admission and commit scope protection live in transactionLifecycle. */
 export function createLibraryRecords(
 	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
-	const check = () => {
-		if (!isCurrent()) throw new Error('Library scope expired')
-	}
 	const readLocal = async (
 		resource: Resource,
 		attempt: { operationId: string; draft: PreparedSave }
 	) => {
-		check()
 		const row = await resource.tx.one(
 			app.storageOperations.where({ id: attempt.operationId, libraryId }),
 			{ tier: ReadTier.LocalFirst }
 		)
-		check()
+
 		const article = attempt.draft.articleId
 			? await resource.tx.one(app.articles.where({ id: attempt.draft.articleId, libraryId }), {
 					tier: ReadTier.LocalFirst
 				})
 			: null
-		check()
+
 		resource.article = article
 		return { intent: row, article }
 	}
@@ -64,7 +62,7 @@ export function createLibraryRecords(
 		SyncReceipt,
 		WriteHandle
 	>({
-		...transactionLifecycle(db, check),
+		...transactionLifecycle(db, isCurrent),
 		readLocal,
 		assess: (rows, attempt) =>
 			canBindIntent(rows, attempt.draft)
@@ -75,19 +73,16 @@ export function createLibraryRecords(
 				articleLinked: !!draft.articleId,
 				existingArticle: !!resource.article,
 				insertIntent: () => {
-					check()
 					const { id, ...intent } = draft.intent
 					resource.tx.insert(app.storageOperations, intent, { id })
 				},
 				bindArticle: () => {
-					check()
 					resource.tx.update(app.articles, required(draft.articleId), {
 						operationId: draft.intent.id,
 						failure: null
 					})
 				},
 				createArticle: () => {
-					check()
 					resource.tx.insert(
 						app.articles,
 						{
@@ -111,7 +106,7 @@ export function createLibraryRecords(
 		SyncReceipt,
 		WriteHandle
 	>({
-		...transactionLifecycle(db, check),
+		...transactionLifecycle(db, isCurrent),
 		readLocal,
 		assess: (rows, attempt) =>
 			canPublishContent(rows, attempt.draft, attempt.operationId)
@@ -122,7 +117,6 @@ export function createLibraryRecords(
 				articleLinked: !!draft.articleId,
 				hasSource: !!draft.source,
 				publishContent: () => {
-					check()
 					const { id: assetId, ...asset } = draft.asset
 					resource.tx.insert(app.assets, asset, { id: assetId })
 					const { id: snapshotId, ...snapshot } = draft.snapshot
@@ -131,14 +125,12 @@ export function createLibraryRecords(
 					resource.tx.insert(app.documents, document, { id })
 				},
 				attachContent: () => {
-					check()
 					resource.tx.update(app.articles, required(draft.articleId), {
 						contentId: draft.document.id,
 						failure: null
 					})
 				},
 				publishSource: () => {
-					check()
 					const { id, ...source } = required(draft.source)
 					resource.tx.insert(app.articleSources, source, { id })
 				},
@@ -150,44 +142,37 @@ export function createLibraryRecords(
 		binding: Object.freeze({}),
 		saveMachine: createSaveRecordMachine({
 			isCurrent,
-			prepare: (request) => {
-				check()
-				return prepareSave(libraryId, request)
-			},
+			prepare: (request) => prepareSave(libraryId, request),
 			intent,
 			publish
 		}),
 		readCapabilities: {
 			isCurrent,
 			document: async (id) => {
-				check()
 				const article = await db.one(app.articles.where({ id, libraryId }), {
 					tier: ReadTier.LocalFirst
 				})
 				const row = await db.one(app.documents.where({ id: article?.contentId ?? id, libraryId }), {
 					tier: ReadTier.LocalFirstUnlessEmpty
 				})
-				check()
+
 				return row && article ? { ...row, id: article.id } : row
 			},
 			snapshot: async (id) => {
-				check()
 				const row = await db.one(app.snapshots.where({ id, libraryId }), {
 					tier: ReadTier.LocalFirstUnlessEmpty
 				})
-				check()
+
 				return row
 			},
 			asset: async (id) => {
-				check()
 				const row = await db.one(app.assets.where({ id, libraryId }), {
 					tier: ReadTier.LocalFirstUnlessEmpty
 				})
-				check()
+
 				return row
 			},
 			source: async (id, signal) => {
-				check()
 				signal.throwIfAborted()
 				const article = await db.one(app.articles.where({ id, libraryId }), {
 					tier: ReadTier.LocalFirst
@@ -196,7 +181,7 @@ export function createLibraryRecords(
 				const row = await db.one(app.articleSources.where({ id: target, libraryId }), {
 					tier: ReadTier.LocalFirst
 				})
-				check()
+
 				signal.throwIfAborted()
 				return row && article && row.documentId === target
 					? { ...row, id: article.id, documentId: article.id, submittedUrl: article.url }
@@ -209,19 +194,17 @@ export function createLibraryRecords(
 		articles: createArticleRecords(db, libraryId, isCurrent, records.saveMachine),
 		isCurrent,
 		hasDocument: async (id: string) => {
-			check()
 			const row = await db.one(app.documents.where({ id, libraryId }), {
 				tier: ReadTier.LocalFirstUnlessEmpty
 			})
-			check()
+
 			return row !== null
 		},
 		hasIntent: async (id: string) => {
-			check()
 			const row = await db.one(app.storageOperations.where({ id, libraryId }), {
 				tier: ReadTier.LocalFirstUnlessEmpty
 			})
-			check()
+
 			return row !== null
 		},
 		subscribe: (
@@ -232,7 +215,7 @@ export function createLibraryRecords(
 				app.documents.where({ libraryId }),
 				{
 					onUpdate: (rows) => {
-						if (isCurrent()) next(rows)
+						next(rows)
 					},
 					onError: error
 				},
