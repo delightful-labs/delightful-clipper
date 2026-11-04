@@ -19,6 +19,7 @@ export type WorkerInput =
 	| { type: 'STOP' | 'WAKE' }
 	| { type: 'CANCEL' | 'RETRY'; id: string }
 export type WorkerOutput =
+	| { type: 'WORKER_FAILED' }
 	| WorkerCall
 	| { type: 'CANCEL_CALL'; id: string }
 	| { type: 'STATUS'; id: string; message: WorkflowMessage; cancelable: boolean }

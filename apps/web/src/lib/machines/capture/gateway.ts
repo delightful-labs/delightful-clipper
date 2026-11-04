@@ -14,7 +14,8 @@ export type GatewayResult =
 			extraction: Extraction | undefined
 	  }
 	| { kind: 'failed'; error: unknown }
-type Input = { url: string; signal: AbortSignal; mode: 'resolve' | 'extract' }
+export type GatewayInput = { url: string; signal: AbortSignal; mode: 'resolve' | 'extract' }
+type Input = GatewayInput
 type Context = Input & {
 	controller: AbortController
 	current: string

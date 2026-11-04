@@ -1,4 +1,6 @@
-import { spawn } from 'node:child_process'
+import { createActor, toPromise } from 'xstate'
+import { createProcessMachine } from './process-machine.js'
+import { openPreviewProcess } from './process-io.js'
 import type { PreviewJazzApp } from './preview-machine.ts'
 
 const serverUrl = 'https://v2.sync.jazz.tools/'
@@ -84,57 +86,32 @@ export function previewEnvironment(appId: string): NodeJS.ProcessEnv {
 	}
 }
 
-/** Own one process group until close, including interrupted pnpm subprocesses. */
-export function run(command: string, env: NodeJS.ProcessEnv, signal: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		signal.throwIfAborted()
-		const grouped = process.platform !== 'win32'
-		const child = spawn('pnpm', [command], {
-			env,
-			detached: grouped,
-			// Jazz errors can contain server payloads. Never echo its private environment/output.
-			stdio: command === 'build' ? 'inherit' : ['ignore', 'ignore', 'pipe']
-		})
-		let deploymentError = ''
-		child.stderr?.on('data', (chunk: Buffer) => {
-			// Retain only a bounded buffer; print no server text or credentials.
-			deploymentError = (deploymentError + chunk.toString()).slice(-16_384)
-		})
-		let killTimer: ReturnType<typeof setTimeout> | undefined
-		function kill(killSignal: NodeJS.Signals) {
-			if (!child.pid) return
-			try {
-				if (grouped) process.kill(-child.pid, killSignal)
-				else child.kill(killSignal)
-			} catch (error) {
-				if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error
-			}
+const processMachine = createProcessMachine(openPreviewProcess)
+/** Attach the caller's abort signal; the process machine owns escalation and close settlement. */
+export async function run(
+	command: string,
+	env: NodeJS.ProcessEnv,
+	signal: AbortSignal
+): Promise<void> {
+	signal.throwIfAborted()
+	const actor = createActor(processMachine, { input: { command, env } })
+	const abort = () => {
+		if (actor.getSnapshot().status === 'active') actor.send({ type: 'CANCEL' })
+	}
+	signal.addEventListener('abort', abort, { once: true })
+	try {
+		actor.start()
+		if (signal.aborted) abort()
+		const result = await toPromise(actor)
+		if (result.outcome === 'cancelled') throw new Error(`${command} cancelled`)
+		if (result.outcome === 'failed') {
+			if (result.startFailed) throw new Error(`Could not start ${command}`)
+			if (result.httpStatus)
+				console.error(`[preview-build] Jazz admin request failed with HTTP ${result.httpStatus}.`)
+			throw new Error(`${command} failed with exit code ${result.code}`)
 		}
-		function abort() {
-			kill('SIGTERM')
-			killTimer = setTimeout(() => kill('SIGKILL'), 5_000)
-			killTimer.unref()
-		}
-		function cleanup() {
-			signal.removeEventListener('abort', abort)
-			clearTimeout(killTimer)
-		}
-		signal.addEventListener('abort', abort, { once: true })
-		child.once('error', () => {
-			cleanup()
-			reject(new Error(`Could not start ${command}`))
-		})
-		child.once('close', (code) => {
-			cleanup()
-			if (signal.aborted) reject(new Error(`${command} cancelled`))
-			else if (code !== 0) {
-				const httpStatus = deploymentError.match(
-					/(?:Permissions head fetch|Schema publish|Schema fetch|Schema list fetch|Permissions publish|Migration publish) failed:\s*(\d{3})\b/
-				)?.[1]
-				if (httpStatus)
-					console.error(`[preview-build] Jazz admin request failed with HTTP ${httpStatus}.`)
-				reject(new Error(`${command} failed with exit code ${code}`))
-			} else resolve()
-		})
-	})
+	} finally {
+		signal.removeEventListener('abort', abort)
+		actor.stop()
+	}
 }

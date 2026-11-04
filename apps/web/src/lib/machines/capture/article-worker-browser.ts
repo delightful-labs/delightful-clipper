@@ -9,7 +9,10 @@ export function openArticleWorkerBrowser(
 	let unsubscribe: (() => void) | undefined
 	const offline = () => report({ type: 'CONNECTIVITY', online: false })
 	const online = () => report({ type: 'CONNECTIVITY', online: true })
-	worker.onmessage = (event) => report({ type: 'WORKER_MESSAGE', message: event.data })
+	worker.onmessage = (event) =>
+		event.data.type === 'WORKER_FAILED'
+			? report({ type: 'RESOURCE_ERROR' })
+			: report({ type: 'WORKER_MESSAGE', message: event.data })
 	worker.onerror = () => report({ type: 'RESOURCE_ERROR' })
 	const quiesce = () => {
 		const release = unsubscribe

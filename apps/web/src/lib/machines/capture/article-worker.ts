@@ -3,7 +3,8 @@ import { createActor } from 'xstate'
 import { createMachineObserver } from '../../diagnostics/machines.js'
 import { consoleSink } from '../../diagnostics/console-sink.js'
 import { createLogger } from 'delightful-local-first/diagnostics/logger'
-import { createArticleQueueMachine } from './article-queue.js'
+import { createArticleWorkerRuntimeMachine } from './article-worker-runtime.js'
+import { workerCoordination } from './article-worker-coordination.js'
 import { extractedCandidate, resolvedUrl } from '../../capture/source.js'
 import type {
 	QueueCapability,
@@ -121,30 +122,30 @@ function capability(libraryId: string): QueueCapability {
 		report: post
 	}
 }
-let actor: ReturnType<typeof createActor<ReturnType<typeof createArticleQueueMachine>>> | undefined
-let rows: import('../../contracts/articles.js').Article[] = []
-let stopped = false
+// One attachment per worker realm; lifecycle and buffered controls live in the runtime machine.
+let owner:
+	| ReturnType<typeof createActor<ReturnType<typeof createArticleWorkerRuntimeMachine>>>
+	| undefined
 self.onmessage = (event: MessageEvent<WorkerInput>) => {
 	const message = event.data
 	if (message.type === 'INIT') {
-		const inspectMachines = createMachineObserver(
-			createLogger('clipper:article-worker', { enabled: message.debug, sink: consoleSink }),
-			message.debug
-		)
-		// The lock lasts until the host has drained SDK writes and terminates this worker.
-		void navigator.locks.request('clipper.article-queue:' + message.libraryId, async () => {
-			if (stopped) return
-			actor = createActor(createArticleQueueMachine(capability(message.libraryId)), {
-				inspect: inspectMachines
-			}).start()
-			actor.send({ type: 'ROWS', rows })
-			await new Promise<void>(() => {})
-		})
+		if (owner) return
+		owner = createActor(
+			createArticleWorkerRuntimeMachine({
+				queue: capability(message.libraryId),
+				...workerCoordination(message.libraryId),
+				commandId: () => crypto.randomUUID(),
+				failed: () => post({ type: 'WORKER_FAILED' })
+			}),
+			{
+				inspect: createMachineObserver(
+					createLogger('clipper:article-worker', { enabled: message.debug, sink: consoleSink }),
+					message.debug
+				)
+			}
+		).start()
 		return
 	}
-	if (message.type === 'ROWS') rows = message.rows
-	if (message.type === 'STOP') stopped = true
-
 	if (message.type === 'REPLY') {
 		pending.get(message.id)?.resolve(message.reply)
 		pending.delete(message.id)
@@ -155,5 +156,5 @@ self.onmessage = (event: MessageEvent<WorkerInput>) => {
 		pending.delete(message.id)
 		return
 	}
-	actor?.send(message)
+	owner?.send(message)
 }

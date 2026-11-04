@@ -82,7 +82,9 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 			RETRY: {
 				actions: assign({
 					seen: ({ context, event }) =>
-						Object.fromEntries(Object.entries(context.seen).filter(([id]) => id !== event.id))
+						context.current?.id === event.id
+							? context.seen
+							: Object.fromEntries(Object.entries(context.seen).filter(([id]) => id !== event.id))
 				})
 			}
 		},

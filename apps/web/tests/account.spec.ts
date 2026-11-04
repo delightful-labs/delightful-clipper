@@ -708,3 +708,45 @@ test('a worker resumes a URL-only article after complete browser restart', async
 		await rm(profile, { recursive: true, force: true })
 	}
 })
+
+test('Retry from a second tab reaches the worker holding the library lock', async ({
+	page,
+	context
+}) => {
+	let attempts = 0
+	await context.route('**/api/capture/*', async (route) => {
+		const input: { operationId: string; url: string } = route.request().postDataJSON()
+		const base = { operationId: input.operationId, finalUrl: input.url }
+		if (route.request().url().endsWith('/resolve')) {
+			await route.fulfill({ json: base })
+			return
+		}
+		attempts++
+		if (attempts === 1) {
+			await route.fulfill({ status: 503, json: { code: 'gatewayUnavailable' } })
+			return
+		}
+		await route.fulfill({
+			json: {
+				...base,
+				candidate: {
+					title: 'Retried across tabs',
+					text: 'Saved after retry',
+					html: '<p>Saved after retry</p>'
+				}
+			}
+		})
+	})
+	await page.goto('/')
+	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/cross-tab-retry')
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+	const second = await context.newPage()
+	await second.goto('/')
+	await expect(second.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+	await second.getByRole('button', { name: 'Retry', exact: true }).click()
+	await expect(second.getByRole('link', { name: 'Retried across tabs', exact: true })).toBeVisible()
+	await expect(page.getByRole('link', { name: 'Retried across tabs', exact: true })).toBeVisible()
+	expect(attempts).toBe(2)
+	await second.close()
+})
