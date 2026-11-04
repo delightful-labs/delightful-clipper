@@ -125,3 +125,9 @@ The article repository's subscription adapter now starts an `article-collection`
 Publication uses an invoked callback mailbox rather than calling consumers inside a custom action: consumers can construct actors, which otherwise triggers XState's built-in-action construction warning. Machine logic is defined once; repository binding supplies subscription capabilities through `provide()`.
 
 Final collection validation: `pnpm verify` passes 252 tests/36 files and all source/build checks; all 24 browser cases and five production offline checks pass sequentially afterward. The final browser run has no XState custom-action construction warnings. An earlier run encountered Firefox `page.reload: NS_ERROR_FAILURE` in the cold rejected-deployment schema test; the final full run passes that case.
+
+## Separate storage stage actors
+
+`records.ts` now binds distinct intent and publication transaction actors directly to the save machine's existing states. The shared mode-dependent `stageLogic(stage)` and its `stage === ...` branches are removed. Named `canBindIntent` and `canPublishContent` predicates assess eligibility against rows read in the same transaction. Intent only creates the operation barrier and binds/creates the article; publication only inserts immutable content/provenance and attaches it. Transaction reads, lifecycle plumbing and receipt handling remain shared. Account-scope checks and optional-field projections remain adapter checks. Unknown-write barriers, local/global receipts, schema and product copy are unchanged.
+
+Stage-split validation: `pnpm verify` passes all 252 tests/36 files plus formatting, lint, strict types and production build. The existing native regressions cover atomic publication, stranded-intent non-replay, permissions, provenance and supplied-content saves. All 24 browser cases and five production offline checks pass sequentially afterward.

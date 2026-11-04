@@ -12,8 +12,27 @@ import { createArticleRecords } from './articles.js'
 import type { Article } from '../../contracts/articles.js'
 
 type Resource = TransactionResource
-type Stage = 'intent' | 'publish'
 type StageRows = { intent: StorageIntent | null; article: Article | null }
+/** Evaluated against rows read inside the same transaction as the mutation. */
+function canBindIntent(rows: StageRows, draft: PreparedSave) {
+	const articleEligible =
+		!draft.articleId ||
+		(!!draft.source &&
+			(rows.article === null ||
+				(rows.article.contentId === null &&
+					rows.article.url === draft.source.submittedUrl &&
+					rows.article.operationId === null)))
+	return rows.intent === null && articleEligible
+}
+function canPublishContent(rows: StageRows, draft: PreparedSave, operationId: string) {
+	const articleEligible =
+		!draft.articleId ||
+		(!!draft.source &&
+			rows.article?.contentId === null &&
+			rows.article.url === draft.source.submittedUrl &&
+			rows.article.operationId === operationId)
+	return rows.intent?.payloadHash === draft.intent.payloadHash && articleEligible
+}
 export function createLibraryRecords(
 	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
@@ -22,100 +41,106 @@ export function createLibraryRecords(
 	const check = () => {
 		if (!isCurrent()) throw new Error('Library scope expired')
 	}
-	function stageLogic(stage: Stage) {
-		return createWorkspaceCreationTransaction<
-			PreparedSave,
-			Resource,
-			StageRows,
-			SyncReceipt,
-			WriteHandle
-		>({
-			...transactionLifecycle(db, check),
-			readLocal: async (resource, attempt) => {
-				check()
-				const row = await resource.tx.one(
-					app.storageOperations.where({ id: attempt.operationId, libraryId }),
-					{ tier: ReadTier.LocalFirst }
-				)
-				check()
-				const article = attempt.draft.articleId
-					? await resource.tx.one(app.articles.where({ id: attempt.draft.articleId, libraryId }), {
-							tier: ReadTier.LocalFirst
-						})
-					: null
-				check()
-				resource.article = article
-				return { intent: row, article }
-			},
-			assess: (rows, attempt) => {
-				const draft = attempt.draft
-				const eligible =
-					stage === 'intent'
-						? rows.intent === null
-						: rows.intent?.payloadHash === draft.intent.payloadHash
-				const articleEligible =
-					!draft.articleId ||
-					(!!draft.source &&
-						((stage === 'intent' && rows.article === null) ||
-							(rows.article?.contentId === null &&
-								rows.article.url === draft.source.submittedUrl &&
-								(stage === 'intent'
-									? rows.article.operationId === null
-									: rows.article.operationId === attempt.operationId))))
-				return eligible && articleEligible
-					? { outcome: 'eligible' }
-					: { outcome: 'blocked', reason: 'Operation identity is not eligible' }
-			},
-			stage: (resource, attempt) => {
-				check()
-				const { draft } = attempt
-				if (stage === 'intent') {
-					const { id, ...intent } = draft.intent
-					resource.tx.insert(app.storageOperations, intent, { id })
-					if (draft.articleId) {
-						if (!draft.source) throw new Error('Missing article URL')
-						if (resource.article)
-							resource.tx.update(app.articles, draft.articleId, {
-								operationId: id,
-								failure: null
-							})
-						else
-							resource.tx.insert(
-								app.articles,
-								{
-									libraryId,
-									url: draft.source.submittedUrl,
-									originalSavedAt: draft.intent.createdAt,
-									contentId: null,
-									operationId: id,
-									failure: null
-								},
-								{ id: draft.articleId }
-							)
-					}
-				}
-
-				if (stage === 'publish') {
-					const { id: assetId, ...asset } = draft.asset
-					resource.tx.insert(app.assets, asset, { id: assetId })
-					const { id: snapshotId, ...snapshot } = draft.snapshot
-					resource.tx.insert(app.snapshots, snapshot, { id: snapshotId })
-					const { id, ...document } = draft.document
-					resource.tx.insert(app.documents, document, { id })
-					if (draft.articleId)
-						resource.tx.update(app.articles, draft.articleId, {
-							contentId: id,
-							failure: null
-						})
-					if (draft.source) {
-						const { id: sourceId, ...source } = draft.source
-						resource.tx.insert(app.articleSources, source, { id: sourceId })
-					}
-				}
-				return transactionReceipt(resource)
-			}
-		})
+	const readLocal = async (
+		resource: Resource,
+		attempt: { operationId: string; draft: PreparedSave }
+	) => {
+		check()
+		const row = await resource.tx.one(
+			app.storageOperations.where({ id: attempt.operationId, libraryId }),
+			{ tier: ReadTier.LocalFirst }
+		)
+		check()
+		const article = attempt.draft.articleId
+			? await resource.tx.one(app.articles.where({ id: attempt.draft.articleId, libraryId }), {
+					tier: ReadTier.LocalFirst
+				})
+			: null
+		check()
+		resource.article = article
+		return { intent: row, article }
 	}
+	const intent = createWorkspaceCreationTransaction<
+		PreparedSave,
+		Resource,
+		StageRows,
+		SyncReceipt,
+		WriteHandle
+	>({
+		...transactionLifecycle(db, check),
+		readLocal,
+		assess: (rows, attempt) =>
+			canBindIntent(rows, attempt.draft)
+				? { outcome: 'eligible' }
+				: { outcome: 'blocked', reason: 'Operation identity is not eligible' },
+		stage: (resource, attempt) => {
+			check()
+			const { draft } = attempt
+
+			const { id, ...intent } = draft.intent
+			resource.tx.insert(app.storageOperations, intent, { id })
+			if (draft.articleId) {
+				if (!draft.source) throw new Error('Missing article URL')
+				if (resource.article)
+					resource.tx.update(app.articles, draft.articleId, {
+						operationId: id,
+						failure: null
+					})
+				else
+					resource.tx.insert(
+						app.articles,
+						{
+							libraryId,
+							url: draft.source.submittedUrl,
+							originalSavedAt: draft.intent.createdAt,
+							contentId: null,
+							operationId: id,
+							failure: null
+						},
+						{ id: draft.articleId }
+					)
+			}
+
+			return transactionReceipt(resource)
+		}
+	})
+	const publish = createWorkspaceCreationTransaction<
+		PreparedSave,
+		Resource,
+		StageRows,
+		SyncReceipt,
+		WriteHandle
+	>({
+		...transactionLifecycle(db, check),
+		readLocal,
+		assess: (rows, attempt) =>
+			canPublishContent(rows, attempt.draft, attempt.operationId)
+				? { outcome: 'eligible' }
+				: { outcome: 'blocked', reason: 'Operation identity is not eligible' },
+		stage: (resource, attempt) => {
+			check()
+			const { draft } = attempt
+
+			const { id: assetId, ...asset } = draft.asset
+			resource.tx.insert(app.assets, asset, { id: assetId })
+			const { id: snapshotId, ...snapshot } = draft.snapshot
+			resource.tx.insert(app.snapshots, snapshot, { id: snapshotId })
+			const { id, ...document } = draft.document
+			resource.tx.insert(app.documents, document, { id })
+			if (draft.articleId)
+				resource.tx.update(app.articles, draft.articleId, {
+					contentId: id,
+					failure: null
+				})
+			if (draft.source) {
+				const { id: sourceId, ...source } = draft.source
+				resource.tx.insert(app.articleSources, source, { id: sourceId })
+			}
+
+			return transactionReceipt(resource)
+		}
+	})
+
 	const records = {
 		binding: Object.freeze({}),
 		saveMachine: createSaveRecordMachine({
@@ -124,8 +149,8 @@ export function createLibraryRecords(
 				check()
 				return prepareSave(libraryId, request)
 			},
-			intent: stageLogic('intent'),
-			publish: stageLogic('publish')
+			intent,
+			publish
 		}),
 		readCapabilities: {
 			isCurrent,
