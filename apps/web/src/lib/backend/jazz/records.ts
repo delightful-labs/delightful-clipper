@@ -1,3 +1,4 @@
+import { canBindArticleIntent, canPublishArticleContent } from '../../capture/article-policy.js'
 import { stageIntent, stagePublication } from '../../machines/storage/mutations.js'
 import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
@@ -20,24 +21,15 @@ function required<T>(value: T | undefined): T {
 }
 /** Evaluated against rows read inside the same transaction as the mutation. */
 function canBindIntent(rows: StageRows, draft: PreparedSave) {
-	const articleEligible =
-		!draft.articleId ||
-		(!!draft.source &&
-			(rows.article === null ||
-				(rows.article.contentId === null &&
-					rows.article.url === draft.source.submittedUrl &&
-					rows.article.operationId === null)))
-	return rows.intent === null && articleEligible
+	return rows.intent === null && canBindArticleIntent(rows.article, draft)
 }
 function canPublishContent(rows: StageRows, draft: PreparedSave, operationId: string) {
-	const articleEligible =
-		!draft.articleId ||
-		(!!draft.source &&
-			rows.article?.contentId === null &&
-			rows.article.url === draft.source.submittedUrl &&
-			rows.article.operationId === operationId)
-	return rows.intent?.payloadHash === draft.intent.payloadHash && articleEligible
+	return (
+		rows.intent?.payloadHash === draft.intent.payloadHash &&
+		canPublishArticleContent(rows.article, draft, operationId)
+	)
 }
+
 export function createLibraryRecords(
 	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,

@@ -1,3 +1,4 @@
+import { canAttachArticleContent, isPendingArticle } from '../../capture/article-policy.js'
 import { stageAttachment } from '../../machines/storage/mutations.js'
 import { createActor } from 'xstate'
 import { createArticleCollectionMachine } from '../../machines/capture/article-collection.js'
@@ -95,7 +96,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			return { article, available }
 		},
 		assess: (rows) =>
-			!rows.article?.contentId && rows.available
+			canAttachArticleContent(rows.article, rows.available)
 				? { outcome: 'eligible' }
 				: { outcome: 'blocked', reason: 'Article already exists or is unavailable' },
 		stage: (r, a) =>
@@ -134,7 +135,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			return row
 		},
 		assess: (row) =>
-			row && row.contentId === null
+			isPendingArticle(row)
 				? { outcome: 'eligible' }
 				: { outcome: 'blocked', reason: 'Article is complete or unavailable' },
 		stage: (r, a) => {

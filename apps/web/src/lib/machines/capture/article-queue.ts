@@ -1,3 +1,4 @@
+import { isPendingArticle } from '../../capture/article-policy.js'
 import { assign, fromPromise, setup } from 'xstate'
 import type { Article, ArticleContent, SaveArticleRequest } from '../../contracts/articles.js'
 import type { QueueCapability } from '../../contracts/article-worker.js'
@@ -19,6 +20,11 @@ type Context = {
 	content: ArticleContent | undefined
 	seen: Record<string, true>
 	failure: string
+}
+function canProcessArticle(article: Article, seen: Context['seen']) {
+	if (!isPendingArticle(article)) return false
+	if (seen[article.id]) return false
+	return !article.failure || transient.has(article.failure)
 }
 type Event =
 	| { type: 'ROWS'; rows: Article[] }
@@ -112,9 +118,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 				}),
 				always: {
 					guard: ({ context }) =>
-						context.rows.some(
-							(r) => !r.contentId && !context.seen[r.id] && (!r.failure || transient.has(r.failure))
-						),
+						context.rows.some((article) => canProcessArticle(article, context.seen)),
 					target: 'selecting'
 				}
 			},
@@ -125,9 +129,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 							(a, b) =>
 								a.originalSavedAt.localeCompare(b.originalSavedAt) || a.id.localeCompare(b.id)
 						)
-						.find(
-							(r) => !r.contentId && !context.seen[r.id] && (!r.failure || transient.has(r.failure))
-						)
+						.find((article) => canProcessArticle(article, context.seen))
 					return {
 						current,
 						seen: current ? { ...context.seen, [current.id]: true } : context.seen,
