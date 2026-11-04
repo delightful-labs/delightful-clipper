@@ -40,3 +40,13 @@ it.each(['http://2130706433', 'http://0x7f000001', 'http://127.1', 'http://[::ff
 			'redirectBlocked'
 		)
 )
+
+it('keeps port policy and benign DNS absence explicit', async () => {
+	const { usesAllowedPort, isMissingDnsRecord } = await import('./destination.js')
+	expect(usesAllowedPort(new URL('https://example.com:443'))).toBe(true)
+	expect(usesAllowedPort(new URL('http://example.com:80'))).toBe(true)
+	expect(usesAllowedPort(new URL('https://example.com:80'))).toBe(false)
+	expect(isMissingDnsRecord(Object.assign(new Error('missing'), { code: 'ENODATA' }))).toBe(true)
+	expect(isMissingDnsRecord(Object.assign(new Error('timeout'), { code: 'ETIMEOUT' }))).toBe(false)
+	expect(isMissingDnsRecord({ code: 'ENOTFOUND' })).toBe(false)
+})

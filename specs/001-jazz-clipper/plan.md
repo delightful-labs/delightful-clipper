@@ -67,7 +67,7 @@ The web browser composition owns one DLF session and one account-bound repositor
 Browser composition (web or trusted extension UI)
   DLF session owner/readiness -> private-library binding
   library runtime
-    capture owners (one per durable capture attempt)
+    URL article-save owner and dedicated serial article worker (missing content)
     asset owners (bounded concurrency)
     annotation and note-edit owners
     search worker/index owner
@@ -80,7 +80,7 @@ Netlify gateway: authenticated, bounded public-source fetch and inert extraction
 
 Actors are attached to the application runtime, not a reader/list component. Each actor defines states, guards, ownership, cancellation and cleanup before async leaf operations are implemented. Every report has account binding, generation and request identity. Account change drains/settles owners, terminates workers, revokes blob URLs, and stops subscriptions; stale A→B→A reports cannot write into the new binding.
 
-Capture lifecycle: journaled → awaiting-session/network → resolving → checking-identity → fetching/capturing → extracting → validating → saving-text → text-ready → acquiring-assets → complete/partial. Existing/trashed matches route to Open/Restore without replacement. Unexpected failures and cancellation produce durable terminal outcomes. Partial captures stay explicitly partial and retry in the same capture/document; automatic retries do not refresh completed snapshots.
+Capture lifecycle: URL article saved → awaiting-session/network → resolving → checking-identity → fetching/capturing → extracting → validating → saving-text → text-ready → acquiring-assets → complete/partial. Existing/trashed matches route to Open/Restore without replacement. Unexpected failures and cancellation produce durable terminal outcomes. Partial captures stay explicitly partial and retry in the same capture/document; automatic retries do not refresh completed snapshots.
 
 ## Platform matrix
 
@@ -113,7 +113,7 @@ The initial [foundation proof](foundation-proof.md) is historical supporting evi
 | G2 Extension identity and runtime | Earlier isolated identity/WASM evidence does not implement extension intake. Actual background journal/lifecycle, packaged CSP/runtime assets, sender validation and Firefox remain open. Content scripts receive no credentials. |
 | G3 Fetch gateway authorization and deployment | Existing managed bearer/public verifier, bounded address-pinned redirect-safe transport, Linux native packaging and hosted extraction are qualified. Production gateway enablement is separate; controlled hosted private-redirect qualification remains open. |
 | G4 Worker extraction and anchoring | Actual bounded Node parser worker, footnote preservation and shared extraction/display sanitizer are implemented. Static SVG and native disclosures pass extraction, adversarial display and browser tests. Extension worker extraction, source/reader annotation mapping, repeated quotes and mobile selection remain open. |
-| G5 Offline durability and sync | Actual text/native bytes and routed structured HTML (including SVG/disclosures) survive complete Chromium restart with both servers stopped and HTTP cache cleared, then sync to a separately restored profile. Durable pre-save intake, images, future draft/annotation operations, quota and deletion/tombstones remain open. |
+| G5 Offline durability and sync | Actual text/native bytes and routed structured HTML (including SVG/disclosures) survive complete Chromium restart with both servers stopped and HTTP cache cleared, then sync to a separately restored profile. URL-first article restart recovery and serial worker processing are implemented; images, full retry scheduling, future draft/annotation operations, quota and deletion/tombstones remain open. |
 | G6 Platform qualification | Chromium desktop evidence is recorded. Firefox/macOS extensions, Chrome Android share intake, iOS fallback, accessibility/performance acceptance and minimum supported versions still require actual validation. |
 
 No gate permits silently weakening an accepted requirement. A passed capability does not establish full workflow or MVP completion. The shared content policy supports native `details`/`summary` and static SVG without active/external/reference features; see [design-decisions.md](design-decisions.md#retained-disclosure-and-svg-content). Future sanitizer changes must test both actual extraction and re-sanitization of persisted HTML.

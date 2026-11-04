@@ -1,6 +1,17 @@
 import { schema as s } from 'jazz-tools'
 
 export const app = s.defineApp({
+	articles: s.table(
+		{
+			libraryId: s.uuid(),
+			url: s.string(),
+			originalSavedAt: s.string(),
+			contentId: s.uuid().optional(),
+			operationId: s.uuid().optional(),
+			failure: s.string().optional()
+		},
+		{ library: s.rel('libraries', 'libraryId'), content: s.rel('documents', 'contentId') }
+	),
 	articleSources: s.table(
 		{
 			documentId: s.uuid(),

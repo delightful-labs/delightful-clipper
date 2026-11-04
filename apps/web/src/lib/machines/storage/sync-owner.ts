@@ -1,4 +1,4 @@
-import { enqueueActions, setup } from 'xstate'
+import { enqueueActions, setup, sendTo } from 'xstate'
 import type { ActorRef, ActorRefFrom, Snapshot } from 'xstate'
 import { storageSyncMachine } from './sync.js'
 import type { SyncOutcome } from './sync.js'
@@ -15,13 +15,26 @@ type Event =
 	| { type: 'SHUTDOWN' }
 	| { type: `xstate.done.actor.sync:${string}`; actorId: string; output: SyncOutcome }
 	| { type: `xstate.error.actor.sync:${string}`; actorId: string; error: unknown }
+function required<T>(value: T | undefined): T {
+	if (value === undefined) throw new Error('Missing sync owner resource')
+	return value
+}
+function watchFor(context: Context, event: Event) {
+	return 'actorId' in event ? context.watches[event.actorId] : undefined
+}
 /** Own concurrent receipt actors; dropping an observer never cancels or replays a write. */
 export const syncOwnerMachine = setup<
 	Context,
 	Event,
 	{ sync: typeof storageSyncMachine },
 	{},
-	{ watch: undefined; complete: undefined; clear: undefined },
+	{
+		watch: undefined
+		complete: undefined
+		clear: undefined
+		reportCompleted: undefined
+		reportRejected: undefined
+	},
 	{},
 	never,
 	string,
@@ -30,12 +43,13 @@ export const syncOwnerMachine = setup<
 	actors: { sync: storageSyncMachine },
 	actions: {
 		watch: enqueueActions(({ context, event, enqueue }) => {
-			if (event.type !== 'WATCH') return
-			for (const watch of Object.values(context.watches))
-				if (watch.documentId === event.id) {
-					enqueue.sendTo(watch.ref, { type: 'SHUTDOWN' })
-					enqueue.stopChild(watch.ref)
-				}
+			if (event.type !== 'WATCH') throw new Error('Expected receipt watch')
+			for (const watch of Object.values(context.watches).filter(
+				(watch) => watch.documentId === event.id
+			)) {
+				enqueue.sendTo(watch.ref, { type: 'SHUTDOWN' })
+				enqueue.stopChild(watch.ref)
+			}
 			enqueue.assign(({ context, spawn }) => {
 				const sequence = context.sequence + 1,
 					key = `sync:${sequence}`
@@ -51,13 +65,31 @@ export const syncOwnerMachine = setup<
 				}
 			})
 		}),
+		reportCompleted: sendTo(
+			({ context }) => required(context.reportTo),
+			({ context, event }) => {
+				if (!('output' in event) || event.output.status === 'stopped')
+					throw new Error('Expected settled sync')
+				return {
+					type: 'SYNC',
+					id: required(watchFor(context, event)).documentId,
+					status: event.output.status
+				}
+			}
+		),
+		reportRejected: sendTo(
+			({ context }) => required(context.reportTo),
+			({ context, event }): SyncReport => ({
+				type: 'SYNC',
+				id: required(watchFor(context, event)).documentId,
+				status: 'rejected'
+			})
+		),
 		complete: enqueueActions(({ context, event, enqueue }) => {
 			if (!('actorId' in event)) return
 			const watch = context.watches[event.actorId]
 			if (!watch) return
-			const status = 'output' in event ? event.output.status : 'rejected'
-			if (context.reportTo && status !== 'stopped')
-				enqueue.sendTo(context.reportTo, { type: 'SYNC', id: watch.documentId, status })
+
 			enqueue.stopChild(watch.ref)
 			enqueue.assign(({ context }) => {
 				const watches = { ...context.watches }
@@ -81,8 +113,24 @@ export const syncOwnerMachine = setup<
 		watching: {
 			on: {
 				WATCH: { actions: 'watch' },
-				'xstate.done.actor.*': { actions: 'complete' },
-				'xstate.error.actor.*': { actions: 'complete' },
+				'xstate.done.actor.*': [
+					{
+						guard: ({ context, event }) =>
+							!!context.reportTo &&
+							!!watchFor(context, event) &&
+							'output' in event &&
+							event.output.status !== 'stopped',
+						actions: ['reportCompleted', 'complete']
+					},
+					{ actions: 'complete' }
+				],
+				'xstate.error.actor.*': [
+					{
+						guard: ({ context, event }) => !!context.reportTo && !!watchFor(context, event),
+						actions: ['reportRejected', 'complete']
+					},
+					{ actions: 'complete' }
+				],
 				SHUTDOWN: 'closed'
 			}
 		},

@@ -1,40 +1,71 @@
-import { t, type MessageKey } from '../../localization/index.js'
-import type { WorkflowMessage } from '../../contracts/feedback.js'
+import {
+	assign,
+	enqueueActions,
+	fromCallback,
+	sendTo,
+	setup,
+	stopChild,
+	raise,
+	stateIn,
+	and,
+	not
+} from 'xstate'
 import type { SnapshotFrom } from 'xstate'
+import { t } from '../../localization/index.js'
+import { normalizedSource } from '../../capture/source.js'
+import type { WorkflowMessage } from '../../contracts/feedback.js'
+import type { LibraryCapability, LibraryEvent, SaveRef } from '../../contracts/library.js'
+import type { ArticleSaveResult, LibraryArticle } from '../../contracts/articles.js'
+import type { QueueControl } from '../../contracts/article-worker.js'
+import type { ReadResult } from '../../contracts/storage.js'
 import { syncOwnerMachine } from '../storage/sync-owner.js'
 import { readRecordMachine } from '../storage/read.js'
-import { assign, enqueueActions, fromCallback, sendTo, setup, stopChild } from 'xstate'
-import { preparationMachine } from './preparation.js'
-import type { SaveRef } from '../../contracts/library.js'
-import type { LibraryCapability, LibraryEvent } from '../../contracts/library.js'
-import type { DocumentHeader, ReadResult, SaveResult } from '../../contracts/storage.js'
-import type { Candidate } from '../../capture/source.js'
+function required<T>(v: T | undefined): T {
+	if (v === undefined) throw new Error('Library unavailable')
+	return v
+}
+function savedResult(result: ArticleSaveResult) {
+	if (result.kind !== 'saved' && result.kind !== 'duplicate')
+		throw new Error('Expected locally saved result')
+	return result
+}
 type Context = {
 	capability: LibraryCapability | undefined
-	closing: boolean
-	writing: boolean
 	saveRef: SaveRef | undefined
 	url: string
-	candidate: Candidate | undefined
 	captureId: string
+	captureReady: boolean
 	readerId: string
 	readerGeneration: number
 	reader: ReadResult | undefined
-	rows: DocumentHeader[]
+	rows: LibraryArticle[]
 	listFailed: boolean
 	sync: Record<string, 'pending' | 'accepted' | 'rejected'>
 	failure: string
+	backgroundId: string
+	backgroundCancelable: boolean
+	background: Record<string, WorkflowMessage>
 }
-type PresentationMeta = {
-	captureMessage?: (context: Context) => WorkflowMessage
-	readerMessage?: (context: Context) => WorkflowMessage
-	openCapture?: true
+function hasWatchableReceipts(result: ArticleSaveResult) {
+	if (result.kind !== 'saved' && result.kind !== 'duplicate') return false
+	return result.receipts.length > 0
 }
-function captureStatus(
-	key: MessageKey,
-	variant: WorkflowMessage['variant'] = 'info'
-): PresentationMeta {
-	return { captureMessage: () => ({ text: t(key), variant }) }
+function shouldReopenReader(context: Context, rows: LibraryArticle[]) {
+	if (!context.readerId) return false
+	if (context.reader?.kind === 'available') return false
+	return rows.some((row) => row.id === context.readerId && !!row.contentId)
+}
+function isValidSourceUrl(url: string) {
+	try {
+		normalizedSource(url)
+		return true
+	} catch {
+		return false
+	}
+}
+type Meta = {
+	captureMessage?: (c: Context) => WorkflowMessage
+	readerMessage?: (c: Context) => WorkflowMessage
 }
 function syncMessage(status: 'pending' | 'accepted' | 'rejected'): WorkflowMessage {
 	return {
@@ -48,9 +79,21 @@ function syncMessage(status: 'pending' | 'accepted' | 'rejected'): WorkflowMessa
 		variant: status === 'rejected' ? 'error' : 'info'
 	}
 }
-function required<T>(value: T | undefined): T {
-	if (value === undefined) throw new Error('Library unavailable')
-	return value
+function failureMessage(code: string): WorkflowMessage {
+	return {
+		text: t(
+			code === 'unknown'
+				? 'capture.status.unknown'
+				: code === 'canceled'
+					? 'capture.status.canceled'
+					: code === 'sessionUnavailable'
+						? 'capture.errors.session_unavailable'
+						: code === 'rateLimited'
+							? 'capture.errors.rate_limited'
+							: 'capture.status.failed'
+		),
+		variant: 'error'
+	}
 }
 const actors = {
 	collection: fromCallback<LibraryEvent, LibraryCapability | undefined>(({ input, sendBack }) => {
@@ -61,42 +104,104 @@ const actors = {
 			)
 		} catch {
 			sendBack({ type: 'LIST_FAILED' })
-			return undefined
+			return
 		}
 	}),
+	worker: fromCallback<QueueControl, LibraryCapability | undefined>(
+		({ input, receive, sendBack }) => {
+			if (!input) {
+				sendBack({ type: 'BACKGROUND_CLOSED' })
+				return
+			}
+			try {
+				const resource = input.worker(sendBack)
+				receive(resource.send)
+				return () => {
+					void resource.stop()
+				}
+			} catch {
+				sendBack({ type: 'BACKGROUND_ERROR' })
+				sendBack({ type: 'BACKGROUND_CLOSED' })
+				return
+			}
+		}
+	),
 	receipts: syncOwnerMachine,
-	prepare: preparationMachine,
 	read: readRecordMachine
 }
 export const libraryMachine = setup<
 	Context,
 	| LibraryEvent
-	| { type: `xstate.done.actor.${string}`; actorId: string; output: SaveResult }
+	| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
+	| { type: `xstate.done.actor.${string}`; actorId: string; output: ArticleSaveResult }
 	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown },
 	typeof actors,
 	{},
-	{ close: undefined },
-	{},
+	{ close: undefined; watch: undefined; updateRows: undefined },
+	{
+		canUseLibrary: undefined
+		canStartSave: undefined
+		accepting: undefined
+		writing: undefined
+		closing: undefined
+		drained: undefined
+	},
 	never,
 	string,
 	LibraryCapability | undefined,
 	undefined,
 	{ type: string },
-	PresentationMeta
+	Meta
 >({
 	actors,
+	guards: {
+		accepting: stateIn({ running: { control: 'active' } }),
+		closing: stateIn({ running: { control: 'closing' } }),
+		writing: stateIn({ running: { capture: 'saving' } }),
+		canUseLibrary: and(['accepting', ({ context }) => !!context.capability?.isCurrent()]),
+		canStartSave: and(['canUseLibrary', not('writing')]),
+		drained: and(['closing', not('writing'), stateIn({ running: { workerLifecycle: 'closed' } })])
+	},
 	actions: {
-		close: enqueueActions(({ context, enqueue }) => {
-			if (context.saveRef) enqueue.sendTo(context.saveRef, { type: 'SHUTDOWN' })
+		close: enqueueActions(({ enqueue }) => {
+			enqueue.sendTo('worker', { type: 'STOP' })
 			enqueue.sendTo('receipts', { type: 'SHUTDOWN' })
 			enqueue.assign({
-				closing: true,
-				candidate: undefined,
 				reader: undefined,
 				rows: [],
 				url: '',
-				sync: {}
+				sync: {},
+				background: {},
+				backgroundCancelable: false
 			})
+		}),
+		watch: raise(({ event }) => {
+			const result =
+				event.type === 'BACKGROUND_SAVED'
+					? event.result
+					: 'output' in event
+						? event.output
+						: undefined
+			return { type: 'WATCH_RECEIPTS', result: required(result) }
+		}),
+		updateRows: assign(({ context, event }) => {
+			if (event.type !== 'ROWS') throw new Error('Expected collection rows')
+			return {
+				rows: event.rows,
+				background: Object.fromEntries(
+					Object.entries(context.background).filter(
+						([id, message]) =>
+							!(
+								message.variant === 'error' &&
+								event.rows.some((r) => r.id === id && r.contentId && !r.failure)
+							)
+					)
+				),
+				listFailed: false,
+				captureReady:
+					context.captureReady ||
+					event.rows.some((r) => r.id === context.captureId && !!r.contentId)
+			}
 		})
 	}
 }).createMachine({
@@ -104,143 +209,182 @@ export const libraryMachine = setup<
 	initial: 'running',
 	context: ({ input }) => ({
 		capability: input,
-		closing: false,
-		writing: false,
 		saveRef: undefined,
 		url: '',
-		candidate: undefined,
 		captureId: '',
+		captureReady: false,
 		readerId: '',
 		readerGeneration: 0,
 		reader: undefined,
 		rows: [],
 		listFailed: false,
 		sync: {},
-		failure: ''
+		failure: '',
+		backgroundId: '',
+		backgroundCancelable: false,
+		background: {}
 	}),
 	states: {
 		running: {
 			type: 'parallel',
 			invoke: [
 				{ id: 'collection', src: 'collection', input: ({ context }) => context.capability },
+				{ id: 'worker', src: 'worker', input: ({ context }) => context.capability },
 				{ id: 'receipts', src: 'receipts', input: ({ self }) => ({ reportTo: self }) }
 			],
-			always: { guard: ({ context }) => context.closing && !context.writing, target: 'closed' },
+			always: {
+				guard: 'drained',
+				target: 'closed'
+			},
 			on: {
-				SHUTDOWN: { actions: 'close' },
-				ROWS: {
-					guard: ({ context }) => !context.closing && !!context.capability?.isCurrent(),
-					actions: assign({ rows: ({ event }) => event.rows, listFailed: false })
+				WATCH_RECEIPTS: {
+					guard: and(['canUseLibrary', ({ event }) => hasWatchableReceipts(event.result)]),
+					actions: [
+						assign({
+							sync: ({ context, event }) => ({
+								...context.sync,
+								[event.result.operationId]: 'pending'
+							})
+						}),
+						sendTo('receipts', ({ event }) => ({
+							type: 'WATCH',
+							id: event.result.operationId,
+							receipts: savedResult(event.result).receipts
+						}))
+					]
 				},
+				ROWS: [
+					{
+						guard: and([
+							'canUseLibrary',
+							({ context, event }) => shouldReopenReader(context, event.rows)
+						]),
+						actions: [
+							'updateRows',
+							raise(({ context }) => ({ type: 'OPEN', id: context.readerId }))
+						]
+					},
+					{
+						guard: 'canUseLibrary',
+						actions: 'updateRows'
+					}
+				],
 				LIST_FAILED: { actions: assign({ listFailed: true }) },
+				BACKGROUND_ERROR: {
+					guard: 'accepting',
+					actions: assign({ failure: 'captureFailed' })
+				},
+				BACKGROUND_STATUS: {
+					guard: 'canUseLibrary',
+					actions: assign({
+						backgroundId: ({ event }) => event.id,
+						backgroundCancelable: ({ event }) => event.cancelable,
+						background: ({ context, event }) => ({
+							...context.background,
+							[event.id]: event.message
+						})
+					})
+				},
+				BACKGROUND_SAVED: {
+					guard: 'canUseLibrary',
+					actions: [
+						'watch',
+						assign({
+							background: ({ context, event }) =>
+								Object.fromEntries(
+									Object.entries(context.background).filter(
+										([id]) =>
+											!(
+												id === event.result.operationId &&
+												'ready' in event.result &&
+												event.result.ready
+											)
+									)
+								),
+							captureReady: ({ context, event }) =>
+								context.captureReady ||
+								(event.result.operationId === context.captureId &&
+									'ready' in event.result &&
+									event.result.ready === true)
+						})
+					]
+				},
+				RETRY: {
+					guard: 'accepting',
+					actions: sendTo('worker', ({ event }) => ({ type: 'RETRY', id: event.id }))
+				},
 				SYNC: {
-					guard: ({ context }) => !context.closing && !!context.capability?.isCurrent(),
+					guard: 'canUseLibrary',
 					actions: assign({
 						sync: ({ context, event }) => ({ ...context.sync, [event.id]: event.status })
 					})
 				}
 			},
 			states: {
+				control: {
+					initial: 'active',
+					states: {
+						active: { on: { SHUTDOWN: { target: 'closing', actions: 'close' } } },
+						closing: {}
+					}
+				},
+				workerLifecycle: {
+					initial: 'active',
+					states: { active: { on: { BACKGROUND_CLOSED: 'closed' } }, closed: {} }
+				},
 				capture: {
 					initial: 'idle',
-					states: {
-						idle: {
-							on: {
-								ADD: {
-									guard: ({ context }) => !!context.capability?.isCurrent(),
-									target: 'preparing',
-									actions: assign({
-										url: ({ event }) => event.url,
-										candidate: undefined,
-										failure: ''
-									})
-								}
-							}
-						},
-						preparing: {
-							meta: captureStatus('capture.status.pending'),
-							invoke: {
-								src: 'prepare',
-								input: ({ context }) => ({
-									capability: required(context.capability),
-									url: context.url
-								}),
-								onDone: [
-									{
-										guard: ({ event }) => event.output.kind === 'scopeChanged',
-										target: 'idle',
-										actions: assign({ candidate: undefined, url: '' })
-									},
-									{
-										guard: ({ event }) => event.output.kind === 'ready',
-										target: 'saving',
-										actions: assign({
-											candidate: ({ event }) =>
-												event.output.kind === 'ready' ? event.output.candidate : undefined
-										})
-									},
-									{
-										guard: ({ event }) => event.output.kind === 'duplicate',
-										target: 'duplicate',
-										actions: assign({
-											captureId: ({ event }) =>
-												event.output.kind === 'duplicate' || event.output.kind === 'uncertain'
-													? event.output.id
-													: ''
-										})
-									},
-									{
-										target: 'uncertain',
-										actions: assign({
-											captureId: ({ event }) =>
-												event.output.kind === 'duplicate' || event.output.kind === 'uncertain'
-													? event.output.id
-													: ''
-										})
-									}
-								],
-								onError: {
-									target: 'failed',
-									actions: assign({
-										failure: ({ event }) =>
-											event.error instanceof Error ? event.error.message : 'captureFailed'
-									})
-								}
+					on: {
+						ADD: [
+							{
+								guard: and(['canStartSave', ({ event }) => isValidSourceUrl(event.url)]),
+								target: '.saving',
+								actions: assign({ url: ({ event }) => event.url, failure: '', captureReady: false })
 							},
-							on: { CANCEL: { target: 'idle', actions: assign({ url: '', candidate: undefined }) } }
-						},
+							{
+								guard: and(['accepting', not('writing')]),
+								target: '.failed',
+								actions: assign({ failure: 'invalidUrl' })
+							}
+						],
+						CANCEL: {
+							guard: and([
+								not('writing'),
+								'accepting',
+								({ context }) => context.backgroundCancelable
+							]),
+							actions: sendTo('worker', ({ context }) => ({
+								type: 'CANCEL',
+								id: context.backgroundId
+							}))
+						}
+					},
+					states: {
+						idle: {},
 						saving: {
-							meta: captureStatus('capture.status.saving'),
+							meta: {
+								captureMessage: () => ({ text: t('capture.status.saving'), variant: 'info' })
+							},
 							initial: 'active',
-							entry: assign(({ context, spawn }) => {
-								const candidate = required(context.candidate)
-								return {
-									writing: true,
-									captureId: candidate.id,
-									saveRef: required(context.capability).spawnSave(
-										(logic, options) => spawn(logic, options),
-										{
-											operationId: candidate.id,
-											title: candidate.title,
-											text: candidate.text,
-											bytes: new TextEncoder().encode(candidate.html),
-											mediaType: 'text/html',
-											source: {
-												finalUrl: candidate.finalUrl,
-												submittedUrl: candidate.submittedUrl,
-												provenance: candidate.provenance
-											}
-										}
-									)
-								}
-							}),
+							entry: assign(({ context, spawn }) => ({
+								saveRef: required(context.capability).spawnSave(
+									(logic, options) => spawn(logic, options),
+									{ url: context.url }
+								)
+							})),
 							exit: [
 								stopChild(({ context }) => required(context.saveRef)),
-								assign({ writing: false, candidate: undefined, saveRef: undefined })
+								assign({ saveRef: undefined })
 							],
 							states: {
 								active: {
 									on: {
+										SHUTDOWN: {
+											target: 'stopping',
+											actions: sendTo(({ context }) => required(context.saveRef), {
+												type: 'SHUTDOWN'
+											})
+										},
 										CANCEL: {
 											target: 'stopping',
 											actions: sendTo(({ context }) => required(context.saveRef), {
@@ -252,41 +396,39 @@ export const libraryMachine = setup<
 								stopping: {}
 							},
 							on: {
-								SHUTDOWN: { target: '.stopping', actions: 'close' },
 								'xstate.done.actor.*': [
 									{
-										guard: ({ context, event }) =>
-											context.closing && event.actorId === context.saveRef?.id,
+										guard: and([
+											'closing',
+											({ context, event }) => event.actorId === context.saveRef?.id
+										]),
 										target: 'canceled'
 									},
 									{
 										guard: ({ context, event }) =>
-											event.actorId === context.saveRef?.id && event.output.kind === 'saved',
+											event.actorId === context.saveRef?.id &&
+											(event.output.kind === 'saved' || event.output.kind === 'duplicate'),
 										target: 'saved',
 										actions: [
+											'watch',
 											assign({
 												captureId: ({ event }) => event.output.operationId,
-												sync: ({ context, event }) => ({
-													...context.sync,
-													[event.output.operationId]: 'pending'
-												})
-											}),
-											sendTo('receipts', ({ event }) => ({
-												type: 'WATCH',
-												id: event.output.operationId,
-												receipts: event.output.kind === 'saved' ? event.output.receipts : []
-											}))
+												captureReady: ({ event }) =>
+													'ready' in event.output && event.output.ready === true,
+												failure: ({ event }) =>
+													event.output.kind === 'duplicate' ? 'duplicate' : ''
+											})
 										]
-									},
-									{
-										guard: ({ context, event }) =>
-											event.actorId === context.saveRef?.id && event.output.kind === 'failed',
-										target: 'saveFailed'
 									},
 									{
 										guard: ({ context, event }) =>
 											event.actorId === context.saveRef?.id && event.output.kind === 'interrupted',
 										target: 'canceled'
+									},
+									{
+										guard: ({ context, event }) =>
+											event.actorId === context.saveRef?.id && event.output.kind === 'failed',
+										target: 'failed'
 									},
 									{
 										guard: ({ context, event }) => event.actorId === context.saveRef?.id,
@@ -302,64 +444,35 @@ export const libraryMachine = setup<
 						},
 						saved: {
 							meta: {
-								openCapture: true,
-								captureMessage: (context) => {
-									const status = context.sync[context.captureId]
-									return status === 'accepted' || status === 'rejected'
-										? syncMessage(status)
-										: { text: t('capture.status.saved'), variant: 'info' }
-								}
-							},
-							on: {
-								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
-							}
-						},
-						duplicate: {
-							meta: { ...captureStatus('capture.status.duplicate', 'info'), openCapture: true },
-							on: {
-								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
-							}
-						},
-						saveFailed: {
-							meta: { ...captureStatus('capture.status.save_failed', 'error') },
-							on: {
-								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
-							}
-						},
-						canceled: {
-							meta: { ...captureStatus('capture.status.canceled', 'info'), openCapture: true },
-							on: {
-								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
-							}
-						},
-						uncertain: {
-							meta: { ...captureStatus('capture.status.unknown', 'error'), openCapture: true },
-							on: {
-								ADD: { target: 'preparing', actions: assign({ url: ({ event }) => event.url }) }
+								captureMessage: (c) =>
+									c.background[c.captureId] ??
+									(c.failure === 'duplicate'
+										? { text: t('capture.status.duplicate'), variant: 'info' }
+										: c.sync[c.captureId] === 'accepted' || c.sync[c.captureId] === 'rejected'
+											? syncMessage(required(c.sync[c.captureId]))
+											: { text: t('capture.status.saved'), variant: 'info' })
 							}
 						},
 						failed: {
 							meta: {
-								captureMessage: ({ failure }) => ({
-									variant: 'error',
+								captureMessage: (c) => ({
 									text: t(
-										failure === 'sourceTooLarge'
-											? 'capture.errors.source_too_large'
-											: failure === 'invalidUrl'
-												? 'capture.errors.invalid_url'
-												: failure === 'sessionUnavailable'
-													? 'capture.errors.session_unavailable'
-													: failure === 'rateLimited'
-														? 'capture.errors.rate_limited'
-														: 'capture.status.failed'
-									)
+										c.failure === 'invalidUrl'
+											? 'capture.errors.invalid_url'
+											: 'capture.status.save_failed'
+									),
+									variant: 'error'
 								})
-							},
-							on: {
-								ADD: {
-									target: 'preparing',
-									actions: assign({ url: ({ event }) => event.url, failure: '' })
-								}
+							}
+						},
+						uncertain: {
+							meta: {
+								captureMessage: () => ({ text: t('capture.status.unknown'), variant: 'error' })
+							}
+						},
+						canceled: {
+							meta: {
+								captureMessage: () => ({ text: t('capture.status.canceled'), variant: 'info' })
 							}
 						}
 					}
@@ -368,6 +481,7 @@ export const libraryMachine = setup<
 					initial: 'empty',
 					on: {
 						OPEN: {
+							guard: 'canUseLibrary',
 							target: '.loading',
 							actions: assign({
 								readerId: ({ event }) => event.id,
@@ -378,15 +492,16 @@ export const libraryMachine = setup<
 						CLOSE_READER: {
 							target: '.empty',
 							actions: assign({
+								readerId: '',
 								reader: undefined,
 								readerGeneration: ({ context }) => context.readerGeneration + 1
 							})
 						},
 						READ_RESULT: {
-							guard: ({ context, event }) =>
-								event.generation === context.readerGeneration &&
-								!context.closing &&
-								!!context.capability?.isCurrent(),
+							guard: and([
+								'canUseLibrary',
+								({ context, event }) => event.generation === context.readerGeneration
+							]),
 							target: '.shown',
 							actions: assign({ reader: ({ event }) => event.result })
 						}
@@ -408,10 +523,12 @@ export const libraryMachine = setup<
 						},
 						shown: {
 							meta: {
-								readerMessage: ({ reader }) =>
-									reader?.kind === 'available'
-										? { text: t('capture.text_only'), variant: 'info' }
-										: { text: t('reader.unavailable'), variant: 'error' }
+								readerMessage: ({ reader }) => ({
+									text: t(
+										reader?.kind === 'available' ? 'capture.text_only' : 'reader.unavailable'
+									),
+									variant: reader?.kind === 'available' ? 'info' : 'error'
+								})
 							}
 						}
 					}
@@ -422,10 +539,10 @@ export const libraryMachine = setup<
 			type: 'final',
 			entry: assign({
 				capability: undefined,
-				candidate: undefined,
 				reader: undefined,
 				rows: [],
 				sync: {},
+				background: {},
 				url: '',
 				captureId: '',
 				failure: ''
@@ -433,41 +550,54 @@ export const libraryMachine = setup<
 		}
 	}
 })
-
-/** State-local message resolvers call i18next here; UI receives text and severity only. */
 export function selectLibraryView(
 	snapshot: SnapshotFrom<typeof libraryMachine> | undefined,
-	gatewayEnabled = true
+	_gatewayEnabled = true
 ) {
-	const context = snapshot?.context
-	const visible = !!context && !context.closing && snapshot.status === 'active'
+	const c = snapshot?.context
+	const visible =
+		!!c && snapshot.matches({ running: { control: 'active' } }) && snapshot.status === 'active'
 	const meta = visible ? Object.values(snapshot.getMeta()) : []
+	const rowMessages: Record<string, WorkflowMessage> = {}
+	if (visible)
+		for (const row of c.rows) {
+			if (!row.contentId || c.background[row.id]) {
+				if (row.failure) rowMessages[row.id] = failureMessage(row.failure)
+				else if (c.background[row.id]) rowMessages[row.id] = required(c.background[row.id])
+			}
+		}
 	return {
 		captureMessage: visible
-			? meta.find((value) => value?.captureMessage)?.captureMessage?.(context)
+			? c.failure === 'captureFailed'
+				? failureMessage(c.failure)
+				: meta.find((m) => m?.captureMessage)?.captureMessage?.(c)
 			: undefined,
 		readerMessage: !snapshot
 			? { text: t('reader.loading'), variant: 'info' as const }
 			: visible
-				? meta.find((value) => value?.readerMessage)?.readerMessage?.(context)
-				: undefined,
-		disabledMessage:
-			visible && !gatewayEnabled
-				? { text: t('capture.disabled'), variant: 'info' as const }
+				? meta.find((m) => m?.readerMessage)?.readerMessage?.(c)
 				: undefined,
 		listMessage:
-			visible && context.listFailed
+			visible && c.listFailed
 				? { text: t('library.list_failed'), variant: 'error' as const }
 				: undefined,
 		emptyMessage:
-			visible && !context.rows.length
+			visible && !c.rows.length
 				? { text: t('library.empty'), variant: 'info' as const }
 				: undefined,
 		syncMessages: visible
 			? Object.fromEntries(
-					Object.entries(context.sync).map(([id, status]) => [id, syncMessage(status)])
+					Object.entries(c.sync)
+						.filter(([id]) => !c.background[id])
+						.map(([id, status]) => [id, syncMessage(status)])
 				)
 			: {},
-		canOpenCapture: visible && meta.some((value) => value?.openCapture === true)
+		rowMessages,
+		readable: visible ? Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId])) : {},
+		canOpenCapture: visible && c.captureReady && !c.background[c.captureId],
+		canCancel:
+			visible &&
+			snapshot.can({ type: 'CANCEL' }) &&
+			(snapshot.matches({ running: { capture: 'saving' } }) || c.backgroundCancelable)
 	}
 }

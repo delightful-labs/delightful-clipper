@@ -1,9 +1,13 @@
-import { BYTE_LIMIT, TEXT_LIMIT } from '../storage/prepare.js'
+import {
+	resolutionResponseSchema,
+	extractionEnvelopeSchema,
+	extractedContentSchema
+} from '../contracts/capture-response.js'
+import { usesHttpProtocol, hasCredentials } from '../validation/values.js'
 export function normalizedSource(value: string) {
 	if (value.length > 8192) throw new Error('invalidUrl')
 	const url = new URL(value)
-	if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
-		throw new Error('invalidUrl')
+	if (!usesHttpProtocol(url) || hasCredentials(url)) throw new Error('invalidUrl')
 	url.hash = ''
 	return url.href
 }
@@ -32,38 +36,23 @@ export type Candidate = {
 	provenance: string
 	imagesMissing: boolean
 }
-function isObject(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-function object(value: unknown): Record<string, unknown> {
-	if (!isObject(value)) throw new Error('invalidResponse')
-	return value
-}
 export function resolvedUrl(value: unknown, requestId: string) {
-	const data = object(value)
-	if (data.operationId !== requestId || typeof data.finalUrl !== 'string')
-		throw new Error('invalidResponse')
-	return normalizedSource(data.finalUrl)
+	const parsed = resolutionResponseSchema.safeParse(value)
+	if (!parsed.success || parsed.data.operationId !== requestId) throw new Error('invalidResponse')
+	return normalizedSource(parsed.data.finalUrl)
 }
 export function extractedCandidate(
 	value: unknown,
 	requestId: string,
 	submittedUrl: string
 ): Omit<Candidate, 'id'> {
-	const data = object(value),
-		candidate = object(data.candidate)
+	const envelope = extractionEnvelopeSchema.safeParse(value)
+	if (!envelope.success) throw new Error('invalidResponse')
+	const data = envelope.data
 	const finalUrl = resolvedUrl(value, requestId)
-	if (
-		typeof candidate.title !== 'string' ||
-		!candidate.title.trim() ||
-		candidate.title.length > 500 ||
-		typeof candidate.text !== 'string' ||
-		!candidate.text.trim() ||
-		new TextEncoder().encode(candidate.text).length > TEXT_LIMIT ||
-		typeof candidate.html !== 'string' ||
-		new TextEncoder().encode(candidate.html).length > BYTE_LIMIT
-	)
-		throw new Error('sourceTooLarge')
+	const parsed = extractedContentSchema.safeParse(data.candidate)
+	if (!parsed.success) throw new Error('sourceTooLarge')
+	const candidate = parsed.data
 	const provenance = JSON.stringify({
 		submittedUrl,
 		observation: data.provenance,

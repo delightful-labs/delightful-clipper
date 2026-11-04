@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { inspectMachines } from '../diagnostics/inspect.js'
 	import { onMount, setContext, type Snippet } from 'svelte'
 	import { libraryContextKey, type LibraryContext } from '../runtime/library-context.js'
 	import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
@@ -43,7 +44,8 @@
 	onMount(() => {
 		if (!appId || !serverUrl) return
 		const actor = createActor(applicationReadinessMachine, {
-			input: accountInput({ appId, serverUrl, env: 'clipper' })
+			input: accountInput({ appId, serverUrl, env: 'clipper' }),
+			inspect: inspectMachines
 		})
 		send = (event) => actor.send(event)
 		const subscription = actor.subscribe((next) => {

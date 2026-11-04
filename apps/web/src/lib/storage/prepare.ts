@@ -1,6 +1,6 @@
 import type { PreparedSave, SaveRequest } from '../contracts/storage.js'
-export const TEXT_LIMIT = 64 * 1024
-export const BYTE_LIMIT = 1024 * 1024
+export { TEXT_LIMIT, BYTE_LIMIT } from './policy.js'
+import { saveRequestSchema } from './policy.js'
 const encoder = new TextEncoder()
 async function hash(bytes: Uint8Array): Promise<string> {
 	const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes))
@@ -8,34 +8,26 @@ async function hash(bytes: Uint8Array): Promise<string> {
 }
 /** Domain intent fingerprint for reconciliation; Jazz owns byte storage and integrity. */
 export async function prepareSave(libraryId: string, request: SaveRequest): Promise<PreparedSave> {
-	const { operationId, title, text, mediaType } = request
-	if (
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operationId) ||
-		!title.trim() ||
-		title.length > 500 ||
-		!mediaType.trim() ||
-		mediaType.length > 150 ||
-		encoder.encode(text).byteLength > TEXT_LIMIT ||
-		request.bytes.byteLength > BYTE_LIMIT
-	)
-		throw new Error('Invalid bounded storage request')
-	if (
-		request.source &&
-		(request.source.finalUrl.length > 8192 ||
-			request.source.submittedUrl.length > 8192 ||
-			request.source.provenance.length > 32768)
-	)
-		throw new Error('Invalid source metadata')
-	const payload = new Uint8Array(request.bytes)
+	const parsed = saveRequestSchema.safeParse(request)
+	if (!parsed.success) {
+		const sourceOnly = parsed.error.issues.every((issue) => issue.path[0] === 'source')
+		throw new Error(sourceOnly ? 'Invalid source metadata' : 'Invalid bounded storage request')
+	}
+	const { operationId, title, text, mediaType } = parsed.data
+	const input = parsed.data
+	const payload = new Uint8Array(input.bytes)
+	const fingerprintSource = request.source ? { ...request.source } : null
 	const createdAt = new Date().toISOString()
 	const payloadHash = await hash(
 		encoder.encode(
-			JSON.stringify([title, text, await hash(payload), mediaType, request.source ?? null])
+			// Preserve the legacy metadata key order in durable intent fingerprints.
+			JSON.stringify([title, text, await hash(payload), mediaType, fingerprintSource])
 		)
 	)
 	return {
-		...(request.source
-			? { source: { id: operationId, documentId: operationId, libraryId, ...request.source } }
+		...(input.articleId ? { articleId: input.articleId } : {}),
+		...(input.source
+			? { source: { id: operationId, documentId: operationId, libraryId, ...input.source } }
 			: {}),
 		intent: { id: operationId, libraryId, payloadHash, createdAt },
 		asset: { id: operationId, libraryId, operationId, mediaType, payload },

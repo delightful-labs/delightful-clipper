@@ -12,7 +12,7 @@ Every source-of-truth row carries or inherits an enforced `libraryId`/owner rela
 | --- | --- | --- |
 | Library | ID = authenticated account UUID, immutable owner ID and bootstrap format 1 | One canonical root per account; idempotently ensure only this immutable payload. Empty replicas never trigger another identity or random root ID; mutable data/migrations are separate. |
 | Document | ID, libraryId, originalSavedAt, title/author, status, favorite, trashedAt?, priorStatus?, snapshotId?, captureState | Status is Inbox/Later/Archive. Trash is separate lifecycle. Saved snapshot immutable; no refresh selector. Original save time orders list newest first and does not change on re-clip. |
-| CaptureAttempt | ID, operationKey, account/device scope, submittedURL, resolvedURL?, redirectObservations[], canonicalCandidate?, acceptedIdentity?, parserVersion?, attemptCount, timestamps, outcome, error descriptor | Durable before navigation. One document result or accepted existing-document reference. Provenance is evidence, not authorization to merge all URL aliases forever. |
+| Article | ID, libraryId, url, originalSavedAt, contentId?, operationId?, failure? | Primary URL-first object; optional immutable content reference. Retry preserves identity/time. Bound uncertain publication is not replayed. |
 | SourceIdentity | ID, libraryId, normalized accepted URL key, documentId, evidence kind/time, redirect target? | Preserve raw observed aliases separately. Revalidate shortening destinations. Duplicate reconciling must retain annotations and captures. |
 | Representation | ID, documentId, kind source/reader, normalizationVersion, selectorVersion, textHash, textLengthCodePoints, native sanitized payload, heading/footnote metadata | A successful reader snapshot is fixed in MVP. Source representation may retain selectors/quote/provenance rather than a full duplicate raw page. No historical revision UI required. |
 | Asset | ID, documentId, sourceURL, mediaType, byteCount, width/height?, content fingerprint when needed, native byte payload, processingVersion | Content-addressed only within owner scope; reference tracking prevents deleting bytes needed by another retained record. |
@@ -26,11 +26,13 @@ Every source-of-truth row carries or inherits an enforced `libraryId`/owner rela
 
 ## Device-local records (not synced authority)
 
+PWA Add Link saves native `articles` directly, with optional content through the same operation. Existing immutable documents/snapshots/assets hold readable content. A dedicated worker processes missing-content articles serially. No separate intake graph or IndexedDB journal is selected. See [durable-capture-design.md](durable-capture-design.md). Pre-session external intake remains a distinct future boundary.
+
 - Availability ledger keyed by account/representation/asset: native row availability and local write settlement; derive offline-complete only when required native text/byte values are locally available.
 - Capture journal for external share/extension intake before account readiness. Raw URL is retained, account binding occurs explicitly; never assign a signed-out capture silently to a different user. Journal records have TTL only for abandoned intake after a documented policy, not automatic Trash expiry.
 - Worker search checkpoint: account, schema/index versions, source sequence/hash and serialized index. Discard/rebuild on mismatch; maintain separate default/Trash scopes without losing retained text.
 - Note draft: parent identity, local edit sequence, draft text and last durable acknowledgment. Never clear on an unconfirmed persistence result.
-- Runtime lease/checkpoint for capture/assets: bounded ownership claim, operation ID and generation. Multiple devices must not treat local leases as global locks.
+- Runtime execution coordination for capture/assets remains to be qualified. A local lock/lease is not a global lock, and does not authorize replay of an uncertain native operation. No separate durable checkpoint store is selected for PWA capture.
 
 ## State and durability rules
 

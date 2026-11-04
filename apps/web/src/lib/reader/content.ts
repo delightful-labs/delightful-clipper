@@ -1,3 +1,4 @@
+import { usesHttpProtocol, hasCredentials } from '../validation/values.js'
 import type { AssetResult } from '../contracts/storage.js'
 import { BYTE_LIMIT } from '../storage/prepare.js'
 import { articlePolicy, articlePurifier } from './policy.js'
@@ -50,7 +51,7 @@ export function savedContent(
 			} else {
 				try {
 					const url = new URL(href, sourceUrl)
-					if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) continue
+					if (!usesHttpProtocol(url) || hasCredentials(url)) continue
 					link.setAttribute('href', url.href)
 					link.setAttribute('rel', 'noreferrer')
 					// Article navigation uses the browser, including modifier keys, rather than app routing.

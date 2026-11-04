@@ -1,5 +1,5 @@
-const articleIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-export const isArticleId = (id: string) => articleIdPattern.test(id)
+import { isUuid } from '../validation/values.ts'
+export const isArticleId = (id: string) => isUuid(id)
 export const articleHref = (id: string) => `/articles/${encodeURIComponent(id)}`
 export const isArticlePath = (path: string) => {
 	const parts = path.split('/')

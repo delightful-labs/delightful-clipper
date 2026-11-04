@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { inspectMachines } from '../diagnostics/inspect.js'
 	import { onMount } from 'svelte'
 	import { dev } from '$app/env'
 	import { createActor, type SnapshotFrom } from 'xstate'
@@ -30,10 +31,10 @@
 					: Promise.resolve(undefined),
 			observe: observeShell
 		})
-		const actor = createActor(machine)
+		const actor = createActor(machine, { inspect: inspectMachines })
 		const subscription = actor.subscribe((next) => {
 			snapshot = next
-			if (next.context.admitted) onAdmission()
+			if (selectShellView(next).admitted) onAdmission()
 		})
 		retry = () => actor.send({ type: 'RETRY' })
 		actor.start()

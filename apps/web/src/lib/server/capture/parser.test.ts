@@ -38,3 +38,13 @@ it('rejects oversized input before acquiring a worker', async () => {
 		)
 	).rejects.toMatchObject({ code: 'sourceTooLarge', status: 413 })
 })
+it('validates worker input as bounded bytes and strings', async () => {
+	const { parserInputSchema } = await import('./parser-protocol.js')
+	const input = { body: new Uint8Array([1]), mediaType: 'text/plain', url: 'https://example.com/' }
+	expect(parserInputSchema.safeParse(input).success).toBe(true)
+	expect(parserInputSchema.safeParse({ ...input, body: [1] }).success).toBe(false)
+	expect(
+		parserInputSchema.safeParse({ ...input, body: new Uint8Array(10 * 1024 * 1024 + 1) }).success
+	).toBe(false)
+	expect(parserInputSchema.safeParse({ ...input, url: 12 }).success).toBe(false)
+})

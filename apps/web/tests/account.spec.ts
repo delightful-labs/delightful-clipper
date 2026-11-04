@@ -279,6 +279,11 @@ async function fixtureArticle(
 test('Add Link automatically saves and detects a resolved duplicate without replacing content', async ({
 	page
 }) => {
+	const actionWarnings: string[] = []
+	page.on('console', (message) => {
+		if (message.type() === 'warning' && message.text().includes('Custom actions should not call'))
+			actionWarnings.push(message.text())
+	})
 	const extractions = await fixtureArticle(page)
 	const remoteRequests: string[] = []
 	page.on('request', (request) => {
@@ -347,6 +352,7 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
 	await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)
 	await expect(page.getByRole('article')).toHaveCount(0)
+	expect(actionWarnings).toEqual([])
 })
 
 test('UI Add Link saves automatically with the authority offline, survives a full browser restart and syncs to a restored profile', async ({
@@ -377,8 +383,12 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 		await page.getByRole('button', { name: 'Add link', exact: true }).click()
 
 		await expect(
-			page.getByText('Article saved on this device. Sync pending.', { exact: true })
+			page
+				.getByRole('region', { name: 'Saved articles' })
+				.getByRole('link', { name: 'UI saved article', exact: true })
 		).toBeVisible()
+		// A readable row can arrive before this worker's local save receipt settles.
+		await expect(page.getByRole('link', { name: 'Open saved article', exact: true })).toBeVisible()
 		await context.close()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
 		const reopened = await context.newPage()
@@ -412,7 +422,7 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 	}
 })
 
-test('canceling an Add Link request prevents a late save and leaves the form usable', async ({
+test('canceling background extraction retains the saved URL and leaves the form usable', async ({
 	page
 }) => {
 	let release!: () => void
@@ -427,7 +437,7 @@ test('canceling an Add Link request prevents a late save and leaves the form usa
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/')
 	await page.getByRole('button', { name: 'Add link', exact: true }).click()
 	await expect(
-		page.getByText('Resolving and extracting the article…', { exact: true })
+		page.getByText('Resolving and extracting the article…', { exact: true }).first()
 	).toBeVisible()
 	await page.getByRole('button', { name: 'Cancel', exact: true }).click()
 	release()
@@ -565,4 +575,184 @@ test('capture continues when the initiating library page is replaced by a reader
 			.getByRole('link', { name: 'UI saved article', exact: true })
 	).toHaveCount(2)
 	expect(extractions()).toBe(1)
+})
+
+test('Add Link persists article objects before a worker processes their content serially', async ({
+	page,
+	context
+}) => {
+	const gate = Promise.withResolvers<void>()
+	let active = 0,
+		max = 0,
+		count = 0
+	await page.route('**/api/capture/*', async (route) => {
+		const input: { operationId: string; url: string } = route.request().postDataJSON()
+		const base = { operationId: input.operationId, finalUrl: input.url }
+		if (route.request().url().endsWith('/resolve')) {
+			await route.fulfill({ json: base })
+			return
+		}
+		active++
+		max = Math.max(max, active)
+		count++
+		try {
+			if (count === 1) await gate.promise
+			await route.fulfill({
+				json: {
+					...base,
+					candidate: {
+						title: input.url.endsWith('/one') ? 'Queued one' : 'Queued two',
+						text: 'Queued content',
+						html: '<p>Queued content</p>'
+					}
+				}
+			})
+		} finally {
+			active--
+		}
+	})
+	const started = page.waitForEvent('worker', {
+		predicate: (w) => w.url().includes('article-worker.ts')
+	})
+	await page.goto('/')
+	const worker = await started
+	expect(await worker.evaluate(() => typeof document)).toBe('undefined')
+	const urls = ['https://example.com/one', 'https://example.com/two']
+	await page.getByLabel('Article URL', { exact: true }).fill(urls[0] ?? '')
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect.poll(() => count).toBe(1)
+	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
+	const other = await context.newPage()
+	await other.goto('/')
+	await expect(other.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
+	await other.getByLabel('Article URL', { exact: true }).fill(urls[1] ?? '')
+	await other.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(other.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
+	await expect(page.getByRole('link', { name: 'Open original', exact: true })).toHaveCount(2)
+	const rows = await page.evaluate(async (urls) => {
+		const path = '/tests/article-driver.ts'
+		return (await import(/* @vite-ignore */ path)).inspect(urls)
+	}, urls)
+	expect(
+		rows.map(
+			(r: { url: string; contentId: string | null } | null) =>
+				r && { url: r.url, contentId: r.contentId }
+		)
+	).toEqual(urls.map((url) => ({ url, contentId: null })))
+	expect(count).toBe(1)
+	gate.resolve()
+	await expect(page.getByRole('link', { name: 'Queued one', exact: true })).toBeVisible()
+	await expect(page.getByRole('link', { name: 'Queued two', exact: true })).toBeVisible()
+	expect(max).toBe(1)
+	expect(count).toBe(2)
+	await other.close()
+})
+
+test('the article save operation accepts supplied content without fetching the URL', async ({
+	page
+}) => {
+	const requests: string[] = []
+	await page.route('**/api/capture/*', async (route) => {
+		requests.push(route.request().url())
+		await route.abort()
+	})
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const result = await page.evaluate(async () => {
+		const path = '/tests/article-driver.ts'
+		return (await import(/* @vite-ignore */ path)).supplied('https://example.com/supplied')
+	})
+	expect(result.ready).toBe(true)
+	expect(requests).toEqual([])
+	await page.goto('/articles/' + result.id)
+	await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
+})
+
+test('a worker resumes a URL-only article after complete browser restart', async () => {
+	const profile = await mkdtemp(join(tmpdir(), 'clipper-pending-article-'))
+	let context = await chromium.launchPersistentContext(profile, { headless: true })
+	const entered = Promise.withResolvers<void>(),
+		gate = Promise.withResolvers<void>()
+	const url = 'https://example.com/resume'
+	try {
+		const page = await context.newPage()
+		await page.route('**/api/capture/*', async (route) => {
+			entered.resolve()
+			await gate.promise
+			await route.abort().catch(() => {})
+		})
+		await page.goto('http://127.0.0.1:5180')
+		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await page.getByLabel('Article URL', { exact: true }).fill(url)
+		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+		await entered.promise
+		await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
+		const before = await page.evaluate(async (url) => {
+			const path = '/tests/article-driver.ts'
+			return (await import(/* @vite-ignore */ path)).inspect([url])
+		}, url)
+		expect(before[0]?.contentId).toBeNull()
+		await context.close()
+		gate.resolve()
+		context = await chromium.launchPersistentContext(profile, { headless: true })
+		const reopened = await context.newPage()
+		await fixtureArticle(reopened, undefined, url)
+		await reopened.goto('http://127.0.0.1:5180')
+		await expect(
+			reopened.getByRole('link', { name: 'UI saved article', exact: true })
+		).toBeVisible()
+		const after = await reopened.evaluate(async (url) => {
+			const path = '/tests/article-driver.ts'
+			return (await import(/* @vite-ignore */ path)).inspect([url])
+		}, url)
+		expect(after[0]?.id).toBe(before[0]?.id)
+		expect(after[0]?.originalSavedAt).toBe(before[0]?.originalSavedAt)
+		expect(after[0]?.contentId).toBeTruthy()
+	} finally {
+		gate.resolve()
+		await context.close()
+		await rm(profile, { recursive: true, force: true })
+	}
+})
+
+test('Retry from a second tab reaches the worker holding the library lock', async ({
+	page,
+	context
+}) => {
+	let attempts = 0
+	await context.route('**/api/capture/*', async (route) => {
+		const input: { operationId: string; url: string } = route.request().postDataJSON()
+		const base = { operationId: input.operationId, finalUrl: input.url }
+		if (route.request().url().endsWith('/resolve')) {
+			await route.fulfill({ json: base })
+			return
+		}
+		attempts++
+		if (attempts === 1) {
+			await route.fulfill({ status: 503, json: { code: 'gatewayUnavailable' } })
+			return
+		}
+		await route.fulfill({
+			json: {
+				...base,
+				candidate: {
+					title: 'Retried across tabs',
+					text: 'Saved after retry',
+					html: '<p>Saved after retry</p>'
+				}
+			}
+		})
+	})
+	await page.goto('/')
+	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/cross-tab-retry')
+	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+	const second = await context.newPage()
+	await second.goto('/')
+	await expect(second.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+	await second.getByRole('button', { name: 'Retry', exact: true }).click()
+	await expect(second.getByRole('link', { name: 'Retried across tabs', exact: true })).toBeVisible()
+	await expect(page.getByRole('link', { name: 'Retried across tabs', exact: true })).toBeVisible()
+	expect(attempts).toBe(2)
+	await second.close()
 })

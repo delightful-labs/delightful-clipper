@@ -1,6 +1,7 @@
 import { assign, fromPromise, setup, stateIn } from 'xstate'
 
-export type PreviewJazzApp = { appId: string; adminSecret: string }
+export type { PreviewJazzApp } from './preview-schema.ts'
+import type { PreviewJazzApp } from './preview-schema.ts'
 export type PreviewBuildResult =
 	| { outcome: 'succeeded'; appId: string }
 	| { outcome: 'refused' }

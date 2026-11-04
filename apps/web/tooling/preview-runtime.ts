@@ -1,21 +1,16 @@
-import { spawn } from 'node:child_process'
+import { previewAppSchema } from './preview-schema.ts'
+import { createActor, toPromise } from 'xstate'
+import type { SnapshotFrom } from 'xstate'
+import { createProcessMachine } from './process-machine.ts'
+import { openPreviewProcess } from './process-io.ts'
 import type { PreviewJazzApp } from './preview-machine.ts'
 
 const serverUrl = 'https://v2.sync.jazz.tools/'
 const provisionUrl = 'https://v2.dashboard.jazz.tools/api/apps/generate'
 function credentials(value: unknown): PreviewJazzApp {
-	if (
-		!value ||
-		typeof value !== 'object' ||
-		!('appId' in value) ||
-		!('adminSecret' in value) ||
-		typeof value.appId !== 'string' ||
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.appId) ||
-		typeof value.adminSecret !== 'string' ||
-		!value.adminSecret.trim()
-	)
-		throw new Error('Invalid provisioning response')
-	return { appId: value.appId, adminSecret: value.adminSecret }
+	const parsed = previewAppSchema.safeParse(value)
+	if (!parsed.success) throw new Error('Invalid provisioning response')
+	return parsed.data
 }
 
 export async function provision(signal: AbortSignal): Promise<PreviewJazzApp> {
@@ -84,57 +79,48 @@ export function previewEnvironment(appId: string): NodeJS.ProcessEnv {
 	}
 }
 
-/** Own one process group until close, including interrupted pnpm subprocesses. */
-export function run(command: string, env: NodeJS.ProcessEnv, signal: AbortSignal): Promise<void> {
-	return new Promise((resolve, reject) => {
-		signal.throwIfAborted()
-		const grouped = process.platform !== 'win32'
-		const child = spawn('pnpm', [command], {
-			env,
-			detached: grouped,
-			// Jazz errors can contain server payloads. Never echo its private environment/output.
-			stdio: command === 'build' ? 'inherit' : ['ignore', 'ignore', 'pipe']
-		})
-		let deploymentError = ''
-		child.stderr?.on('data', (chunk: Buffer) => {
-			// Retain only a bounded buffer; print no server text or credentials.
-			deploymentError = (deploymentError + chunk.toString()).slice(-16_384)
-		})
-		let killTimer: ReturnType<typeof setTimeout> | undefined
-		function kill(killSignal: NodeJS.Signals) {
-			if (!child.pid) return
-			try {
-				if (grouped) process.kill(-child.pid, killSignal)
-				else child.kill(killSignal)
-			} catch (error) {
-				if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error
-			}
-		}
-		function abort() {
-			kill('SIGTERM')
-			killTimer = setTimeout(() => kill('SIGKILL'), 5_000)
-			killTimer.unref()
-		}
-		function cleanup() {
-			signal.removeEventListener('abort', abort)
-			clearTimeout(killTimer)
-		}
-		signal.addEventListener('abort', abort, { once: true })
-		child.once('error', () => {
-			cleanup()
-			reject(new Error(`Could not start ${command}`))
-		})
-		child.once('close', (code) => {
-			cleanup()
-			if (signal.aborted) reject(new Error(`${command} cancelled`))
-			else if (code !== 0) {
-				const httpStatus = deploymentError.match(
-					/(?:Permissions head fetch|Schema publish|Schema fetch|Schema list fetch|Permissions publish|Migration publish) failed:\s*(\d{3})\b/
-				)?.[1]
-				if (httpStatus)
-					console.error(`[preview-build] Jazz admin request failed with HTTP ${httpStatus}.`)
-				reject(new Error(`${command} failed with exit code ${code}`))
-			} else resolve()
-		})
+const processMachine = createProcessMachine(openPreviewProcess)
+function processPhase(snapshot: SnapshotFrom<typeof processMachine>) {
+	const value = snapshot.value
+	if (typeof value === 'string') return value
+	const lifecycle = value.owning.lifecycle
+	if (typeof lifecycle === 'string') return lifecycle
+	return Object.keys(lifecycle).join(',')
+}
+/** Attach the caller's abort signal; the process machine owns escalation and close settlement. */
+export async function run(
+	command: string,
+	env: NodeJS.ProcessEnv,
+	signal: AbortSignal
+): Promise<void> {
+	signal.throwIfAborted()
+	const actor = createActor(processMachine, { input: { command, env } })
+	// Deduplicate presentation only; polling substates must not flood hosted build logs.
+	let lastPhase: string | undefined
+	const subscription = actor.subscribe((snapshot) => {
+		const phase = processPhase(snapshot)
+		if (phase === lastPhase) return
+		lastPhase = phase
+		console.info(`[preview-build] ${command} process ${phase}.`)
 	})
+	const abort = () => {
+		if (actor.getSnapshot().status === 'active') actor.send({ type: 'CANCEL' })
+	}
+	signal.addEventListener('abort', abort, { once: true })
+	try {
+		actor.start()
+		if (signal.aborted) abort()
+		const result = await toPromise(actor)
+		if (result.outcome === 'cancelled') throw new Error(`${command} cancelled`)
+		if (result.outcome === 'failed') {
+			if (result.startFailed) throw new Error(`Could not start ${command}`)
+			if (result.httpStatus)
+				console.error(`[preview-build] Jazz admin request failed with HTTP ${result.httpStatus}.`)
+			throw new Error(`${command} failed with exit code ${result.code}`)
+		}
+	} finally {
+		signal.removeEventListener('abort', abort)
+		subscription.unsubscribe()
+		actor.stop()
+	}
 }

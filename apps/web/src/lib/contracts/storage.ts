@@ -4,21 +4,12 @@ import type {
 	WorkspaceCreationResult
 } from 'delightful-local-first/workspace/creation/contracts'
 
-export type ArticleSource = {
+export type { SaveRequest } from '../storage/policy.js'
+import type { SaveRequest, SourceMetadata } from '../storage/policy.js'
+export type ArticleSource = SourceMetadata & {
 	documentId: string
 	id: string
 	libraryId: string
-	finalUrl: string
-	submittedUrl: string
-	provenance: string
-}
-export type SaveRequest = {
-	source?: Omit<ArticleSource, 'id' | 'libraryId' | 'documentId'>
-	operationId: string
-	title: string
-	text: string
-	bytes: Uint8Array
-	mediaType: string
 }
 export type SyncReport = { type: 'SYNC'; id: string; status: 'accepted' | 'rejected' }
 export type ReceiptWatch = { type: 'WATCH'; id: string; receipts: SyncReceipt[] }
@@ -53,6 +44,7 @@ export type StorageIntent = {
 	createdAt: string
 }
 export type PreparedSave = {
+	articleId?: string
 	source?: ArticleSource
 	intent: StorageIntent
 	asset: StoredAsset

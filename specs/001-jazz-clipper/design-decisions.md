@@ -69,3 +69,7 @@ Storage simplification accepted for PR #5: use native Jazz text/byte columns and
 ### Retained disclosure and SVG content
 
 Extraction and display share a DOMPurify factory and namespace-specific attribute policy. Native `details`/`summary` retain `open` and browser keyboard behavior; grouping names are removed. Inline SVG retains static shapes, paths, groups, text, title/description, geometry and solid paints. SVG IDs, links/references (including local paint references), CSS, images, embedded HTML, filters and animation are stripped. Gradients and reusable `use` definitions are not supported by this initial subset. The reader constrains SVG width to its content area. Existing article byte/node limits apply, with a 16 KiB per SVG attribute bound. This policy is applied again to persisted HTML rather than trusting extraction alone.
+
+## URL-first article saving
+
+Add Link immediately saves the article with its URL. The same save operation optionally accepts content from a browser clipper. A dedicated module-worker XState machine processes articles missing content serially, retaining the same object on failure and Retry. Main-thread code owns only trusted SDK/network leaves and resource draining. No separate intake graph or custom IndexedDB journal is used. See [durable-capture-design.md](durable-capture-design.md) for publication barriers and current evidence limits.

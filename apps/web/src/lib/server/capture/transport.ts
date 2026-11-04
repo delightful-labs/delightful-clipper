@@ -1,3 +1,5 @@
+import { createActor, toPromise } from 'xstate'
+import { decodeResponseMachine } from '../../machines/capture/decode-response.js'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { isIP } from 'node:net'
@@ -70,28 +72,27 @@ export async function fetchHop(
 				incoming.once('end', () => {
 					const wire = Buffer.concat(chunks)
 					const encoding = incoming.headers['content-encoding']?.trim().toLowerCase()
-					const decompress =
-						encoding === 'gzip'
-							? promisify(gunzip)
-							: encoding === 'br'
-								? promisify(brotliDecompress)
-								: encoding === 'deflate'
-									? promisify(inflate)
-									: undefined
-					if (encoding && encoding !== 'identity' && !decompress) {
-						reject(new CaptureError('unsupportedMedia', 415))
-						return
+					const formats = {
+						gzip: promisify(gunzip),
+						br: promisify(brotliDecompress),
+						deflate: promisify(inflate)
 					}
-					if (!decompress) {
-						resolve({ status, location, mediaType, body: wire })
-						return
-					}
-					decompress(wire, {
-						maxOutputLength: Math.min(BODY_LIMIT, Math.max(1024, wire.length * 100))
-					}).then(
-						(body) => resolve({ status, location, mediaType, body }),
-						() => reject(new CaptureError('sourceTooLarge', 413))
-					)
+					void toPromise(
+						createActor(decodeResponseMachine, {
+							input: {
+								wire,
+								encoding,
+								headers: { status, location, mediaType },
+								decode: (format, bytes) =>
+									formats[format](bytes, {
+										maxOutputLength: Math.min(BODY_LIMIT, Math.max(1024, bytes.length * 100))
+									})
+							}
+						}).start()
+					).then((result) => {
+						if (result.error) reject(result.error)
+						else resolve(result.hop)
+					}, reject)
 				})
 			}
 		)

@@ -142,3 +142,13 @@ it('preserves an asynchronous parser runtime outage as a retryable service failu
 	expect(result.error.status).toBe(503)
 	expect(result.error.retryable).toBe(true)
 })
+it('resolve mode bypasses the extraction actor after a successful fetch', async () => {
+	const deps = fixture()
+	const result = await toPromise(
+		createActor(createGatewayMachine(deps), { input: { ...input(), mode: 'resolve' } }).start()
+	)
+	expect(result.kind).toBe('success')
+	expect(deps.extract).not.toHaveBeenCalled()
+	if (result.kind !== 'success') throw new Error('Expected resolution')
+	expect(result.extraction).toBeUndefined()
+})

@@ -1,0 +1,205 @@
+{
+	"articleSources": {
+		"columns": [
+			{
+				"name": "documentId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "documents"
+			},
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "finalUrl",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "submittedUrl",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "provenance",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		]
+	},
+	"assets": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "operationId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "storageOperations"
+			},
+			{
+				"name": "mediaType",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "payload",
+				"column_type": {
+					"type": "Bytea"
+				},
+				"nullable": false
+			}
+		]
+	},
+	"documents": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "operationId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "storageOperations"
+			},
+			{
+				"name": "snapshotId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "snapshots"
+			},
+			{
+				"name": "assetId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "assets"
+			},
+			{
+				"name": "title",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "originalSavedAt",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		]
+	},
+	"libraries": {
+		"columns": [
+			{
+				"name": "ownerId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false
+			},
+			{
+				"name": "bootstrapVersion",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		]
+	},
+	"snapshots": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "documentId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "storageOperations"
+			},
+			{
+				"name": "text",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "formatVersion",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		]
+	},
+	"storageOperations": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "payloadHash",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "createdAt",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		]
+	}
+}

@@ -1,62 +1,51 @@
 import type { LibraryCapability } from '../../contracts/library.js'
-import {
-	articleId,
-	extractedCandidate,
-	normalizedSource,
-	resolvedUrl
-} from '../../capture/source.js'
+import { createActor, toPromise } from 'xstate'
+import { createArticleWorkerHostMachine } from '../../machines/capture/article-worker-host.js'
+import { openArticleWorkerBrowser } from '../../machines/capture/article-worker-browser.js'
+import { readCaptureResponse } from '../../machines/capture/article-worker-io.js'
+import { inspectMachines } from '../../diagnostics/inspect.js'
+import { debugEnabled } from '../../diagnostics/logger.js'
 import type { LibraryRecords } from './records.js'
-/** Individual I/O leaves; capture sequencing and actor lifetime belong to machines. */
+/** Binding only. The library owns saving, worker lifetime and SDK leaf resources. */
 export function createLibraryCapability(
 	records: LibraryRecords,
-	libraryId: string,
+	_libraryId: string,
 	request: (mode: 'resolve' | 'extract', body: unknown, signal: AbortSignal) => Promise<Response>
 ): LibraryCapability {
-	const current = (signal: AbortSignal) => {
-		signal.throwIfAborted()
-		if (!records.isCurrent()) throw new Error('scopeChanged')
-	}
-	async function json(mode: 'resolve' | 'extract', url: string, id: string, signal: AbortSignal) {
-		current(signal)
-		normalizedSource(url)
-		const response = await request(mode, { protocolVersion: 1, operationId: id, url }, signal)
-		const data: unknown = await response.json()
-		current(signal)
-		if (!response.ok)
-			throw new Error(
-				response.status === 401
-					? 'sessionUnavailable'
-					: response.status === 429
-						? 'rateLimited'
-						: 'captureFailed'
-			)
-		return data
-	}
+	const workerMachine = createArticleWorkerHostMachine({
+		libraryId: records.articles.libraryId,
+		isCurrent: records.isCurrent,
+		debug: debugEnabled,
+		online: () => navigator.onLine,
+		open: (report) => openArticleWorkerBrowser(records, report),
+		network: (call, signal) => readCaptureResponse(request, call, signal, records.isCurrent),
+		lookup: async (call) =>
+			call.method === 'document'
+				? { method: 'document', exists: await records.hasDocument(call.operationId) }
+				: { method: 'intent', exists: await records.hasIntent(call.operationId) },
+		save: records.articles.saveMachine,
+		failure: records.articles.failure
+	})
 	return {
 		isCurrent: records.isCurrent,
-		subscribe: records.subscribe,
 		read: records.readCapabilities,
-		spawnSave: (spawn, input) => spawn(records.saveMachine, { input }),
-		resolve: async (url, id, signal) => resolvedUrl(await json('resolve', url, id, signal), id),
-		identify: async (url, signal) => {
-			current(signal)
-			const id = await articleId(libraryId, url)
-			current(signal)
-			return id
-		},
-		hasDocument: async (id, signal) => {
-			current(signal)
-			const found = await records.hasDocument(id)
-			current(signal)
-			return found
-		},
-		hasIntent: async (id, signal) => {
-			current(signal)
-			const found = await records.hasIntent(id)
-			current(signal)
-			return found
-		},
-		extract: async (url, id, signal) =>
-			extractedCandidate(await json('extract', url, id, signal), id, url)
+		subscribe: records.articles.subscribe,
+		spawnSave: (spawn, input) => spawn(records.articles.saveMachine, { input }),
+		worker: (report) => {
+			const actor = createActor(workerMachine, {
+				input: { report },
+				inspect: inspectMachines
+			}).start()
+			const stopped = toPromise(actor).then(() => {})
+			return {
+				send: (event) => {
+					if (actor.getSnapshot().status === 'active') actor.send(event)
+				},
+				stop: () => {
+					if (actor.getSnapshot().status === 'active') actor.send({ type: 'STOP' })
+					return stopped
+				}
+			}
+		}
 	}
 }

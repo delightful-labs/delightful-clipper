@@ -2,7 +2,7 @@ import { schema as s } from 'jazz-tools'
 import type { RowRefValue } from 'jazz-tools/permissions'
 import { app } from './schema.js'
 
-export default s.definePermissions(app, ({ policy, session, allOf }) => {
+export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 	const canonical = () =>
 		allOf([
 			{ id: session.user.account },
@@ -15,6 +15,21 @@ export default s.definePermissions(app, ({ policy, session, allOf }) => {
 	policy.libraries.allowInsert.where(canonical)
 	policy.libraries.allowUpdate.whereOld(canonical).whereNew(canonical)
 	policy.libraries.allowDelete.never()
+	policy.articles.allowRead.where((row) => owns(row.libraryId))
+	const articleTarget = (row: { libraryId: RowRefValue; contentId: RowRefValue }) =>
+		allOf([
+			owns(row.libraryId),
+			anyOf([
+				{ contentId: null },
+				policy.documents.exists.where({ id: row.contentId, libraryId: row.libraryId })
+			])
+		])
+	policy.articles.allowInsert.where(articleTarget)
+	// Completed article content is fixed; pending articles can record work/failures and complete once.
+	policy.articles.allowUpdate
+		.whereOld((row) => allOf([owns(row.libraryId), { contentId: null }]))
+		.whereNew(articleTarget)
+	policy.articles.allowDelete.never()
 	policy.storageOperations.allowRead.where((row) => owns(row.libraryId))
 	policy.storageOperations.allowInsert.where((row) => owns(row.libraryId))
 	policy.storageOperations.allowUpdate.never()
