@@ -523,9 +523,7 @@ export function selectLibraryView(
 				)
 			: {},
 		rowMessages,
-		readable: visible
-			? Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId && !c.background[row.id]]))
-			: {},
+		readable: visible ? Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId])) : {},
 		canOpenCapture: visible && c.captureReady && !c.background[c.captureId],
 		canCancel: visible && snapshot.can({ type: 'CANCEL' }) && (c.writing || c.backgroundCancelable)
 	}

@@ -138,3 +138,42 @@ it('rejects invalid URLs before creating a save actor', async () => {
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })
+
+it.each([
+	{ order: 'before', variant: 'info' as const },
+	{ order: 'after', variant: 'info' as const },
+	{ order: 'before', variant: 'error' as const },
+	{ order: 'after', variant: 'error' as const }
+])(
+	'keeps synced content readable when worker $variant status arrives $order the content row',
+	async ({ order, variant }) => {
+		const { actor } = fixture()
+		const status = {
+			type: 'BACKGROUND_STATUS' as const,
+			id,
+			cancelable: false,
+			message: { text: 'Worker fixture status', variant }
+		}
+		if (order === 'before') actor.send(status)
+		actor.send({
+			type: 'ROWS',
+			rows: [
+				{
+					id,
+					title: candidate.title,
+					url: candidate.finalUrl,
+					contentId: id,
+					originalSavedAt: '2026-11-03T12:00:00.000Z',
+					failure: null
+				}
+			]
+		})
+		if (order === 'after') actor.send(status)
+		const view = selectLibraryView(actor.getSnapshot())
+		expect(view.readable[id]).toBe(true)
+		// Merely observing a content row does not synthesize this client's save confirmation.
+		expect(view.canOpenCapture).toBe(false)
+		actor.send({ type: 'SHUTDOWN' })
+		await toPromise(actor)
+	}
+)
