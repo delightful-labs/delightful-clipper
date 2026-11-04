@@ -381,6 +381,8 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 				.getByRole('region', { name: 'Saved articles' })
 				.getByRole('link', { name: 'UI saved article', exact: true })
 		).toBeVisible()
+		// A readable row can arrive before this worker's local save receipt settles.
+		await expect(page.getByRole('link', { name: 'Open saved article', exact: true })).toBeVisible()
 		await context.close()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
 		const reopened = await context.newPage()
