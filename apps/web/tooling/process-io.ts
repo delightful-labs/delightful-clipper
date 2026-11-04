@@ -1,45 +1,76 @@
 import { spawn } from 'node:child_process'
-import type { ProcessOpen } from './process-machine.ts'
-/** Spawn, signal and event translation only; grace-period/escalation policy belongs to the machine. */
-export const openPreviewProcess: ProcessOpen = (input, report) => {
+import type { ProcessEvent, ProcessOpen, ProcessPort } from './process-machine.ts'
+type NativeInput = {
+	file: string
+	args: string[]
+	env: NodeJS.ProcessEnv
+	stderr: 'inherit' | 'pipe'
+}
+function hasErrorCode(error: unknown, code: string) {
+	return error instanceof Error && 'code' in error && error.code === code
+}
+// Releasing before Node emits an asynchronous spawn error must not create an unhandled error.
+// This static sink retains no owner, environment or diagnostic data.
+const ignoreDetachedError = () => {}
+/** Native I/O only. Lifecycle, diagnostics and escalation policy belong to the machine. */
+export function openNodeProcess(
+	input: NativeInput,
+	report: (event: ProcessEvent) => void
+): ProcessPort {
 	const grouped = process.platform !== 'win32'
-	const child = spawn('pnpm', [input.command], {
+	const child = spawn(input.file, input.args, {
 		env: input.env,
 		detached: grouped,
-		stdio: input.command === 'build' ? 'inherit' : ['ignore', 'ignore', 'pipe']
+		stdio: input.stderr === 'inherit' ? 'inherit' : ['ignore', 'ignore', 'pipe']
 	})
-	let deploymentError = ''
-	const data = (chunk: Buffer) => {
-		deploymentError = (deploymentError + chunk.toString()).slice(-16384)
-	}
-	const error = () => report({ type: 'ERROR' })
-	const close = (code: number | null) => {
-		const httpStatus = deploymentError.match(
-			/(?:Permissions head fetch|Schema publish|Schema fetch|Schema list fetch|Permissions publish|Migration publish) failed:\s*(\d{3})\b/
-		)?.[1]
-		report({ type: 'CLOSE', code, ...(httpStatus ? { httpStatus } : {}) })
-	}
-	const signal = (value: NodeJS.Signals) => {
-		if (!child.pid) return
-		try {
-			if (grouped) process.kill(-child.pid, value)
-			else child.kill(value)
-		} catch (error) {
-			if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error
-		}
-	}
-	child.stderr?.on('data', data)
-	child.once('error', error)
+	const spawned = () => report({ type: 'SPAWNED' })
+	const error = () => report({ type: 'PROCESS_ERROR' })
+	const close = (code: number | null) => report({ type: 'CLOSE', code })
+	const data = (chunk: Buffer) => report({ type: 'STDERR', text: chunk.toString() })
+	const target = () => (grouped && child.pid !== undefined ? -child.pid : child.pid)
+	child.once('spawn', spawned)
+	child.on('error', error)
 	child.once('close', close)
+	child.stderr?.on('data', data)
 	return {
-		signal,
+		signal: (value) => {
+			const pid = target()
+			if (pid === undefined) return
+			try {
+				process.kill(pid, value)
+			} catch (error) {
+				if (!hasErrorCode(error, 'ESRCH')) throw error
+			}
+		},
+		isAlive: () => {
+			const pid = target()
+			if (pid === undefined) return false
+			try {
+				process.kill(pid, 0)
+				return true
+			} catch (error) {
+				if (hasErrorCode(error, 'ESRCH')) return false
+				if (hasErrorCode(error, 'EPERM')) return true
+				throw error
+			}
+		},
 		release: () => {
-			child.stderr?.off('data', data)
+			child.off('spawn', spawned)
 			child.off('error', error)
+			child.off('error', ignoreDetachedError)
+			child.on('error', ignoreDetachedError)
 			child.off('close', close)
-			deploymentError = ''
-			// Forced actor disposal still requests physical cleanup; normal settlement follows close.
-			if (child.exitCode === null && child.signalCode === null) signal('SIGKILL')
+			child.stderr?.off('data', data)
 		}
 	}
 }
+export const openPreviewProcess: ProcessOpen = (input, report) =>
+	openNodeProcess(
+		{
+			file: 'pnpm',
+			args: [input.command],
+			env: input.env,
+			stderr: input.command === 'build' ? 'inherit' : 'pipe'
+		},
+		report
+	)
