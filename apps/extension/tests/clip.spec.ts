@@ -37,7 +37,7 @@ test.afterAll(async () => {
 	if (directory) await rm(directory, { recursive: true, force: true })
 })
 async function extension(profile: string) {
-	const path = resolve('apps/extension/dist')
+	const path = resolve('apps/extension/.test-build')
 	const context = await chromium.launchPersistentContext(profile, {
 		channel: 'chromium',
 		headless: true,
@@ -331,7 +331,7 @@ test('Close dismisses only the bar, keeps the source and saved article, and allo
 })
 
 test('packages workers locally with offscreen ownership and only gesture-scoped source access', async () => {
-	const manifest = JSON.parse(await readFile('apps/extension/dist/manifest.json', 'utf8'))
+	const manifest = JSON.parse(await readFile('apps/extension/.test-build/manifest.json', 'utf8'))
 	expect(manifest.permissions).toEqual(['activeTab', 'scripting', 'storage', 'offscreen'])
 	expect(manifest.host_permissions).toBeUndefined()
 	expect(manifest.content_scripts).toBeUndefined()
@@ -343,7 +343,7 @@ test('packages workers locally with offscreen ownership and only gesture-scoped 
 	)
 	expect(manifest.content_security_policy.extension_pages).not.toContain("'unsafe-eval'")
 	expect(
-		(await readdir('apps/extension/dist/assets')).filter((name) => name.endsWith('.wasm'))
+		(await readdir('apps/extension/.test-build/assets')).filter((name) => name.endsWith('.wasm'))
 	).toHaveLength(1)
 })
 
