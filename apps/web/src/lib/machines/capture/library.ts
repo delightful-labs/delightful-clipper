@@ -1,4 +1,15 @@
-import { assign, enqueueActions, fromCallback, sendTo, setup, stopChild, raise } from 'xstate'
+import {
+	assign,
+	enqueueActions,
+	fromCallback,
+	sendTo,
+	setup,
+	stopChild,
+	raise,
+	stateIn,
+	and,
+	not
+} from 'xstate'
 import type { SnapshotFrom } from 'xstate'
 import { t } from '../../localization/index.js'
 import { normalizedSource } from '../../capture/source.js'
@@ -20,9 +31,6 @@ function savedResult(result: ArticleSaveResult) {
 }
 type Context = {
 	capability: LibraryCapability | undefined
-	closing: boolean
-	writing: boolean
-	workerClosed: boolean
 	saveRef: SaveRef | undefined
 	url: string
 	captureId: string
@@ -37,12 +45,6 @@ type Context = {
 	backgroundId: string
 	backgroundCancelable: boolean
 	background: Record<string, WorkflowMessage>
-}
-function canUseLibrary(context: Context) {
-	return !context.closing && !!context.capability?.isCurrent()
-}
-function canStartSave(context: Context) {
-	return canUseLibrary(context) && !context.writing
 }
 function hasWatchableReceipts(result: ArticleSaveResult) {
 	if (result.kind !== 'saved' && result.kind !== 'duplicate') return false
@@ -136,7 +138,14 @@ export const libraryMachine = setup<
 	typeof actors,
 	{},
 	{ close: undefined; watch: undefined; updateRows: undefined },
-	{ canUseLibrary: undefined },
+	{
+		canUseLibrary: undefined
+		canStartSave: undefined
+		accepting: undefined
+		writing: undefined
+		closing: undefined
+		drained: undefined
+	},
 	never,
 	string,
 	LibraryCapability | undefined,
@@ -145,14 +154,19 @@ export const libraryMachine = setup<
 	Meta
 >({
 	actors,
-	guards: { canUseLibrary: ({ context }) => canUseLibrary(context) },
+	guards: {
+		accepting: stateIn({ running: { control: 'active' } }),
+		closing: stateIn({ running: { control: 'closing' } }),
+		writing: stateIn({ running: { capture: 'saving' } }),
+		canUseLibrary: and(['accepting', ({ context }) => !!context.capability?.isCurrent()]),
+		canStartSave: and(['canUseLibrary', not('writing')]),
+		drained: and(['closing', not('writing'), stateIn({ running: { workerLifecycle: 'closed' } })])
+	},
 	actions: {
-		close: enqueueActions(({ context, enqueue }) => {
-			if (context.saveRef) enqueue.sendTo(context.saveRef, { type: 'SHUTDOWN' })
+		close: enqueueActions(({ enqueue }) => {
 			enqueue.sendTo('worker', { type: 'STOP' })
 			enqueue.sendTo('receipts', { type: 'SHUTDOWN' })
 			enqueue.assign({
-				closing: true,
 				reader: undefined,
 				rows: [],
 				url: '',
@@ -195,9 +209,6 @@ export const libraryMachine = setup<
 	initial: 'running',
 	context: ({ input }) => ({
 		capability: input,
-		closing: false,
-		writing: false,
-		workerClosed: false,
 		saveRef: undefined,
 		url: '',
 		captureId: '',
@@ -222,14 +233,12 @@ export const libraryMachine = setup<
 				{ id: 'receipts', src: 'receipts', input: ({ self }) => ({ reportTo: self }) }
 			],
 			always: {
-				guard: ({ context }) => context.closing && !context.writing && context.workerClosed,
+				guard: 'drained',
 				target: 'closed'
 			},
 			on: {
-				SHUTDOWN: { actions: 'close' },
 				WATCH_RECEIPTS: {
-					guard: ({ context, event }) =>
-						canUseLibrary(context) && hasWatchableReceipts(event.result),
+					guard: and(['canUseLibrary', ({ event }) => hasWatchableReceipts(event.result)]),
 					actions: [
 						assign({
 							sync: ({ context, event }) => ({
@@ -246,8 +255,10 @@ export const libraryMachine = setup<
 				},
 				ROWS: [
 					{
-						guard: ({ context, event }) =>
-							canUseLibrary(context) && shouldReopenReader(context, event.rows),
+						guard: and([
+							'canUseLibrary',
+							({ context, event }) => shouldReopenReader(context, event.rows)
+						]),
 						actions: [
 							'updateRows',
 							raise(({ context }) => ({ type: 'OPEN', id: context.readerId }))
@@ -259,9 +270,8 @@ export const libraryMachine = setup<
 					}
 				],
 				LIST_FAILED: { actions: assign({ listFailed: true }) },
-				BACKGROUND_CLOSED: { actions: assign({ workerClosed: true }) },
 				BACKGROUND_ERROR: {
-					guard: ({ context }) => !context.closing,
+					guard: 'accepting',
 					actions: assign({ failure: 'captureFailed' })
 				},
 				BACKGROUND_STATUS: {
@@ -300,7 +310,7 @@ export const libraryMachine = setup<
 					]
 				},
 				RETRY: {
-					guard: ({ context }) => !context.closing,
+					guard: 'accepting',
 					actions: sendTo('worker', ({ event }) => ({ type: 'RETRY', id: event.id }))
 				},
 				SYNC: {
@@ -311,23 +321,38 @@ export const libraryMachine = setup<
 				}
 			},
 			states: {
+				control: {
+					initial: 'active',
+					states: {
+						active: { on: { SHUTDOWN: { target: 'closing', actions: 'close' } } },
+						closing: {}
+					}
+				},
+				workerLifecycle: {
+					initial: 'active',
+					states: { active: { on: { BACKGROUND_CLOSED: 'closed' } }, closed: {} }
+				},
 				capture: {
 					initial: 'idle',
 					on: {
 						ADD: [
 							{
-								guard: ({ context, event }) => canStartSave(context) && isValidSourceUrl(event.url),
+								guard: and(['canStartSave', ({ event }) => isValidSourceUrl(event.url)]),
 								target: '.saving',
 								actions: assign({ url: ({ event }) => event.url, failure: '', captureReady: false })
 							},
 							{
-								guard: ({ context }) => !context.closing && !context.writing,
+								guard: and(['accepting', not('writing')]),
 								target: '.failed',
 								actions: assign({ failure: 'invalidUrl' })
 							}
 						],
 						CANCEL: {
-							guard: ({ context }) => !context.writing && context.backgroundCancelable,
+							guard: and([
+								not('writing'),
+								'accepting',
+								({ context }) => context.backgroundCancelable
+							]),
 							actions: sendTo('worker', ({ context }) => ({
 								type: 'CANCEL',
 								id: context.backgroundId
@@ -342,7 +367,6 @@ export const libraryMachine = setup<
 							},
 							initial: 'active',
 							entry: assign(({ context, spawn }) => ({
-								writing: true,
 								saveRef: required(context.capability).spawnSave(
 									(logic, options) => spawn(logic, options),
 									{ url: context.url }
@@ -350,11 +374,17 @@ export const libraryMachine = setup<
 							})),
 							exit: [
 								stopChild(({ context }) => required(context.saveRef)),
-								assign({ writing: false, saveRef: undefined })
+								assign({ saveRef: undefined })
 							],
 							states: {
 								active: {
 									on: {
+										SHUTDOWN: {
+											target: 'stopping',
+											actions: sendTo(({ context }) => required(context.saveRef), {
+												type: 'SHUTDOWN'
+											})
+										},
 										CANCEL: {
 											target: 'stopping',
 											actions: sendTo(({ context }) => required(context.saveRef), {
@@ -368,8 +398,10 @@ export const libraryMachine = setup<
 							on: {
 								'xstate.done.actor.*': [
 									{
-										guard: ({ context, event }) =>
-											context.closing && event.actorId === context.saveRef?.id,
+										guard: and([
+											'closing',
+											({ context, event }) => event.actorId === context.saveRef?.id
+										]),
 										target: 'canceled'
 									},
 									{
@@ -449,6 +481,7 @@ export const libraryMachine = setup<
 					initial: 'empty',
 					on: {
 						OPEN: {
+							guard: 'canUseLibrary',
 							target: '.loading',
 							actions: assign({
 								readerId: ({ event }) => event.id,
@@ -465,8 +498,10 @@ export const libraryMachine = setup<
 							})
 						},
 						READ_RESULT: {
-							guard: ({ context, event }) =>
-								event.generation === context.readerGeneration && canUseLibrary(context),
+							guard: and([
+								'canUseLibrary',
+								({ context, event }) => event.generation === context.readerGeneration
+							]),
 							target: '.shown',
 							actions: assign({ reader: ({ event }) => event.result })
 						}
@@ -520,7 +555,8 @@ export function selectLibraryView(
 	_gatewayEnabled = true
 ) {
 	const c = snapshot?.context
-	const visible = !!c && !c.closing && snapshot.status === 'active'
+	const visible =
+		!!c && snapshot.matches({ running: { control: 'active' } }) && snapshot.status === 'active'
 	const meta = visible ? Object.values(snapshot.getMeta()) : []
 	const rowMessages: Record<string, WorkflowMessage> = {}
 	if (visible)
@@ -559,6 +595,9 @@ export function selectLibraryView(
 		rowMessages,
 		readable: visible ? Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId])) : {},
 		canOpenCapture: visible && c.captureReady && !c.background[c.captureId],
-		canCancel: visible && snapshot.can({ type: 'CANCEL' }) && (c.writing || c.backgroundCancelable)
+		canCancel:
+			visible &&
+			snapshot.can({ type: 'CANCEL' }) &&
+			(snapshot.matches({ running: { capture: 'saving' } }) || c.backgroundCancelable)
 	}
 }

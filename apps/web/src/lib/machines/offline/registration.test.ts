@@ -18,8 +18,10 @@ it('keeps session admission closed until offline preparation settles, then retai
 			}
 		})
 	).start()
-	await waitFor(actor, (s) => s.matches('watching'))
-	expect(actor.getSnapshot().context.admitted).toBe(false)
+	await waitFor(actor, (s) =>
+		s.matches({ running: { attempt: { active: { workflow: 'watching' } } } })
+	)
+	expect(selectShellView(actor.getSnapshot()).admitted).toBe(false)
 	expect(selectShellView(actor.getSnapshot()).message).toEqual({
 		text: 'Preparing offline startup…',
 		variant: 'info'
@@ -30,9 +32,9 @@ it('keeps session admission closed until offline preparation settles, then retai
 		variant: 'info'
 	})
 	expect(selectShellView(actor.getSnapshot()).canRetry).toBe(false)
-	expect(actor.getSnapshot().context.admitted).toBe(true)
+	expect(selectShellView(actor.getSnapshot()).admitted).toBe(true)
 	report?.({ type: 'STATUS', status: 'preparing' })
-	expect(actor.getSnapshot().context.admitted).toBe(true)
+	expect(selectShellView(actor.getSnapshot()).admitted).toBe(true)
 	report?.({ type: 'STATUS', status: 'waiting' })
 	expect(actor.getSnapshot().context.status).toBe('waiting')
 	expect(selectShellView(actor.getSnapshot()).message?.text).toBe(
@@ -54,7 +56,7 @@ it('offers the normal DLF session path after unsupported or failed registration'
 		const actor = createActor(
 			createShellRegistrationMachine({ register, observe: () => () => {} })
 		).start()
-		await waitFor(actor, (s) => s.context.admitted)
+		await waitFor(actor, (s) => selectShellView(s).admitted)
 		expect(['unsupported', 'failed']).toContain(actor.getSnapshot().context.status)
 		actor.send({ type: 'SHUTDOWN' })
 	}
@@ -85,15 +87,65 @@ it('does not block DLF acquisition forever when first installation stalls', asyn
 		}),
 		{ clock }
 	).start()
-	await waitFor(actor, (s) => s.matches('watching'))
+	await waitFor(actor, (s) =>
+		s.matches({ running: { attempt: { active: { workflow: 'watching' } } } })
+	)
 	clock.increment(45000)
 	expect(actor.getSnapshot().context).toMatchObject({
 		status: 'failed',
-		admitted: true,
 		registration: undefined
 	})
 	expect(dispose).toHaveBeenCalledOnce()
 	expect(selectShellView(actor.getSnapshot()).message?.variant).toBe('error')
 	expect(selectShellView(actor.getSnapshot()).canRetry).toBe(true)
 	actor.send({ type: 'SHUTDOWN' })
+})
+
+it('gives each retry a fresh deadline without revoking session admission', async () => {
+	const clock = new SimulatedClock()
+	const register = vi.fn<() => Promise<ShellRegistration | undefined>>()
+	register.mockRejectedValueOnce(new Error('registration failed'))
+	register.mockImplementation(() => new Promise(() => {}))
+	const actor = createActor(createShellRegistrationMachine({ register, observe: () => () => {} }), {
+		clock
+	}).start()
+	await waitFor(actor, (s) => s.context.status === 'failed')
+	actor.send({ type: 'RETRY' })
+	expect(selectShellView(actor.getSnapshot()).admitted).toBe(true)
+	clock.increment(44999)
+	expect(actor.getSnapshot().context.status).toBe('preparing')
+	clock.increment(1)
+	expect(actor.getSnapshot().context.status).toBe('failed')
+	actor.send({ type: 'RETRY' })
+	clock.increment(45000)
+	expect(actor.getSnapshot().context.status).toBe('failed')
+	expect(register).toHaveBeenCalledTimes(3)
+	actor.send({ type: 'SHUTDOWN' })
+})
+
+it('retains admission and cancels the attempt deadline after initial readiness', async () => {
+	const clock = new SimulatedClock()
+	let report: ((event: ShellEvent) => void) | undefined
+	const dispose = vi.fn()
+	const actor = createActor(
+		createShellRegistrationMachine({
+			register: async () => registration(),
+			observe: (_registration, send) => {
+				report = send
+				return dispose
+			}
+		}),
+		{ clock }
+	).start()
+	await waitFor(actor, (s) =>
+		s.matches({ running: { attempt: { active: { workflow: 'watching' } } } })
+	)
+	report?.({ type: 'STATUS', status: 'ready' })
+	report?.({ type: 'STATUS', status: 'preparing' })
+	clock.increment(90000)
+	expect(actor.getSnapshot().context.status).toBe('preparing')
+	expect(selectShellView(actor.getSnapshot()).admitted).toBe(true)
+	expect(dispose).not.toHaveBeenCalled()
+	actor.send({ type: 'SHUTDOWN' })
+	expect(dispose).toHaveBeenCalledOnce()
 })

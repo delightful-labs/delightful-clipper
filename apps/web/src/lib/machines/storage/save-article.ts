@@ -1,4 +1,4 @@
-import { assign, enqueueActions, fromPromise, setup } from 'xstate'
+import { assign, fromPromise, setup, stateIn, sendTo } from 'xstate'
 import type { Snapshot } from 'xstate'
 import type {
 	Article,
@@ -17,7 +17,6 @@ type Context = {
 	request: SaveArticleRequest | undefined
 	draft: ArticleDraft | undefined
 	existing: Article | null
-	closing: boolean
 	result: ArticleSaveResult | undefined
 }
 export function createSaveArticleMachine<
@@ -38,7 +37,7 @@ export function createSaveArticleMachine<
 		{ type: 'SHUTDOWN' },
 		typeof actors,
 		{},
-		{ close: undefined },
+		{},
 		{ closing: undefined; stale: undefined },
 		never,
 		string,
@@ -46,18 +45,14 @@ export function createSaveArticleMachine<
 		ArticleSaveResult
 	>({
 		actors,
-		guards: { closing: ({ context }) => context.closing, stale: () => !cap.isCurrent() },
-		actions: {
-			close: enqueueActions(({ self, enqueue }) => {
-				enqueue.assign({ closing: true })
-				for (const id of ['ensure', 'attach', 'content'])
-					if (self.getSnapshot().children[id]) enqueue.sendTo(id, { type: 'SHUTDOWN' })
-			})
+		guards: {
+			closing: stateIn({ running: { control: 'stopping' } }),
+			stale: () => !cap.isCurrent()
 		}
 	})
 	const interrupts = [
-		{ guard: 'stale' as const, target: 'scopeChanged' },
-		{ guard: 'closing' as const, target: 'interrupted' }
+		{ guard: 'stale' as const, target: '#save-article.scopeChanged' },
+		{ guard: 'closing' as const, target: '#save-article.interrupted' }
 	]
 	const draft = ({ context }: { context: Context }) => {
 		const d = required(context.draft)
@@ -82,6 +77,13 @@ export function createSaveArticleMachine<
 		})
 	const stage = (src: 'ensure' | 'attach') =>
 		model.createStateConfig({
+			initial: 'active',
+			states: {
+				active: {
+					on: { SHUTDOWN: { target: 'stopping', actions: sendTo(src, { type: 'SHUTDOWN' }) } }
+				},
+				stopping: {}
+			},
 			invoke: {
 				id: src,
 				src,
@@ -89,12 +91,12 @@ export function createSaveArticleMachine<
 				onDone: [
 					{
 						guard: ({ event }) => !event.output || event.output.settlement.kind === 'unresolved',
-						target: 'unknown'
+						target: '#save-article.unknown'
 					},
 					...interrupts,
 					{
 						guard: ({ event }) => event.output?.settlement.kind === 'locallyPersisted',
-						target: 'done',
+						target: '#save-article.done',
 						actions: assign({
 							result: ({ context, event }) => {
 								const receipts: SyncReceipt[] =
@@ -111,23 +113,13 @@ export function createSaveArticleMachine<
 						})
 					},
 					{ guard: ({ event }) => event.output?.outcome === 'blocked', target: 'rereading' },
-					{ target: 'failed' }
+					{ target: '#save-article.failed' }
 				],
-				onError: 'unknown'
+				onError: '#save-article.unknown'
 			}
 		})
-	return model.createMachine({
-		id: 'save-article',
+	const work = model.createStateConfig({
 		initial: 'admitting',
-		context: ({ input }) => ({
-			request: input,
-			draft: undefined,
-			existing: null,
-			closing: false,
-			result: undefined
-		}),
-		output: ({ context }) => required(context.result),
-		on: { SHUTDOWN: { actions: 'close' } },
 		states: {
 			admitting: { always: [...interrupts, { target: 'preparing' }] },
 			preparing: {
@@ -141,7 +133,7 @@ export function createSaveArticleMachine<
 							actions: assign({ draft: ({ event }) => event.output, request: undefined })
 						}
 					],
-					onError: [...interrupts, { target: 'failed' }]
+					onError: [...interrupts, { target: '#save-article.failed' }]
 				}
 			},
 			reading: {
@@ -178,13 +170,16 @@ export function createSaveArticleMachine<
 							})
 						}
 					],
-					onError: [...interrupts, { target: 'unknown' }]
+					onError: [...interrupts, { target: '#save-article.unknown' }]
 				}
 			},
 			checking: {
 				always: [
 					...interrupts,
-					{ guard: ({ context }) => !!context.existing?.contentId, target: 'duplicate' },
+					{
+						guard: ({ context }) => !!context.existing?.contentId,
+						target: '#save-article.duplicate'
+					},
 					{ target: 'checkingDocument' }
 				]
 			},
@@ -197,7 +192,7 @@ export function createSaveArticleMachine<
 						{ guard: ({ event }) => event.output !== null, target: 'attach' },
 						{ target: 'checkingIntent' }
 					],
-					onError: [...interrupts, { target: 'unknown' }]
+					onError: [...interrupts, { target: '#save-article.unknown' }]
 				}
 			},
 			checkingIntent: {
@@ -209,11 +204,11 @@ export function createSaveArticleMachine<
 						{ guard: ({ context }) => !context.draft?.content, target: 'ensure' },
 						{
 							guard: ({ context, event }) => event.output || !!context.existing?.operationId,
-							target: 'unknown'
+							target: '#save-article.unknown'
 						},
 						{ target: 'content' }
 					],
-					onError: [...interrupts, { target: 'unknown' }]
+					onError: [...interrupts, { target: '#save-article.unknown' }]
 				}
 			},
 			ensure: stage('ensure'),
@@ -226,15 +221,27 @@ export function createSaveArticleMachine<
 						...interrupts,
 						{
 							guard: ({ event }) => event.output !== null,
-							target: 'duplicate',
+							target: '#save-article.duplicate',
 							actions: assign({ existing: ({ event }) => event.output })
 						},
-						{ target: 'unknown' }
+						{ target: '#save-article.unknown' }
 					],
-					onError: [...interrupts, { target: 'unknown' }]
+					onError: [...interrupts, { target: '#save-article.unknown' }]
 				}
 			},
 			content: {
+				initial: 'active',
+				states: {
+					active: {
+						on: {
+							SHUTDOWN: {
+								target: 'stopping',
+								actions: sendTo('content', { type: 'SHUTDOWN' })
+							}
+						}
+					},
+					stopping: {}
+				},
 				invoke: {
 					id: 'content',
 					src: 'content',
@@ -242,12 +249,12 @@ export function createSaveArticleMachine<
 					onDone: [
 						{
 							guard: ({ event }) => !event.output || event.output.kind === 'unknown',
-							target: 'unknown'
+							target: '#save-article.unknown'
 						},
 						...interrupts,
 						{
 							guard: ({ event }) => event.output?.kind === 'saved',
-							target: 'done',
+							target: '#save-article.done',
 							actions: assign({
 								result: ({ context, event }) => ({
 									kind: 'saved',
@@ -257,9 +264,32 @@ export function createSaveArticleMachine<
 								})
 							})
 						},
-						{ target: 'unknown' }
+						{ target: '#save-article.unknown' }
 					],
-					onError: 'unknown'
+					onError: '#save-article.unknown'
+				}
+			}
+		}
+	})
+	return model.createMachine({
+		id: 'save-article',
+		initial: 'running',
+		context: ({ input }) => ({
+			request: input,
+			draft: undefined,
+			existing: null,
+			result: undefined
+		}),
+		output: ({ context }) => required(context.result),
+		states: {
+			running: {
+				type: 'parallel',
+				states: {
+					control: {
+						initial: 'active',
+						states: { active: { on: { SHUTDOWN: 'stopping' } }, stopping: {} }
+					},
+					work
 				}
 			},
 			duplicate: {

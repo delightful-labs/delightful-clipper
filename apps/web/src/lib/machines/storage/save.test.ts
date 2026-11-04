@@ -148,3 +148,100 @@ it.each(['before', 'resolve', 'reject'] as const)(
 		expect(commit).not.toHaveBeenCalled()
 	}
 )
+
+it.each(['resolve', 'reject'] as const)(
+	'drains preparation %s after repeated shutdown without opening a transaction',
+	async (settlement) => {
+		const gate = Promise.withResolvers<PreparedSave>()
+		const open = vi.fn(() => ({}))
+		const stage = createWorkspaceCreationTransaction<
+			PreparedSave,
+			object,
+			null,
+			SyncReceipt,
+			object
+		>({
+			open,
+			readLocal: async () => null,
+			assess: () => ({ outcome: 'eligible' }),
+			stage: () => ({ global: async () => {} }),
+			commit: () => ({}),
+			persistLocal: async () => {},
+			rollback: () => true
+		})
+		const request = {
+			operationId: crypto.randomUUID(),
+			title: 'Title',
+			text: 'Text',
+			bytes: new Uint8Array([1]),
+			mediaType: 'text/plain'
+		}
+		const prepare = vi.fn(() => gate.promise)
+		const actor = createActor(
+			createSaveRecordMachine({ isCurrent: () => true, prepare, intent: stage, publish: stage }),
+			{ input: request }
+		).start()
+		actor.send({ type: 'SHUTDOWN' })
+		actor.send({ type: 'SHUTDOWN' })
+		expect(actor.getSnapshot().status).toBe('active')
+		if (settlement === 'resolve') gate.resolve(await prepareSave(crypto.randomUUID(), request))
+		else gate.reject(new Error('preparation failed'))
+		expect((await toPromise(actor)).kind).toBe('interrupted')
+		expect(open).not.toHaveBeenCalled()
+		expect(actor.getSnapshot().context.request).toBeUndefined()
+	}
+)
+
+it.each(['blocked', 'failed', 'saved'] as const)(
+	'selects the %s terminal state from native stage outcomes',
+	async (expected) => {
+		const receipt = { global: async () => {} }
+		const commit = vi.fn(() => ({}))
+		const rollback = vi.fn(() => true)
+		const stage = createWorkspaceCreationTransaction<
+			PreparedSave,
+			object,
+			null,
+			SyncReceipt,
+			object
+		>({
+			open: () => ({}),
+			readLocal: async () => null,
+			assess: () =>
+				expected === 'blocked'
+					? { outcome: 'blocked', reason: 'existing intent' }
+					: { outcome: 'eligible' },
+			stage: () => {
+				if (expected === 'failed') throw new Error('stage failed')
+				return receipt
+			},
+			commit,
+			persistLocal: async () => {},
+			rollback
+		})
+		const request = {
+			operationId: crypto.randomUUID(),
+			title: 'Title',
+			text: 'Text',
+			bytes: new Uint8Array([1]),
+			mediaType: 'text/plain'
+		}
+		const actor = createActor(
+			createSaveRecordMachine({
+				isCurrent: () => true,
+				prepare: (input) => prepareSave(crypto.randomUUID(), input),
+				intent: stage,
+				publish: stage
+			}),
+			{ input: request }
+		).start()
+		const result = await toPromise(actor)
+		expect(result.kind).toBe(expected)
+		expect(actor.getSnapshot().matches(expected)).toBe(true)
+		if (result.kind === 'saved') {
+			expect(result.receipts).toEqual([receipt, receipt])
+			expect(commit).toHaveBeenCalledTimes(2)
+		} else expect(commit).not.toHaveBeenCalled()
+		if (expected === 'failed') expect(rollback).toHaveBeenCalledOnce()
+	}
+)

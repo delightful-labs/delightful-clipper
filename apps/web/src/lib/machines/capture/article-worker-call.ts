@@ -1,4 +1,4 @@
-import { assign, enqueueActions, fromPromise, setup } from 'xstate'
+import { assign, fromPromise, setup, stateIn, sendTo } from 'xstate'
 import type { ActorLogic, Snapshot } from 'xstate'
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { ArticleSaveResult, SaveArticleRequest } from '../../contracts/articles.js'
@@ -54,12 +54,11 @@ export function createArticleWorkerCallMachine<
 	type Context = {
 		call: HostCall | undefined
 		abort: AbortController | undefined
-		closing: boolean
 		output: CallOutput
 	}
 	const complete = (context: Context, outcome: Omit<CallOutput, 'id'>): CallOutput => ({
 		id: context.output.id,
-		...(!context.closing && cap.isCurrent() ? outcome : {})
+		...outcome
 	})
 	const actors = {
 		network: fromPromise(
@@ -81,14 +80,18 @@ export function createArticleWorkerCallMachine<
 		{ type: 'SHUTDOWN' },
 		typeof actors,
 		{},
-		{ close: undefined; completeFailure: undefined },
-		{},
+		{ completeFailure: undefined },
+		{ closing: undefined; stale: undefined },
 		never,
 		string,
 		HostCall,
 		CallOutput
 	>({
 		actors,
+		guards: {
+			closing: stateIn({ running: { control: 'stopping' } }),
+			stale: () => !cap.isCurrent()
+		},
 		actions: {
 			completeFailure: assign({
 				output: ({ context }) => {
@@ -98,35 +101,24 @@ export function createArticleWorkerCallMachine<
 						call.type === 'RETRY' ? { retry: call.id } : { reply: { method: 'fail' } }
 					)
 				}
-			}),
-			close: enqueueActions(({ context, self, enqueue }) => {
-				enqueue.assign({ closing: true })
-				context.abort?.abort()
-				for (const id of ['save', 'failure'])
-					if (self.getSnapshot().children[id]) enqueue.sendTo(id, { type: 'SHUTDOWN' })
 			})
 		}
 	})
+	const suppress = [
+		{ guard: 'closing' as const, target: '#article-worker-call.suppressed' },
+		{ guard: 'stale' as const, target: '#article-worker-call.suppressed' }
+	]
 	const failed = ({ context, event }: { context: Context; event: { error: unknown } }) => ({
 		output: complete(context, { error: errorCode(event.error) })
 	})
-	return model.createMachine({
-		id: 'article-worker-call',
+	const work = model.createStateConfig({
 		initial: 'routing',
-		context: ({ input }) => ({
-			call: input,
-			abort: undefined,
-			closing: false,
-			output: { id: input.id }
-		}),
-		output: ({ context }) => context.output,
-		on: { SHUTDOWN: { actions: 'close' } },
 		states: {
 			routing: {
 				always: [
 					{
 						guard: () => !cap.isCurrent(),
-						target: 'done',
+						target: '#article-worker-call.done',
 						actions: assign({
 							output: ({ context }) => ({ id: context.output.id, error: 'scopeChanged' })
 						})
@@ -151,6 +143,18 @@ export function createArticleWorkerCallMachine<
 				]
 			},
 			network: {
+				initial: 'active',
+				states: {
+					active: {
+						on: {
+							SHUTDOWN: {
+								target: 'stopping',
+								actions: ({ context }) => required(context.abort).abort()
+							}
+						}
+					},
+					stopping: {}
+				},
 				entry: assign({ abort: () => new AbortController() }),
 				invoke: {
 					src: 'network',
@@ -160,16 +164,22 @@ export function createArticleWorkerCallMachine<
 							throw new Error('Invalid network call')
 						return { call, signal: required(context.abort).signal }
 					},
-					onDone: {
-						target: 'done',
-						actions: assign({
-							output: ({ context, event }) => complete(context, { reply: event.output })
-						})
-					},
-					onError: {
-						target: 'done',
-						actions: assign(({ context, event }) => failed({ context, event }))
-					}
+					onDone: [
+						...suppress,
+						{
+							target: '#article-worker-call.done',
+							actions: assign({
+								output: ({ context, event }) => complete(context, { reply: event.output })
+							})
+						}
+					],
+					onError: [
+						...suppress,
+						{
+							target: '#article-worker-call.done',
+							actions: assign(({ context, event }) => failed({ context, event }))
+						}
+					]
 				}
 			},
 			lookup: {
@@ -181,19 +191,37 @@ export function createArticleWorkerCallMachine<
 							throw new Error('Invalid lookup call')
 						return call
 					},
-					onDone: {
-						target: 'done',
-						actions: assign({
-							output: ({ context, event }) => complete(context, { reply: event.output })
-						})
-					},
-					onError: {
-						target: 'done',
-						actions: assign(({ context, event }) => failed({ context, event }))
-					}
+					onDone: [
+						...suppress,
+						{
+							target: '#article-worker-call.done',
+							actions: assign({
+								output: ({ context, event }) => complete(context, { reply: event.output })
+							})
+						}
+					],
+					onError: [
+						...suppress,
+						{
+							target: '#article-worker-call.done',
+							actions: assign(({ context, event }) => failed({ context, event }))
+						}
+					]
 				}
 			},
 			saving: {
+				initial: 'active',
+				states: {
+					active: {
+						on: {
+							SHUTDOWN: {
+								target: 'stopping',
+								actions: sendTo('save', { type: 'SHUTDOWN' })
+							}
+						}
+					},
+					stopping: {}
+				},
 				invoke: {
 					id: 'save',
 					src: 'save',
@@ -202,32 +230,50 @@ export function createArticleWorkerCallMachine<
 						if (call.type !== 'CALL' || call.method !== 'save') throw new Error('Invalid save call')
 						return call.request
 					},
-					onDone: {
-						target: 'done',
-						actions: assign({
-							output: ({ context, event }) => {
-								const result = required<ArticleSaveResult>(event.output)
-								return complete(context, {
-									result,
-									reply: {
-										method: 'save',
-										result: {
-											kind: result.kind,
-											operationId: result.operationId,
-											ready: 'ready' in result && result.ready === true
+					onDone: [
+						...suppress,
+						{
+							target: '#article-worker-call.done',
+							actions: assign({
+								output: ({ context, event }) => {
+									const result = required<ArticleSaveResult>(event.output)
+									return complete(context, {
+										result,
+										reply: {
+											method: 'save',
+											result: {
+												kind: result.kind,
+												operationId: result.operationId,
+												ready: 'ready' in result && result.ready === true
+											}
 										}
-									}
-								})
-							}
-						})
-					},
-					onError: {
-						target: 'done',
-						actions: assign(({ context, event }) => failed({ context, event }))
-					}
+									})
+								}
+							})
+						}
+					],
+					onError: [
+						...suppress,
+						{
+							target: '#article-worker-call.done',
+							actions: assign(({ context, event }) => failed({ context, event }))
+						}
+					]
 				}
 			},
 			failing: {
+				initial: 'active',
+				states: {
+					active: {
+						on: {
+							SHUTDOWN: {
+								target: 'stopping',
+								actions: sendTo('failure', { type: 'SHUTDOWN' })
+							}
+						}
+					},
+					stopping: {}
+				},
 				invoke: {
 					id: 'failure',
 					src: 'failure',
@@ -246,10 +292,11 @@ export function createArticleWorkerCallMachine<
 						}
 					},
 					onDone: [
+						...suppress,
 						{
 							guard: ({ event }) =>
 								required<FailureResult>(event.output).settlement.kind === 'locallyPersisted',
-							target: 'done',
+							target: '#article-worker-call.done',
 							actions: [
 								({ event }) => {
 									const settlement = required<FailureResult>(event.output).settlement
@@ -260,13 +307,46 @@ export function createArticleWorkerCallMachine<
 								'completeFailure'
 							]
 						},
-						{ target: 'done', actions: 'completeFailure' }
+						{ target: '#article-worker-call.done', actions: 'completeFailure' }
 					],
-					onError: {
-						target: 'done',
-						actions: assign(({ context, event }) => failed({ context, event }))
-					}
+					onError: [
+						...suppress,
+						{
+							target: '#article-worker-call.done',
+							actions: assign(({ context, event }) => failed({ context, event }))
+						}
+					]
 				}
+			}
+		}
+	})
+	return model.createMachine({
+		id: 'article-worker-call',
+		initial: 'running',
+		context: ({ input }) => ({
+			call: input,
+			abort: undefined,
+			output: { id: input.id }
+		}),
+		output: ({ context }) => context.output,
+		states: {
+			running: {
+				type: 'parallel',
+				states: {
+					control: {
+						initial: 'active',
+						states: { active: { on: { SHUTDOWN: 'stopping' } }, stopping: {} }
+					},
+					work
+				}
+			},
+			suppressed: {
+				type: 'final',
+				entry: assign({
+					output: ({ context }) => ({ id: context.output.id }),
+					call: undefined,
+					abort: undefined
+				})
 			},
 			done: { type: 'final', entry: assign({ call: undefined, abort: undefined }) }
 		}

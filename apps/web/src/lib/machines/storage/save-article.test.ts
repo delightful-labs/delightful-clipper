@@ -149,3 +149,99 @@ it('drains an issued read on shutdown and admits no subsequent lookup', async ()
 	expect((await toPromise(f.actor)).kind).toBe('interrupted')
 	expect(f.document).not.toHaveBeenCalled()
 })
+
+it.each(['prepare', 'read', 'document', 'intent', 'reread'] as const)(
+	'drains %s after repeated shutdown without admitting another operation',
+	async (phase) => {
+		const f = fixture(phase)
+		await f.entered
+		f.actor.send({ type: 'SHUTDOWN' })
+		f.actor.send({ type: 'SHUTDOWN' })
+		const calls = [
+			f.prepare.mock.calls.length,
+			f.read.mock.calls.length,
+			f.document.mock.calls.length,
+			f.intent.mock.calls.length
+		]
+		expect(f.actor.getSnapshot().status).toBe('active')
+		f.gate.resolve()
+		expect((await toPromise(f.actor)).kind).toBe('interrupted')
+		expect([
+			f.prepare.mock.calls.length,
+			f.read.mock.calls.length,
+			f.document.mock.calls.length,
+			f.intent.mock.calls.length
+		]).toEqual(calls)
+	}
+)
+
+it.each([
+	['ensure', 'resolve'],
+	['ensure', 'reject'],
+	['attach', 'resolve'],
+	['attach', 'reject']
+] as const)(
+	'drains the %s local write through %s after repeated shutdown',
+	async (phase, settlement) => {
+		const gate = Promise.withResolvers<void>()
+		const persistLocal = vi.fn(() => gate.promise)
+		const commit = vi.fn(() => ({}))
+		const stage = createWorkspaceCreationTransaction<
+			ArticleDraft,
+			object,
+			null,
+			SyncReceipt,
+			object
+		>({
+			open: () => ({}),
+			readLocal: async () => null,
+			assess: () => ({ outcome: 'eligible' }),
+			stage: () => ({ global: async () => {} }),
+			commit,
+			persistLocal,
+			rollback: () => true
+		})
+		const contentStage = transaction<PreparedSave>()
+		const content = createSaveRecordMachine({
+			isCurrent: () => true,
+			prepare: async () => {
+				throw new Error('Unexpected content save')
+			},
+			intent: contentStage,
+			publish: contentStage
+		})
+		const actor = createActor(
+			createSaveArticleMachine({
+				isCurrent: () => true,
+				prepare: async () => draft,
+				read: async () => null,
+				document: async () =>
+					phase === 'attach'
+						? {
+								id: 'content',
+								libraryId: 'library',
+								operationId: 'operation',
+								snapshotId: 'snapshot',
+								assetId: 'asset',
+								title: 'Existing',
+								originalSavedAt: '2026-11-04'
+							}
+						: null,
+				intent: async () => false,
+				ensure: stage,
+				attach: stage,
+				content
+			}),
+			{ input: { url: draft.article.url } }
+		).start()
+		await vi.waitFor(() => expect(persistLocal).toHaveBeenCalledOnce())
+		actor.send({ type: 'SHUTDOWN' })
+		actor.send({ type: 'SHUTDOWN' })
+		expect(actor.getSnapshot().status).toBe('active')
+		expect(commit).toHaveBeenCalledOnce()
+		if (settlement === 'resolve') gate.resolve()
+		else gate.reject(new Error('unknown local durability'))
+		expect((await toPromise(actor)).kind).toBe(settlement === 'resolve' ? 'interrupted' : 'unknown')
+		expect(actor.getSnapshot().context.draft).toBeUndefined()
+	}
+)

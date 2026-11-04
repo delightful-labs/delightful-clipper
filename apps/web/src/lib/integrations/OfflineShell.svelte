@@ -34,7 +34,7 @@
 		const actor = createActor(machine, { inspect: inspectMachines })
 		const subscription = actor.subscribe((next) => {
 			snapshot = next
-			if (next.context.admitted) onAdmission()
+			if (selectShellView(next).admitted) onAdmission()
 		})
 		retry = () => actor.send({ type: 'RETRY' })
 		actor.start()

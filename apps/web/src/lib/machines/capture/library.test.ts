@@ -51,7 +51,7 @@ it('drains a URL write and the worker resource before closing the account scope'
 	const gate = Promise.withResolvers<ArticleSaveResult>()
 	const { actor, shutdown, unsubscribe } = fixture(() => gate.promise)
 	actor.send({ type: 'ADD', url: candidate.finalUrl })
-	await waitFor(actor, (s) => s.context.writing)
+	await waitFor(actor, (s) => s.matches({ running: { capture: 'saving' } }))
 	actor.send({ type: 'SHUTDOWN' })
 	expect(actor.getSnapshot().status).toBe('active')
 	expect(shutdown).toHaveBeenCalledOnce()
@@ -71,7 +71,7 @@ it('keeps URL persistence independent of reader navigation', async () => {
 	expect(actor.getSnapshot().context.saveRef).toBe(child)
 	expect(shutdown).not.toHaveBeenCalled()
 	gate.resolve({ kind: 'saved', operationId: id, ready: false, receipts: [] })
-	await waitFor(actor, (s) => !s.context.writing)
+	await waitFor(actor, (s) => !s.matches({ running: { capture: 'saving' } }))
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })
@@ -175,5 +175,47 @@ it.each([
 		expect(view.canOpenCapture).toBe(false)
 		actor.send({ type: 'SHUTDOWN' })
 		await toPromise(actor)
+	}
+)
+
+it.each(['write-first', 'worker-first'] as const)(
+	'joins write and worker shutdown in either order (%s)',
+	async (order) => {
+		const pending = Promise.withResolvers<ArticleSaveResult>()
+		const work = vi.fn(() => pending.promise)
+		const shutdown = vi.fn()
+		const save = controlledSave(work, shutdown)
+		let report:
+			| ((event: import('../../contracts/article-worker.js').QueueReport) => void)
+			| undefined
+		const send = vi.fn()
+		const cap = testLibraryCapability(candidate, {
+			spawnSave: (spawn, input) => spawn(save, { input }),
+			worker: (next) => {
+				report = next
+				return { send, stop: async () => {} }
+			}
+		})
+		const actor = createActor(libraryMachine, { input: cap }).start()
+		actor.send({ type: 'ADD', url: candidate.submittedUrl })
+		await vi.waitFor(() => expect(work).toHaveBeenCalledOnce())
+		actor.send({ type: 'SHUTDOWN' })
+		actor.send({ type: 'SHUTDOWN' })
+		actor.send({ type: 'ADD', url: 'https://example.com/another' })
+		actor.send({ type: 'OPEN', id: 'another' })
+		expect(selectLibraryView(actor.getSnapshot()).captureMessage).toBeUndefined()
+		expect(shutdown).toHaveBeenCalledOnce()
+		expect(send.mock.calls.filter(([event]) => event.type === 'STOP')).toHaveLength(1)
+		if (order === 'worker-first') report?.({ type: 'BACKGROUND_CLOSED' })
+		else {
+			pending.resolve({ kind: 'unknown', operationId: id })
+			await waitFor(actor, (s) => !s.matches({ running: { capture: 'saving' } }))
+		}
+		expect(actor.getSnapshot().status).toBe('active')
+		if (order === 'worker-first') pending.resolve({ kind: 'unknown', operationId: id })
+		else report?.({ type: 'BACKGROUND_CLOSED' })
+		await toPromise(actor)
+		expect(work).toHaveBeenCalledOnce()
+		expect(actor.getSnapshot().context.capability).toBeUndefined()
 	}
 )

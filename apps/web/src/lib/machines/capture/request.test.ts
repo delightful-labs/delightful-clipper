@@ -135,3 +135,47 @@ it('does not acquire an admission lease for an unauthorized request', async () =
 	expect((await toPromise(actor)).status).toBe(401)
 	expect(acquire).not.toHaveBeenCalled()
 })
+
+it.each(['resolve', 'reject'] as const)(
+	'drains input cancellation through %s without starting a gateway',
+	async (settlement) => {
+		const gate = Promise.withResolvers<CaptureInput>()
+		const f = fixture({ read: () => gate.promise })
+		await vi.waitFor(() => expect(f.read).toHaveBeenCalledOnce())
+		f.controller.abort()
+		f.actor.send({ type: 'CANCEL' })
+		expect(f.actor.getSnapshot().matches({ owning: { control: 'cancelled' } })).toBe(true)
+		expect(f.release).not.toHaveBeenCalled()
+		if (settlement === 'resolve') gate.resolve(parsed)
+		else gate.reject(new Error('aborted'))
+		const response = await toPromise(f.actor)
+		expect(await response.json()).toEqual({ code: 'canceled', retryable: true })
+		expect(f.extract).not.toHaveBeenCalled()
+		expect(f.release).toHaveBeenCalledOnce()
+	}
+)
+
+it('preserves deadline precedence when cancelled input drains past the deadline', async () => {
+	const gate = Promise.withResolvers<CaptureInput>()
+	const f = fixture({ read: () => gate.promise })
+	await vi.waitFor(() => expect(f.read).toHaveBeenCalledOnce())
+	f.controller.abort()
+	f.clock.increment(20)
+	expect(f.actor.getSnapshot().matches({ owning: { control: 'timedOut' } })).toBe(true)
+	gate.reject(new Error('aborted late'))
+	const response = await toPromise(f.actor)
+	expect(response.status).toBe(504)
+	expect(f.release).toHaveBeenCalledOnce()
+})
+
+it('preserves a typed input failure even when the deadline expires during drain', async () => {
+	const gate = Promise.withResolvers<CaptureInput>()
+	const f = fixture({ read: () => gate.promise })
+	await vi.waitFor(() => expect(f.read).toHaveBeenCalledOnce())
+	f.clock.increment(20)
+	gate.reject(new CaptureError('sourceTooLarge', 413))
+	const response = await toPromise(f.actor)
+	expect(response.status).toBe(413)
+	expect(await response.json()).toEqual({ code: 'sourceTooLarge', retryable: false })
+	expect(f.release).toHaveBeenCalledOnce()
+})

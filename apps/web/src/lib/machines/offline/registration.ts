@@ -1,7 +1,7 @@
 import { t } from '../../localization/index.js'
 import type { WorkflowMessage } from '../../contracts/feedback.js'
 import type { SnapshotFrom } from 'xstate'
-import { assign, fromCallback, fromPromise, setup } from 'xstate'
+import { assign, fromCallback, fromPromise, setup, raise } from 'xstate'
 export type ShellStatus = 'preparing' | 'ready' | 'waiting' | 'failed' | 'unsupported'
 export type ShellWorker = EventTarget & { state: string }
 export type ShellRegistration = EventTarget & {
@@ -9,14 +9,15 @@ export type ShellRegistration = EventTarget & {
 	waiting: ShellWorker | null
 	installing: ShellWorker | null
 }
-export type ShellEvent = { type: 'STATUS'; status: ShellStatus } | { type: 'RETRY' | 'SHUTDOWN' }
+export type ShellEvent =
+	| { type: 'STATUS'; status: ShellStatus }
+	| { type: 'RETRY' | 'SHUTDOWN' | 'ATTEMPT_SETTLED' | 'TIMED_OUT' }
 export type ShellPlatform = {
 	register: () => Promise<ShellRegistration | undefined>
 	observe: (registration: ShellRegistration, report: (event: ShellEvent) => void) => () => void
 }
 type Context = {
 	registration: ShellRegistration | undefined
-	admitted: boolean
 	status: ShellStatus
 	message: WorkflowMessage | undefined
 }
@@ -43,22 +44,22 @@ export function createShellRegistrationMachine(platform: ShellPlatform) {
 			platform.observe(input, sendBack)
 		)
 	}
-	return setup<Context, ShellEvent, typeof actors, {}, {}, {}, never, string>({
-		actors
-	}).createMachine({
-		id: 'offline-shell',
+	const model = setup<Context, ShellEvent, typeof actors, {}, {}, {}, never, string>({ actors })
+	const show = (value: ShellStatus) =>
+		model.assign({ status: value, message: () => shellMessage(value) })
+	const status = (value: ShellStatus) => model.createStateConfig({ entry: show(value) })
+	const settled = {
+		guard: ({ event }: { event: ShellEvent }) =>
+			event.type === 'STATUS' && event.status !== 'preparing',
+		target: 'open'
+	}
+	const workflow = model.createStateConfig({
+		id: 'shell-registration-attempt',
 		initial: 'registering',
-		context: () => ({
-			registration: undefined,
-			admitted: false,
-			status: 'preparing',
-			message: shellMessage('preparing')
-		}),
-		on: { SHUTDOWN: '.closed' },
-		after: { 45000: { guard: ({ context }) => !context.admitted, target: '.failed' } },
+		on: { TIMED_OUT: '.failed' },
 		states: {
 			registering: {
-				entry: assign({ status: 'preparing', message: () => shellMessage('preparing') }),
+				...status('preparing'),
 				invoke: {
 					src: 'register',
 					onDone: [
@@ -67,48 +68,101 @@ export function createShellRegistrationMachine(platform: ShellPlatform) {
 							target: 'watching',
 							actions: assign({ registration: ({ event }) => event.output })
 						},
-						{ target: 'unsupported' }
+						{ target: 'unsupported', actions: raise({ type: 'ATTEMPT_SETTLED' }) }
 					],
-					onError: 'failed'
+					onError: { target: 'failed', actions: raise({ type: 'ATTEMPT_SETTLED' }) }
 				}
 			},
 			watching: {
+				initial: 'preparing',
 				invoke: {
 					src: 'observe',
 					input: ({ context }) => {
 						if (!context.registration) throw new Error('Missing shell registration')
 						return context.registration
 					},
-					onError: 'failed'
+					onError: { target: 'failed', actions: raise({ type: 'ATTEMPT_SETTLED' }) }
 				},
 				on: {
-					STATUS: {
-						actions: assign({
-							status: ({ event }) => event.status,
-							message: ({ event }) => shellMessage(event.status),
-							admitted: ({ context, event }) => context.admitted || event.status !== 'preparing'
-						})
-					},
-					RETRY: 'registering'
+					STATUS: [
+						{ guard: ({ event }) => event.status === 'ready', target: '.ready' },
+						{
+							guard: ({ event }) => event.status === 'waiting',
+							target: '.waiting'
+						},
+						{ guard: ({ event }) => event.status === 'failed', target: '.failed' },
+						{
+							guard: ({ event }) => event.status === 'unsupported',
+							target: '.unsupported'
+						},
+						{ target: '.preparing' }
+					]
+				},
+				states: {
+					preparing: status('preparing'),
+					ready: status('ready'),
+					waiting: status('waiting'),
+					failed: status('failed'),
+					unsupported: status('unsupported')
 				}
 			},
 			failed: {
-				entry: assign({
-					status: 'failed',
-					admitted: true,
-					registration: undefined,
-					message: () => shellMessage('failed')
-				}),
-				on: { RETRY: 'registering' }
+				entry: [show('failed'), assign({ registration: undefined })]
 			},
 			unsupported: {
-				type: 'final',
-				entry: assign({
-					status: 'unsupported',
-					admitted: true,
-					registration: undefined,
-					message: () => shellMessage('unsupported')
-				})
+				entry: [show('unsupported'), assign({ registration: undefined })]
+			}
+		}
+	})
+	const attempt = model.createStateConfig({
+		type: 'parallel',
+		states: {
+			deadline: {
+				initial: 'pending',
+				states: {
+					pending: {
+						after: {
+							45000: { target: 'settled', actions: raise({ type: 'TIMED_OUT' }) }
+						},
+						on: {
+							STATUS: { ...settled, target: 'settled' },
+							ATTEMPT_SETTLED: 'settled'
+						}
+					},
+					settled: {}
+				}
+			},
+			workflow
+		}
+	})
+	return model.createMachine({
+		id: 'offline-shell',
+		initial: 'running',
+		context: () => ({
+			registration: undefined,
+			status: 'preparing',
+			message: shellMessage('preparing')
+		}),
+		on: { SHUTDOWN: '.closed' },
+		states: {
+			running: {
+				type: 'parallel',
+				states: {
+					admission: {
+						initial: 'blocked',
+						states: {
+							blocked: { on: { STATUS: settled, ATTEMPT_SETTLED: 'open', TIMED_OUT: 'open' } },
+							open: {}
+						}
+					},
+					attempt: {
+						initial: 'active',
+						on: { RETRY: '.active' },
+						states: {
+							active: attempt
+						}
+					}
+				}
 			},
 			closed: { type: 'final', entry: assign({ registration: undefined, message: undefined }) }
 		}
@@ -120,6 +174,7 @@ export function selectShellView(
 ) {
 	return {
 		message: snapshot ? snapshot.context.message : shellMessage('preparing'),
+		admitted: snapshot?.matches({ running: { admission: 'open' } }) ?? false,
 		canRetry: snapshot?.context.status === 'failed' && snapshot.can({ type: 'RETRY' })
 	}
 }
