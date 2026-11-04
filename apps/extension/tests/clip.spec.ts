@@ -98,10 +98,15 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 				.locator('delightful-clipper-bar')
 				.evaluate((element) => element.getBoundingClientRect().top)
 		).toBe(0)
-		await source.screenshot({
-			path: '/tmp/clipper-extension-bar-review.png',
-			clip: { x: 0, y: 0, width: 1100, height: 240 }
-		})
+		await test.step(
+			'capture the rendered bar for review',
+			() =>
+				source.screenshot({
+					path: '/tmp/clipper-extension-bar-review.png',
+					clip: { x: 0, y: 0, width: 1100, height: 240 }
+				}),
+			{ timeout: 10000 }
+		)
 		const phrase = await test.step(
 			'read recovery controls in trusted options',
 			() => recovery(context, id),
