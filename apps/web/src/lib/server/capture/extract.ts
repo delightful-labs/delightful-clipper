@@ -1,3 +1,4 @@
+import { readableText } from '../../reader/text.js'
 import { articlePolicy, articlePurifier } from '../../reader/policy.js'
 import { Readability } from '@mozilla/readability'
 import { CaptureError } from './errors.js'
@@ -124,39 +125,7 @@ export async function extract(body: Uint8Array, mediaType: string, url: string) 
 			const purify = articlePurifier(result.window)
 			const html = purify.sanitize(root.body.innerHTML, articlePolicy)
 			root.body.innerHTML = html
-			const blocks = new Set([
-				'P',
-				'DIV',
-				'ARTICLE',
-				'SECTION',
-				'H1',
-				'H2',
-				'H3',
-				'H4',
-				'H5',
-				'H6',
-				'LI',
-				'UL',
-				'OL',
-				'BLOCKQUOTE',
-				'PRE',
-				'TR',
-				'FIGCAPTION',
-				'DL',
-				'DT',
-				'DD'
-			])
-			function project(node: Node): string {
-				if (node.nodeType === 3) return node.textContent ?? ''
-				if (node.nodeType !== 1) return ''
-				const tag = node.nodeName
-				if (tag === 'BR') return '\n'
-				const value = Array.from(node.childNodes, project).join('')
-				return blocks.has(tag) ? `\n${value}\n` : value
-			}
-			const normalizedText = project(root.body)
-				.replace(/\n{3,}/g, '\n\n')
-				.trim()
+			const normalizedText = readableText(root.body)
 			if (!normalizedText) throw new CaptureError('parseFailed', 422)
 			return {
 				canonicalCandidate,

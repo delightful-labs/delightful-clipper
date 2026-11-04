@@ -1,12 +1,22 @@
 # Implementation tasks and acceptance status
 
-Updated 2026-11-03. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
+Updated 2026-11-04. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
-## Current handoff — PR #12
+## Current handoff — browser clipper MVP
 
-The current branch is `feat/durable-capture-foundation`, PR [#12](https://github.com/delightful-labs/delightful-clipper/pull/12), targeting main. Reader PR #11 is incorporated. Do not merge without explicit authorization.
+PR #12 is merged into main at `3149ea4`. Current work is on `feat/browser-clipper`, targeting main; do not merge without explicit authorization. See [implementation-handoff.md](implementation-handoff.md).
 
-The accepted implementation saves URL articles immediately and processes missing content in a dedicated serial Web Worker. The old intake graph and custom IndexedDB journal are removed. See [durable-capture-design.md](durable-capture-design.md). Current source validation: `pnpm verify`, 233 unit tests/32 files, vendor, format, lint, types and production build pass. All 23 browser integration tests pass, including eight Chromium/Firefox schema-upgrade scenarios. All five production offline tests also pass after the worker-host machine refactor, run sequentially with source and browser checks.
+URL-first saving and serial missing-content processing remain the web behavior. The Chromium clipper supplies rendered content through the same native save operation, using a trusted DLF session and packaged extraction worker. `pnpm verify` passes 418 unit tests with one platform-specific skip across 57 files, including strict extension checks and the production web build. All 24 web integration tests, five production offline tests and six real Chromium extension tests pass sequentially. Current evidence and limitations are in the handoff/tooling documentation.
+
+## Chromium clipper MVP
+
+- [x] Package MV3 Chromium extension with activeTab, scripting and trusted-only storage; no persistent source host permissions or remotely hosted code.
+- [x] Reuse DLF local-first identity/recovery and common native article save/receipt ownership.
+- [x] Bind toolbar capture to source tab/document; reject untrusted senders and navigated documents.
+- [x] Serialize an inert bounded page clone and extract rendered content in a packaged worker; share normalized reader text.
+- [x] Persist bounded source references before opening trusted UI; mark issued saves before dispatch and never replay uncertain writes.
+- [x] Preserve local/remote feedback and duplicate immutability; allow explicit Close without deleting native data.
+- [ ] Qualify Firefox packaging, store distribution and source annotations in subsequent batches.
 
 ## Completed foundation
 

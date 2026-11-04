@@ -15,7 +15,7 @@ import { t } from '../../localization/index.js'
 import { normalizedSource } from '../../capture/source.js'
 import type { WorkflowMessage } from '../../contracts/feedback.js'
 import type { LibraryCapability, LibraryEvent, SaveRef } from '../../contracts/library.js'
-import type { ArticleSaveResult, LibraryArticle } from '../../contracts/articles.js'
+import type { ArticleSaveResult, LibraryArticle, ArticleContent } from '../../contracts/articles.js'
 import type { QueueControl } from '../../contracts/article-worker.js'
 import type { ReadResult } from '../../contracts/storage.js'
 import { syncOwnerMachine } from '../storage/sync-owner.js'
@@ -33,6 +33,7 @@ type Context = {
 	capability: LibraryCapability | undefined
 	saveRef: SaveRef | undefined
 	url: string
+	content: ArticleContent | undefined
 	captureId: string
 	captureReady: boolean
 	readerId: string
@@ -170,6 +171,7 @@ export const libraryMachine = setup<
 				reader: undefined,
 				rows: [],
 				url: '',
+				content: undefined,
 				sync: {},
 				background: {},
 				backgroundCancelable: false
@@ -211,6 +213,7 @@ export const libraryMachine = setup<
 		capability: input,
 		saveRef: undefined,
 		url: '',
+		content: undefined,
 		captureId: '',
 		captureReady: false,
 		readerId: '',
@@ -339,7 +342,12 @@ export const libraryMachine = setup<
 							{
 								guard: and(['canStartSave', ({ event }) => isValidSourceUrl(event.url)]),
 								target: '.saving',
-								actions: assign({ url: ({ event }) => event.url, failure: '', captureReady: false })
+								actions: assign({
+									url: ({ event }) => event.url,
+									content: ({ event }) => event.content,
+									failure: '',
+									captureReady: false
+								})
 							},
 							{
 								guard: and(['accepting', not('writing')]),
@@ -369,12 +377,12 @@ export const libraryMachine = setup<
 							entry: assign(({ context, spawn }) => ({
 								saveRef: required(context.capability).spawnSave(
 									(logic, options) => spawn(logic, options),
-									{ url: context.url }
+									{ url: context.url, ...(context.content ? { content: context.content } : {}) }
 								)
 							})),
 							exit: [
 								stopChild(({ context }) => required(context.saveRef)),
-								assign({ saveRef: undefined })
+								assign({ saveRef: undefined, content: undefined })
 							],
 							states: {
 								active: {
@@ -544,6 +552,7 @@ export const libraryMachine = setup<
 				sync: {},
 				background: {},
 				url: '',
+				content: undefined,
 				captureId: '',
 				failure: ''
 			})

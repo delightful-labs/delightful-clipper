@@ -8,6 +8,7 @@ export type SaveSpawner = <S extends Snapshot<ArticleSaveResult>>(
 	options: { input: SaveArticleRequest }
 ) => ActorRef<S, { type: 'SHUTDOWN' }>
 export type LibraryCapability = {
+	libraryId: string
 	isCurrent: () => boolean
 	spawnSave: (spawn: SaveSpawner, request: SaveArticleRequest) => SaveRef
 	read: ReadCapabilities
@@ -18,7 +19,7 @@ export type LibraryEvent =
 	| ReadReport
 	| SyncReport
 	| QueueReport
-	| { type: 'ADD'; url: string }
+	| ({ type: 'ADD' } & SaveArticleRequest)
 	| { type: 'CANCEL' | 'SHUTDOWN' | 'CLOSE_READER' }
 	| { type: 'OPEN' | 'RETRY'; id: string }
 	| { type: 'ROWS'; rows: LibraryArticle[] }

@@ -14,7 +14,8 @@ import { app } from './schema.js'
 
 export type Session = JazzSession<JazzClient>
 
-function bindHost(session: Session): AccountHost {
+export type LibraryFactory = typeof createLibraryCapability
+function bindHost(session: Session, libraryFactory: LibraryFactory): AccountHost {
 	const readiness = createJazzSessionReadinessAdapter(session)
 	const recovery = createJazzRecoveryAdapter(() => session.getSnapshot().account)
 	let current: AccountObservation = { status: 'signed-out' }
@@ -41,7 +42,7 @@ function bindHost(session: Session): AccountHost {
 			binding: Object.freeze({}),
 			accountId: account.id,
 			signedIn: !['urn:jazz:local-first', 'urn:jazz:anonymous'].includes(account.identity.issuer),
-			library: createLibraryCapability(
+			library: libraryFactory(
 				createLibraryRecords(db, account.id, () => {
 					try {
 						check()
@@ -106,11 +107,14 @@ function bindHost(session: Session): AccountHost {
 // Constructing the registry is inert; only browser mount requests an attachment.
 const registry = createJazzStartupRegistry()
 const runtimeSources = Object.freeze({ wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION })
-export function accountInput(config: JazzSessionConfig): AccountInput<Session> {
+export function accountInput(
+	config: JazzSessionConfig,
+	libraryFactory: LibraryFactory = createLibraryCapability
+): AccountInput<Session> {
 	// Match Finance: provision a local identity silently when no saved identity exists.
 	return {
 		startup: registry.getJazzStartupBinding({ ...config, initial: 'local-first', runtimeSources }),
-		bind: bindHost
+		bind: (session) => bindHost(session, libraryFactory)
 	}
 }
 
