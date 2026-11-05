@@ -9,7 +9,7 @@ import {
 	organizationRequestSchema,
 	canOrganizeArticle
 } from '../../capture/organization.js'
-import type { OrganizationOperation, OrganizationRequest } from '../../capture/organization.js'
+import type { OrganizationOperation } from '../../capture/organization.js'
 import {
 	createOrganizationMachine,
 	type OrganizationDraft

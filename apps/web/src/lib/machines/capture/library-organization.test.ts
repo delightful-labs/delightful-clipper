@@ -4,7 +4,6 @@ import { createWorkspaceCreationTransaction } from 'delightful-local-first/works
 import { libraryMachine, selectLibraryView } from './library.js'
 import { testLibraryCapability } from './library.test-support.js'
 import { createOrganizationMachine, type OrganizationDraft } from '../storage/organize.js'
-import type { OrganizationRequest } from '../../capture/organization.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 const id = crypto.randomUUID()
 const candidate = {
