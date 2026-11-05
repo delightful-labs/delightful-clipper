@@ -28,6 +28,13 @@ No permanent deletion, bulk actions, global vocabulary rename/delete, annotation
 
 - [x] Replace the custom assignment form with actual DUI TagInput and the user-approved Finance label/announcement templates. Keep native full-folded membership, synchronization, filtering and offline persistence; qualify keyboard suggestions, duplicates and chip removal. All 44 web cases, ten final discovery cases, 510 unit tests plus one skip, five production offline cases and both fake-data cases pass, along with repository checks.
 
+## Presentation and state ownership follow-up — PR #16
+
+- [x] Consolidate the approved Trash mass noun into one catalog entry and correct the search-error sentence to “Search is unavailable.” Preserve counted noun and action composition through native i18next resolution.
+- [x] Split Library into controlled reusable DUI search, filter, list, row and action components, keeping actor ownership and typed event admission in the existing integration/machines. Preserve list geometry and row/dialog focus behavior.
+- [x] Move checking/online/offline states and browser-observer lifetime into a parallel region of the main application machine. Make ConnectionStatus a renderer; dispose listeners on shutdown/direct stop without delaying issued-write draining or gating local readiness.
+- [x] Pass pnpm format and pnpm verify (517 unit passed, one platform skip), all 45 web browser cases, five production offline cases, eleven rebuilt extension cases and two fake-data cases. Include real row geometry/focus and application-owned connection lifecycle regressions; remove temporary isolated harnesses.
+
 ## Search engine performance comparison — planned
 
 - [ ] Benchmark MiniSearch against FlexSearch in Clipper's actual browser-worker architecture and record a recommendation in [the dependency review](search-tags-trash.md#minisearch-dependency-review). This is a future evaluation task, not a decision to replace the engine.

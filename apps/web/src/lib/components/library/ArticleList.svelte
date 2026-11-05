@@ -1,0 +1,75 @@
+<script lang="ts">
+	import type { LibraryArticle } from '../../contracts/articles.js'
+	import type { OrganizationRequest } from '../../capture/organization.js'
+	import ArticleListItem from './ArticleListItem.svelte'
+	let {
+		rows,
+		readable,
+		enabled,
+		onorganize,
+		onretry,
+		ontags,
+		onemptyfocus
+	}: {
+		rows: LibraryArticle[]
+		readable: Record<string, boolean>
+		enabled: boolean
+		onorganize: (request: OrganizationRequest) => void
+		onretry: (id: string) => void
+		ontags: (row: LibraryArticle, trigger: HTMLElement) => void
+		onemptyfocus: () => void
+	} = $props()
+	const listId = $props.id()
+	let removedAction = $state<{ id: string; candidates: string[]; trigger: HTMLElement }>()
+
+	$effect(() => {
+		const pending = removedAction
+		if (!pending || rows.some((row) => row.id === pending.id)) return
+		if (!pending.trigger.isConnected && document.activeElement === document.body) {
+			const next = pending.candidates
+				.map((id) => document.getElementById(listId + '-' + id))
+				.find((element) => element !== null)
+			if (next) next.focus()
+			else onemptyfocus()
+		}
+		removedAction = undefined
+	})
+
+	function changeTrash(row: LibraryArticle, trigger: HTMLElement) {
+		const index = rows.findIndex((item) => item.id === row.id)
+		removedAction = {
+			id: row.id,
+			candidates: [...rows.slice(index + 1), ...rows.slice(0, index).reverse()].map(
+				(item) => item.id
+			),
+			trigger
+		}
+		onorganize({ id: row.id, field: 'trashed', value: !row.trashed })
+	}
+</script>
+
+{#if rows.length}
+	<ul class="article-list">
+		{#each rows as row (row.id)}
+			<ArticleListItem
+				{row}
+				id={listId + '-' + row.id}
+				readable={readable[row.id] === true}
+				{enabled}
+				{onorganize}
+				ontrash={(trigger) => changeTrash(row, trigger)}
+				ontags={(trigger) => ontags(row, trigger)}
+				onretry={() => onretry(row.id)}
+			/>
+		{/each}
+	</ul>
+{/if}
+
+<style>
+	.article-list {
+		list-style: none;
+		margin-block: var(--dui-space-md);
+		padding: 0;
+		border: 1px solid var(--dui-color-foreground);
+	}
+</style>

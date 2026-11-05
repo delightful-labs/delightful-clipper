@@ -88,7 +88,7 @@ it('releases failed resources and creates a fresh worker on retry', async () => 
 	f.report({ type: 'WORKER_ERROR' })
 	expect(selectSearchView(f.actor.getSnapshot()).canRetry).toBe(true)
 	expect(selectSearchView(f.actor.getSnapshot()).message).toEqual({
-		text: 'search is unavailable.',
+		text: 'Search is unavailable.',
 		variant: 'error'
 	})
 	expect(f.dispose).toHaveBeenCalledOnce()

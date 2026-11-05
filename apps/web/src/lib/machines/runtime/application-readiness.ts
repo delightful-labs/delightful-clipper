@@ -14,7 +14,7 @@ import type {
 	SessionReadinessScope
 } from 'delightful-local-first/session/contracts'
 import type { SnapshotFrom } from 'xstate'
-import { assign, fromPromise, raise, sendTo, setup, stateIn } from 'xstate'
+import { assign, fromCallback, fromPromise, raise, sendTo, setup, stateIn } from 'xstate'
 import { restorationMachine } from 'delightful-local-first/restoration/workflow'
 import type { RestorationReport } from 'delightful-local-first/restoration/contracts'
 import type {
@@ -24,8 +24,10 @@ import type {
 	RootAccess,
 	RootWrite
 } from '../../contracts/account.js'
+import type { ConnectionEvent, ConnectionObserver } from '../../contracts/connection.js'
 
 type Event<Session extends object> =
+	| ConnectionEvent
 	| SessionStartupReport<Session>
 	| SessionReadinessReport
 	| { type: 'OBSERVED'; observation: AccountObservation }
@@ -90,8 +92,11 @@ function isInvalidRestoration(result: { outcome: string }) {
 	return result.outcome === 'invalid'
 }
 
-export function createApplicationReadinessMachine<Session extends object>() {
+export function createApplicationReadinessMachine<Session extends object>(
+	observeConnection?: ConnectionObserver
+) {
 	const accountActors = {
+		connection: fromCallback<ConnectionEvent>(({ sendBack }) => observeConnection?.(sendBack)),
 		library: libraryMachine,
 		startup: createSessionStartupMachine<Session>(),
 		readiness: createSessionReadinessMachine(),
@@ -112,6 +117,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			bootstrap: 'bootstrap'
 			restore: 'restore'
 			library: 'library'
+			connection: 'connection'
 		},
 		{
 			refresh: undefined
@@ -688,6 +694,26 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			active: {
 				type: 'parallel',
 				states: {
+					connection: {
+						initial: 'observing',
+						states: {
+							observing: {
+								initial: 'checking',
+								invoke: { id: 'connection', src: 'connection' },
+								on: { ONLINE: '.online', OFFLINE: '.offline', SHUTDOWN: 'closed' },
+								states: {
+									checking: {},
+									online: {
+										meta: { name: t('connection.online'), variant: 'info', channel: 'connection' }
+									},
+									offline: {
+										meta: { name: t('connection.offline'), variant: 'info', channel: 'connection' }
+									}
+								}
+							},
+							closed: {}
+						}
+					},
 					feedback: {
 						initial: 'none',
 						on: {
@@ -818,6 +844,7 @@ export function selectApplicationView<Session extends object>(
 		status,
 		message: { text: meta.name, variant: meta.variant },
 		feedbackMessage: stateFeedback(metadata, 'feedback'),
+		connectionMessage: stateFeedback(metadata, 'connection'),
 		feedback,
 		showIdentityForm: snapshot?.can({ type: 'CREATE' }) ?? false,
 		canLogout:

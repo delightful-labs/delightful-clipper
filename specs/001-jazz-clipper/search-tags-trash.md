@@ -97,14 +97,14 @@ Domain/actor tests: tag normalization and concurrent membership, independent Tra
 
 ## Approved copy and presentation
 
-The user explicitly requested the following revisions to the earlier proposal. Search and Move to are shared action templates; no standalone search-label or move-label entry is introduced. The existing action helper supplies the localized noun/count. Trash uses identical one/other forms as a mass noun. There are no context variants.
+The user explicitly requested the following revisions to the earlier proposal, then corrected the search-error sentence to start with a capital S. Search and Move to are shared action templates; no standalone search-label or move-label entry is introduced. The existing action helper supplies the localized noun/count. At the user’s subsequent review, Trash uses one unsuffixed catalog entry as a mass noun; i18next resolves it for any count. There are no context variants.
 
 | Key | English template/text | Usage and variables |
 | --- | --- | --- |
 | `actions.search_subject` | Search {{subject}} | Search input label; `subject` is the approved article noun with count 2 |
 | `actions.move_to_subject` | Move to {{subject}} | Per-article action; `subject` is the approved Trash noun |
-| `nouns.trash_one`, `nouns.trash_other` | Trash | Radio label and action subject |
-| `library.search_failed` | search is unavailable. | Search machine failed-state name, with existing Retry action |
+| `nouns.trash` | Trash | Radio label and action subject |
+| `library.search_failed` | Search is unavailable. | Search machine failed-state name, with existing Retry action |
 | `forms.enter_subject` | Enter {{subject}} | Generic field feedback; `subject` uses the existing localized tag noun, rendered by DUI TagInput |
 
 The user rejected Preparing search as unnecessary. Loading/indexing/querying states have no visible message, and no preparation catalog entry is added. The initial Check-the-form generic sentence was also rejected; the user clarified Finance’s `forms.enter_subject` template. It produces “Enter tag” using the existing noun, with no new noun, punctuation or tag-specific length message. This shared error replaces the proposed tag-specific length sentence. Existing Add tag, Restore article and Retry labels are reused. Clipper’s catalog/action/noun search found no existing correct equivalents for these additions.
@@ -126,3 +126,10 @@ The user explicitly approved reusing these four Finance templates for TagInput's
 | `errors.already_selected_subject_name` | {{subject}} {{name}} is already selected. |
 
 TagInput's full selection is validated through the existing normalized name schema and full-fold keys. Equivalent spellings do not create another native assignment. A single addition/removal becomes one desired-value organization request; multiple simultaneous differences are rejected rather than overwriting concurrent metadata. The library remains the sole asynchronous mutation/receipt owner. Native membership drives the widget value; readonly preserves input focus during native settlement. No custom chip styles, bespoke suggestions or local persistence are added.
+
+
+## Presentation and application connectivity ownership follow-up
+
+The user requested smaller reusable library components and connectivity in the main application state. Before changing resource behavior: the existing application-readiness actor gains a parallel connection region. Its observing state owns the browser event subscription and contains checking/online/offline states; localized connection metadata lives on those states. SHUTDOWN exits observing and disposes listeners immediately while existing account/library owners drain; finalization or direct actor stop also disposes resources. Identity restoration and library replacement do not recreate browser listeners. The browser adapter only translates navigator/event values into ONLINE/OFFLINE events. ConnectionStatus renders the main selector's ready-to-render message and creates no machine, listener or subscription.
+
+Library stays the actor/subscription integration and coordinates the tag dialog. Controlled DUI search/filter components receive values and typed callbacks. The article list owns row order and focus restoration, with a parent-provided heading fallback when no row survives. List items and organization controls render native row values and emit typed requests; the existing library guards, mutations and receipt machines retain every async decision. Preserve list borders, compact spacing, semantics and keyboard focus, with no new UI copy or dependency.

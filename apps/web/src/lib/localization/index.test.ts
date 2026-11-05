@@ -41,7 +41,7 @@ it('uses the catalog’s irregular plurals instead of appending an English suffi
 	expect(action('open', 'library', 2)).toBe('Open libraries')
 	expect(action('add', 'highlight', 2)).toBe('Add highlights')
 })
-it('has both English plural forms for every approved noun', () => {
+it('has both English plural forms for every counted noun', () => {
 	const rules = new Intl.PluralRules('en')
 	expect(rules.select(0)).toBe('other')
 	expect(rules.select(1)).toBe('one')
@@ -66,4 +66,14 @@ it('supplies the existing DLF recovery presentation contract using shared action
 	expect(messages.retry).toBe(t('actions.retry'))
 	expect(messages.phraseLabel).toBe('Recovery phrase')
 	expect(messages.warning).toBe('Anyone with this phrase can access your account. Keep it private.')
+})
+
+it('resolves a mass noun and its composed action for every count from one catalog entry', () => {
+	for (const count of [0, 1, 2, 21, 1.5]) {
+		expect(noun('trash', count)).toBe('Trash')
+		expect(action('move_to', 'trash', count)).toBe('Move to Trash')
+	}
+	expect(english.nouns).toHaveProperty('trash', 'Trash')
+	expect(english.nouns).not.toHaveProperty('trash_one')
+	expect(english.nouns).not.toHaveProperty('trash_other')
 })

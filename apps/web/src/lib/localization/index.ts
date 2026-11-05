@@ -10,7 +10,7 @@ export type MessageKey = Exclude<
 	`nouns.${string}` | `actions.${string}_subject`
 >
 export type Noun = {
-	[K in keyof typeof english.nouns]: K extends `${infer Base}_one` ? Base : never
+	[K in keyof typeof english.nouns]: K extends `${infer Base}_${'one' | 'other'}` ? Base : K
 }[keyof typeof english.nouns]
 export type Action = {
 	[K in keyof typeof english.actions]: K extends `${infer Verb}_subject` ? Verb : never
@@ -27,7 +27,7 @@ void i18n.init({
 })
 export const t = (key: MessageKey, options: { subject?: string; name?: string } = {}) =>
 	i18n.t(key, options)
-/** Always pass count: i18next selects CLDR plural forms through Intl.PluralRules. */
+/** i18next selects plural forms by count; mass nouns resolve their unsuffixed catalog key. */
 export const noun = (subject: Noun, count = 1) => i18n.t(`nouns.${subject}`, { count })
 export const action = (verb: Action, subject: Noun, count = 1) =>
 	i18n.t(`actions.${verb}_subject`, { subject: noun(subject, count), count })

@@ -45,8 +45,7 @@
 		"recovery_phrase_other": "recovery phrases",
 		"original_one": "original",
 		"original_other": "originals",
-		"trash_one": "Trash",
-		"trash_other": "Trash"
+		"trash": "Trash"
 	},
 	"account": {
 		"status": {
@@ -120,7 +119,7 @@
 		"favorite": "Favorite",
 		"unfavorite": "Remove favorite",
 		"filtered_empty": "No articles match this view.",
-		"search_failed": "search is unavailable."
+		"search_failed": "Search is unavailable."
 	},
 	"reader": {
 		"heading": "Saved article",

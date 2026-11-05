@@ -22,8 +22,8 @@
 		serverUrl={PUBLIC_JAZZ_SERVER_URL}
 		gatewayEnabled={CAPTURE_GATEWAY_ENABLED}
 	>
-		{#snippet shell(account, content)}
-			<AppShell {account}>{@render content()}</AppShell>
+		{#snippet shell(account, content, connectionMessage)}
+			<AppShell {account} {connectionMessage}>{@render content()}</AppShell>
 		{/snippet}
 		{@render children()}
 	</Account>
