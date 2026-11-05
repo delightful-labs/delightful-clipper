@@ -18,6 +18,10 @@ PR #15 is merged at `72b6fc9`; work uses `feat/library-search-tags-trash` from u
 - [x] Complete final repository/browser/offline/packaged-extension validation: 497 unit tests/72 files plus one skip, full verification/build, 38 full web cases, six discovery cases, five production offline cases and eleven packaged extension cases pass; evidence/limits are in the handoff.
 - [x] Push one Conventional Commits PR [#16](https://github.com/delightful-labs/delightful-clipper/pull/16) targeting main; it remains draft while copy-dependent controls are incomplete. Do not merge.
 
+- [x] Apply subsequent quiet-capture request, retaining Already saved through a dedicated machine feedback channel and normal reader title links.
+- [x] Use Finance-style compact sidebar connectivity with the user’s explicitly requested lowercase online/offline copy; retain offline-shell admission/error/retry/update behavior.
+- [x] Requalify capture/duplicate/offline restart and connectivity transitions: all 40 web cases, five production offline cases and eleven packaged extension cases pass. Keep duplicate feedback in the existing shared capture projection for the extension as well as the new web duplicate channel.
+
 No permanent deletion, bulk actions, global vocabulary rename/delete, annotation search/tags, images or annotations enter this batch.
 
 ## Prior handoff — DUI radio filters

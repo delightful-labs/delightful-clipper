@@ -3,6 +3,7 @@
 	import { page } from '$app/state'
 	import { Button, Drawer, Heading, Navigation, TopNavigation } from 'delightful-ui'
 	import AddLink from './AddLink.svelte'
+	import ConnectionStatus from './ConnectionStatus.svelte'
 	import { useLibrary } from '../runtime/library-context.js'
 	import { action, noun, t } from '../localization/index.js'
 
@@ -71,6 +72,7 @@
 				<div class="account-panel">
 					<Heading level="h2" size="md">{noun('account')}</Heading>
 					{@render account()}
+					<ConnectionStatus />
 				</div>
 			</div>
 		</Drawer>

@@ -777,7 +777,13 @@ export const libraryMachine = setup<
 									]
 								},
 								local: { meta: { name: t('capture.status.saved'), variant: 'info' } },
-								duplicate: { meta: { name: t('capture.status.duplicate'), variant: 'info' } },
+								duplicate: {
+									meta: {
+										name: t('capture.status.duplicate'),
+										variant: 'info',
+										channel: 'duplicate'
+									}
+								},
 								synced: { meta: { name: t('capture.status.synced'), variant: 'info' } },
 								rejected: { meta: { name: t('capture.status.rejected'), variant: 'error' } },
 								background: {
@@ -934,7 +940,11 @@ export function selectLibraryView(
 			visible &&
 			!!c.capability?.spawnOrganization &&
 			!snapshot.matches({ running: { organization: 'writing' } }),
-		captureMessage: stateFeedback(meta) ?? (c ? forwardedState?.message?.(c) : undefined),
+		duplicateMessage: stateFeedback(meta, 'duplicate'),
+		captureMessage:
+			stateFeedback(meta) ??
+			stateFeedback(meta, 'duplicate') ??
+			(c ? forwardedState?.message?.(c) : undefined),
 		readerMessage: !snapshot
 			? { text: t('reader.loading'), variant: 'info' as const }
 			: visible

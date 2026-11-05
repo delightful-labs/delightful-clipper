@@ -42,7 +42,8 @@ it('keeps standalone actions and contextual feedback separate from composed labe
 	expect(t('actions.sign_out')).toBe('Sign out')
 	expect(t('account.status.localSaved')).toBe('Library saved on this device. Sync pending.')
 	expect(t('capture.status.saved')).toBe('Article saved on this device. Sync pending.')
-	expect(t('offline.ready')).toBe('Offline startup prepared on this browser.')
+	expect(t('connection.online')).toBe('online')
+	expect(t('connection.offline')).toBe('offline')
 })
 it('supplies the existing DLF recovery presentation contract using shared actions', () => {
 	const messages = recoveryMessages()

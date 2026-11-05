@@ -300,8 +300,10 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await expect(page.getByRole('button', { name: 'Save article', exact: true })).toHaveCount(0)
 	await expect(page.getByRole('region', { name: 'Article preview' })).toHaveCount(0)
 	await expect(page.getByRole('article')).toHaveCount(0)
-	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
-	await page.getByRole('link', { name: 'Open saved article', exact: true }).click()
+	await expect(page.getByRole('link', { name: 'UI saved article', exact: true })).toBeVisible()
+	await expect(page.getByText('Article synced.', { exact: true })).toHaveCount(0)
+	await expect(page.getByRole('link', { name: 'Open saved article', exact: true })).toHaveCount(0)
+	await page.getByRole('link', { name: 'UI saved article', exact: true }).click()
 	await expect(page.getByRole('article')).toContainText('Literal <script> stays text.')
 	const reader = page.getByRole('article')
 	await expect(reader.getByRole('heading', { name: 'Structured heading' })).toBeVisible()
@@ -399,8 +401,8 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 				.getByRole('region', { name: 'Saved articles' })
 				.getByRole('link', { name: 'UI saved article', exact: true })
 		).toBeVisible()
-		// A readable row can arrive before this worker's local save receipt settles.
-		await expect(page.getByRole('link', { name: 'Open saved article', exact: true })).toBeVisible()
+		await page.getByRole('link', { name: 'UI saved article', exact: true }).click()
+		await expect(page.getByRole('article')).toContainText('Exact UI text café 🦊')
 		await context.close()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
 		const reopened = await context.newPage()
@@ -434,14 +436,16 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 	}
 })
 
-test('canceling background extraction retains the saved URL and leaves the form usable', async ({
+test('background extraction stays quiet and leaves the saved URL and form usable', async ({
 	page
 }) => {
+	const entered = Promise.withResolvers<void>()
 	let release!: () => void
 	const pending = new Promise<void>((resolve) => {
 		release = resolve
 	})
 	await page.route('**/api/capture/resolve', async (route) => {
+		entered.resolve()
 		await pending
 		await route.fulfill({ status: 503, json: { code: 'gatewayUnavailable' } }).catch(() => {})
 	})
@@ -452,10 +456,13 @@ test('canceling background extraction retains the saved URL and leaves the form 
 		.getByRole('dialog', { name: 'Add link', exact: true })
 		.getByRole('button', { name: 'Add link', exact: true })
 		.click()
+	await entered.promise
+	await expect(page.locator('[data-article-id]')).toContainText('https://example.com/')
 	await expect(
-		page.getByText('Resolving and extracting the article…', { exact: true }).first()
-	).toBeVisible()
-	await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+		page.getByText('Resolving and extracting the article…', { exact: true })
+	).toHaveCount(0)
+	await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0)
+	await expect(page.getByRole('link', { name: 'Open saved article', exact: true })).toHaveCount(0)
 	release()
 	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 	await expect(page.getByRole('button', { name: 'Save article', exact: true })).toHaveCount(0)
@@ -524,7 +531,7 @@ test('reader links support new tabs, direct reload and owner-scoped missing cont
 		.getByRole('dialog', { name: 'Add link', exact: true })
 		.getByRole('button', { name: 'Add link', exact: true })
 		.click()
-	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
+	await expect(page.getByRole('link', { name: 'UI saved article', exact: true })).toBeVisible()
 	const link = page
 		.getByRole('region', { name: 'Saved articles' })
 		.getByRole('link', { name: 'UI saved article', exact: true })
@@ -571,7 +578,7 @@ test('capture continues when the initiating library page is replaced by a reader
 		.getByRole('dialog', { name: 'Add link', exact: true })
 		.getByRole('button', { name: 'Add link', exact: true })
 		.click()
-	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
+	await expect(page.getByRole('link', { name: 'UI saved article', exact: true })).toBeVisible()
 	const first = page
 		.getByRole('region', { name: 'Saved articles' })
 		.getByRole('link', { name: 'UI saved article', exact: true })
@@ -891,4 +898,21 @@ test('global Add link action saves from the reader without replacing or leaving 
 		)
 		.not.toEqual([null])
 	await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
+})
+
+test('sidebar shows browser connectivity and follows offline and online events', async ({
+	page,
+	context
+}) => {
+	await page.goto('/')
+	await expect(page.getByText('online', { exact: true })).toBeVisible()
+	await expect(
+		page.getByText('Offline startup prepared on this browser.', { exact: true })
+	).toHaveCount(0)
+	await context.setOffline(true)
+	await expect(page.getByText('offline', { exact: true })).toBeVisible()
+	await expect(page.getByText('online', { exact: true })).toHaveCount(0)
+	await context.setOffline(false)
+	await expect(page.getByText('online', { exact: true })).toBeVisible()
+	await expect(page.getByText('offline', { exact: true })).toHaveCount(0)
 })

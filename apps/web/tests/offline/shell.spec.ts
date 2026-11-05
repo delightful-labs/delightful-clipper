@@ -41,9 +41,16 @@ async function clearHttpCache(page: Page) {
 	await cdp.detach()
 }
 async function ready(page: Page) {
-	await expect(
-		page.getByText('Offline startup prepared on this browser.', { exact: true })
-	).toBeVisible({ timeout: 45000 })
+	await expect
+		.poll(
+			() =>
+				page.evaluate(async () => {
+					const registration = await navigator.serviceWorker.getRegistration()
+					return registration?.active?.state === 'activated'
+				}),
+			{ timeout: 45000 }
+		)
+		.toBe(true)
 }
 async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 	await page.route('**/api/capture/*', async (route) => {
@@ -150,11 +157,8 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		)
 		expect(cachePaths.filter((path) => path.endsWith('.wasm'))).toHaveLength(1)
 
-		await expect(
-			page.getByText('Article saved on this device. Sync pending.', { exact: true })
-		).toBeVisible()
 		const readerPath = await page
-			.getByRole('link', { name: 'Open saved article', exact: true })
+			.getByRole('link', { name: 'Completely offline article', exact: true })
 			.getAttribute('href')
 		expect(readerPath).toMatch(/^\/articles\/[0-9a-f-]+$/)
 		const organized = page
@@ -177,6 +181,10 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const response = await reopened.goto('http://127.0.0.1:5190' + readerPath)
 		expect(response?.fromServiceWorker()).toBe(true)
 		await ready(reopened)
+		await expect(reopened.getByText('offline', { exact: true })).toBeVisible()
+		await expect(
+			reopened.getByText('Offline startup prepared on this browser.', { exact: true })
+		).toHaveCount(0)
 		await expect(reopened.getByRole('article')).toContainText('Exact offline shell text café 🦊')
 		await expect(
 			reopened.getByRole('article').getByRole('heading', { name: 'Offline structure' })
@@ -209,6 +217,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
 		await context.setOffline(false)
+		await expect(reopened.getByText('online', { exact: true })).toBeVisible()
 		await ui.start()
 		await startAuthority()
 		const sourceReload = await reopened.reload()

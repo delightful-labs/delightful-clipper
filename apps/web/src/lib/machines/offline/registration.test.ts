@@ -27,10 +27,7 @@ it('keeps session admission closed until offline preparation settles, then retai
 		variant: 'info'
 	})
 	report?.({ type: 'STATUS', status: 'ready' })
-	expect(selectShellView(actor.getSnapshot()).message).toEqual({
-		text: 'Offline startup prepared on this browser.',
-		variant: 'info'
-	})
+	expect(selectShellView(actor.getSnapshot()).message).toBeUndefined()
 	expect(selectShellView(actor.getSnapshot()).canRetry).toBe(false)
 	expect(selectShellView(actor.getSnapshot()).admitted).toBe(true)
 	report?.({ type: 'STATUS', status: 'preparing' })

@@ -376,6 +376,7 @@ it('keeps the duplicate state label when receipt status changes', async () => {
 	await waitFor(actor, (s) => s.matches({ running: { capture: { saved: 'duplicate' } } }))
 	actor.send({ type: 'SYNC', id, status: 'rejected' })
 	expect(actor.getSnapshot().matches({ running: { capture: { saved: 'duplicate' } } })).toBe(true)
+	expect(selectLibraryView(actor.getSnapshot()).duplicateMessage?.text).toBe('Already saved.')
 	expect(selectLibraryView(actor.getSnapshot()).captureMessage?.text).toBe('Already saved.')
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)

@@ -245,7 +245,6 @@ test('persists tags and Trash across a complete offline browser restart and rest
 		const url = 'https://example.com/tags-offline-restart',
 			item = await supplied(page, url)
 		await addTag(page, item.row, 'Offline')
-		await expect(page.getByText('Article synced.', { exact: true })).toBeVisible()
 		await authority.stop()
 		stopped = true
 		await page.evaluate(async (url) => {

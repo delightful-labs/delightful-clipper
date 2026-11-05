@@ -121,9 +121,12 @@
 		"loading": "Opening saved article…",
 		"unavailable": "This article is not available on this device. Reconnect and open it again."
 	},
+	"connection": {
+		"online": "online",
+		"offline": "offline"
+	},
 	"offline": {
 		"preparing": "Preparing offline startup…",
-		"ready": "Offline startup prepared on this browser.",
 		"update": "An update is ready. Close all Clipper tabs and reopen to apply it safely.",
 		"failed": "Offline startup could not be prepared. You can continue online and retry.",
 		"unsupported": "Offline startup is unavailable in this browser."
