@@ -41,6 +41,14 @@ Local checks pass formatting, lint and strict types; 52 focused organization/rea
 
 Bulk actions, tags, Trash, search, images and annotations are excluded. Immutable organization history is retained; compaction, large-library throughput and broader mobile qualification remain open. No further feature is selected by this handoff.
 
+## DUI account drawer — follow-up
+
+The user requested Finance-inspired navigation using reusable DUI components, then explicitly rejected custom Clipper styling. `AppShell.svelte` now composes the pinned DUI `TopNavigation`, `Drawer`, `Navigation`, `Heading` and `Button` with their default presentation. Clipper CSS is limited to structural layout and DUI spacing tokens. The experimental palette, typography overrides and article-card restyling were removed; library presentation remains unchanged. This instruction is recorded in AGENTS.md.
+
+Existing account controls are passed into the drawer through an optional Account presentation snippet. The account/session actor stays mounted when the drawer closes; trusted extension callers retain the original default presentation. Desktop docks the drawer; mobile uses the same inline drawer pattern as Finance, makes the content inert and restores focus on dismissal. All labels reuse the approved account/action catalog; no copy was added.
+
+Local validation after the correction: `pnpm verify` passes vendor, formatting, lint, strict web/extension checks, production build and 470 unit tests with one Linux-specific skip across 67 files. An isolated Playwright browser against the running dev server passes desktop drawer/account containment and mobile Escape/focus/inert/overflow checks. Two permanent browser cases cover the same behavior. Full CI follows the feature-branch push. The development server remains available in tmux `main:clipper-org` at http://127.0.0.1:5180; it uses the existing disposable agent authority on 5181.
+
 ## Extension sign-in correction
 
 The user observed that the app and extension were saving to different accounts, then explicitly requested a sign-in popup for unconnected clicks and direct saving for connected clicks, with all decisions in XState. Separate origin-local databases remain intentional; matching account and deployment coordinates establish synchronization.

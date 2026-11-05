@@ -756,3 +756,44 @@ test('Retry from a second tab reaches the worker holding the library lock', asyn
 	expect(attempts).toBe(2)
 	await second.close()
 })
+
+test('keeps account controls in the desktop drawer without replacing the library session', async ({
+	page
+}) => {
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const drawer = page.locator('aside')
+	await expect(drawer.getByRole('button', { name: 'Restore account', exact: true })).toBeVisible()
+	await expect(
+		page.getByRole('main').getByRole('button', { name: 'Restore account', exact: true })
+	).toHaveCount(0)
+	await page.locator('header').getByRole('button', { name: 'Close account', exact: true }).click()
+	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
+	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
+	await page.locator('header').getByRole('button', { name: 'Show account', exact: true }).click()
+	await expect(
+		drawer.getByRole('button', { name: 'Show recovery phrase', exact: true })
+	).toBeVisible()
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+})
+
+test('mobile drawer hides account controls until opened and restores keyboard focus on Escape', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 390, height: 844 })
+	await page.goto('/')
+	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
+	const drawer = page.locator('aside')
+	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
+	await page.getByRole('button', { name: 'Show account', exact: true }).click()
+	await expect(drawer).toHaveAttribute('aria-hidden', 'false')
+	await expect(page.locator('main')).toHaveAttribute('inert', '')
+	await drawer.getByLabel('Recovery phrase', { exact: true }).focus()
+	await page.keyboard.press('Escape')
+	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
+	await expect(page.getByRole('button', { name: 'Show account', exact: true })).toBeFocused()
+	await expect(page.locator('main')).not.toHaveAttribute('inert', '')
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+		true
+	)
+})
