@@ -4,7 +4,7 @@
 
 ## Current batch — search, article tags and Trash/restore
 
-PR #15 is merged at `72b6fc9`. Branch `feat/library-search-tags-trash` starts from updated main; the user authorized all three features and all tests in this session, in one PR. See [search-tags-trash.md](search-tags-trash.md) for the model written before asynchronous implementation. Do not merge the PR.
+PR #15 is merged at `72b6fc9`. Draft PR [#16](https://github.com/delightful-labs/delightful-clipper/pull/16), branch `feat/library-search-tags-trash`, starts from updated main; the user authorized all three features and all tests in this session, in one PR. See [search-tags-trash.md](search-tags-trash.md) for the model written before asynchronous implementation. Do not merge the PR.
 
 Implemented: immutable native tag assignment history with same-library parent policies and versioned Unicode full-fold keys; DUI per-article tag dialog and AND tag filters; independent causal Trash/restore preserving other metadata/content; explicit Add Link/direct-reader Restore with existing approved copy; a dedicated MiniSearch worker and disposable IndexedDB cache scoped by deployment/account. Native snapshot invalidation and dataset/query generations keep results current; actor admission/consumption rejects stale scopes and shutdown disposes the worker/subscription. Existing identity/recovery and native storage operations remain authoritative.
 

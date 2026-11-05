@@ -16,7 +16,7 @@ PR #15 is merged at `72b6fc9`; work uses `feat/library-search-tags-trash` from u
 - [ ] Obtain explicit approval for six exact proposed catalog additions. General feature authorization is not string approval under localization memory.
 - [ ] Expose search input, localized search feedback/retry, Trash radio and Move to Trash control after copy approval; qualify those actual controls in browser/offline suites.
 - [x] Complete final repository/browser/offline/packaged-extension validation: 497 unit tests/72 files plus one skip, full verification/build, 38 full web cases, six discovery cases, five production offline cases and eleven packaged extension cases pass; evidence/limits are in the handoff.
-- [ ] Push one Conventional Commits PR targeting main; leave draft while the copy-dependent controls are incomplete. Do not merge.
+- [x] Push one Conventional Commits PR [#16](https://github.com/delightful-labs/delightful-clipper/pull/16) targeting main; it remains draft while copy-dependent controls are incomplete. Do not merge.
 
 No permanent deletion, bulk actions, global vocabulary rename/delete, annotation search/tags, images or annotations enter this batch.
 
