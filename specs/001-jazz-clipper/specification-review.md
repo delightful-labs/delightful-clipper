@@ -1,7 +1,7 @@
 # MVP specification completion review
 
-**Date**: 2026-11-02
-**Result**: Product specification complete for the approved reduced scope. The subsequent [investigation](investigation-results.md) supports the [first bounded implementation batch](implementation-handoff.md). Full runtime/release qualification is not complete.
+**Original review**: 2026-11-02 · **Implementation pointer updated**: 2026-11-04
+**Result**: Product specification complete for the approved reduced scope. The subsequent investigation and implementation have delivered the foundation, web capture/reader/offline shell and Chromium direct clipper. The [handoff](implementation-handoff.md) and [tasks](tasks.md) are authoritative for current evidence; this original review is not a live completion checklist. Full runtime/release qualification is not complete.
 
 ## Requirement disposition
 
@@ -25,7 +25,7 @@ All functional IDs in spec.md are retained for traceability. A deferred ID may c
 | FR-052–058 | Entry-point confirmations, link-only Retry, single URL intake, runtime-owned continuation, bounded retries and image processing: capture/platform/runtime contracts, plan and design decisions. |
 | FR-059–061 | Newest-original-save list, safe partial capture and localizable English: data model and design decisions. |
 
-SC-001–011 define eventual runtime acceptance; none has been reported as executed during specification. The quickstart describes future validation. Source review, link checks and requirement coverage are documentation checks only.
+SC-001–011 define eventual full-product acceptance. No tests were executed during the original specification review; implemented subsets now have evidence recorded in tasks.md. The quickstart distinguishes current checks from future acceptance. Source review, link checks and requirement coverage are documentation checks only.
 
 ## Scope and consistency review
 
@@ -49,4 +49,4 @@ G1–G6 in plan.md remain explicit qualification gates. They are not unanswered 
 5. Real offline restart, assets, synchronization, account isolation and deletion handling.
 6. Desktop and mobile platform qualification with recorded minimum versions.
 
-The bounded foundation experiments are recorded in foundation-proof.md and investigation-results.md. Next is the actual foundation implementation in implementation-handoff.md, followed by a vertical Add Link → local snapshot → offline reopen path. This document authorizes neither implementation nor deployment; it does not satisfy the Speckit planning workflow's unresolved-gate completion criterion. Product scope is settled; revise technical choices within that scope as evidence arrives. Request product input only if evidence requires changing accepted behavior.
+The bounded foundation experiments are recorded in foundation-proof.md and investigation-results.md. Those foundation/Add Link/reader/offline batches are now implemented, followed by Chromium direct clipping in PR #13. Next is user review and selection of a bounded follow-up, not restarting the foundation or implementing the full backlog automatically. This document authorizes neither implementation nor deployment; it does not satisfy the Speckit planning workflow's unresolved-gate completion criterion. Product scope is settled; revise technical choices within that scope as evidence arrives. Request product input only if evidence requires changing accepted behavior.

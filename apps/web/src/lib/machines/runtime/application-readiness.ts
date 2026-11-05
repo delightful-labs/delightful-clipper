@@ -728,7 +728,7 @@ export type ApplicationStatus =
 	| 'working'
 	| 'ownerFailed'
 	| 'cleanupFailed'
-type ApplicationSnapshot<Session extends object> = SnapshotFrom<
+export type ApplicationSnapshot<Session extends object> = SnapshotFrom<
 	ReturnType<typeof createApplicationReadinessMachine<Session>>
 >
 type MachineStatus = Exclude<ApplicationStatus, 'configuration'>

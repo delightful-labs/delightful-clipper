@@ -27,6 +27,7 @@ export function createLibraryCapability(
 		failure: records.articles.failure
 	})
 	return {
+		libraryId: records.articles.libraryId,
 		isCurrent: records.isCurrent,
 		read: records.readCapabilities,
 		subscribe: records.articles.subscribe,

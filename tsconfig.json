@@ -18,6 +18,8 @@
 		"vitest.config.ts",
 		"playwright.config.ts",
 		"apps/web/tooling/**/*.ts",
-		"playwright.offline.config.ts"
+		"playwright.offline.config.ts",
+		"playwright.extension.config.ts",
+		"apps/extension/tooling/**/*.ts"
 	]
 }

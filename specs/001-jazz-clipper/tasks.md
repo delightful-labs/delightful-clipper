@@ -1,12 +1,41 @@
 # Implementation tasks and acceptance status
 
-Updated 2026-11-03. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
+Updated 2026-11-04. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
-## Current handoff — PR #12
+## Current handoff — browser clipper MVP
 
-The current branch is `feat/durable-capture-foundation`, PR [#12](https://github.com/delightful-labs/delightful-clipper/pull/12), targeting main. Reader PR #11 is incorporated. Do not merge without explicit authorization.
+PR #12 is merged into main at `3149ea4`. Current work is on `feat/browser-clipper`, open PR [#13](https://github.com/delightful-labs/delightful-clipper/pull/13), targeting main. Runtime and Linux CI/Netlify evidence is qualified at `dfc675c`. The new sign-in gate is locally validated; its latest CI qualification remains pending. Do not merge without explicit authorization. See [implementation-handoff.md](implementation-handoff.md).
 
-The accepted implementation saves URL articles immediately and processes missing content in a dedicated serial Web Worker. The old intake graph and custom IndexedDB journal are removed. See [durable-capture-design.md](durable-capture-design.md). Current source validation: `pnpm verify`, 233 unit tests/32 files, vendor, format, lint, types and production build pass. All 23 browser integration tests pass, including eight Chromium/Firefox schema-upgrade scenarios. All five production offline tests also pass after the worker-host machine refactor, run sequentially with source and browser checks.
+### Resume in the next thread
+
+- [ ] Review the direct-save Chromium clipper with the user. Rebuild/reload the unpacked extension when needed; use trusted Options to restore the web account.
+- [ ] Recheck PR #13 status. Continue its feature branch if open; if merged, start new work from updated main on a new feature branch. Never merge or push directly to main without authorization.
+- [ ] Ask the user to select the next bounded feature after review; no next product feature is currently authorized. The remaining items below are a backlog, not an instruction to implement all of them.
+- [ ] Keep Firefox/store distribution, annotations, images and richer reader/organization features explicitly incomplete. Full retry scheduling is not a required follow-up to this delivered batch.
+
+URL-first saving and serial missing-content processing remain the web behavior. The Chromium clipper supplies rendered content through the same native save operation, using a trusted DLF session and packaged extraction worker. `pnpm verify` passes 442 unit tests with one platform-specific skip across 63 files, including strict extension checks and the production web build. All 24 web integration tests, five production offline tests and eleven real Chromium extension tests pass sequentially. Current evidence and limitations are in the handoff/tooling documentation.
+
+## Chromium clipper MVP
+
+- [x] Package MV3 Chromium extension with activeTab, scripting, storage and offscreen permissions; restrict storage access to trusted contexts and omit persistent source host permissions/remote code.
+- [x] Reuse DLF local-first identity/recovery and common native article save/receipt ownership.
+- [x] Bind toolbar capture to source tab/document; reject untrusted senders and navigated documents.
+- [x] Serialize an inert bounded page clone and extract rendered content in a packaged worker; share normalized reader text.
+- [x] Save directly from toolbar activation using one trusted offscreen runtime; persist bounded source references and never replay uncertain writes.
+- [x] Preserve local/remote feedback and duplicate immutability; show an isolated top bar with Open article and Close; dismissal never cancels or deletes native data.
+- [x] Keep recovery in trusted Options; drain old-account work before reopening the hidden runtime after restoration.
+- [x] Isolate fixture builds in `.test-build` so tests cannot overwrite the installed `dist` extension; confirm checksums remain unchanged.
+- [x] Wait for local account readiness before exercising recovery controls; qualify the complete suite in Linux CI as well as locally.
+- [ ] Qualify Firefox packaging, store distribution and source annotations in subsequent batches.
+
+## Extension sign-in gate
+
+- [x] Gate toolbar admission on an explicit, scoped account confirmation and the actual SDK account; never treat a silent local identity as sign-in.
+- [x] Open a trusted sign-in popup when unconnected; do not capture content or persist article references before confirmation.
+- [x] Reuse DLF restoration in XState, persist confirmation only after success and resume the original toolbar gesture.
+- [x] Keep invalid/canceled sign-in from authorizing a save, and reject stale account/deployment confirmations.
+- [x] Keep connected/offline saves and their existing top bar; preserve web-app no-signup behavior.
+- [x] Exercise sign-in into the already-open app account, invalid input, cancel/reopen, stale confirmation and preexisting connected behavior in real Chromium.
 
 ## Completed foundation
 
@@ -28,7 +57,7 @@ The accepted implementation saves URL articles immediately and processes missing
 - [x] Resume missing-content articles after restart; retain URL entries on failure/cancel and Retry the same object.
 - [x] Serialize same-profile tabs with Web Locks; retain native uncertain-write non-replay barriers across profiles.
 - [x] Reuse immutable existing content and approved catalog copy.
-- [ ] Complete full backoff policy, comprehensive failed-redirect provenance and broader platform/deployment qualification.
+- [ ] Future qualification: full backoff policy, comprehensive failed-redirect provenance and broader platform/deployment coverage. These are not prerequisites to reviewing PR #13; do not turn them into an unsolicited hardening batch.
 
 ## Storage qualification before enabling a product write flow
 
@@ -52,11 +81,15 @@ The accepted implementation saves URL articles immediately and processes missing
 - [x] Build authenticated Add Link → automatic local save → saved reader, with final-destination duplicate checks, provenance and honest remote status.
 - [x] Render saved HTML structure with a shared sanitizer allowlist, isolated internal anchors, normal same-tab article links and literal-text fallback; qualify offline restart and restored-profile rendering.
 - [ ] Complete image acquisition and richer saved reader requirements. URL articles now persist before fetching; full retry scheduling remains open.
-- [ ] Implement desktop extension intake and annotation anchoring with sender validation, packaged runtime assets and restart reconciliation.
+- [x] Implement Chromium direct capture with sender/document validation, packaged runtime assets, native save ownership and restart non-replay.
+- [ ] Add Firefox packaging/lifecycle evidence and source/reader annotation anchoring; neither follows from the Chromium capture proof.
 - [ ] Implement retained reader, note/highlight, image, organization, search and deletion requirements.
 - [x] Qualify the production service-worker shell in Chromium with web and Jazz stopped, HTTP cache cleared and a complete browser-process restart. Keep broader platform qualification open.
 - [x] Emit one browser WASM binary, verify one initial network transfer and immutable reuse across updates; record local startup measurements in offline-shell-implementation.md.
-- [ ] Qualify Netlify deployment, accessibility and all claimed browser/mobile targets against the spec’s acceptance criteria.
+- [x] Qualify the current web deploy preview and Linux source/web/offline/extension suites at `dfc675c`; see the handoff for immutable run/deploy links.
+- [ ] Complete product accessibility/performance, broader hosted boundary cases and all claimed browser/mobile release targets against the spec’s acceptance criteria.
+
+Future shared diagnostics: DLF already supplies the logger. A reusable XState observer and bounded error sanitization are still a separate DLF follow-up, not a missing logger dependency or a requirement for this MVP review. See the handoff’s shared-diagnostics note.
 
 Typography presets, the DUI image viewer, custom fonts, reading-time estimation and other accepted deferrals remain outside MVP. This checklist does not expand scope.
 

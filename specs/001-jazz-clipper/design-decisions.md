@@ -1,6 +1,6 @@
 # MVP design decisions and acceptance details
 
-**Status**: Planning defaults for the accepted product scope. These resolve implementation/interaction details, not new features. Visual styling and runtime qualification remain later work. The product spec governs any conflict.
+**Updated**: 2026-11-04. Accepted interaction decisions and remaining product design. Implemented evidence is tracked in [tasks.md](tasks.md); unbuilt controls below remain requirements, not completion claims. The product spec governs any conflict.
 
 ## Reader, navigation and accessibility
 
@@ -73,3 +73,19 @@ Extraction and display share a DOMPurify factory and namespace-specific attribut
 ## URL-first article saving
 
 Add Link immediately saves the article with its URL. The same save operation optionally accepts content from a browser clipper. A dedicated module-worker XState machine processes articles missing content serially, retaining the same object on failure and Retry. Main-thread code owns only trusted SDK/network leaves and resource draining. No separate intake graph or custom IndexedDB journal is used. See [durable-capture-design.md](durable-capture-design.md) for publication barriers and current evidence limits.
+
+
+## Direct browser clipping and current batch boundary
+
+The user selected a sign-in gate for extension clipping: unconnected clicks open a trusted popup; connected clicks continue with direct saving from the toolbar, with a bar at the top of the source page rather than a new confirmation tab. The bar displays owning-machine status, Open article and Close. Close hides presentation; it never cancels or deletes native data, and late progress cannot recreate the dismissed bar. Do not restore the old Save confirmation workflow or copy the unrelated highlighting/tagging controls from the Readwise reference image into this batch.
+
+Chromium uses one trusted offscreen document for DLF identity, the library/save actors and packaged workers. Background states validate the toolbar tab/document, persist bounded source references, mark issued writes and validate IPC senders. Source-page code receives literal feedback and safe links only. Sign-in/restoration uses the trusted popup or Options; restoring an account drains issued old-account work before reopening the runtime. There is no automatic web-origin SSO, captured-HTML journal, automatic replay of issued references or second article database.
+
+The delivered batch is ready for user review, not a claim of full product completion. Full backoff scheduling and the future generic DLF machine-observer export are not prerequisites to using/reviewing this batch. Retain them as future work where applicable. No next feature is authorized merely because it appears in the backlog. See the handoff for the current PR and platform evidence.
+
+
+### Confirmed extension connection
+
+The later user correction requires sign-in before clipping, rather than silently saving into an unrelated extension-local identity. The web app still starts local-first without signup. Extension sign-in uses existing DLF recovery/restoration, not a new credential system or web-origin SSO. Existing stored identities are not automatically grandfathered as connected.
+
+Only a completed restoration can persist a nonsecret confirmation (account ID, Jazz app/server and a fresh confirmation ID). Persist it before notifying the hidden runtime. Toolbar states load that confirmation, verify the runtime’s actual account and only then inspect/capture/save the original source. Closing the popup without a fresh confirmation returns without saving. Confirmation alone is not authorization: a stale account/server scope must still fail native account admission. Source content and credentials never enter the same message boundary.

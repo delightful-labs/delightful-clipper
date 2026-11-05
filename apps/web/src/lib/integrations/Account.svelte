@@ -4,6 +4,7 @@
 	import { libraryContextKey, type LibraryContext } from '../runtime/library-context.js'
 	import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 	import { createActor } from 'xstate'
+	import type { ApplicationSnapshot } from '../machines/runtime/application-readiness.js'
 	import type { SnapshotFrom } from 'xstate'
 	import RecoveryPhrase from 'delightful-local-first/recovery/svelte'
 	import { Button, StatusMessage, Textarea } from 'delightful-ui'
@@ -13,7 +14,7 @@
 		selectRecoveryBinding,
 		selectLibraryActor
 	} from '../machines/runtime/application-readiness.js'
-	import { accountInput, type Session } from '../backend/jazz/account.js'
+	import { accountInput, type Session, type LibraryFactory } from '../backend/jazz/account.js'
 	import { t, action } from '../localization/index.js'
 
 	const applicationReadinessMachine = createApplicationReadinessMachine<Session>()
@@ -21,8 +22,17 @@
 		appId,
 		serverUrl,
 		gatewayEnabled,
-		children
-	}: { appId: string; serverUrl: string; gatewayEnabled: boolean; children: Snippet } = $props()
+		children,
+		onSnapshot,
+		libraryFactory
+	}: {
+		appId: string
+		serverUrl: string
+		gatewayEnabled: boolean
+		children: Snippet
+		libraryFactory?: LibraryFactory
+		onSnapshot?: (snapshot: ApplicationSnapshot<Session>) => void
+	} = $props()
 	let snapshot = $state<SnapshotFrom<typeof applicationReadinessMachine>>()
 	let phrase = $state('')
 	let send = $state<
@@ -44,12 +54,13 @@
 	onMount(() => {
 		if (!appId || !serverUrl) return
 		const actor = createActor(applicationReadinessMachine, {
-			input: accountInput({ appId, serverUrl, env: 'clipper' }),
+			input: accountInput({ appId, serverUrl, env: 'clipper' }, libraryFactory),
 			inspect: inspectMachines
 		})
 		send = (event) => actor.send(event)
 		const subscription = actor.subscribe((next) => {
 			snapshot = next
+			onSnapshot?.(next)
 		})
 		actor.start()
 		return () => {

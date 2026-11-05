@@ -47,3 +47,4 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium firefox
       - run: pnpm test:e2e
       - run: pnpm test:offline
+      - run: pnpm test:extension

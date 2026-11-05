@@ -53,6 +53,7 @@ export function testLibraryCapability(
 		receipts: []
 	}))
 	return {
+		libraryId: candidate.id,
 		isCurrent: () => true,
 		spawnSave: (spawn: SaveSpawner, request: SaveArticleRequest) => spawn(save, { input: request }),
 		read: {
