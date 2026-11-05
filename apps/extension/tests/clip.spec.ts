@@ -97,11 +97,25 @@ async function clip(context: BrowserContext, id: string, source: Page) {
 async function recovery(context: BrowserContext, id: string) {
 	const page = await context.newPage()
 	await page.goto(`chrome-extension://${id}/index.html`)
-	// Recovery is exposed during bootstrap; wait for local readiness before interacting with the settling form.
-	await expect(page.getByRole('button', { name: 'Restore account', exact: true })).toBeVisible()
+	// This helper is used online; wait for the account/root binding to settle before revealing.
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
 	const dialog = page.getByRole('dialog')
-	await expect(dialog).toBeVisible()
+	try {
+		await expect(dialog).toBeVisible()
+	} catch (error) {
+		// Status text and native dialog state only; never log phrase fields or actor context.
+		console.info(
+			'Extension recovery presentation',
+			JSON.stringify({
+				statuses: await page.getByRole('status').allTextContents(),
+				dialogs: await page
+					.locator('dialog')
+					.evaluateAll((nodes) => nodes.map((node) => ({ open: node.hasAttribute('open') })))
+			})
+		)
+		throw error
+	}
 	const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
 	await page.close()
