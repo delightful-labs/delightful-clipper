@@ -34,6 +34,26 @@ Concrete local-first ecosystem examples provide adoption evidence, not a popular
 
 Limitations: the searchable index must fit in browser memory. Current Clipper code reloads/rebuilds the dataset on relevant article/tag/snapshot changes rather than using incremental index updates, even though MiniSearch offers update/removal APIs. Correctness and offline restart are covered; representative large-library memory, cold-build time and query latency have not been measured against alternatives. There is no evidence-based claim that MiniSearch is the fastest, smallest overall, or necessary for a small library. Approval of retaining/replacing the dependency remains for the user; this record does not authorize adding an alternative.
 
+## Unicode case-folding dependency review — pending user review
+
+The installed `unicode-case-folding` 1.1.2 package is used in two places: `capture/tags.ts` produces durable tag membership keys, and `search/engine.ts` normalizes both indexed terms and queries. Tag names are trimmed and NFC-normalized, folded, then NFC-normalized again for keys; the display name is retained separately. Search folds NFC-normalized tokens. The package contains a generated lookup table and mapping functions, with no runtime dependencies.
+
+The purpose is Unicode default full case-insensitive matching: `Straße` and `STRASSE` share a key, and Greek `Σ`, `σ` and `ς` fold together. Native lowercasing leaves `straße` and `strasse` different, and leaves `σ` and `ς` different. Existing domain tests cover sharp-S, sigma, canonical accent spellings and preservation of accent/punctuation distinctions. Folding is not translation, stemming, typo correction, accent removal or locale-specific Turkish casing. [Unicode case-mapping FAQ](https://www.unicode.org/faq/casemap_charprop.html), [package source](https://github.com/avivkeller/unicode-case-folding).
+
+| Alternative | Benefit | Tradeoff for Clipper |
+| --- | --- | --- |
+| Native `normalize('NFC').toLowerCase()` | No dependency or bundled folding table; sufficient if the chosen equality policy is ordinary lowercase equality | Does not implement full case folding, including sharp-S expansion and sigma equivalence. A valid simpler product policy, but it changes current tag equivalence/search behavior. |
+| Native `toLocaleLowerCase()` | Supports locale-specific lowercase rules | Still not full folding; keys must not depend on different devices' default locales. Choosing a fixed locale would need an explicit equality policy. |
+| Native `Intl.Collator` / `localeCompare` | Language-sensitive comparison without shipping a separate Unicode table | Returns comparison results, not a canonical string key for concurrent tag operations or token indexing. Locale/sensitivity also changes which strings compare equal. Appropriate for user-facing ordering/comparison, not a drop-in replacement for the stored keys. [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Collator). |
+| Generate and vendor a full-fold table from a fixed Unicode release | Same algorithm without an npm runtime dependency; direct control of provenance and updates | Clipper owns the generator, attribution, table updates and conformance testing; it still ships table bytes. This is the closest behavior-preserving alternative. |
+| Another Unicode/ICU library | Can provide full folding plus other Unicode facilities | Requires approval and qualification of its API, Unicode version, browser compatibility and actual bundle/memory costs. No comparison establishes this package as the best-maintained or smallest choice. |
+
+The rationale for the chosen package was its narrow full-fold API and fixed data artifact, avoiding a Clipper-maintained Unicode table. The specs already recorded full-fold semantics, but did not adequately document this package comparison or obtain installation approval. Full folding itself is a product policy choice; a simpler lowercase policy could avoid the dependency if the user accepts its different equivalences. Unicode specifies the algorithm, not a recommendation to use this npm package.
+
+Evidence limits: the package's generated header and current upstream generator refer to the Unicode `latest` data URL rather than identifying a fixed UCD release. Pinning package 1.1.2 and its lockfile integrity fixes the installed table bytes; the exact source Unicode release and exhaustive conformance have not been independently established. Current tests are targeted examples, not full Unicode conformance or a browser bundle/performance comparison. [Upstream generator](https://github.com/avivkeller/unicode-case-folding/blob/main/src/build.js).
+
+Tag keys already persisted in immutable operations include the `cf-1.1.2:` prefix and are validated against the fold function. Changing the algorithm/table requires a deliberate compatibility/migration strategy for existing memberships; it must not simply invalidate retained history or strand assignments. An equivalent vendored implementation must reproduce current keys. Search-only normalization changes require rebuilding the disposable index. Retaining/replacing the package remains pending user review; this record makes no dependency change.
+
 ## State/resource ownership before async work
 
 ```mermaid
