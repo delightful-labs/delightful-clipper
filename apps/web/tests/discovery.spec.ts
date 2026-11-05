@@ -314,6 +314,18 @@ test('reindexes a snapshot arriving from another restored client without restart
 		const saved = await supplied(other, 'https://example.com/arriving')
 		await expect(page.locator(`[data-article-id="${saved.id}"]`)).toBeVisible()
 		await expect(search).toHaveValue('arriving')
+		await search.fill('ResearchOnlyTag')
+		await expect(page.locator(`[data-article-id="${saved.id}"]`)).toHaveCount(0)
+		await addTag(other, saved.row, 'ResearchOnlyTag')
+		await expect(page.locator(`[data-article-id="${saved.id}"]`)).toBeVisible()
+		await search.fill('RESEARCHONLYTAG browser')
+		await expect(page.locator(`[data-article-id="${saved.id}"]`)).toBeVisible()
+		const dialog = await tags(other, saved.row)
+		await dialog.getByRole('button', { name: 'Remove ResearchOnlyTag', exact: true }).click()
+		await expect(
+			dialog.getByRole('button', { name: 'Remove ResearchOnlyTag', exact: true })
+		).toHaveCount(0)
+		await expect(page.locator(`[data-article-id="${saved.id}"]`)).toHaveCount(0)
 	} finally {
 		await otherContext.close()
 	}

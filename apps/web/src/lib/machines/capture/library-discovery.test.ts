@@ -74,6 +74,7 @@ it('combines real indexed text matches with status, Favorites, tag AND filters a
 						title: row.title,
 						url: row.url ?? '',
 						text: text.get(row.id) ?? '',
+						tags: (row.tags ?? []).map((tag) => tag.name).join(' '),
 						originalSavedAt: row.originalSavedAt
 					})),
 				observe: (next) => {

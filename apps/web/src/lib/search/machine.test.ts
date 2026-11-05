@@ -25,6 +25,7 @@ function fixture() {
 			title: row.title,
 			url: row.url ?? '',
 			text: 'Saved text',
+			tags: (row.tags ?? []).map((tag) => tag.name).join(' '),
 			originalSavedAt: row.originalSavedAt
 		}))
 	)
@@ -148,6 +149,7 @@ it('cancels observation of an old bound read and cannot publish after shutdown',
 			title: row.title,
 			url: row.url!,
 			text: 'Late private content',
+			tags: (row.tags ?? []).map((tag) => tag.name).join(' '),
 			originalSavedAt: row.originalSavedAt
 		}
 	])
@@ -172,4 +174,28 @@ it('discards a native read after its fixed account scope expires and releases it
 	expect(f.posted).toEqual([])
 	expect(f.dispose).toHaveBeenCalledOnce()
 	expect(selectSearchView(actor.getSnapshot()).ids).toBeUndefined()
+})
+
+it('reindexes tag additions, display changes and removals while keeping the query', async () => {
+	const f = fixture()
+	f.actor.send({ type: 'QUERY', query: 'reading' })
+	for (const tags of [
+		[{ key: 'reading', name: 'Reading' }],
+		[{ key: 'reading', name: 'READING' }],
+		[]
+	]) {
+		const generation = f.actor.getSnapshot().context.generation
+		f.actor.send({ type: 'ROWS', rows: [{ ...row, tags }] })
+		await waitFor(f.actor, (s) => s.matches({ running: 'indexing' }))
+		expect(f.actor.getSnapshot().context.generation).toBe(generation + 1)
+		expect(f.actor.getSnapshot().context.query).toBe('reading')
+		expect(f.posted.at(-1)).toMatchObject({
+			type: 'INDEX',
+			documents: [{ tags: tags.map((tag) => tag.name).join(' ') }]
+		})
+		f.report({ type: 'INDEX_READY', generation: generation + 1 })
+		f.report({ type: 'RESULT', generation: generation + 1, query: 'reading', ids: [] })
+	}
+	f.actor.send({ type: 'STOP' })
+	await toPromise(f.actor)
 })

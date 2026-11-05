@@ -218,3 +218,5 @@ Svelte components render machine-provided text/severity rather than switching st
 ## SVG and native disclosure policy
 
 The shared extraction/display policy retains `details`, `summary`, `open`, and static SVG shapes, paths, groups, text, title/description, geometry and solid paints. SVG links/IDs/references, CSS, images, embedded HTML, filters and animation are removed; gradients and `use` definitions remain unsupported. SVG attributes are limited to 16 KiB each and the existing article byte/node limits still apply. Display width is constrained to the reader. This is a bounded static subset, not arbitrary SVG support or a general SVG security audit. See the accepted [design decision](design-decisions.md#retained-disclosure-and-svg-content).
+
+- [x] Include assigned tag names in keyword search; tag membership/name changes invalidate the existing search dataset, and tagged document fingerprints rebuild older derived caches. Cover Unicode/AND queries, remote add/remove, and production offline restart.

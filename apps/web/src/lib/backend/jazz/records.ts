@@ -204,6 +204,7 @@ export function createLibraryRecords(
 				title: row.title,
 				url: row.url ?? '',
 				text: texts.get(docs.get(row.contentId ?? row.id)?.snapshotId ?? '') ?? '',
+				tags: (row.tags ?? []).map((tag) => tag.name).join(' '),
 				originalSavedAt: row.originalSavedAt
 			}))
 		},

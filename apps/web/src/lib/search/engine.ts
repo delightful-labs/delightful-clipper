@@ -3,7 +3,7 @@ import { caseFold } from 'unicode-case-folding'
 import type { SearchDocument } from './schema.js'
 export type { SearchDocument } from './schema.js'
 export const searchOptions = {
-	fields: ['title', 'url', 'text'],
+	fields: ['title', 'url', 'text', 'tags'],
 	storeFields: ['originalSavedAt'],
 	processTerm: (term: string) => caseFold(term.normalize('NFC')),
 	searchOptions: { combineWith: 'AND' as const, boost: { title: 2 }, prefix: false, fuzzy: false }

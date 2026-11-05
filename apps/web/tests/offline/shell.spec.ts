@@ -173,10 +173,10 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 
 		await organized.getByRole('button', { name: 'tags', exact: true }).click()
 		const tagDialog = page.getByRole('dialog', { name: 'tags', exact: true })
-		await tagDialog.locator('input[type="text"]').fill('Offline')
+		await tagDialog.locator('input[type="text"]').fill('RestartOnlyTag')
 		await tagDialog.getByRole('button', { name: 'Add tag', exact: true }).click()
 		await expect(
-			tagDialog.getByRole('button', { name: 'Remove Offline', exact: true })
+			tagDialog.getByRole('button', { name: 'Remove RestartOnlyTag', exact: true })
 		).toBeVisible()
 		await tagDialog.getByRole('button', { name: 'Close', exact: true }).click()
 		await page
@@ -231,7 +231,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await offlineRow.getByRole('button', { name: 'tags', exact: true }).click()
 		const offlineTags = reopened.getByRole('dialog', { name: 'tags', exact: true })
 		await expect(
-			offlineTags.getByRole('button', { name: 'Remove Offline', exact: true })
+			offlineTags.getByRole('button', { name: 'Remove RestartOnlyTag', exact: true })
 		).toBeVisible()
 		await offlineTags.getByRole('button', { name: 'Close', exact: true }).click()
 		await expect(
@@ -242,11 +242,11 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
 		const search = reopened.getByRole('searchbox', { name: 'Search articles', exact: true })
-		await search.fill('offline shell')
+		await search.fill('RESTARTONLYTAG shell')
 		await expect(offlineRow).toBeVisible()
 		await search.fill('no-such-keyword')
 		await expect(offlineRow).toHaveCount(0)
-		await search.fill('offline shell')
+		await search.fill('RESTARTONLYTAG shell')
 		await expect(offlineRow).toBeVisible()
 		await offlineRow.getByRole('button', { name: 'Move to Trash', exact: true }).click()
 		await expect(offlineRow).toHaveCount(0)

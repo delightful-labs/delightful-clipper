@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { createActor, toPromise, waitFor } from 'xstate'
-import { buildIndex, searchIndex } from './engine.js'
+import { buildIndex, searchIndex, searchFingerprint, restoreIndex } from './engine.js'
 import { createSearchWorkerMachine } from './worker-machine.js'
 import type { SearchDocument } from './schema.js'
 const documents: SearchDocument[] = [
@@ -9,6 +9,7 @@ const documents: SearchDocument[] = [
 		title: 'Quiet reading',
 		url: 'https://example.com/one',
 		text: 'An orchard with pears and apples.',
+		tags: '',
 		originalSavedAt: '2026-01-01'
 	},
 	{
@@ -16,6 +17,7 @@ const documents: SearchDocument[] = [
 		title: 'Apples and pears',
 		url: 'https://example.com/two',
 		text: 'Quiet reading in an orchard.',
+		tags: '',
 		originalSavedAt: '2026-01-02'
 	},
 	{
@@ -23,6 +25,7 @@ const documents: SearchDocument[] = [
 		title: 'Another',
 		url: 'https://example.com/needle',
 		text: 'Only apples.',
+		tags: '',
 		originalSavedAt: '2026-01-03'
 	}
 ]
@@ -85,4 +88,22 @@ it('restores a matching account cache and rejects older in-flight generations', 
 	expect(reports.at(-1)).toMatchObject({ type: 'RESULT', generation: 2, ids: [documents[2]!.id] })
 	actor.send({ type: 'STOP' })
 	await toPromise(actor)
+})
+
+it('searches Unicode tag names with body keywords and invalidates the cache when membership changes', async () => {
+	const tagged = [{ ...documents[0]!, tags: 'Straße Café' }, documents[1]!]
+	const index = await buildIndex(tagged)
+	expect(searchIndex(index, 'STRASSE')).toEqual([documents[0]!.id])
+	expect(searchIndex(restoreIndex(JSON.stringify(index)), 'STRASSE')).toEqual([documents[0]!.id])
+	expect(searchIndex(index, 'cafe\u0301 orchard')).toEqual([documents[0]!.id])
+	expect(searchIndex(index, 'strasse missing')).toEqual([])
+	expect(searchIndex(await buildIndex(documents), 'strasse')).toEqual([])
+	expect(await searchFingerprint(tagged)).not.toBe(await searchFingerprint(documents.slice(0, 2)))
+	const { tags: _tags, ...legacy } = documents[0]!
+	const legacyBytes = new TextEncoder().encode(JSON.stringify([legacy]))
+	const legacyFingerprint = Array.from(
+		new Uint8Array(await crypto.subtle.digest('SHA-256', legacyBytes)),
+		(byte) => byte.toString(16).padStart(2, '0')
+	).join('')
+	expect(await searchFingerprint([documents[0]!])).not.toBe(legacyFingerprint)
 })
