@@ -10,7 +10,7 @@ it('keeps invalid names out of native writes, clears feedback on edit/reset, and
 	).start()
 	const actor = createActor(tagFormMachine, { input: { library } }).start()
 	actor.send({ type: 'SUBMIT', id: 'article', enabled: true })
-	expect(selectTagFormView(actor.getSnapshot()).message?.text).toBe('Enter a valid value.')
+	expect(selectTagFormView(actor.getSnapshot()).message?.text).toBe('Enter tag')
 	actor.send({ type: 'CHANGE', name: 'a'.repeat(65) })
 	actor.send({ type: 'SUBMIT', id: 'article', enabled: true })
 	expect(submit).not.toHaveBeenCalled()

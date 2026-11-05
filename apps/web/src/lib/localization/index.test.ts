@@ -44,6 +44,8 @@ it('keeps standalone actions and contextual feedback separate from composed labe
 	expect(t('actions.sign_out')).toBe('Sign out')
 	expect(t('account.status.localSaved')).toBe('Library saved on this device. Sync pending.')
 	expect(t('capture.status.saved')).toBe('Article saved on this device. Sync pending.')
+	expect(t('forms.enter_subject', { subject: noun('tag') })).toBe('Enter tag')
+	expect(t('forms.enter_subject', { subject: noun('article', 2) })).toBe('Enter articles')
 	expect(t('connection.online')).toBe('online')
 	expect(t('connection.offline')).toBe('offline')
 })

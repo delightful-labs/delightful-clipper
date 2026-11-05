@@ -2,7 +2,7 @@ import { assign, sendTo, setup, type ActorRef, type Snapshot, type SnapshotFrom 
 import type { LibraryEvent } from '../../contracts/library.js'
 import { isValidTagName } from '../../capture/tags.js'
 import { stateFeedback } from '../../contracts/feedback.js'
-import { t } from '../../localization/index.js'
+import { t, noun } from '../../localization/index.js'
 
 export type TagFormEvent =
 	| { type: 'CHANGE'; name: string }
@@ -49,7 +49,9 @@ export const tagFormMachine = setup<
 	},
 	states: {
 		editing: {},
-		invalid: { meta: { name: t('forms.invalid_value'), variant: 'error' } }
+		invalid: {
+			meta: { name: t('forms.enter_subject', { subject: noun('tag') }), variant: 'error' }
+		}
 	}
 })
 export function selectTagFormView(snapshot: SnapshotFrom<typeof tagFormMachine> | undefined) {

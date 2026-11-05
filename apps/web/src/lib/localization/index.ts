@@ -23,7 +23,7 @@ void i18n.init({
 	initAsync: false,
 	resources: { en: { translation: english } }
 })
-export const t = (key: MessageKey) => i18n.t(key)
+export const t = (key: MessageKey, options: { subject?: string } = {}) => i18n.t(key, options)
 /** Always pass count: i18next selects CLDR plural forms through Intl.PluralRules. */
 export const noun = (subject: Noun, count = 1) => i18n.t(`nouns.${subject}`, { count })
 export const action = (verb: Action, subject: Noun, count = 1) =>

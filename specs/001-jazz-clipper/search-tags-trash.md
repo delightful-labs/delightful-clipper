@@ -1,6 +1,6 @@
 # Search, article tags and Trash/restore
 
-Authorized together in one feature PR, based on merged PR #15 (`72b6fc9`). The user requested all testing in the same session. The user revised and approved the labels/error approach during review: compose Search articles and Move to Trash from reusable actions/nouns, omit preparation feedback, use the shorter search error and a generic Enter-a-valid-value field error. The original six-string proposal is superseded below.
+Authorized together in one feature PR, based on merged PR #15 (`72b6fc9`). The user requested all testing in the same session. The user revised and approved the labels/error approach during review: compose Search articles and Move to Trash from reusable actions/nouns, omit preparation feedback, use the shorter search error and a generic Enter-subject field error. The original six-string proposal is superseded below.
 
 ## Scope and data
 
@@ -56,9 +56,9 @@ The user explicitly requested the following revisions to the earlier proposal. S
 | `actions.move_to_subject` | Move to {{subject}} | Per-article action; `subject` is the approved Trash noun |
 | `nouns.trash_one`, `nouns.trash_other` | Trash | Radio label and action subject |
 | `library.search_failed` | search is unavailable. | Search machine failed-state name, with existing Retry action |
-| `forms.invalid_value` | Enter a valid value. | Generic invalid field feedback, rendered through DUI FieldFeedback |
+| `forms.enter_subject` | Enter {{subject}} | Generic field feedback; `subject` uses the existing localized tag noun, rendered through DUI FieldFeedback |
 
-The user rejected Preparing search as unnecessary. Loading/indexing/querying states have no visible message, and no preparation catalog entry is added. The initial Check-the-form generic sentence was also rejected; the user requested Enter-a-valid-value wording, following Finance’s generic Enter/validity pattern. This shared error replaces the proposed tag-specific length sentence. Existing Add tag, Restore article and Retry labels are reused. Clipper’s catalog/action/noun search found no existing correct equivalents for these additions.
+The user rejected Preparing search as unnecessary. Loading/indexing/querying states have no visible message, and no preparation catalog entry is added. The initial Check-the-form generic sentence was also rejected; the user clarified Finance’s `forms.enter_subject` template. It produces “Enter tag” using the existing noun, with no new noun, punctuation or tag-specific length message. This shared error replaces the proposed tag-specific length sentence. Existing Add tag, Restore article and Retry labels are reused. Clipper’s catalog/action/noun search found no existing correct equivalents for these additions.
 
 The actual DUI search field, all five radios and per-row Move to Trash/Restore are exposed. A small synchronous tag-form machine has editing/invalid states: SUBMIT uses the reusable name predicate, valid submissions use XState sendTo to the library, and edits/reset clear feedback. Native writes, local/global receipts and draining remain library/storage-owned. Components project the error name and field validity, connect it with aria-describedby, and add no English fallback. Removing/restoring a row returns focus to its next surviving sibling, previous sibling, or library heading; the native tag dialog retains its separate removed-trigger fallback.
 

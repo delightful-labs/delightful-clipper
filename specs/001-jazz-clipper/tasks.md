@@ -13,7 +13,7 @@ PR #15 is merged at `72b6fc9`; work uses `feat/library-search-tags-trash` from u
 - [x] Compose query/status/favorites/AND-tag filters in the library actor, with explicit Trash scope.
 - [x] Add actual DUI tag dialog/filter controls and existing-copy Restore actions in Add Link/reader; retain no inline article status text.
 - [x] Add domain, actor, native policy/migration and real-browser tests including cross-client offline edits, cache rebuild and full browser restart.
-- [x] Record explicit revised copy approval: shared Search/Move to action templates, Trash noun, short search error and generic Enter-a-valid-value feedback. Omit rejected preparation and tag-specific messages.
+- [x] Record explicit revised copy approval: shared Search/Move to action templates, Trash noun, short search error and generic Enter-subject feedback. Omit rejected preparation and tag-specific messages.
 - [x] Expose the actual DUI search input, localized failure/retry, Trash radio and Move to Trash/Restore controls; add real control, keyboard, filter-composition, retry and generic form-validation coverage. Search preparation stays silent.
 - [x] Complete final repository/browser/offline/packaged-extension validation: 498 unit tests/73 files plus one skip, full verification/build, 43 full web cases, 14 final organization/discovery cases, five production offline cases and eleven packaged extension cases pass; evidence/limits are in the handoff.
 - [x] Push one Conventional Commits PR [#16](https://github.com/delightful-labs/delightful-clipper/pull/16) targeting main; copy approval and final local validation are complete; leave the PR unmerged. Do not merge.

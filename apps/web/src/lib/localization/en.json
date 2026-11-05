@@ -137,6 +137,6 @@
 		"unsupported": "Offline startup is unavailable in this browser."
 	},
 	"forms": {
-		"invalid_value": "Enter a valid value."
+		"enter_subject": "Enter {{subject}}"
 	}
 }
