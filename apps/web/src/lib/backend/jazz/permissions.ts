@@ -15,6 +15,25 @@ export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 	policy.libraries.allowInsert.where(canonical)
 	policy.libraries.allowUpdate.whereOld(canonical).whereNew(canonical)
 	policy.libraries.allowDelete.never()
+	policy.organizationOperations.allowRead.where((row) => owns(row.libraryId))
+	policy.organizationOperations.allowInsert.where((row) =>
+		allOf([
+			owns(row.libraryId),
+			anyOf([
+				policy.articles.exists.where({ id: row.articleId, libraryId: row.libraryId }),
+				policy.documents.exists.where({ id: row.articleId, libraryId: row.libraryId })
+			]),
+			anyOf([
+				allOf([
+					{ field: 'status' },
+					anyOf([{ value: 'inbox' }, { value: 'later' }, { value: 'archive' }])
+				]),
+				allOf([{ field: 'favorite' }, anyOf([{ value: 'true' }, { value: 'false' }])])
+			])
+		])
+	)
+	policy.organizationOperations.allowUpdate.never()
+	policy.organizationOperations.allowDelete.never()
 	policy.articles.allowRead.where((row) => owns(row.libraryId))
 	const articleTarget = (row: { libraryId: RowRefValue; contentId: RowRefValue }) =>
 		allOf([

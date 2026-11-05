@@ -28,6 +28,8 @@ export function createLibraryCapability(
 	})
 	return {
 		libraryId: records.articles.libraryId,
+		spawnOrganization: (spawn, request) =>
+			spawn(records.articles.organization.machine, { input: request }),
 		isCurrent: records.isCurrent,
 		read: records.readCapabilities,
 		subscribe: records.articles.subscribe,

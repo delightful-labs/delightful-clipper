@@ -1,7 +1,7 @@
 # Technical Plan: Jazz Clipper and Reader
 
 **Baseline**: `main` (implementation through feature branches/PRs) · **Updated**: 2026-11-04 · **Spec**: [spec.md](spec.md)
-**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is open for review. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
+**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is the authorized next batch, in progress; see [library-organization.md](library-organization.md). Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
 
 ## Summary
 

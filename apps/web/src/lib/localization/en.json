@@ -103,7 +103,18 @@
 		"heading": "Saved articles",
 		"empty": "No saved articles on this device yet.",
 		"list_failed": "The saved article list is unavailable. Reload to reconnect.",
-		"sync_pending": "Sync pending."
+		"sync_pending": "Sync pending.",
+		"views": {
+			"all": "All",
+			"inbox": "Inbox",
+			"later": "Later",
+			"archive": "Archive",
+			"favorites": "Favorites"
+		},
+		"status_label": "Status",
+		"favorite": "Favorite",
+		"unfavorite": "Remove favorite",
+		"filtered_empty": "No articles match this view."
 	},
 	"reader": {
 		"heading": "Saved article",

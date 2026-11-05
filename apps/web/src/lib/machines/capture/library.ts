@@ -11,6 +11,12 @@ import {
 	not
 } from 'xstate'
 import type { SnapshotFrom } from 'xstate'
+import {
+	canRequestOrganization,
+	libraryViews,
+	matchesLibraryFilter
+} from '../../capture/organization.js'
+import type { OrganizationRequest, LibraryView } from '../../capture/organization.js'
 import { t } from '../../localization/index.js'
 import { normalizedSource } from '../../capture/source.js'
 import type { WorkflowMessage } from '../../contracts/feedback.js'
@@ -30,6 +36,12 @@ function savedResult(result: ArticleSaveResult) {
 	return result
 }
 type Context = {
+	organizationRef: SaveRef | undefined
+	organizationRequest: OrganizationRequest | undefined
+	organizationId: string
+	organizationOperations: Record<string, string>
+	view: LibraryView
+	favorites: boolean
 	capability: LibraryCapability | undefined
 	saveRef: SaveRef | undefined
 	url: string
@@ -65,6 +77,7 @@ function isValidSourceUrl(url: string) {
 	}
 }
 type Meta = {
+	organizationMessage?: (c: Context) => WorkflowMessage
 	captureMessage?: (c: Context) => WorkflowMessage
 	readerMessage?: (c: Context) => WorkflowMessage
 }
@@ -79,6 +92,15 @@ function syncMessage(status: 'pending' | 'accepted' | 'rejected'): WorkflowMessa
 		),
 		variant: status === 'rejected' ? 'error' : 'info'
 	}
+}
+function organizationSyncMessage(context: Context, articleId: string): WorkflowMessage | undefined {
+	const statuses = Object.entries(context.organizationOperations)
+		.filter(([, id]) => id === articleId)
+		.map(([operationId]) => context.sync[operationId])
+	if (statuses.includes('rejected')) return syncMessage('rejected')
+	if (statuses.includes('pending')) return syncMessage('pending')
+	if (statuses.includes('accepted')) return syncMessage('accepted')
+	return undefined
 }
 function failureMessage(code: string): WorkflowMessage {
 	return {
@@ -146,6 +168,7 @@ export const libraryMachine = setup<
 		writing: undefined
 		closing: undefined
 		drained: undefined
+		organizing: undefined
 	},
 	never,
 	string,
@@ -159,9 +182,15 @@ export const libraryMachine = setup<
 		accepting: stateIn({ running: { control: 'active' } }),
 		closing: stateIn({ running: { control: 'closing' } }),
 		writing: stateIn({ running: { capture: 'saving' } }),
+		organizing: stateIn({ running: { organization: 'writing' } }),
 		canUseLibrary: and(['accepting', ({ context }) => !!context.capability?.isCurrent()]),
 		canStartSave: and(['canUseLibrary', not('writing')]),
-		drained: and(['closing', not('writing'), stateIn({ running: { workerLifecycle: 'closed' } })])
+		drained: and([
+			'closing',
+			not('writing'),
+			not('organizing'),
+			stateIn({ running: { workerLifecycle: 'closed' } })
+		])
 	},
 	actions: {
 		close: enqueueActions(({ enqueue }) => {
@@ -211,6 +240,12 @@ export const libraryMachine = setup<
 	initial: 'running',
 	context: ({ input }) => ({
 		capability: input,
+		organizationRef: undefined,
+		organizationRequest: undefined,
+		organizationId: '',
+		organizationOperations: {},
+		view: 'all',
+		favorites: false,
 		saveRef: undefined,
 		url: '',
 		content: undefined,
@@ -240,6 +275,16 @@ export const libraryMachine = setup<
 				target: 'closed'
 			},
 			on: {
+				FILTER: {
+					guard: and([
+						'canUseLibrary',
+						({ event }) => libraryViews.includes(event.view) && typeof event.favorites === 'boolean'
+					]),
+					actions: assign({
+						view: ({ event }) => event.view,
+						favorites: ({ event }) => event.favorites
+					})
+				},
 				WATCH_RECEIPTS: {
 					guard: and(['canUseLibrary', ({ event }) => hasWatchableReceipts(event.result)]),
 					actions: [
@@ -324,6 +369,119 @@ export const libraryMachine = setup<
 				}
 			},
 			states: {
+				organization: {
+					initial: 'idle',
+					on: {
+						ORGANIZE: {
+							guard: and([
+								'canUseLibrary',
+								not('organizing'),
+								({ context, event }) =>
+									!!context.capability?.spawnOrganization &&
+									canRequestOrganization(context.rows, event.request)
+							]),
+							target: '.writing',
+							actions: assign({
+								organizationRequest: ({ event }) => event.request,
+								organizationId: ({ event }) => event.request.id
+							})
+						}
+					},
+					states: {
+						idle: {},
+						writing: {
+							meta: {
+								organizationMessage: () => ({ text: t('capture.status.saving'), variant: 'info' })
+							},
+							initial: 'active',
+							entry: assign(({ context, spawn }) => ({
+								organizationRef: required(required(context.capability).spawnOrganization)(
+									(logic, options) => spawn(logic, options),
+									required(context.organizationRequest)
+								)
+							})),
+							exit: [
+								stopChild(({ context }) => required(context.organizationRef)),
+								assign({ organizationRef: undefined, organizationRequest: undefined })
+							],
+							states: {
+								active: {
+									on: {
+										SHUTDOWN: {
+											target: 'stopping',
+											actions: sendTo(({ context }) => required(context.organizationRef), {
+												type: 'SHUTDOWN'
+											})
+										}
+									}
+								},
+								stopping: {}
+							},
+							on: {
+								'xstate.done.actor.*': [
+									{
+										guard: and([
+											'closing',
+											({ context, event }) => event.actorId === context.organizationRef?.id
+										]),
+										target: 'idle'
+									},
+									{
+										guard: ({ context, event }) =>
+											event.actorId === context.organizationRef?.id &&
+											event.output.kind === 'saved',
+										target: 'saved',
+										actions: [
+											'watch',
+											assign({
+												organizationOperations: ({ context, event }) => ({
+													...context.organizationOperations,
+													[event.output.operationId]: context.organizationId
+												})
+											})
+										]
+									},
+									{
+										guard: ({ context, event }) =>
+											event.actorId === context.organizationRef?.id &&
+											event.output.kind === 'unknown',
+										target: 'unknown'
+									},
+									{
+										guard: ({ context, event }) => event.actorId === context.organizationRef?.id,
+										target: 'failed'
+									}
+								],
+								'xstate.error.actor.*': {
+									guard: ({ context, event }) => event.actorId === context.organizationRef?.id,
+									target: 'unknown'
+								}
+							}
+						},
+						saved: {
+							meta: {
+								organizationMessage: (c) =>
+									organizationSyncMessage(c, c.organizationId) ?? {
+										text: t('capture.status.saved'),
+										variant: 'info'
+									}
+							}
+						},
+						unknown: {
+							meta: {
+								organizationMessage: () => ({ text: t('capture.status.unknown'), variant: 'error' })
+							}
+						},
+						failed: {
+							meta: {
+								organizationMessage: () => ({
+									text: t('capture.status.save_failed'),
+									variant: 'error'
+								})
+							}
+						}
+					}
+				},
 				control: {
 					initial: 'active',
 					states: {
@@ -547,6 +705,10 @@ export const libraryMachine = setup<
 			type: 'final',
 			entry: assign({
 				capability: undefined,
+				organizationRef: undefined,
+				organizationRequest: undefined,
+				organizationId: '',
+				organizationOperations: {},
 				reader: undefined,
 				rows: [],
 				sync: {},
@@ -565,7 +727,10 @@ export function selectLibraryView(
 ) {
 	const c = snapshot?.context
 	const visible =
-		!!c && snapshot.matches({ running: { control: 'active' } }) && snapshot.status === 'active'
+		!!c &&
+		snapshot.matches({ running: { control: 'active' } }) &&
+		snapshot.status === 'active' &&
+		!!c.capability?.isCurrent()
 	const meta = visible ? Object.values(snapshot.getMeta()) : []
 	const rowMessages: Record<string, WorkflowMessage> = {}
 	if (visible)
@@ -575,7 +740,16 @@ export function selectLibraryView(
 				else if (c.background[row.id]) rowMessages[row.id] = required(c.background[row.id])
 			}
 		}
+	const rows = visible ? c.rows.filter((row) => matchesLibraryFilter(row, c.view, c.favorites)) : []
 	return {
+		rows,
+		organizationMessage: visible
+			? meta.find((m) => m?.organizationMessage)?.organizationMessage?.(c)
+			: undefined,
+		canOrganize:
+			visible &&
+			!!c.capability?.spawnOrganization &&
+			!snapshot.matches({ running: { organization: 'writing' } }),
 		captureMessage: visible
 			? c.failure === 'captureFailed'
 				? failureMessage(c.failure)
@@ -591,14 +765,25 @@ export function selectLibraryView(
 				? { text: t('library.list_failed'), variant: 'error' as const }
 				: undefined,
 		emptyMessage:
-			visible && !c.rows.length
-				? { text: t('library.empty'), variant: 'info' as const }
+			visible && !rows.length
+				? {
+						text: t(c.rows.length ? 'library.filtered_empty' : 'library.empty'),
+						variant: 'info' as const
+					}
 				: undefined,
 		syncMessages: visible
 			? Object.fromEntries(
 					Object.entries(c.sync)
 						.filter(([id]) => !c.background[id])
 						.map(([id, status]) => [id, syncMessage(status)])
+				)
+			: {},
+		organizationMessages: visible
+			? Object.fromEntries(
+					c.rows.flatMap((row) => {
+						const message = organizationSyncMessage(c, row.id)
+						return message ? [[row.id, message]] : []
+					})
 				)
 			: {},
 		rowMessages,

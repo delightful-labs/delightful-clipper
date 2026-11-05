@@ -75,6 +75,7 @@ it('joins independent updates, deduplicates content, preserves legacy documents 
 	expect(f.actor.getSnapshot().context).toEqual({
 		articles: [],
 		documents: [],
+		organization: [],
 		callbacks: undefined
 	})
 	const calls = f.next.mock.calls.length

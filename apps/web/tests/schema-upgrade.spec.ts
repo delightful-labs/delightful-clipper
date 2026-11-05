@@ -7,11 +7,15 @@ import { join } from 'node:path'
 import { legacyApp } from '../src/lib/backend/jazz/legacy-schema.test-support.js'
 import { app } from '../src/lib/backend/jazz/schema.js'
 import permissions from '../src/lib/backend/jazz/permissions.js'
+import { app as preOrganizationApp } from '../src/lib/backend/jazz/preorganization-schema.test-support.js'
+import organizationMigration from '../src/lib/backend/jazz/migrations/20261105T030308-library-organization-80988faa7219-458e82fc6813.js'
 import migration from '../src/lib/backend/jazz/migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
 const appId = '2db98ae3-fcf1-41e8-b7d3-9818496bde60'
 const baseURL = 'http://127.0.0.1:5180'
 const legacyPermissions = Object.fromEntries(
-	Object.entries(permissions).filter(([table]) => table !== 'articles')
+	Object.entries(permissions).filter(
+		([table]) => table !== 'articles' && table !== 'organizationOperations'
+	)
 )
 async function savedArticle(page: Page, url: string) {
 	return page.evaluate(async (url) => {
@@ -110,7 +114,15 @@ for (const browser of [chromium, firefox]) {
 						if (!keepOpen) await context.close()
 					}
 					// In the live case the old client and any waiting new client remain open during publication.
-					await deploy({ ...upgrade, migration })
+					await deploy({
+						...upgrade,
+						schema: preOrganizationApp,
+						permissions: Object.fromEntries(
+							Object.entries(permissions).filter(([table]) => table !== 'organizationOperations')
+						),
+						migration
+					})
+					await deploy({ ...upgrade, migration: organizationMigration })
 					if (!keepOpen)
 						context = await browser.launchPersistentContext(join(directory, 'profile'), {
 							headless: true

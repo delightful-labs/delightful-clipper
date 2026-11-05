@@ -1,3 +1,4 @@
+import { createOrganizationRecords } from './organization.js'
 import { canAttachArticleContent, isPendingArticle } from '../../capture/article-policy.js'
 import { stageAttachment } from '../../machines/storage/mutations.js'
 import { createActor } from 'xstate'
@@ -135,7 +136,9 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			return transactionReceipt(r)
 		}
 	})
+	const organization = createOrganizationRecords(db, libraryId, isCurrent)
 	const collection = createArticleCollectionMachine({
+		organization: organization.subscribe,
 		isCurrent,
 		articles: (next, error) =>
 			db.subscribe(
@@ -159,6 +162,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 
 	return {
 		libraryId,
+		organization,
 		read,
 		document,
 		intent,
