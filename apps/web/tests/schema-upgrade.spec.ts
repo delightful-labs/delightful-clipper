@@ -205,6 +205,11 @@ for (const browser of [chromium, firefox]) {
 					await page.getByRole('link', { name: 'Legacy browser article', exact: true }).click()
 					await expectLegacyReader(page, diagnostics)
 					await page.goto(baseURL)
+					// Admission precedes collection delivery; wait for the migrated row before
+					// clicking the floating action, whose position follows the library content.
+					await expect(
+						page.getByRole('link', { name: 'Legacy browser article', exact: true })
+					).toBeVisible()
 					const url = 'https://example.com/after-browser-upgrade'
 					await openAddLink(page)
 					await page.getByLabel('Article URL', { exact: true }).fill(url)
