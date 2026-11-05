@@ -1,3 +1,4 @@
+import { openAddLink } from '../add-link.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
@@ -127,6 +128,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await openAddLink(page)
 		await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/offline')
 		await page.getByRole('button', { name: 'Add link', exact: true }).click()
 

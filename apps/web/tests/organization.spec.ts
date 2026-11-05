@@ -1,3 +1,4 @@
+import { openAddLink } from './add-link.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { startLocalJazzServer } from 'jazz-tools/testing'
@@ -182,6 +183,7 @@ test('organizes a link-only article and retains its values when supplied content
 	await page.goto('/')
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	const url = 'https://example.com/organize-pending'
+	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill(url)
 	await page.getByRole('button', { name: 'Add link', exact: true }).click()
 	const row = page

@@ -41,6 +41,14 @@ Local checks pass formatting, lint and strict types; 52 focused organization/rea
 
 Bulk actions, tags, Trash, search, images and annotations are excluded. Immutable organization history is retained; compaction, large-library throughput and broader mobile qualification remain open. No further feature is selected by this handoff.
 
+## DUI Add link modal — follow-up
+
+The shell now exposes the actual DUI `FloatingActionButton` on both library and reader routes. It opens DUI `Dialog` containing the existing bounded URL form with DUI `InputText` and `Button`. Native modal focus, Escape/Close dismissal and focus restoration are retained. Submission sends the existing library `ADD` event, closes the dialog and clears the submitted draft; save/worker actors remain layout-owned. Capture feedback, cancellation and Open saved article remain visible outside the modal. Closing an unsubmitted dialog does not save, and closing the modal does not cancel issued work.
+
+The pinned DUI archive is now Finance's `delightful-ui-0.0.25-floating-action.tgz`, verified in the vendor manifest. Its existing Svelte components are byte-identical to the previous archive; it adds the shared floating action components and exports. No catalog copy was added or changed, and app CSS remains structural.
+
+Local validation: `pnpm verify` passes (470 unit tests, one Linux-specific skip, 67 files), including vendor, Svelte formatting, lint, strict web/extension checks and production build. Isolated desktop (1280px) and mobile (390px) browsers pass URL autofocus, Close/Escape focus restoration, modal submission and saving from an existing reader without navigation. Permanent browser cases and existing capture/offline/migration cases use the modal. Full CI runs after push; the previous shell CI passed web/offline tests but had one extension recovery-dialog timing failure, so that extension result must be requalified.
+
 ## DUI account drawer — follow-up
 
 The user requested Finance-inspired navigation using reusable DUI components, then explicitly rejected custom Clipper styling. `AppShell.svelte` now composes the pinned DUI `TopNavigation`, `Drawer`, `Navigation`, `Heading` and `Button` with their default presentation. Clipper CSS is limited to structural layout and DUI spacing tokens. The experimental palette, typography overrides and article-card restyling were removed; library presentation remains unchanged. This instruction is recorded in AGENTS.md.

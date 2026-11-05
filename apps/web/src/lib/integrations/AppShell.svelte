@@ -2,9 +2,12 @@
 	import { onMount, type Snippet } from 'svelte'
 	import { page } from '$app/state'
 	import { Button, Drawer, Heading, Navigation, TopNavigation } from 'delightful-ui'
+	import AddLink from './AddLink.svelte'
+	import { useLibrary } from '../runtime/library-context.js'
 	import { action, noun, t } from '../localization/index.js'
 
 	let { account, children }: { account: Snippet; children: Snippet } = $props()
+	const library = useLibrary()
 	const id = $props.id()
 	const drawerId = `${id}-account`
 	let drawerOpen = $state(false)
@@ -73,6 +76,7 @@
 		</Drawer>
 		<main class="content" inert={modal}>
 			{@render children()}
+			{#if library.actor}{#key library.actor}<AddLink actor={library.actor} />{/key}{/if}
 		</main>
 		{#if modal}
 			<button

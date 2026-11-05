@@ -1,3 +1,4 @@
+import { openAddLink } from './add-link.js'
 import { test, expect, chromium, firefox } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { startLocalJazzServer, deploy } from 'jazz-tools/dev'
@@ -113,7 +114,8 @@ for (const browser of [chromium, firefox]) {
 							)
 							.toBe(true)
 						const input = page.getByLabel('Article URL', { exact: true })
-						if (await input.isVisible()) {
+						if (await page.getByRole('button', { name: 'Add link', exact: true }).isVisible()) {
+							await openAddLink(page)
 							await input.fill('https://example.com/before-migration')
 							await page.getByRole('button', { name: 'Add link', exact: true }).click()
 							await expect(
@@ -172,7 +174,7 @@ for (const browser of [chromium, firefox]) {
 						await observe(page)
 						await page.goto(baseURL)
 					}
-					await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled({
+					await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled({
 						timeout: 20000
 					})
 					await expect(
@@ -188,13 +190,14 @@ for (const browser of [chromium, firefox]) {
 					await expectLegacyReader(page, diagnostics)
 					await page.goto(baseURL)
 					const url = 'https://example.com/after-browser-upgrade'
+					await openAddLink(page)
 					await page.getByLabel('Article URL', { exact: true }).fill(url)
 					await page.getByRole('button', { name: 'Add link', exact: true }).click()
 					await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 					await expect.poll(() => savedArticle(page, url)).not.toBeNull()
 					const saved = await savedArticle(page, url)
 					await page.reload()
-					await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled()
+					await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 					expect(await savedArticle(page, url)).toEqual(saved)
 					await context.close()
 					context = await browser.launchPersistentContext(join(directory, 'profile'), {
@@ -203,7 +206,7 @@ for (const browser of [chromium, firefox]) {
 					page = await context.newPage()
 					await observe(page)
 					await page.goto(baseURL)
-					await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled()
+					await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 					expect(await savedArticle(page, url)).toEqual(saved)
 					await page.getByRole('link', { name: 'Legacy browser article', exact: true }).click()
 					await expectLegacyReader(page, diagnostics)
