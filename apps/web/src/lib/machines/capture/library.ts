@@ -7,6 +7,7 @@ import {
 	stopChild,
 	raise,
 	stateIn,
+	or,
 	and,
 	not
 } from 'xstate'
@@ -78,7 +79,10 @@ function isValidSourceUrl(url: string) {
 }
 type Meta = {
 	organizationMessage?: (c: Context) => WorkflowMessage
-	captureMessage?: (c: Context) => WorkflowMessage
+	name?: string
+	variant?: WorkflowMessage['variant']
+	priority?: number
+	message?: (c: Context) => WorkflowMessage
 	readerMessage?: (c: Context) => WorkflowMessage
 }
 function syncMessage(status: 'pending' | 'accepted' | 'rejected'): WorkflowMessage {
@@ -155,12 +159,13 @@ const actors = {
 export const libraryMachine = setup<
 	Context,
 	| LibraryEvent
+	| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
 	| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
 	| { type: `xstate.done.actor.${string}`; actorId: string; output: ArticleSaveResult }
 	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown },
 	typeof actors,
 	{},
-	{ close: undefined; watch: undefined; updateRows: undefined },
+	{ close: undefined; watch: undefined; updateRows: undefined; refreshCapture: undefined },
 	{
 		canUseLibrary: undefined
 		canStartSave: undefined
@@ -170,6 +175,10 @@ export const libraryMachine = setup<
 		drained: undefined
 		organizing: undefined
 		readInFlight: undefined
+		hasCaptureBackground: undefined
+		isDuplicateCapture: undefined
+		isCaptureSynced: undefined
+		isCaptureRejected: undefined
 	},
 	never,
 	string,
@@ -180,6 +189,10 @@ export const libraryMachine = setup<
 >({
 	actors,
 	guards: {
+		hasCaptureBackground: ({ context }) => !!context.background[context.captureId],
+		isDuplicateCapture: ({ context }) => context.failure === 'duplicate',
+		isCaptureSynced: ({ context }) => context.sync[context.captureId] === 'accepted',
+		isCaptureRejected: ({ context }) => context.sync[context.captureId] === 'rejected',
 		accepting: stateIn({ running: { control: 'active' } }),
 		closing: stateIn({ running: { control: 'closing' } }),
 		writing: stateIn({ running: { capture: 'saving' } }),
@@ -191,10 +204,14 @@ export const libraryMachine = setup<
 			'closing',
 			not('writing'),
 			not('organizing'),
-			stateIn({ running: { workerLifecycle: 'closed' } })
+			or([
+				stateIn({ running: { workerLifecycle: 'closed' } }),
+				stateIn({ running: { workerLifecycle: { failed: 'closed' } } })
+			])
 		])
 	},
 	actions: {
+		refreshCapture: raise({ type: 'CAPTURE_UPDATED' }),
 		close: enqueueActions(({ enqueue }) => {
 			enqueue.sendTo('worker', { type: 'STOP' })
 			enqueue.sendTo('receipts', { type: 'SHUTDOWN' })
@@ -300,7 +317,8 @@ export const libraryMachine = setup<
 							type: 'WATCH',
 							id: event.result.operationId,
 							receipts: savedResult(event.result).receipts
-						}))
+						})),
+						'refreshCapture'
 					]
 				},
 				ROWS: [
@@ -312,29 +330,29 @@ export const libraryMachine = setup<
 						]),
 						actions: [
 							'updateRows',
+							'refreshCapture',
 							raise(({ context }) => ({ type: 'OPEN', id: context.readerId }))
 						]
 					},
 					{
 						guard: 'canUseLibrary',
-						actions: 'updateRows'
+						actions: ['updateRows', 'refreshCapture']
 					}
 				],
 				LIST_FAILED: { actions: assign({ listFailed: true }) },
-				BACKGROUND_ERROR: {
-					guard: 'accepting',
-					actions: assign({ failure: 'captureFailed' })
-				},
 				BACKGROUND_STATUS: {
 					guard: 'canUseLibrary',
-					actions: assign({
-						backgroundId: ({ event }) => event.id,
-						backgroundCancelable: ({ event }) => event.cancelable,
-						background: ({ context, event }) => ({
-							...context.background,
-							[event.id]: event.message
-						})
-					})
+					actions: [
+						assign({
+							backgroundId: ({ event }) => event.id,
+							backgroundCancelable: ({ event }) => event.cancelable,
+							background: ({ context, event }) => ({
+								...context.background,
+								[event.id]: event.message
+							})
+						}),
+						'refreshCapture'
+					]
 				},
 				BACKGROUND_SAVED: {
 					guard: 'canUseLibrary',
@@ -357,7 +375,8 @@ export const libraryMachine = setup<
 								(event.result.operationId === context.captureId &&
 									'ready' in event.result &&
 									event.result.ready === true)
-						})
+						}),
+						'refreshCapture'
 					]
 				},
 				RETRY: {
@@ -366,9 +385,12 @@ export const libraryMachine = setup<
 				},
 				SYNC: {
 					guard: 'canUseLibrary',
-					actions: assign({
-						sync: ({ context, event }) => ({ ...context.sync, [event.id]: event.status })
-					})
+					actions: [
+						assign({
+							sync: ({ context, event }) => ({ ...context.sync, [event.id]: event.status })
+						}),
+						'refreshCapture'
+					]
 				}
 			},
 			states: {
@@ -494,7 +516,40 @@ export const libraryMachine = setup<
 				},
 				workerLifecycle: {
 					initial: 'active',
-					states: { active: { on: { BACKGROUND_CLOSED: 'closed' } }, closed: {} }
+					states: {
+						active: {
+							on: {
+								BACKGROUND_CLOSED: 'closed',
+								BACKGROUND_ERROR: { guard: 'accepting', target: 'failed' }
+							}
+						},
+						failed: {
+							meta: { name: t('capture.status.failed'), variant: 'error', priority: 1 },
+							initial: 'active',
+							states: {
+								active: {
+									on: {
+										BACKGROUND_CLOSED: 'closed',
+										CAPTURE_SAVED: '#library.running.workerLifecycle.active',
+										ADD: {
+											guard: 'canStartSave',
+											target: '#library.running.workerLifecycle.active'
+										}
+									}
+								},
+								closed: {
+									on: {
+										CAPTURE_SAVED: '#library.running.workerLifecycle.closed',
+										ADD: {
+											guard: 'canStartSave',
+											target: '#library.running.workerLifecycle.closed'
+										}
+									}
+								}
+							}
+						},
+						closed: {}
+					}
 				},
 				capture: {
 					initial: 'idle',
@@ -512,8 +567,7 @@ export const libraryMachine = setup<
 							},
 							{
 								guard: and(['accepting', not('writing')]),
-								target: '.failed',
-								actions: assign({ failure: 'invalidUrl' })
+								target: '.invalidUrl'
 							}
 						],
 						CANCEL: {
@@ -532,7 +586,8 @@ export const libraryMachine = setup<
 						idle: {},
 						saving: {
 							meta: {
-								captureMessage: () => ({ text: t('capture.status.saving'), variant: 'info' })
+								name: t('capture.status.saving'),
+								variant: 'info'
 							},
 							initial: 'active',
 							entry: assign(({ context, spawn }) => ({
@@ -586,7 +641,8 @@ export const libraryMachine = setup<
 													'ready' in event.output && event.output.ready === true,
 												failure: ({ event }) =>
 													event.output.kind === 'duplicate' ? 'duplicate' : ''
-											})
+											}),
+											raise({ type: 'CAPTURE_SAVED' })
 										]
 									},
 									{
@@ -612,36 +668,39 @@ export const libraryMachine = setup<
 							}
 						},
 						saved: {
-							meta: {
-								captureMessage: (c) =>
-									c.background[c.captureId] ??
-									(c.failure === 'duplicate'
-										? { text: t('capture.status.duplicate'), variant: 'info' }
-										: c.sync[c.captureId] === 'accepted' || c.sync[c.captureId] === 'rejected'
-											? syncMessage(required(c.sync[c.captureId]))
-											: { text: t('capture.status.saved'), variant: 'info' })
+							initial: 'deciding',
+							on: { CAPTURE_UPDATED: '.deciding' },
+							states: {
+								deciding: {
+									always: [
+										{ guard: 'hasCaptureBackground', target: 'background' },
+										{ guard: 'isDuplicateCapture', target: 'duplicate' },
+										{ guard: 'isCaptureSynced', target: 'synced' },
+										{ guard: 'isCaptureRejected', target: 'rejected' },
+										{ target: 'local' }
+									]
+								},
+								local: { meta: { name: t('capture.status.saved'), variant: 'info' } },
+								duplicate: { meta: { name: t('capture.status.duplicate'), variant: 'info' } },
+								synced: { meta: { name: t('capture.status.synced'), variant: 'info' } },
+								rejected: { meta: { name: t('capture.status.rejected'), variant: 'error' } },
+								background: {
+									meta: { message: (context) => required(context.background[context.captureId]) }
+								}
 							}
 						},
-						failed: {
-							meta: {
-								captureMessage: (c) => ({
-									text: t(
-										c.failure === 'invalidUrl'
-											? 'capture.errors.invalid_url'
-											: 'capture.status.save_failed'
-									),
-									variant: 'error'
-								})
-							}
-						},
+						invalidUrl: { meta: { name: t('capture.errors.invalid_url'), variant: 'error' } },
+						failed: { meta: { name: t('capture.status.save_failed'), variant: 'error' } },
 						uncertain: {
 							meta: {
-								captureMessage: () => ({ text: t('capture.status.unknown'), variant: 'error' })
+								name: t('capture.status.unknown'),
+								variant: 'error'
 							}
 						},
 						canceled: {
 							meta: {
-								captureMessage: () => ({ text: t('capture.status.canceled'), variant: 'info' })
+								name: t('capture.status.canceled'),
+								variant: 'info'
 							}
 						}
 					}
@@ -735,6 +794,9 @@ export function selectLibraryView(
 		snapshot.status === 'active' &&
 		!!c.capability?.isCurrent()
 	const meta = visible ? Object.values(snapshot.getMeta()) : []
+	const namedState = meta
+		.filter((state) => state?.name !== undefined || state?.message !== undefined)
+		.sort((a, b) => (b?.priority ?? 0) - (a?.priority ?? 0))[0]
 	const rowMessages: Record<string, WorkflowMessage> = {}
 	if (visible)
 		for (const row of c.rows) {
@@ -753,11 +815,11 @@ export function selectLibraryView(
 			visible &&
 			!!c.capability?.spawnOrganization &&
 			!snapshot.matches({ running: { organization: 'writing' } }),
-		captureMessage: visible
-			? c.failure === 'captureFailed'
-				? failureMessage(c.failure)
-				: meta.find((m) => m?.captureMessage)?.captureMessage?.(c)
-			: undefined,
+		captureMessage:
+			(c ? namedState?.message?.(c) : undefined) ??
+			(namedState?.name
+				? { text: namedState.name, variant: namedState.variant ?? 'info' }
+				: undefined),
 		readerMessage: !snapshot
 			? { text: t('reader.loading'), variant: 'info' as const }
 			: visible
