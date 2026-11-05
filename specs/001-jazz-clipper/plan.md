@@ -1,7 +1,7 @@
 # Technical Plan: Jazz Clipper and Reader
 
 **Baseline**: `main` (implementation through feature branches/PRs) · **Updated**: 2026-11-05 · **Spec**: [spec.md](spec.md)
-**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is merged in PR #14 and DUI radio/list refinements in PR #15 (`72b6fc9`). The current combined search/article-tags/Trash batch is described in [search-tags-trash.md](search-tags-trash.md), including pending copy approval; see [library-organization.md](library-organization.md) for the state/resource model and the handoff for qualification. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
+**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is merged in PR #14 and DUI radio/list refinements in PR #15 (`72b6fc9`). The current combined search/article-tags/Trash batch is described in [search-tags-trash.md](search-tags-trash.md), including approved action/noun composition and silent search preparation; see [library-organization.md](library-organization.md) for the state/resource model and the handoff for qualification. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
 
 ## Summary
 

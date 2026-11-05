@@ -10,7 +10,8 @@
 		RadioGroup,
 		RadioItem,
 		Heading,
-		Checkbox
+		Checkbox,
+		InputText
 	} from 'delightful-ui'
 	import { articleStatuses, libraryViews, isArticleStatus } from '../capture/organization.js'
 	import ArticleTags from './ArticleTags.svelte'
@@ -20,14 +21,26 @@
 		gatewayEnabled
 	}: { actor: ActorRefFrom<typeof libraryMachine>; gatewayEnabled: boolean } = $props()
 	let snapshot = $state<SnapshotFrom<typeof libraryMachine>>()
-	// Trash presentation awaits the explicitly requested catalog approval.
-	const availableViews = libraryViews.filter((view) => view !== 'trash')
 	let heading = $state<HTMLHeadingElement>()
 	let tagTrigger: HTMLElement | undefined
+	let removedAction = $state<{ id: string; candidates: string[]; trigger: HTMLElement }>()
+	const listId = $props.id()
 	let tagArticleId = $state<string>()
 	let tagsOpen = $state(false)
 	const capture = $derived(snapshot?.context)
 	const view = $derived(selectLibraryView(snapshot, gatewayEnabled))
+
+	$effect(() => {
+		const pending = removedAction
+		if (!pending || view.rows.some((row) => row.id === pending.id)) return
+		if (!pending.trigger.isConnected && document.activeElement === document.body) {
+			const next = pending.candidates
+				.map((id) => document.getElementById(`${listId}-${id}`))
+				.find((element) => element !== null)
+			;(next ?? heading)?.focus()
+		}
+		removedAction = undefined
+	})
 
 	onMount(() => {
 		snapshot = actor.getSnapshot()
@@ -41,14 +54,26 @@
 {#if capture}
 	<section aria-label={t('library.heading')}>
 		<h2 bind:this={heading} tabindex="-1">{t('library.heading')}</h2>
+		<InputText
+			type="search"
+			label={action('search', 'article', 2)}
+			maxlength={512}
+			disabled={!view.search.enabled}
+			bind:value={() => capture.query, (query) => actor.send({ type: 'QUERY', query })}
+		/>
+		{#if view.search.message}<StatusMessage {...view.search.message} />{/if}
+		{#if view.search.canRetry}<Button
+				type="button"
+				onclick={() => actor.send({ type: 'RETRY_SEARCH' })}>{t('actions.retry')}</Button
+			>{/if}
 		<div class="filters">
 			<RadioGroup label={t('library.status_label')} value={capture.view}>
-				{#each availableViews as status}
+				{#each libraryViews as status}
 					<RadioItem
 						value={status}
 						onchange={() =>
 							actor.send({ type: 'FILTER', view: status, favorites: capture.favorites })}
-						>{t(`library.views.${status}`)}</RadioItem
+						>{status === 'trash' ? noun('trash') : t(`library.views.${status}`)}</RadioItem
 					>
 				{/each}
 			</RadioGroup>
@@ -83,7 +108,7 @@
 		{#if view.rows.length}
 			<ul class="article-list">
 				{#each view.rows as row (row.id)}
-					<li data-article-id={row.id}>
+					<li id={`${listId}-${row.id}`} tabindex="-1" data-article-id={row.id}>
 						<div class="article-header">
 							<div class="article-title">
 								<Heading level="h3" size="xl">
@@ -119,6 +144,27 @@
 											type: 'ORGANIZE',
 											request: { id: row.id, field: 'favorite', value: !row.favorite }
 										})}>{t(row.favorite ? 'library.unfavorite' : 'library.favorite')}</Button
+								>
+								<Button
+									type="button"
+									appearance="flat"
+									disabled={!view.canOrganize}
+									onclick={(event) => {
+										const index = view.rows.findIndex((item) => item.id === row.id)
+										removedAction = {
+											id: row.id,
+											candidates: [
+												...view.rows.slice(index + 1),
+												...view.rows.slice(0, index).reverse()
+											].map((item) => item.id),
+											trigger: event.currentTarget
+										}
+										actor.send({
+											type: 'ORGANIZE',
+											request: { id: row.id, field: 'trashed', value: !row.trashed }
+										})
+									}}
+									>{row.trashed ? action('restore', 'article') : action('move_to', 'trash')}</Button
 								>
 								<Button
 									appearance="flat"

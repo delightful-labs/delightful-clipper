@@ -12,6 +12,8 @@ it('composes existing action labels from approved verbs and nouns', () => {
 	expect(action('show', 'recovery_phrase')).toBe('Show recovery phrase')
 	expect(action('close', 'article')).toBe('Close article')
 	expect(action('reload', 'page')).toBe('Reload page')
+	expect(action('search', 'article', 2)).toBe('Search articles')
+	expect(action('move_to', 'trash')).toBe('Move to Trash')
 })
 it.each([
 	[0, 'articles'],

@@ -200,9 +200,31 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 					await expect(reader.locator('body')).not.toContainText(
 						'Changed source must not replace the snapshot.'
 					)
+
+					const readerURL = reader.url()
+					await reader.getByRole('link', { name: 'Open library', exact: true }).click()
+					const row = reader.locator('[data-article-id]')
+					await row.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+					await expect(row).toHaveCount(0)
+					await clip(context, id, source)
+					await expect(source.getByRole('status')).toHaveText('Already saved.')
+					await expect(
+						source.getByRole('link', { name: 'Open article', exact: true })
+					).toHaveAttribute('href', readerURL)
+					await expect(row).toHaveCount(0)
+					await reader.getByRole('radio', { name: 'Trash', exact: true }).check()
+					await expect(row).toHaveCount(1)
+					await reader.goto(readerURL)
+					await reader.getByRole('button', { name: 'Restore article', exact: true }).click()
+					await expect(
+						reader.getByRole('button', { name: 'Restore article', exact: true })
+					).toHaveCount(0)
+					await expect(
+						reader.getByText('Only present after JavaScript rendering.', { exact: false })
+					).toBeVisible()
 					expect(fetches).toBe(0)
 				},
-				{ timeout: 15000 }
+				{ timeout: 25000 }
 			)
 		} finally {
 			await test.step('close the web replica', () => web.close(), { timeout: 10000 })

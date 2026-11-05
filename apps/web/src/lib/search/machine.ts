@@ -7,6 +7,7 @@ import type { LibraryArticle } from '../contracts/articles.js'
 import type { SearchWorkerInput, SearchWorkerOutput } from './protocol.js'
 import type { SearchDocument } from './schema.js'
 import { querySchema } from './schema.js'
+import { t } from '../localization/index.js'
 type Event =
 	| SearchWorkerOutput
 	| { type: 'ROWS'; rows: LibraryArticle[] }
@@ -37,7 +38,7 @@ function sameSearchRows(a: LibraryArticle[], b: LibraryArticle[]) {
 		)
 	})
 }
-export function createSearchMachine(messages?: { preparing: string; failed: string }) {
+export function createSearchMachine() {
 	const resource = fromCallback<SearchWorkerInput, SearchCapability>(
 		({ input, receive, sendBack }) => {
 			let worker: SearchResource | undefined
@@ -115,7 +116,6 @@ export function createSearchMachine(messages?: { preparing: string; failed: stri
 			}))
 		}
 	})
-	const preparing = messages ? { name: messages.preparing, variant: 'info' as const } : {}
 	return model.createMachine({
 		id: 'library-search',
 		initial: 'admitting',
@@ -162,9 +162,7 @@ export function createSearchMachine(messages?: { preparing: string; failed: stri
 					WORKER_ERROR: '#library-search.failed'
 				},
 				states: {
-					waiting: { meta: preparing },
 					loading: {
-						meta: preparing,
 						entry: assign({ ids: [], matchedQuery: undefined }),
 						invoke: {
 							src: 'load',
@@ -186,11 +184,9 @@ export function createSearchMachine(messages?: { preparing: string; failed: stri
 						}
 					},
 					indexing: {
-						meta: preparing,
 						on: { INDEX_READY: { guard: 'currentGeneration', target: 'querying' } }
 					},
 					querying: {
-						meta: preparing,
 						entry: 'queryWorker',
 						on: {
 							QUERY: {
@@ -215,7 +211,7 @@ export function createSearchMachine(messages?: { preparing: string; failed: stri
 				}
 			},
 			failed: {
-				meta: messages ? { name: messages.failed, variant: 'error' } : {},
+				meta: { name: t('library.search_failed'), variant: 'error' },
 				on: {
 					RETRY: {
 						guard: 'supported',

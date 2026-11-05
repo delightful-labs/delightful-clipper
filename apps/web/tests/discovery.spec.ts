@@ -79,7 +79,7 @@ test('creates Unicode-equivalent tags once, changes membership and combines tag/
 	dialog = await tags(page, first.row)
 	await expect(dialog.getByRole('checkbox')).toBeChecked()
 })
-test('native Trash preserves content/organization and duplicate Add Link offers explicit Restore', async ({
+test('Trash controls preserve content/organization and duplicate Add Link offers explicit Restore', async ({
 	page
 }) => {
 	await page.goto('/')
@@ -93,10 +93,13 @@ test('native Trash preserves content/organization and duplicate Add Link offers 
 		const path = '/tests/article-driver.ts'
 		return (await import(/* @vite-ignore */ path)).inspect([url])
 	}, url)
-	await page.evaluate(async (url) => {
-		const path = '/tests/article-driver.ts'
-		return (await import(/* @vite-ignore */ path)).organize(url, { field: 'trashed', value: true })
-	}, url)
+	await item.row.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+	await expect(item.row).toHaveCount(0)
+	await expect(page.getByRole('heading', { name: 'Saved articles', exact: true })).toBeFocused()
+	await page.getByRole('radio', { name: 'Trash', exact: true }).check()
+	await expect(item.row).toBeVisible()
+	await expect(item.row.getByLabel('Status', { exact: true })).toHaveValue('later')
+	await page.getByRole('radio', { name: 'All', exact: true }).check()
 	await expect(item.row).toHaveCount(0)
 	const dialog = await openAddLink(page)
 	await dialog.getByLabel('Article URL', { exact: true }).fill(url)
@@ -292,12 +295,11 @@ test('reindexes a snapshot arriving from another restored client without restart
 	await page.goto('/')
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	const recovery = await phrase(page)
-	const search = (): Promise<{ id: string }[]> =>
-		page.evaluate(async () => {
-			const path = '/tests/article-driver.ts'
-			return (await import(/* @vite-ignore */ path)).searchSaved('arriving', 'all', 0)
-		})
-	expect(await search()).toEqual([])
+	const search = page.getByRole('searchbox', { name: 'Search articles', exact: true })
+	await search.fill('arriving')
+	await expect(
+		page.getByText('No saved articles on this device yet.', { exact: true })
+	).toBeVisible()
 	const otherContext = await browser.newContext()
 	try {
 		const other = await otherContext.newPage()
@@ -306,8 +308,118 @@ test('reindexes a snapshot arriving from another restored client without restart
 		await other.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(other.getByText('Private library synced.', { exact: true })).toBeVisible()
 		const saved = await supplied(other, 'https://example.com/arriving')
-		await expect.poll(async () => (await search()).map((row) => row.id)).toEqual([saved.id])
+		await expect(page.locator(`[data-article-id="${saved.id}"]`)).toBeVisible()
+		await expect(search).toHaveValue('arriving')
 	} finally {
 		await otherContext.close()
 	}
+})
+
+test('search input combines title, URL and body keywords with status, favorites, tags and Trash', async ({
+	page
+}) => {
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const first = await supplied(page, 'https://example.com/ui-needle')
+	const second = await supplied(page, 'https://example.com/ui-other')
+	await first.row.getByLabel('Status', { exact: true }).selectOption('later')
+	await expect(first.row.getByLabel('Status', { exact: true })).toBeEnabled()
+	await first.row.getByRole('button', { name: 'Favorite', exact: true }).click()
+	await addTag(page, first.row, 'Work')
+	const search = page.getByRole('searchbox', { name: 'Search articles', exact: true })
+	await search.fill('SUPPLIED')
+	await expect(first.row).toBeVisible()
+	await expect(second.row).toBeVisible()
+	await search.fill('NEEDLE')
+	await expect(first.row).toBeVisible()
+	await expect(second.row).toHaveCount(0)
+	await search.fill('browser clip')
+	await expect(second.row).toBeVisible()
+	await page.getByRole('radio', { name: 'Later', exact: true }).check()
+	await expect(first.row).toBeVisible()
+	await expect(second.row).toHaveCount(0)
+	await page.getByRole('button', { name: 'Favorites', exact: true }).click()
+	await page
+		.getByRole('group', { name: 'tags', exact: true })
+		.getByRole('checkbox', { name: 'Work' })
+		.check()
+	await search.fill('other')
+	await expect(first.row).toHaveCount(0)
+	await expect(page.getByText('No articles match this view.', { exact: true })).toBeVisible()
+	await search.fill('browser clip')
+	await expect(first.row).toBeVisible()
+	await first.row.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+	await expect(first.row).toHaveCount(0)
+	await page.getByRole('radio', { name: 'Trash', exact: true }).check()
+	await expect(first.row).toBeVisible()
+	await expect(second.row).toHaveCount(0)
+	await first.row.getByRole('button', { name: 'Restore article', exact: true }).click()
+	await expect(first.row).toHaveCount(0)
+	await page.getByRole('radio', { name: 'All', exact: true }).check()
+	await expect(first.row).toBeVisible()
+	await search.fill('')
+	await expect(first.row).toBeVisible()
+	await expect(page.getByText('Preparing search…', { exact: true })).toHaveCount(0)
+})
+
+test('search failure is localized, leaves the library usable and retries with a fresh worker', async ({
+	page
+}) => {
+	await page.addInitScript(() => {
+		const OriginalWorker = window.Worker
+		let failed = false
+		window.Worker = class extends OriginalWorker {
+			constructor(url: string | URL, options?: WorkerOptions) {
+				if (!failed && String(url).includes('/search/worker')) {
+					failed = true
+					throw new Error('Fixture search worker unavailable')
+				}
+				super(url, options)
+			}
+		}
+	})
+	await page.goto('/')
+	await expect(page.getByText('search is unavailable.', { exact: true })).toBeVisible()
+	const saved = await supplied(page, 'https://example.com/retry-search')
+	const search = page.getByRole('searchbox', { name: 'Search articles', exact: true })
+	await search.fill('browser clip')
+	await page.getByRole('button', { name: 'Retry', exact: true }).click()
+	await expect(page.getByText('search is unavailable.', { exact: true })).toHaveCount(0)
+	await expect(saved.row).toBeVisible()
+	await search.fill('no-such-keyword')
+	await expect(saved.row).toHaveCount(0)
+})
+
+test('tag validation uses the shared generic field error and clears it on edit and Escape', async ({
+	page
+}) => {
+	const warnings: string[] = []
+	page.on('console', (message) => {
+		if (message.type() === 'warning' && message.text().includes('Custom actions should not call'))
+			warnings.push(message.text())
+	})
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const item = await supplied(page, 'https://example.com/tag-validation')
+	const dialog = await tags(page, item.row)
+	const input = dialog.getByLabel('tag', { exact: true })
+	const add = dialog.getByRole('button', { name: 'Add tag', exact: true })
+	await add.click()
+	await expect(dialog.getByText('Enter a valid value.', { exact: true })).toBeVisible()
+	await expect(input).toHaveAttribute('aria-invalid', 'true')
+	await input.fill('a'.repeat(65))
+	await add.click()
+	await expect(dialog.getByRole('checkbox')).toHaveCount(0)
+	await expect(dialog.getByText('Enter a valid value.', { exact: true })).toBeVisible()
+	await input.fill('Valid')
+	await expect(dialog.getByText('Enter a valid value.', { exact: true })).toHaveCount(0)
+	await add.click()
+	await expect(dialog.getByRole('checkbox', { name: 'Valid', exact: true })).toBeChecked()
+	await input.fill('Draft')
+	await page.keyboard.press('Escape')
+	await expect(item.row.getByRole('button', { name: 'tags', exact: true })).toBeFocused()
+	await tags(page, item.row)
+	await expect(input).toHaveValue('')
+	await expect(dialog.getByText('Enter a valid value.', { exact: true })).toHaveCount(0)
+	expect(warnings).toEqual([])
 })

@@ -28,7 +28,7 @@
 		{@render children()}
 	</Account>
 {/if}
-<div>
+<div data-offline-shell>
 	<OfflineShell
 		onAdmission={() => {
 			admitted = true

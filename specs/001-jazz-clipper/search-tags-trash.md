@@ -1,6 +1,6 @@
 # Search, article tags and Trash/restore
 
-Authorized together in one feature PR, based on merged PR #15 (`72b6fc9`). The user requested all testing in the same session. Existing copy approval rules still apply; six exact catalog additions were proposed asynchronously before implementation and remain pending until an explicit response.
+Authorized together in one feature PR, based on merged PR #15 (`72b6fc9`). The user requested all testing in the same session. The user revised and approved the labels/error approach during review: compose Search articles and Move to Trash from reusable actions/nouns, omit preparation feedback, use the shorter search error and a generic Enter-a-valid-value field error. The original six-string proposal is superseded below.
 
 ## Scope and data
 
@@ -22,8 +22,8 @@ stateDiagram-v2
     writing --> interrupted: shutdown after drain
   }
   state Search {
-    [*] --> waiting
-    waiting --> loading: collection or snapshot change
+    [*] --> admitting
+    admitting --> loading: current search capability
     loading --> indexing: bound native read completes
     indexing --> querying: matching worker generation ready
     querying --> ready: matching generation and query result
@@ -40,23 +40,26 @@ Organization retains the existing observation/admission/transaction/receipt mach
 
 The layout-owned library owns a search child and forwards collection/query updates. A resource actor owns the physical worker and snapshot subscription; I/O leaves only load native records, post messages or dispose their fixed resource. Generations reject stale dataset replies; query identity rejects stale query replies. Query changes during loading are remembered without restarting issued native reads. Collection changes may cancel read observation; bound reads never switch DB/account. Worker cache restore/build/persist/query decisions live in explicit states, with cache persistence failure degrading to a rebuildable in-memory index. Parent shutdown stops callbacks and terminates the worker; no search callback can authorize or write article data.
 
-UI composes existing DUI inputs, radio groups, checkboxes, dialogs and buttons. New workflow feedback uses readable localized `meta.name`; components project it. No new inline per-item status text. Existing approved action/noun combinations cover tags and Restore article. New wording is gated on explicit approval, not inferred from feature authorization or absence.
+UI composes existing DUI inputs, radio groups, checkboxes, dialogs and buttons. Error feedback uses readable localized `meta.name`; components project it. Search loading/indexing/querying remain silent, as requested. No new inline per-item status text. Existing approved action/noun combinations cover tags and Restore article. Search and Move to labels compose the approved shared templates with plural-aware nouns; Trash is a mass noun. Copy approval is recorded below.
 
 ## Qualification
 
 Domain/actor tests: tag normalization and concurrent membership, independent Trash/scalars, query AND/ranking, stale result/account isolation, cache rebuild/failure, resource shutdown and issued-write drain. Native tests: private owner policies, immutable histories, parent checks, local/remote receipts and migration of populated persisted libraries. Real browser: tag assignment/removal and combined filters, title/URL/body search, remote arrival, Trash/restore and duplicate capture, complete offline restart/cache rebuild/reconnection. Preserve existing web/reader/recovery/extension suites. Run final source/build, web, offline and packaged extension checks in this session; leave one PR unmerged.
 
-## Pending exact-copy proposal
+## Approved copy and presentation
 
-No interpolation variables, plural forms or context variants are needed for these six entries. Existing action/noun combinations correctly cover Tags, Add tag and Restore article. Existing library status labels do not name search or Trash; generic capture failure/pending messages would misdescribe a disposable search index; no existing noun/action expresses moving to Trash or the tag-length constraint. These proposed entries have not been added or approved:
+The user explicitly requested the following revisions to the earlier proposal. Search and Move to are shared action templates; no standalone search-label or move-label entry is introduced. The existing action helper supplies the localized noun/count. Trash uses identical one/other forms as a mass noun. There are no context variants.
 
-| Key | Exact English | Usage |
+| Key | English template/text | Usage and variables |
 | --- | --- | --- |
-| `library.search_label` | Search saved articles | DUI search input label |
-| `library.views.trash` | Trash | Explicit library scope radio |
-| `library.move_to_trash` | Move to Trash | Per-article action |
-| `library.search_preparing` | Preparing search… | Indexing/querying state name |
-| `library.search_failed` | Search is unavailable on this device. Retry to rebuild it. | Search failure state name |
-| `library.tag_invalid` | Enter a tag with 1–64 characters. | Invalid tag feedback |
+| `actions.search_subject` | Search {{subject}} | Search input label; `subject` is the approved article noun with count 2 |
+| `actions.move_to_subject` | Move to {{subject}} | Per-article action; `subject` is the approved Trash noun |
+| `nouns.trash_one`, `nouns.trash_other` | Trash | Radio label and action subject |
+| `library.search_failed` | search is unavailable. | Search machine failed-state name, with existing Retry action |
+| `forms.invalid_value` | Enter a valid value. | Generic invalid field feedback, rendered through DUI FieldFeedback |
 
-Until approval, tag input uses normalized validation to disable invalid submission, and production omits the new search/Trash controls. Search cache corruption/missing data, scope disposal and offline queries are exercised through real worker/native fixture drivers rather than an unapproved product input.
+The user rejected Preparing search as unnecessary. Loading/indexing/querying states have no visible message, and no preparation catalog entry is added. The initial Check-the-form generic sentence was also rejected; the user requested Enter-a-valid-value wording, following Finance’s generic Enter/validity pattern. This shared error replaces the proposed tag-specific length sentence. Existing Add tag, Restore article and Retry labels are reused. Clipper’s catalog/action/noun search found no existing correct equivalents for these additions.
+
+The actual DUI search field, all five radios and per-row Move to Trash/Restore are exposed. A small synchronous tag-form machine has editing/invalid states: SUBMIT uses the reusable name predicate, valid submissions use XState sendTo to the library, and edits/reset clear feedback. Native writes, local/global receipts and draining remain library/storage-owned. Components project the error name and field validity, connect it with aria-describedby, and add no English fallback. Removing/restoring a row returns focus to its next surviving sibling, previous sibling, or library heading; the native tag dialog retains its separate removed-trigger fallback.
+
+Real-browser coverage now exercises those controls rather than treating worker/native fixture coverage as search-input/Trash-action coverage. Both styles of coverage remain useful: actual input/filter/retry/validation interactions plus native fault/offline/cache/scope boundaries. Production shell qualification deletes the derived search cache before closing the browser, then uses search, retained tags and Trash/restore after a cold restart with both servers stopped and HTTP cache cleared.

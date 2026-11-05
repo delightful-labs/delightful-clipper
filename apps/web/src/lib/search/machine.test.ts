@@ -13,10 +13,7 @@ const row: LibraryArticle = {
 	originalSavedAt: '2026-01-01',
 	failure: null
 }
-const machine = createSearchMachine({
-	preparing: 'Preparing fixture search',
-	failed: 'Fixture search failed'
-})
+const machine = createSearchMachine()
 function fixture() {
 	let report: ((event: SearchWorkerOutput) => void) | undefined
 	const posted: SearchWorkerInput[] = []
@@ -90,7 +87,7 @@ it('releases failed resources and creates a fresh worker on retry', async () => 
 	f.report({ type: 'WORKER_ERROR' })
 	expect(selectSearchView(f.actor.getSnapshot()).canRetry).toBe(true)
 	expect(selectSearchView(f.actor.getSnapshot()).message).toEqual({
-		text: 'Fixture search failed',
+		text: 'search is unavailable.',
 		variant: 'error'
 	})
 	expect(f.dispose).toHaveBeenCalledOnce()

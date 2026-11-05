@@ -132,7 +132,6 @@ function failureMessage(code: string): WorkflowMessage {
 	}
 }
 const actors = {
-	// Search presentation names are supplied after the pending catalog approval.
 	search: createSearchMachine(),
 	collection: fromCallback<LibraryEvent, LibraryCapability | undefined>(({ input, sendBack }) => {
 		try {

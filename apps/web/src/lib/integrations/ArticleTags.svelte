@@ -1,10 +1,15 @@
 <script lang="ts">
-	import type { ActorRefFrom } from 'xstate'
-	import { Button, Checkbox, Dialog, InputText } from 'delightful-ui'
+	import { onMount } from 'svelte'
+	import { createActor, type ActorRefFrom, type SnapshotFrom } from 'xstate'
+	import { Button, Checkbox, Dialog, InputText, FieldFeedback } from 'delightful-ui'
 	import { libraryMachine } from '../machines/capture/library.js'
 	import type { LibraryArticle } from '../contracts/articles.js'
 	import type { Tag } from '../capture/tags.js'
-	import { isValidTagName } from '../capture/tags.js'
+	import {
+		tagFormMachine,
+		selectTagFormView,
+		type TagFormEvent
+	} from '../machines/capture/tag-form.js'
 	import { action, noun, t } from '../localization/index.js'
 	let {
 		actor,
@@ -21,8 +26,20 @@
 		onclose?: () => void
 		open?: boolean
 	} = $props()
-	let name = $state('')
-	const valid = $derived(isValidTagName(name))
+	const fieldId = $props.id()
+	let snapshot = $state<SnapshotFrom<typeof tagFormMachine>>()
+	let send: (event: TagFormEvent) => void = () => {}
+	const form = $derived(selectTagFormView(snapshot))
+	onMount(() => {
+		const validation = createActor(tagFormMachine, { input: { library: actor } })
+		const subscription = validation.subscribe((next) => (snapshot = next))
+		send = (event) => validation.send(event)
+		validation.start()
+		return () => {
+			subscription.unsubscribe()
+			validation.stop()
+		}
+	})
 </script>
 
 <Dialog
@@ -30,7 +47,7 @@
 	bind:open
 	closedby="any"
 	onclose={() => {
-		name = ''
+		send({ type: 'RESET' })
 		onclose?.()
 	}}
 >
@@ -53,33 +70,36 @@
 			{/each}
 		</div>
 		<form
+			novalidate
 			onsubmit={(event) => {
 				event.preventDefault()
-				if (valid && enabled) {
-					actor.send({
-						type: 'ORGANIZE',
-						request: { id: article.id, field: 'tag', value: name, assigned: true }
-					})
-					name = ''
-				}
+				send({ type: 'SUBMIT', id: article.id, enabled })
 			}}
 		>
 			<InputText
 				label={noun('tag')}
-				bind:value={name}
+				id={fieldId}
+				bind:value={() => form.name, (name) => send({ type: 'CHANGE', name })}
+				aria-invalid={form.invalid || undefined}
+				aria-describedby={form.message ? `${fieldId}-error` : undefined}
 				required
 				maxlength={256}
 				disabled={!enabled}
 			/>
+			{#if form.message}<FieldFeedback
+					id={`${fieldId}-error`}
+					role="alert"
+					errorMessage={form.message.text}
+				/>{/if}
 			<div class="actions">
 				<Button
 					type="button"
 					onclick={() => {
 						open = false
-						name = ''
+						send({ type: 'RESET' })
 					}}>{t('actions.close')}</Button
 				>
-				<Button type="submit" disabled={!valid || !enabled}>{action('add', 'tag')}</Button>
+				<Button type="submit" disabled={!enabled}>{action('add', 'tag')}</Button>
 			</div>
 		</form>
 	{/if}

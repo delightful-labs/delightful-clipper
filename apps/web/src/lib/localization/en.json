@@ -15,7 +15,9 @@
 		"cancel": "Cancel",
 		"close": "Close",
 		"retry": "Retry",
-		"sign_out": "Sign out"
+		"sign_out": "Sign out",
+		"search_subject": "Search {{subject}}",
+		"move_to_subject": "Move to {{subject}}"
 	},
 	"nouns": {
 		"account_one": "account",
@@ -41,7 +43,9 @@
 		"recovery_phrase_one": "recovery phrase",
 		"recovery_phrase_other": "recovery phrases",
 		"original_one": "original",
-		"original_other": "originals"
+		"original_other": "originals",
+		"trash_one": "Trash",
+		"trash_other": "Trash"
 	},
 	"account": {
 		"status": {
@@ -114,7 +118,8 @@
 		"status_label": "Status",
 		"favorite": "Favorite",
 		"unfavorite": "Remove favorite",
-		"filtered_empty": "No articles match this view."
+		"filtered_empty": "No articles match this view.",
+		"search_failed": "search is unavailable."
 	},
 	"reader": {
 		"heading": "Saved article",
@@ -130,5 +135,8 @@
 		"update": "An update is ready. Close all Clipper tabs and reopen to apply it safely.",
 		"failed": "Offline startup could not be prepared. You can continue online and retry.",
 		"unsupported": "Offline startup is unavailable in this browser."
+	},
+	"forms": {
+		"invalid_value": "Enter a valid value."
 	}
 }
