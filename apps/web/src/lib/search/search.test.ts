@@ -29,13 +29,15 @@ const documents: SearchDocument[] = [
 		originalSavedAt: '2026-01-03'
 	}
 ]
-it('requires every keyword, boosts titles, searches URLs/body, and does not enable fuzzy or prefix matches', async () => {
+it('requires every keyword, boosts titles, searches URLs/body, and keeps short terms exact', async () => {
 	const index = await buildIndex(documents)
 	expect(searchIndex(index, 'APPLES pears')).toEqual([documents[1]!.id, documents[0]!.id])
 	expect(searchIndex(index, 'needle')).toEqual([documents[2]!.id])
 	expect(searchIndex(index, 'orchard')).toHaveLength(2)
 	expect(searchIndex(index, 'app')).toEqual([])
-	expect(searchIndex(index, 'appls')).toEqual([])
+	expect(searchIndex(index, 'appls').sort()).toEqual(
+		documents.map((document) => document.id).sort()
+	)
 })
 it('rebuilds a corrupt derived cache and remains searchable when cache persistence fails', async () => {
 	const reports: unknown[] = []
@@ -106,4 +108,21 @@ it('searches Unicode tag names with body keywords and invalidates the cache when
 		(byte) => byte.toString(16).padStart(2, '0')
 	).join('')
 	expect(await searchFingerprint([documents[0]!])).not.toBe(legacyFingerprint)
+})
+
+it('matches close spellings and suffixes, prioritizes exact matches, and bounds typo tolerance after cache restoration', async () => {
+	const entries = [
+		{ ...documents[0]!, title: 'Continue', text: '', tags: '' },
+		{ ...documents[1]!, title: 'Continues', text: '', tags: 'Research' },
+		{ ...documents[2]!, title: 'Continuations', text: '', tags: '' }
+	]
+	const index = await buildIndex(entries)
+	for (const searchable of [index, restoreIndex(JSON.stringify(index))]) {
+		expect(searchIndex(searchable, 'continue')).toEqual([entries[0]!.id, entries[1]!.id])
+		expect(searchIndex(searchable, 'continues')).toEqual([entries[1]!.id, entries[0]!.id])
+		expect(searchIndex(searchable, 'continus researh')).toEqual([entries[1]!.id])
+		expect(searchIndex(searchable, 'continue missing')).toEqual([])
+		expect(searchIndex(searchable, 'con')).toEqual([])
+		expect(searchIndex(searchable, 'contxxxx')).toEqual([])
+	}
 })

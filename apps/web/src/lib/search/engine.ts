@@ -6,7 +6,13 @@ export const searchOptions = {
 	fields: ['title', 'url', 'text', 'tags'],
 	storeFields: ['originalSavedAt'],
 	processTerm: (term: string) => caseFold(term.normalize('NFC')),
-	searchOptions: { combineWith: 'AND' as const, boost: { title: 2 }, prefix: false, fuzzy: false }
+	searchOptions: {
+		combineWith: 'AND' as const,
+		boost: { title: 2 },
+		prefix: false,
+		fuzzy: (term: string) => (term.length >= 4 ? 0.2 : false),
+		maxFuzzy: 2
+	}
 }
 export async function buildIndex(documents: SearchDocument[]) {
 	const index = new MiniSearch<SearchDocument>(searchOptions)

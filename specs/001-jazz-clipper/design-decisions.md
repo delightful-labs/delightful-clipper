@@ -28,7 +28,7 @@ For independent scalar fields (status, favorite and each preference), use causal
 
 ## Search and tags
 
-Plain case-insensitive keyword search, all entered terms required, with labeled article/highlight/note hits and no query language. Index article title/body, saved quote and literal note text. Use the search engine's default relevance with title boosts and stable original-save-date/ID tie-breaks. Do not require fuzzy matching or advanced ranking controls.
+Plain case-insensitive keyword search, all entered terms required, with labeled article/highlight/note hits and no query language. Index article title/body, saved quote and literal note text. Use the search engine's default relevance with title boosts and stable original-save-date/ID tie-breaks. The user subsequently requested fuzzy matching for close spellings such as continue/continues. Article search uses MiniSearch's bounded 20% edit tolerance (maximum two edits) for terms of at least four characters; shorter terms remain exact. Advanced ranking controls remain out of scope.
 
 Status, favorites and selected tags combine with AND; multiple selected tags also require all selected tags on the explicit result target. Note results use the note parent's tag assignments. Status/favorite always use the parent article. Activating a tag lists explicitly tagged articles/highlights; it does not infer inheritance. Trash is a separate explicit scope, with the same locally available text/filter semantics.
 
