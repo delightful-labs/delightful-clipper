@@ -69,6 +69,7 @@ it('persists desired values in native transactions, preserves other fields, and 
 			.insert(app.organizationOperations, {
 				libraryId: a.id,
 				articleId: a.articleId,
+				documentId: null,
 				field: 'favorite',
 				value: 'false',
 				parents: '[]'
@@ -83,6 +84,7 @@ it('persists desired values in native transactions, preserves other fields, and 
 			.insert(app.organizationOperations, {
 				libraryId: a.id,
 				articleId: b.articleId,
+				documentId: null,
 				field: 'status',
 				value: 'later',
 				parents: '[]'
@@ -94,6 +96,7 @@ it('persists desired values in native transactions, preserves other fields, and 
 			.insert(app.organizationOperations, {
 				libraryId: a.id,
 				articleId: a.articleId,
+				documentId: null,
 				field: 'status',
 				value: 'trash',
 				parents: '[]'

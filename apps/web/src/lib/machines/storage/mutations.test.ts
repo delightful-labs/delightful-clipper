@@ -1,4 +1,4 @@
-import { stageIntent } from './mutations.js'
+import { stageIntent, stageOrganization } from './mutations.js'
 import { expect, it, vi } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import {
@@ -113,3 +113,22 @@ it('returns a failed synchronous staging operation to its transaction owner as a
 		})
 	).rejects.toThrow('native insert rejected')
 })
+
+it.each([true, false])(
+	'stages exactly one native organization parent reference (article: %s)',
+	async (hasArticle) => {
+		const article = vi.fn(),
+			document = vi.fn(),
+			receipt = { global: async () => {} }
+		expect(
+			await stageOrganization({
+				hasArticle,
+				insertArticle: article,
+				insertDocument: document,
+				receipt: () => receipt
+			})
+		).toBe(receipt)
+		expect(article).toHaveBeenCalledTimes(hasArticle ? 1 : 0)
+		expect(document).toHaveBeenCalledTimes(hasArticle ? 0 : 1)
+	}
+)

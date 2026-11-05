@@ -14,7 +14,16 @@
 				"column_type": {
 					"type": "Uuid"
 				},
-				"nullable": false
+				"nullable": true,
+				"references": "articles"
+			},
+			{
+				"name": "documentId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": true,
+				"references": "documents"
 			},
 			{
 				"name": "field",
@@ -43,6 +52,16 @@
 				"kind": "forward",
 				"table": "libraries",
 				"column": "libraryId"
+			},
+			"article": {
+				"kind": "forward",
+				"table": "articles",
+				"column": "articleId"
+			},
+			"document": {
+				"kind": "forward",
+				"table": "documents",
+				"column": "documentId"
 			}
 		}
 	},

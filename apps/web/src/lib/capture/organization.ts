@@ -17,7 +17,8 @@ export const organizationOperationSchema = z
 	.object({
 		id: lowercaseUuidSchema,
 		libraryId: lowercaseUuidSchema,
-		articleId: lowercaseUuidSchema,
+		articleId: lowercaseUuidSchema.nullable(),
+		documentId: lowercaseUuidSchema.nullable(),
 		field: z.enum(['status', 'favorite']),
 		value: z.string().max(7),
 		parents: z
@@ -37,6 +38,8 @@ export const organizationOperationSchema = z
 			? articleStatuses.some((s) => s === r.value)
 			: r.value === 'true' || r.value === 'false'
 	)
+	.refine(hasSingleOrganizationParent)
+	.transform(({ documentId, ...row }) => ({ ...row, articleId: row.articleId ?? documentId! }))
 export type OrganizationOperation = z.infer<typeof organizationOperationSchema>
 /** Causally superseded operations never win. Concurrent heads use operation UUID order,
  * independently for each scalar field. No clocks or toggle replay are involved. */
@@ -82,4 +85,8 @@ export function canOrganizeArticle(article: unknown, document: unknown) {
 export function canRequestOrganization(rows: LibraryArticle[], request: OrganizationRequest) {
 	if (!organizationRequestSchema.safeParse(request).success) return false
 	return rows.some((row) => row.id === request.id)
+}
+
+function hasSingleOrganizationParent(row: { articleId: string | null; documentId: string | null }) {
+	return (row.articleId === null) !== (row.documentId === null)
 }

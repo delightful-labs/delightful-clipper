@@ -1,3 +1,4 @@
+import { stageOrganization } from '../../machines/storage/mutations.js'
 import { ReadTier } from 'jazz-tools'
 import type { Db, WriteHandle } from 'jazz-tools'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
@@ -33,6 +34,7 @@ export function createOrganizationRecords(
 			const article = await r.tx.one(app.articles.where({ id: request.id, libraryId }), {
 				tier: ReadTier.LocalFirst
 			})
+			r.article = article
 			const document = await r.tx.one(app.documents.where({ id: request.id, libraryId }), {
 				tier: ReadTier.LocalFirst
 			})
@@ -57,7 +59,7 @@ export function createOrganizationRecords(
 			)
 			r.parents = organizationHeads(
 				rows
-					.filter((row) => targets.has(row.articleId))
+					.filter((row) => targets.has((row.articleId ?? row.documentId)!))
 					.map((row) => organizationOperationSchema.parse(row))
 			).map((row) => row.id)
 			return { article, document }
@@ -68,18 +70,30 @@ export function createOrganizationRecords(
 				: { outcome: 'blocked', reason: 'Article unavailable' },
 		stage: (r, a) => {
 			if (!r.parents) throw new Error('Missing organization observation')
-			r.tx.insert(
-				app.organizationOperations,
-				{
-					libraryId,
-					articleId: a.draft.id,
-					field: a.draft.field,
-					value: String(a.draft.value),
-					parents: JSON.stringify(r.parents)
+			const values = {
+				libraryId,
+				field: a.draft.field,
+				value: String(a.draft.value),
+				parents: JSON.stringify(r.parents)
+			}
+			return stageOrganization({
+				hasArticle: !!r.article,
+				insertArticle: () => {
+					r.tx.insert(
+						app.organizationOperations,
+						{ ...values, articleId: a.draft.id, documentId: null },
+						{ id: a.operationId }
+					)
 				},
-				{ id: a.operationId }
-			)
-			return transactionReceipt(r)
+				insertDocument: () => {
+					r.tx.insert(
+						app.organizationOperations,
+						{ ...values, articleId: null, documentId: a.draft.id },
+						{ id: a.operationId }
+					)
+				},
+				receipt: () => transactionReceipt(r)
+			})
 		}
 	})
 	return {

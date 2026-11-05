@@ -138,3 +138,28 @@ export function stageAttachment(input: AttachmentInput) {
 	actor.start()
 	return result.finally(() => actor.stop())
 }
+
+/** The transaction retains the checked parent while this chart selects its native reference. */
+export function stageOrganization(
+	input: Receipt & { hasArticle: boolean; insertArticle: () => void; insertDocument: () => void }
+) {
+	const machine = setup<{ hasArticle: boolean }, { type: 'UNUSED' }>({}).createMachine({
+		context: { hasArticle: input.hasArticle },
+		initial: 'selectingParent',
+		states: {
+			selectingParent: {
+				always: [
+					{ guard: ({ context }) => context.hasArticle, target: 'article' },
+					{ target: 'document' }
+				]
+			},
+			article: { entry: input.insertArticle, always: 'done' },
+			document: { entry: input.insertDocument, always: 'done' },
+			done: { type: 'final' }
+		}
+	})
+	const actor = createActor(machine)
+	const settled = toPromise(actor)
+	actor.start()
+	return settled.then(input.receipt).finally(() => actor.stop())
+}
