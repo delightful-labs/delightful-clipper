@@ -22,6 +22,17 @@ function fixture(
 	const show = vi.fn(async () => {})
 	const actor = createActor(
 		createLaunchMachine({
+			connection: async () => ({
+				version: 1,
+				confirmationId: id,
+				accountId: id,
+				appId: id,
+				serverUrl: 'https://sync.test/'
+			}),
+			authorize: async () => 'connected',
+			openSignIn: async () => 1,
+			watchPopup: () => () => {},
+			focusPopup: async () => {},
 			inspect: async () => inspect ?? { documentId: 'document', frameId: 0, result: url },
 			pending: async () => pending,
 			persist: persisted,
@@ -43,7 +54,7 @@ it('persists a document-bound reference before dispatching to the hidden runtime
 	expect(f.persisted.mock.invocationCallOrder[0]).toBeLessThan(
 		f.dispatch.mock.invocationCallOrder[0]!
 	)
-	expect(f.dispatch).toHaveBeenCalledWith(id)
+	expect(f.dispatch).toHaveBeenCalledWith(id, id)
 	f.actor.stop()
 })
 it('serializes launch ownership rather than issuing concurrent storage checks', async () => {
@@ -93,4 +104,42 @@ it('does not replay an ambiguous runtime dispatch or claim that its native save 
 		variant: 'error'
 	})
 	f.actor.stop()
+})
+
+it('opens one sign-in popup and saves nothing when it is canceled', async () => {
+	let closed = () => {}
+	const popup = vi.fn(async () => 9)
+	const persist = vi.fn(async () => {})
+	const inspect = vi.fn(async () => ({ documentId: 'document', frameId: 0, result: url }))
+	const actor = createActor(
+		createLaunchMachine({
+			connection: async () => undefined,
+			authorize: async () => 'signed-out',
+			openSignIn: popup,
+			watchPopup: (_id, notify) => {
+				closed = notify
+				return () => {}
+			},
+			focusPopup: async () => {},
+			inspect,
+			pending: async () => [],
+			persist,
+			show: async () => {},
+			runtimeExists: async () => false,
+			createRuntime: async () => {},
+			dispatch: async () => true,
+			reject: async () => {},
+			id: () => id
+		})
+	).start()
+	actor.send({ type: 'CLIP', tab: { id: 7, url } })
+	await waitFor(actor, (s) => s.matches('waitingForSignIn'))
+	actor.send({ type: 'CLIP', tab: { id: 7, url } })
+	expect(popup).toHaveBeenCalledOnce()
+	expect(inspect).not.toHaveBeenCalled()
+	expect(persist).not.toHaveBeenCalled()
+	closed()
+	await waitFor(actor, (s) => s.matches('idle'))
+	expect(persist).not.toHaveBeenCalled()
+	actor.stop()
 })

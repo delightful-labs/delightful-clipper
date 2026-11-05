@@ -118,6 +118,17 @@ export function accountInput(
 	}
 }
 
+/** Existing identities/restoration only; extension sign-in must not create an unrelated account. */
+export function existingAccountInput(
+	config: JazzSessionConfig,
+	libraryFactory: LibraryFactory = createLibraryCapability
+): AccountInput<Session> {
+	return {
+		startup: registry.getJazzStartupBinding({ ...config, runtimeSources }),
+		bind: (session) => bindHost(session, libraryFactory)
+	}
+}
+
 /** A consuming integration owns/drains the returned record actors before identity changes. */
 export function currentLibraryRecords() {
 	const session = registry.getCurrentJazzSession()

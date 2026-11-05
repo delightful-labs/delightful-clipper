@@ -4,6 +4,7 @@
 	import { libraryContextKey, type LibraryContext } from '../runtime/library-context.js'
 	import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 	import { createActor } from 'xstate'
+	import type { ApplicationSnapshot } from '../machines/runtime/application-readiness.js'
 	import type { SnapshotFrom } from 'xstate'
 	import RecoveryPhrase from 'delightful-local-first/recovery/svelte'
 	import { Button, StatusMessage, Textarea } from 'delightful-ui'
@@ -22,6 +23,7 @@
 		serverUrl,
 		gatewayEnabled,
 		children,
+		onSnapshot,
 		libraryFactory
 	}: {
 		appId: string
@@ -29,6 +31,7 @@
 		gatewayEnabled: boolean
 		children: Snippet
 		libraryFactory?: LibraryFactory
+		onSnapshot?: (snapshot: ApplicationSnapshot<Session>) => void
 	} = $props()
 	let snapshot = $state<SnapshotFrom<typeof applicationReadinessMachine>>()
 	let phrase = $state('')
@@ -57,6 +60,7 @@
 		send = (event) => actor.send(event)
 		const subscription = actor.subscribe((next) => {
 			snapshot = next
+			onSnapshot?.(next)
 		})
 		actor.start()
 		return () => {

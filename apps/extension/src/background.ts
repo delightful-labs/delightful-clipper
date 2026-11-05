@@ -1,3 +1,5 @@
+import { createConnectStoreMachine } from './connect-store-machine.js'
+import { authorizationSchema, connectionFor, connectionKey } from './connection.js'
 import { createLaunchMachine } from './launch-machine.js'
 import { createActor, toPromise } from 'xstate'
 import { z } from 'zod'
@@ -10,7 +12,7 @@ import {
 	trustedSender,
 	waitingSchema,
 	captureFor,
-	accountChangedSchema
+	connectMessageSchema
 } from './protocol.js'
 import type { Capture } from './protocol.js'
 import { serializePage } from './serialize.js'
@@ -42,6 +44,15 @@ const references = createReferenceMachine({
 	write: (capture) => chrome.storage.local.set({ [captureKey(capture.id)]: capture }),
 	remove: (id) => chrome.storage.local.remove(captureKey(id))
 })
+const connections = createConnectStoreMachine({
+	id: chrome.runtime.id,
+	pages: [chrome.runtime.getURL('index.html'), chrome.runtime.getURL('signin.html')],
+	scope: { appId: __CLIPPER_APP_ID__, serverUrl: __CLIPPER_SERVER__ },
+	idForConfirmation: () => crypto.randomUUID(),
+	write: (connection) => chrome.storage.local.set({ [connectionKey]: connection }),
+	notify: (accountId) =>
+		chrome.runtime.sendMessage({ type: 'ACCOUNT_CHANGED', accountId, target: 'runtime' })
+})
 function show(
 	capture: Capture,
 	message: WorkflowMessage,
@@ -67,14 +78,12 @@ function show(
 	})
 }
 chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
-	const changed = accountChangedSchema.safeParse(message)
-	if (
-		changed.success &&
-		trustedSender(sender, chrome.runtime.id, chrome.runtime.getURL('index.html'))
-	) {
-		void chrome.runtime
-			.sendMessage({ ...changed.data, target: 'runtime' })
+	if (connectMessageSchema.safeParse(message).success) {
+		const actor = createActor(connections, { input: { message, sender } })
+		void toPromise(actor)
 			.then(reply, () => reply({ accepted: false }))
+			.finally(() => actor.stop())
+		actor.start()
 		return true
 	}
 
@@ -122,6 +131,43 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 const accepted = z.object({ accepted: z.boolean() })
 const launcher = createActor(
 	createLaunchMachine({
+		connection: async () =>
+			connectionFor((await chrome.storage.local.get(connectionKey))[connectionKey], {
+				appId: __CLIPPER_APP_ID__,
+				serverUrl: __CLIPPER_SERVER__
+			}),
+		authorize: async (connection) =>
+			authorizationSchema.parse(
+				await chrome.runtime.sendMessage({
+					type: 'AUTHORIZE',
+					target: 'runtime',
+					accountId: connection.accountId
+				})
+			).status,
+		openSignIn: async (requestId) =>
+			z
+				.number()
+				.int()
+				.parse(
+					(
+						await chrome.windows.create({
+							type: 'popup',
+							url: chrome.runtime.getURL(`signin.html?request=${requestId}`),
+							width: 480,
+							height: 580,
+							focused: true
+						})
+					)?.id
+				),
+		watchPopup: (id, closed) => {
+			const removed = (windowId: number) => {
+				if (windowId === id) closed()
+			}
+			chrome.windows.onRemoved.addListener(removed)
+			void chrome.windows.get(id).catch(closed)
+			return () => chrome.windows.onRemoved.removeListener(removed)
+		},
+		focusPopup: (id) => chrome.windows.update(id, { focused: true }),
 		inspect: async (id) =>
 			(
 				await chrome.scripting.executeScript({ target: { tabId: id }, func: () => location.href })
@@ -147,9 +193,10 @@ const launcher = createActor(
 				justification:
 					'Save the requested article using the existing local account and packaged workers without opening a tab.'
 			}),
-		dispatch: async (id) =>
-			accepted.parse(await chrome.runtime.sendMessage({ target: 'runtime', type: 'RUN', id }))
-				.accepted,
+		dispatch: async (id, accountId) =>
+			accepted.parse(
+				await chrome.runtime.sendMessage({ target: 'runtime', type: 'RUN', id, accountId })
+			).accepted,
 
 		reject: (tab, text) =>
 			chrome.action.setTitle({ ...(tab?.id === undefined ? {} : { tabId: tab.id }), title: text }),

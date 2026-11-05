@@ -12,14 +12,20 @@ import {
 import type { ActorRefFrom, SnapshotFrom } from 'xstate'
 import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 import { createClipMachine } from './clip-machine.js'
+import type { ApplicationStatus } from '../../web/src/lib/machines/runtime/application-readiness.js'
 import type { WorkflowMessage } from '../../web/src/lib/contracts/feedback.js'
 import type { ClipCapability } from './clip-machine.js'
 import type { libraryMachine } from '../../web/src/lib/machines/capture/library.js'
 type Library = ActorRefFrom<typeof libraryMachine>
 export type ClipSnapshot = SnapshotFrom<ReturnType<typeof createClipMachine>>
 type Event =
-	| { type: 'BIND'; library: Library | undefined; message?: WorkflowMessage }
-	| { type: 'RUN'; id: string }
+	| {
+			type: 'BIND'
+			library: Library | undefined
+			message?: WorkflowMessage
+			accountStatus?: ApplicationStatus
+	  }
+	| { type: 'RUN'; id: string; accountId: string }
 	| { type: 'ACCOUNT_CHANGED'; accountId: string }
 	| { type: 'CLIP'; snapshot: ClipSnapshot }
 type Context = {
@@ -29,10 +35,17 @@ type Context = {
 	id: string
 	revision: number
 	accountMessage: WorkflowMessage | undefined
+	accountStatus: ApplicationStatus | undefined
 }
 export function createRuntimeMachine(cap: {
 	reload: () => Promise<void>
-	account: (bind: (library: Library | undefined, message: WorkflowMessage) => void) => () => void
+	account: (
+		bind: (
+			library: Library | undefined,
+			message: WorkflowMessage,
+			status: ApplicationStatus
+		) => void
+	) => () => void
 	clip: (library: Library) => ClipCapability
 	waiting: (ids: string[], message: WorkflowMessage, revision: number) => Promise<unknown>
 	report: (snapshot: ClipSnapshot, revision: number) => Promise<unknown>
@@ -40,7 +53,9 @@ export function createRuntimeMachine(cap: {
 	const actors = {
 		reload: fromPromise(() => cap.reload()),
 		account: fromCallback(({ sendBack }) =>
-			cap.account((library, message) => sendBack({ type: 'BIND', library, message }))
+			cap.account((library, message, accountStatus) =>
+				sendBack({ type: 'BIND', library, message, accountStatus })
+			)
 		),
 		clip: fromCallback<{ type: 'SHUTDOWN' }, { library: Library; id: string }>(
 			({ input, sendBack, receive }) => {
@@ -77,6 +92,7 @@ export function createRuntimeMachine(cap: {
 			queued: ({ context }) => !!context.library && context.queue.length > 0,
 			admit: ({ context, event }) =>
 				event.type === 'RUN' &&
+				event.accountId === context.library?.getSnapshot().context.capability?.libraryId &&
 				context.queue.length < 8 &&
 				context.id !== event.id &&
 				!context.queue.includes(event.id),
@@ -111,7 +127,8 @@ export function createRuntimeMachine(cap: {
 			queue: [],
 			id: '',
 			revision: 0,
-			accountMessage: undefined
+			accountMessage: undefined,
+			accountStatus: undefined
 		},
 		invoke: { src: 'account' },
 		on: {
@@ -125,6 +142,7 @@ export function createRuntimeMachine(cap: {
 					assign({
 						library: ({ event }) => event.library,
 						accountMessage: ({ event }) => event.message,
+						accountStatus: ({ event }) => event.accountStatus,
 						revision: ({ context }) => context.revision + 1
 					}),
 					'accountFeedback'
@@ -214,3 +232,5 @@ export function createRuntimeMachine(cap: {
 		}
 	})
 }
+
+export type RuntimeSnapshot = SnapshotFrom<ReturnType<typeof createRuntimeMachine>>

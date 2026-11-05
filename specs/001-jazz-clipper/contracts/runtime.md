@@ -26,10 +26,10 @@ Commands/reports carry the identities and scope required by their boundary; do n
 
 The current protocol is defined in `apps/extension/src/protocol.ts` and enforced by background/runtime state machines:
 
-- The toolbar action is the entry point; there is no source-page capture RPC bridge.
-- Background → offscreen: `RUN` with a reference ID; trusted `ACCOUNT_CHANGED` forwarded from Options. Sender validation admits the extension background, not arbitrary pages.
+- The toolbar action is the entry point; there is no source-page capture RPC bridge. Admission requires a scoped explicit confirmation plus a matching actual SDK account; otherwise a trusted sign-in popup is opened.
+- Background → offscreen: `AUTHORIZE` with the confirmed account ID, followed by `RUN` with reference/account IDs only after admission; trusted `ACCOUNT_CHANGED` forwarded from Options. Sender validation admits the extension background, not arbitrary pages.
 - Offscreen → background: `CAPTURE` for the validated source reference, `ISSUE` before native dispatch, `REMOVE` after local publication, `WAITING` for account-owner feedback and `PROGRESS` for clip/receipt feedback. Only the trusted offscreen page can mark or remove references or report statuses.
-- Options → background: `ACCOUNT_CHANGED` with the selected account ID; credentials stay in the trusted DLF UI.
+- Trusted sign-in/Options UI → background: `CONNECT` only after a completed restoration. Background persists the account/app/server confirmation before notifying the runtime with `ACCOUNT_CHANGED`. A ready identity alone does not establish a connection; credentials stay in trusted DLF UI.
 - Background → source: document-targeted credential-free serialization and bar projection. Bar messages are literal text/safe links, correlated by capture ID/revision; Close never initiates a native operation. Untrusted captured HTML is never rendered in extension UI.
 
 One offscreen document owns the SDK/application session and extraction workers; the sleeping MV3 background is not the SDK lifetime owner. Bounded Chrome references contain source metadata and a pre-dispatch issued marker, not captured HTML. Native intent/publication records own article durability and unknown-write recovery. Restart does not rehydrate and replay old writes, and lost dispatch acknowledgements are not treated as definite failures.

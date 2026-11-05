@@ -51,7 +51,7 @@ export default defineConfig(({ mode }) => {
 							{
 								manifest_version: 3,
 								name: 'Delightful Clipper',
-								version: '0.0.2',
+								version: '0.0.3',
 								permissions: ['activeTab', 'scripting', 'storage', 'offscreen'],
 								action: { default_title: 'Delightful Clipper' },
 								options_ui: { page: 'index.html', open_in_tab: true },
@@ -82,6 +82,7 @@ export default defineConfig(({ mode }) => {
 			rollupOptions: {
 				input: {
 					index: resolve('index.html'),
+					signin: resolve('signin.html'),
 					runtime: resolve('runtime.html'),
 					background: resolve('src/background.ts')
 				},

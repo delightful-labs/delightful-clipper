@@ -1,4 +1,4 @@
-import { createActor, waitFor } from 'xstate'
+import { createActor, toPromise, waitFor } from 'xstate'
 import { z } from 'zod'
 import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 import {
@@ -6,10 +6,11 @@ import {
 	selectLibraryActor,
 	selectApplicationView
 } from '../../web/src/lib/machines/runtime/application-readiness.js'
-import { accountInput, type Session } from '../../web/src/lib/backend/jazz/account.js'
+import { existingAccountInput, type Session } from '../../web/src/lib/backend/jazz/account.js'
 import { extensionLibrary } from './library.js'
 import { createRuntimeMachine } from './runtime-machine.js'
-import { backgroundSender, runtimeMessageSchema } from './protocol.js'
+import { authorizationRequestSchema, backgroundSender, runtimeMessageSchema } from './protocol.js'
+import { createAuthorizationMachine, selectAccountAccess } from './authorization-machine.js'
 import { extractSource } from './worker.js'
 const acceptedSchema = z.object({ accepted: z.literal(true) })
 async function command(message: unknown) {
@@ -17,7 +18,7 @@ async function command(message: unknown) {
 		throw new Error('invalidResponse')
 }
 const owner = createActor(createApplicationReadinessMachine<Session>(), {
-	input: accountInput(
+	input: existingAccountInput(
 		{ appId: __CLIPPER_APP_ID__, serverUrl: __CLIPPER_SERVER__, env: 'clipper' },
 		extensionLibrary
 	)
@@ -31,9 +32,10 @@ const runtime = createActor(
 			location.reload()
 		},
 		account: (bind) => {
-			const subscription = owner.subscribe((snapshot) =>
-				bind(selectLibraryActor(snapshot), selectApplicationView(snapshot, true).message)
-			)
+			const subscription = owner.subscribe((snapshot) => {
+				const view = selectApplicationView(snapshot, true)
+				bind(selectLibraryActor(snapshot), view.message, view.status)
+			})
 			owner.start()
 			return () => {
 				subscription.unsubscribe()
@@ -70,6 +72,27 @@ const runtime = createActor(
 	})
 ).start()
 chrome.runtime.onMessage.addListener((value: unknown, sender, reply) => {
+	const authorization = authorizationRequestSchema.safeParse(value)
+	if (
+		authorization.success &&
+		backgroundSender(sender, chrome.runtime.id, chrome.runtime.getURL('background.js'))
+	) {
+		const actor = createActor(
+			createAuthorizationMachine((notify) => {
+				const publish = () => notify(selectAccountAccess(runtime.getSnapshot()))
+				const subscription = runtime.subscribe(publish)
+				publish()
+				return () => subscription.unsubscribe()
+			}),
+			{ input: { expected: authorization.data.accountId } }
+		)
+		void toPromise(actor)
+			.then(reply, () => reply({ status: 'unavailable' }))
+			.finally(() => actor.stop())
+		actor.start()
+		return true
+	}
+
 	const parsed = runtimeMessageSchema.safeParse(value)
 	if (
 		!parsed.success ||

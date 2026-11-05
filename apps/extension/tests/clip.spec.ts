@@ -36,7 +36,7 @@ test.afterAll(async () => {
 	await new Promise<void>((resolve) => sourceServer.close(() => resolve()))
 	if (directory) await rm(directory, { recursive: true, force: true })
 })
-async function extension(profile: string) {
+async function extension(profile: string, connected = true) {
 	const path = resolve('apps/extension/.test-build')
 	const context = await chromium.launchPersistentContext(profile, {
 		channel: 'chromium',
@@ -50,11 +50,31 @@ async function extension(profile: string) {
 	context.setDefaultTimeout(15000)
 	const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'))
 	await expect.poll(() => worker.evaluate(() => chrome.action.onClicked.hasListeners())).toBe(true)
-	return { context, id: new URL(worker.url()).host, worker }
+	const id = new URL(worker.url()).host
+	if (
+		connected &&
+		!(await worker.evaluate(
+			async () => !!(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+		))
+	) {
+		const phrase = await recovery(context, id)
+		const options = await context.newPage()
+		await options.goto(`chrome-extension://${id}/index.html`)
+		await options.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+		await options.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await expect
+			.poll(() =>
+				worker.evaluate(
+					async () => !!(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+				)
+			)
+			.toBe(true)
+		await options.close()
+	}
+	return { context, id, worker }
 }
-async function clip(context: BrowserContext, id: string, source: Page) {
+async function invokeToolbar(context: BrowserContext, id: string, source: Page) {
 	await source.bringToFront()
-	const pages = context.pages().length
 	const session = await context.browser()!.newBrowserCDPSession()
 	try {
 		const { targetInfos } = await session.send('Target.getTargets', {
@@ -63,12 +83,17 @@ async function clip(context: BrowserContext, id: string, source: Page) {
 		const target = targetInfos.find((target) => target.url === source.url())
 		if (!target) throw new Error('Missing source tab target')
 		await session.send('Extensions.triggerAction', { id, targetId: target.targetId })
-		await expect(source.locator('delightful-clipper-bar')).toBeVisible()
-		expect(context.pages()).toHaveLength(pages)
 	} finally {
 		await session.detach()
 	}
 }
+async function clip(context: BrowserContext, id: string, source: Page) {
+	const pages = context.pages().length
+	await invokeToolbar(context, id, source)
+	await expect(source.locator('delightful-clipper-bar')).toBeVisible()
+	expect(context.pages()).toHaveLength(pages)
+}
+
 async function recovery(context: BrowserContext, id: string) {
 	const page = await context.newPage()
 	await page.goto(`chrome-extension://${id}/index.html`)
@@ -428,6 +453,155 @@ test('successive toolbar clicks save different tabs through one hidden runtime',
 				})
 			)
 		).toHaveLength(1)
+	} finally {
+		await context.close()
+	}
+})
+
+test('a signed-out click opens sign-in, rejects invalid input, then saves to the already-open app account', async ({
+	browser
+}) => {
+	const { context, id, worker } = await extension(join(directory, 'fresh-signin-profile'), false)
+	const web = await browser.newContext()
+	try {
+		const reader = await web.newPage()
+		let gateway = 0
+		reader.on('request', (request) => {
+			if (request.url().includes('/api/capture/')) gateway++
+		})
+		await reader.goto('/')
+		await expect(reader.getByRole('button', { name: 'Restore account', exact: true })).toBeVisible()
+		await reader.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
+		const dialog = reader.getByRole('dialog')
+		await expect(dialog).toBeVisible()
+		const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
+		await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+		const source = await context.newPage()
+		await source.goto('http://127.0.0.1:5230/signin')
+		const opened = context.waitForEvent('page')
+		await invokeToolbar(context, id, source)
+		const popup = await opened
+		await popup.waitForURL(
+			(url) =>
+				url.protocol === 'chrome-extension:' && url.host === id && url.pathname === '/signin.html'
+		)
+		await expect(source.locator('delightful-clipper-bar')).toHaveCount(0)
+		expect(
+			await worker.evaluate(
+				async () =>
+					Object.keys(await chrome.storage.local.get(null)).filter((key) =>
+						key.startsWith('clipper.capture.')
+					).length
+			)
+		).toBe(0)
+		const submit = popup.getByRole('button', { name: /^(Sign in|Restore account)$/ })
+		await expect(submit).toBeEnabled()
+		await popup.getByLabel('Recovery phrase', { exact: true }).fill('not a valid recovery phrase')
+		await submit.click()
+		await expect(
+			popup.getByText('That recovery phrase is invalid. Check it and try again.', { exact: true })
+		).toBeVisible()
+		expect(
+			await worker.evaluate(
+				async () => !!(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+			)
+		).toBe(false)
+		await expect(source.locator('delightful-clipper-bar')).toHaveCount(0)
+		await popup.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+		const closed = popup.waitForEvent('close')
+		await submit.click()
+		await closed
+		await expect(source.getByRole('status')).toHaveText(saved)
+		await expect(
+			reader.getByRole('link', { name: 'Rendered browser article', exact: true })
+		).toBeVisible()
+		await reader.getByRole('link', { name: 'Rendered browser article', exact: true }).click()
+		await expect(
+			reader.getByText('Only present after JavaScript rendering.', { exact: false })
+		).toBeVisible()
+		expect(gateway).toBe(0)
+	} finally {
+		await web.close()
+		await context.close()
+	}
+})
+
+test('canceling sign-in leaves no article reference and a later click can prompt again', async () => {
+	const { context, id, worker } = await extension(join(directory, 'canceled-signin-profile'), false)
+	try {
+		const source = await context.newPage()
+		await source.goto('http://127.0.0.1:5230/canceled-signin')
+		const opened = context.waitForEvent('page')
+		await invokeToolbar(context, id, source)
+		const popup = await opened
+		await popup.waitForURL(
+			(url) =>
+				url.protocol === 'chrome-extension:' && url.host === id && url.pathname === '/signin.html'
+		)
+		await expect(source.locator('delightful-clipper-bar')).toHaveCount(0)
+		await popup.close()
+		await expect
+			.poll(() =>
+				worker.evaluate(
+					async () =>
+						Object.keys(await chrome.storage.local.get(null)).filter((key) =>
+							key.startsWith('clipper.capture.')
+						).length
+				)
+			)
+			.toBe(0)
+		expect(
+			await worker.evaluate(
+				async () => !!(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+			)
+		).toBe(false)
+		const again = context.waitForEvent('page')
+		await invokeToolbar(context, id, source)
+		const second = await again
+		await second.waitForURL(
+			(url) =>
+				url.protocol === 'chrome-extension:' && url.host === id && url.pathname === '/signin.html'
+		)
+		await second.close()
+	} finally {
+		await context.close()
+	}
+})
+
+test('a stale connection for another account prompts again and cannot save', async () => {
+	const { context, id, worker } = await extension(join(directory, 'stale-connection-profile'))
+	try {
+		await worker.evaluate(async () => {
+			const values =
+				await chrome.storage.local.get<Record<string, Record<string, unknown>>>(
+					'clipper.connection'
+				)
+			await chrome.storage.local.set({
+				'clipper.connection': {
+					...values['clipper.connection'],
+					accountId: '88888888-8888-4888-8888-888888888888'
+				}
+			})
+		})
+		const source = await context.newPage()
+		await source.goto('http://127.0.0.1:5230/stale-connection')
+		const opened = context.waitForEvent('page')
+		await invokeToolbar(context, id, source)
+		const popup = await opened
+		await popup.waitForURL(
+			(url) =>
+				url.protocol === 'chrome-extension:' && url.host === id && url.pathname === '/signin.html'
+		)
+		await expect(source.locator('delightful-clipper-bar')).toHaveCount(0)
+		await popup.close()
+		expect(
+			await worker.evaluate(
+				async () =>
+					Object.keys(await chrome.storage.local.get(null)).filter((key) =>
+						key.startsWith('clipper.capture.')
+					).length
+			)
+		).toBe(0)
 	} finally {
 		await context.close()
 	}

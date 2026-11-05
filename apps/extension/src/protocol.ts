@@ -73,7 +73,8 @@ export function matchingContent(value: unknown, capture: Capture) {
 export const runSchema = z.strictObject({
 	target: z.literal('runtime'),
 	type: z.literal('RUN'),
-	id: z.uuid()
+	id: z.uuid(),
+	accountId: z.uuid()
 })
 export const referenceMessageSchema = z.discriminatedUnion('type', [
 	z.strictObject({ type: z.literal('ISSUE'), id: z.uuid(), accountId: z.uuid() }),
@@ -105,3 +106,21 @@ export const runtimeMessageSchema = z.union([
 	runSchema,
 	accountChangedSchema.extend({ target: z.literal('runtime') })
 ])
+
+export const connectMessageSchema = z.strictObject({
+	type: z.literal('CONNECT'),
+	accountId: z.uuid(),
+	requestId: z.uuid().optional()
+})
+export const authorizationRequestSchema = z.strictObject({
+	target: z.literal('runtime'),
+	type: z.literal('AUTHORIZE'),
+	accountId: z.uuid()
+})
+export function trustedAccountPage(
+	sender: chrome.runtime.MessageSender,
+	id: string,
+	pages: string[]
+) {
+	return pages.some((page) => trustedSender(sender, id, page))
+}

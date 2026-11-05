@@ -57,7 +57,7 @@ specs/001-jazz-clipper/            accepted design, checklist and handoff
 
 Extension code imports the existing shared source under `apps/web/src/lib`; separate domain/workflow packages have not been created. Do not create empty planned packages or restore the archived prototype/dependencies merely to match an earlier diagram. Browser-specific Firefox packaging remains future work.
 
-The web composition owns its DLF session and account-bound repository. Chromium uses one trusted offscreen document for its DLF/application/library actors and packaged workers. Options exposes the existing recovery UI; a restored-account notification drains old-account work before reopening the hidden runtime. Content/page code gets no SDK/account handles or recovery secrets. The MV3 service worker owns gesture admission, Chrome APIs, source-reference markers and IPC validation; it is not expected to keep a WASM client alive itself.
+The web composition owns its DLF session and account-bound repository. Chromium uses one trusted offscreen document for its DLF/application/library actors and packaged workers. The trusted popup/Options exposes DLF restoration, with a fresh scoped confirmation required before clipping; a restored-account notification drains old-account work before reopening the hidden runtime. Content/page code gets no SDK/account handles or recovery secrets. The MV3 service worker owns gesture admission, Chrome APIs, source-reference markers and IPC validation; it is not expected to keep a WASM client alive itself.
 
 ## Runtime ownership
 
@@ -78,7 +78,7 @@ Actors are attached to the application runtime, not a reader/list component. Eac
 
 Web capture lifecycle: URL article saved → awaiting-session/network → resolving → checking-identity → fetching/capturing → extracting → validating → saving-text → text-ready → acquiring-assets → complete/partial. Existing/trashed matches route to Open/Restore without replacement. Unexpected failures and cancellation produce durable terminal outcomes. Partial captures stay explicitly partial and retry in the same capture/document; automatic retries do not refresh completed snapshots.
 
-Chromium toolbar lifecycle: admit gesture → validate document → persist bounded reference → show bar → ensure offscreen owner → enqueue clip → extract supplied content (or retain URL only) → mark issued → native save → observe local/remote receipt. Open article is explicit; Close only dismisses the bar. Missing acknowledgements remain uncertain and are not replayed. Source references are not an article database or captured-HTML journal.
+Chromium toolbar lifecycle: admit gesture → load confirmed account (or trusted sign-in popup) → verify actual SDK account → validate document → persist bounded reference → show bar → ensure offscreen owner → enqueue clip → extract supplied content (or retain URL only) → mark issued → native save → observe local/remote receipt. Open article is explicit; Close only dismisses the bar. Missing acknowledgements remain uncertain and are not replayed. Source references are not an article database or captured-HTML journal.
 
 ## Platform matrix
 

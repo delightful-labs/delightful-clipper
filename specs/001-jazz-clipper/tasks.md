@@ -4,7 +4,7 @@ Updated 2026-11-04. This is the current implementation checklist; the product re
 
 ## Current handoff — browser clipper MVP
 
-PR #12 is merged into main at `3149ea4`. Current work is on `feat/browser-clipper`, open PR [#13](https://github.com/delightful-labs/delightful-clipper/pull/13), targeting main. Runtime and Linux CI/Netlify evidence is qualified at `dfc675c`. Subsequent documentation-only updates do not change that runtime baseline. Do not merge without explicit authorization. See [implementation-handoff.md](implementation-handoff.md).
+PR #12 is merged into main at `3149ea4`. Current work is on `feat/browser-clipper`, open PR [#13](https://github.com/delightful-labs/delightful-clipper/pull/13), targeting main. Runtime and Linux CI/Netlify evidence is qualified at `dfc675c`. The new sign-in gate is locally validated; its latest CI qualification remains pending. Do not merge without explicit authorization. See [implementation-handoff.md](implementation-handoff.md).
 
 ### Resume in the next thread
 
@@ -13,7 +13,7 @@ PR #12 is merged into main at `3149ea4`. Current work is on `feat/browser-clippe
 - [ ] Ask the user to select the next bounded feature after review; no next product feature is currently authorized. The remaining items below are a backlog, not an instruction to implement all of them.
 - [ ] Keep Firefox/store distribution, annotations, images and richer reader/organization features explicitly incomplete. Full retry scheduling is not a required follow-up to this delivered batch.
 
-URL-first saving and serial missing-content processing remain the web behavior. The Chromium clipper supplies rendered content through the same native save operation, using a trusted DLF session and packaged extraction worker. `pnpm verify` passes 429 unit tests with one platform-specific skip across 60 files, including strict extension checks and the production web build. All 24 web integration tests, five production offline tests and eight real Chromium extension tests pass sequentially. Current evidence and limitations are in the handoff/tooling documentation.
+URL-first saving and serial missing-content processing remain the web behavior. The Chromium clipper supplies rendered content through the same native save operation, using a trusted DLF session and packaged extraction worker. `pnpm verify` passes 442 unit tests with one platform-specific skip across 63 files, including strict extension checks and the production web build. All 24 web integration tests, five production offline tests and eleven real Chromium extension tests pass sequentially. Current evidence and limitations are in the handoff/tooling documentation.
 
 ## Chromium clipper MVP
 
@@ -27,6 +27,15 @@ URL-first saving and serial missing-content processing remain the web behavior. 
 - [x] Isolate fixture builds in `.test-build` so tests cannot overwrite the installed `dist` extension; confirm checksums remain unchanged.
 - [x] Wait for local account readiness before exercising recovery controls; qualify the complete suite in Linux CI as well as locally.
 - [ ] Qualify Firefox packaging, store distribution and source annotations in subsequent batches.
+
+## Extension sign-in gate
+
+- [x] Gate toolbar admission on an explicit, scoped account confirmation and the actual SDK account; never treat a silent local identity as sign-in.
+- [x] Open a trusted sign-in popup when unconnected; do not capture content or persist article references before confirmation.
+- [x] Reuse DLF restoration in XState, persist confirmation only after success and resume the original toolbar gesture.
+- [x] Keep invalid/canceled sign-in from authorizing a save, and reject stale account/deployment confirmations.
+- [x] Keep connected/offline saves and their existing top bar; preserve web-app no-signup behavior.
+- [x] Exercise sign-in into the already-open app account, invalid input, cancel/reopen, stale confirmation and preexisting connected behavior in real Chromium.
 
 ## Completed foundation
 
