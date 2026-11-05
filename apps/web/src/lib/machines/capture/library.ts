@@ -18,6 +18,10 @@ import {
 	matchesLibraryFilter
 } from '../../capture/organization.js'
 import type { OrganizationRequest, LibraryView } from '../../capture/organization.js'
+import { z } from 'zod'
+import { createSearchMachine, selectSearchView } from '../../search/machine.js'
+import { querySchema } from '../../search/schema.js'
+import { matchesTags } from '../../capture/tags.js'
 import { t } from '../../localization/index.js'
 import { normalizedSource } from '../../capture/source.js'
 import { stateFeedback } from '../../contracts/feedback.js'
@@ -44,6 +48,8 @@ type Context = {
 	organizationOperations: Record<string, string>
 	view: LibraryView
 	favorites: boolean
+	selectedTags: string[]
+	query: string
 	capability: LibraryCapability | undefined
 	saveRef: SaveRef | undefined
 	url: string
@@ -126,6 +132,8 @@ function failureMessage(code: string): WorkflowMessage {
 	}
 }
 const actors = {
+	// Search presentation names are supplied after the pending catalog approval.
+	search: createSearchMachine(),
 	collection: fromCallback<LibraryEvent, LibraryCapability | undefined>(({ input, sendBack }) => {
 		try {
 			return input?.subscribe(
@@ -167,8 +175,14 @@ export const libraryMachine = setup<
 	| { type: `xstate.done.actor.${string}`; actorId: string; output: ArticleSaveResult }
 	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown },
 	typeof actors,
-	{},
-	{ close: undefined; watch: undefined; updateRows: undefined; refreshCapture: undefined },
+	{ search: 'search' },
+	{
+		close: undefined
+		watch: undefined
+		updateRows: undefined
+		refreshCapture: undefined
+		updateSearch: undefined
+	},
 	{
 		canUseLibrary: undefined
 		canStartSave: undefined
@@ -225,13 +239,17 @@ export const libraryMachine = setup<
 		])
 	},
 	actions: {
+		updateSearch: sendTo('search', ({ context }) => ({ type: 'ROWS', rows: context.rows })),
 		refreshCapture: raise({ type: 'CAPTURE_UPDATED' }),
 		close: enqueueActions(({ enqueue }) => {
 			enqueue.sendTo('worker', { type: 'STOP' })
+			enqueue.sendTo('search', { type: 'STOP' })
 			enqueue.sendTo('receipts', { type: 'SHUTDOWN' })
 			enqueue.assign({
 				reader: undefined,
 				rows: [],
+				query: '',
+				selectedTags: [],
 				url: '',
 				content: undefined,
 				sync: {},
@@ -279,6 +297,8 @@ export const libraryMachine = setup<
 		organizationOperations: {},
 		view: 'all',
 		favorites: false,
+		selectedTags: [],
+		query: '',
 		saveRef: undefined,
 		url: '',
 		content: undefined,
@@ -300,6 +320,12 @@ export const libraryMachine = setup<
 			type: 'parallel',
 			invoke: [
 				{ id: 'collection', src: 'collection', input: ({ context }) => context.capability },
+				{
+					id: 'search',
+					src: 'search',
+					input: ({ context }) => ({ capability: context.capability?.search }),
+					onSnapshot: {}
+				},
 				{ id: 'worker', src: 'worker', input: ({ context }) => context.capability },
 				{ id: 'receipts', src: 'receipts', input: ({ self }) => ({ reportTo: self }) }
 			],
@@ -308,6 +334,25 @@ export const libraryMachine = setup<
 				target: 'closed'
 			},
 			on: {
+				QUERY: {
+					guard: and([
+						'canUseLibrary',
+						({ context, event }) =>
+							!!context.capability?.search && querySchema.safeParse(event.query).success
+					]),
+					actions: [
+						assign({ query: ({ event }) => event.query }),
+						sendTo('search', ({ event }) => ({ type: 'QUERY', query: event.query }))
+					]
+				},
+				RETRY_SEARCH: { guard: 'canUseLibrary', actions: sendTo('search', { type: 'RETRY' }) },
+				TAG_FILTER: {
+					guard: and([
+						'canUseLibrary',
+						({ event }) => z.array(z.string().min(1).max(512)).max(64).safeParse(event.keys).success
+					]),
+					actions: assign({ selectedTags: ({ event }) => [...new Set(event.keys)] })
+				},
 				FILTER: {
 					guard: and([
 						'canUseLibrary',
@@ -344,13 +389,14 @@ export const libraryMachine = setup<
 						]),
 						actions: [
 							'updateRows',
+							'updateSearch',
 							'refreshCapture',
 							raise(({ context }) => ({ type: 'OPEN', id: context.readerId }))
 						]
 					},
 					{
 						guard: 'canUseLibrary',
-						actions: ['updateRows', 'refreshCapture']
+						actions: ['updateRows', 'updateSearch', 'refreshCapture']
 					}
 				],
 				LIST_FAILED: { actions: assign({ listFailed: true }) },
@@ -830,6 +876,8 @@ export const libraryMachine = setup<
 				organizationOperations: {},
 				reader: undefined,
 				rows: [],
+				selectedTags: [],
+				query: '',
 				sync: {},
 				background: {},
 				url: '',
@@ -860,9 +908,27 @@ export function selectLibraryView(
 				else if (c.background[row.id]) rowMessages[row.id] = required(c.background[row.id])
 			}
 		}
-	const rows = visible ? c.rows.filter((row) => matchesLibraryFilter(row, c.view, c.favorites)) : []
+	const search = selectSearchView(visible ? snapshot.children.search?.getSnapshot() : undefined)
+	const resultIds = search.query === c?.query ? search.ids : undefined
+	const matches = visible
+		? c.rows.filter(
+				(row) => matchesLibraryFilter(row, c.view, c.favorites) && matchesTags(row, c.selectedTags)
+			)
+		: []
+	const byId = new Map(matches.map((row) => [row.id, row]))
+	const rows =
+		visible && c.query.trim()
+			? (resultIds?.flatMap((id) => (byId.has(id) ? [required(byId.get(id))] : [])) ?? [])
+			: matches
+	const captured = visible
+		? c.rows.find((row) => row.id === c.captureId || row.contentId === c.captureId)
+		: undefined
+
 	return {
 		rows,
+		search,
+		restoreCaptureId: captured?.trashed ? captured.id : undefined,
+		tags: visible ? (c.rows[0]?.tagVocabulary ?? []) : [],
 		organizationMessage: stateFeedback(meta, 'organization'),
 		canOrganize:
 			visible &&
@@ -879,7 +945,7 @@ export function selectLibraryView(
 				? { text: t('library.list_failed'), variant: 'error' as const }
 				: undefined,
 		emptyMessage:
-			visible && !rows.length
+			visible && !rows.length && (!c.query.trim() || resultIds !== undefined)
 				? {
 						text: t(c.rows.length ? 'library.filtered_empty' : 'library.empty'),
 						variant: 'info' as const
@@ -902,7 +968,8 @@ export function selectLibraryView(
 			: {},
 		rowMessages,
 		readable: visible ? Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId])) : {},
-		canOpenCapture: visible && c.captureReady && !c.background[c.captureId],
+		canOpenCapture:
+			visible && c.captureReady && !c.background[c.captureId] && captured?.trashed !== true,
 		canCancel:
 			visible &&
 			snapshot.can({ type: 'CANCEL' }) &&

@@ -1,3 +1,4 @@
+import { openSearchWorker } from '../../search/browser.js'
 import type { LibraryCapability } from '../../contracts/library.js'
 import { createActor, toPromise } from 'xstate'
 import { createArticleWorkerHostMachine } from '../../machines/capture/article-worker-host.js'
@@ -10,7 +11,8 @@ import type { LibraryRecords } from './records.js'
 export function createLibraryCapability(
 	records: LibraryRecords,
 	_libraryId: string,
-	request: (mode: 'resolve' | 'extract', body: unknown, signal: AbortSignal) => Promise<Response>
+	request: (mode: 'resolve' | 'extract', body: unknown, signal: AbortSignal) => Promise<Response>,
+	cacheNamespace: string
 ): LibraryCapability {
 	const workerMachine = createArticleWorkerHostMachine({
 		libraryId: records.articles.libraryId,
@@ -28,6 +30,13 @@ export function createLibraryCapability(
 	})
 	return {
 		libraryId: records.articles.libraryId,
+		search: {
+			isCurrent: records.isCurrent,
+			libraryId: cacheNamespace + ':' + records.articles.libraryId,
+			load: records.searchDocuments,
+			observe: records.observeSearch,
+			open: openSearchWorker
+		},
 		spawnOrganization: (spawn, request) =>
 			spawn(records.articles.organization.machine, { input: request }),
 		isCurrent: records.isCurrent,

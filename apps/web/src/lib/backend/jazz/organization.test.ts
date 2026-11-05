@@ -143,3 +143,60 @@ it('organizes a legacy document through its native reference without altering th
 	const row = await a.db.one(app.organizationOperations.where({ libraryId: a.id }))
 	expect(organizationOperationSchema.parse(row)).toMatchObject({ articleId: id, value: 'archive' })
 })
+
+it('persists canonical tag memberships and independent Trash, enforcing private immutable history', async () => {
+	const a = await owner('tag-owner'),
+		b = await owner('tag-foreign')
+	const change = async (request: OrganizationRequest) => {
+		const result = await toPromise(
+			createActor(a.records.articles.organization.machine, { input: request }).start()
+		)
+		expect(result.kind).toBe('saved')
+		if (result.kind !== 'saved') throw new Error('Expected saved change')
+		await Promise.all(result.receipts.map((receipt) => receipt.global()))
+	}
+	await change({ id: a.articleId, field: 'tag', value: 'Straße', assigned: true })
+	await change({ id: a.articleId, field: 'tag', value: 'STRASSE', assigned: false })
+	await change({ id: a.articleId, field: 'trashed', value: true })
+	const tags = await a.db.all(app.tagOperations.where({ libraryId: a.id }))
+	expect(tags).toHaveLength(2)
+	expect(new Set(tags.map((tag) => tag.key)).size).toBe(1)
+	const removed = tags.find((tag) => !tag.assigned)!
+	expect(JSON.parse(removed.parents)).toContain(tags.find((tag) => tag.assigned)?.id)
+	expect(await b.db.all(app.tagOperations.where({ libraryId: a.id }))).toEqual([])
+	await expect(
+		a.db.update(app.tagOperations, removed.id, { assigned: true }).wait({ tier: 'global' })
+	).rejects.toThrow(/denied|rejected/i)
+	await expect(a.db.delete(app.tagOperations, removed.id).wait({ tier: 'global' })).rejects.toThrow(
+		/denied|rejected/i
+	)
+	await expect(
+		b.db
+			.insert(app.tagOperations, {
+				libraryId: b.id,
+				articleId: a.articleId,
+				documentId: null,
+				key: removed.key,
+				name: removed.name,
+				assigned: true,
+				parents: '[]'
+			})
+			.wait({ tier: 'global' })
+	).rejects.toThrow(/denied|rejected/i)
+	await change({ id: a.articleId, field: 'trashed', value: false })
+	const rows = await a.db.all(app.organizationOperations.where({ libraryId: a.id }))
+	const projected = projectOrganization(
+		[
+			{
+				id: a.articleId,
+				title: 'URL',
+				url: null,
+				contentId: null,
+				originalSavedAt: '',
+				failure: null
+			}
+		],
+		rows.map((row) => organizationOperationSchema.parse(row))
+	)
+	expect(projected[0]?.trashed).toBe(false)
+})

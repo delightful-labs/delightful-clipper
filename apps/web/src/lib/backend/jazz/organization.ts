@@ -1,3 +1,5 @@
+import { tagOperationSchema, tagRequestSchema, tagKey } from '../../capture/tags.js'
+import type { TagOperation } from '../../capture/tags.js'
 import { stageOrganization } from '../../machines/storage/mutations.js'
 import { ReadTier } from 'jazz-tools'
 import type { Db, WriteHandle } from 'jazz-tools'
@@ -18,6 +20,18 @@ import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 import { app } from './schema.js'
+/** Data projection only: observed spelling is reused without renaming the shared tag. */
+function tagAssignmentValues(draft: OrganizationDraft) {
+	const request = tagRequestSchema.parse(draft)
+	const known = draft.operations
+		.filter((operation) => operation.field === 'tag')
+		.sort((a, b) => a.id.localeCompare(b.id))[0]
+	return {
+		key: tagKey(request.value),
+		name: known?.name ?? request.value,
+		assigned: request.assigned
+	}
+}
 export function createOrganizationRecords(
 	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
@@ -72,6 +86,35 @@ export function createOrganizationRecords(
 			}
 			return stageOrganization({
 				hasArticle: !!r.article,
+				tagAssignment: a.draft.field === 'tag',
+				insertTagArticle: () => {
+					const request = tagRequestSchema.parse(a.draft)
+					r.tx.insert(
+						app.tagOperations,
+						{
+							libraryId,
+							articleId: request.id,
+							documentId: null,
+							...tagAssignmentValues(a.draft),
+							parents: JSON.stringify(r.parents)
+						},
+						{ id: a.operationId }
+					)
+				},
+				insertTagDocument: () => {
+					const request = tagRequestSchema.parse(a.draft)
+					r.tx.insert(
+						app.tagOperations,
+						{
+							libraryId,
+							articleId: null,
+							documentId: request.id,
+							...tagAssignmentValues(a.draft),
+							parents: JSON.stringify(r.parents)
+						},
+						{ id: a.operationId }
+					)
+				},
 				insertArticle: () => {
 					r.tx.insert(
 						app.organizationOperations,
@@ -91,13 +134,40 @@ export function createOrganizationRecords(
 		}
 	})
 	return {
-		machine: createOrganizationMachine(stage, isCurrent, async (request) => {
-			const rows = await db.all(
-				app.organizationOperations.where({ libraryId, field: request.field }),
+		machine: createOrganizationMachine(
+			stage,
+			isCurrent,
+			async (request) => {
+				const rows = await db.all(
+					app.organizationOperations.where({ libraryId, field: request.field }),
+					{ tier: ReadTier.LocalFirst }
+				)
+				return rows.map((row) => organizationOperationSchema.parse(row))
+			},
+			async (request) => {
+				const tag = tagRequestSchema.parse(request)
+				const rows = await db.all(app.tagOperations.where({ libraryId, key: tagKey(tag.value) }), {
+					tier: ReadTier.LocalFirst
+				})
+				return rows.map((row) => tagOperationSchema.parse(row))
+			}
+		),
+		subscribeTags: (next: (rows: TagOperation[]) => void, error: () => void) =>
+			db.subscribe(
+				app.tagOperations.where({ libraryId }),
+				{
+					onUpdate: (rows) => {
+						const parsed = rows.map((row) => tagOperationSchema.safeParse(row))
+						if (parsed.some((row) => !row.success)) {
+							error()
+							return
+						}
+						next(parsed.flatMap((row) => (row.success ? [row.data] : [])))
+					},
+					onError: error
+				},
 				{ tier: ReadTier.LocalFirst }
-			)
-			return rows.map((row) => organizationOperationSchema.parse(row))
-		}),
+			),
 		subscribe: (next: (rows: OrganizationOperation[]) => void, error: () => void) =>
 			db.subscribe(
 				app.organizationOperations.where({ libraryId }),

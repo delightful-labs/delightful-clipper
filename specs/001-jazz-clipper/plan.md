@@ -1,7 +1,7 @@
 # Technical Plan: Jazz Clipper and Reader
 
 **Baseline**: `main` (implementation through feature branches/PRs) · **Updated**: 2026-11-05 · **Spec**: [spec.md](spec.md)
-**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is implemented in PR #14; see [library-organization.md](library-organization.md) for the state/resource model and the handoff for qualification. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
+**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is merged in PR #14 and DUI radio/list refinements in PR #15 (`72b6fc9`). The current combined search/article-tags/Trash batch is described in [search-tags-trash.md](search-tags-trash.md), including pending copy approval; see [library-organization.md](library-organization.md) for the state/resource model and the handoff for qualification. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
 
 ## Summary
 
@@ -22,7 +22,7 @@ Preserve the approved reduced MVP: no content refresh/revision migration, highli
 | Shared UI | DUI `0.0.25` radio-group archive from commit `04b3230` is pinned; consume shared controls/theme, including the shell-wide floating Add link button and modal URL form. Do not implement the deferred image viewer. |
 | Extraction | Readability 0.6.0 baseline with inert DOM parsing and pre-extraction collection of referenced footnotes; packaged browser-serialized capture worker implemented and tested in Chromium. First-party Node parsing handles raw fetched HTML. Defuddle is a measured alternative, not a simultaneous second pipeline at launch. |
 | Localization | i18next 26.7.1 investigated baseline, instance per application runtime with bundled English resources; reactive Svelte adapter; descriptors from workers/machines. No translation-management interface. |
-| Search | MiniSearch 7.2.0 investigated baseline inside a dedicated worker, derived per-account index persisted locally and rebuildable from saved records. No server search. |
+| Search | MiniSearch 7.2.0 pinned and implemented inside a dedicated worker, derived per-account index persisted locally and rebuildable from saved records. No server search. |
 | Images | Worker decode/resize/re-encode with locally durable native Jazz byte values; initial policy max 2048 px long edge, quality 0.82 WebP candidate, 2 MiB output target, 20 MiB direct-extension input/40 MP decode ceiling; gateway image responses are capped at 4 MiB for buffered hosting limits. These are provisional technical limits, not validated quality claims. PNG fallback for lossless diagrams/alpha; unavailable images remain explicit rather than silently omitted. |
 | Hosting | Netlify adapter with private app rendered client-side, first-party fetch endpoints on Node functions. Verify Kit 3 Vite-based adapter configuration; legacy config is not the target. |
 | Validation | Current source/build, native policy and web/offline/Chromium extension suites pass; basic organization runtime is `741844e`, with evidence in the handoff. Broader browser/device and full product acceptance remain open. |
@@ -71,7 +71,8 @@ Trusted offscreen runtime: DLF/application/library -> serial clip/save actor -> 
 Trusted Options: DLF recovery/restoration; notify runtime of the selected account
 Service worker: public shell/worker/WASM cache; incoming mobile sharing remains unbuilt
 Netlify gateway: authenticated, bounded public-source fetch and inert extraction
-Future owners: annotations, note drafts, images, search, positions and preferences
+Search child → native snapshot reader + dedicated index/cache worker
+Future owners: annotations, note drafts, images, positions and preferences
 ```
 
 Actors are attached to the application runtime, not a reader/list component. Each actor defines states, guards, ownership, cancellation and cleanup before async leaf operations are implemented. Every report has account binding, generation and request identity. Account change drains/settles owners, terminates workers, revokes blob URLs, and stops subscriptions; stale A→B→A reports cannot write into the new binding.

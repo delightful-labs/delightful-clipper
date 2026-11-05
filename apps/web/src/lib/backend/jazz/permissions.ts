@@ -15,6 +15,24 @@ export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 	policy.libraries.allowInsert.where(canonical)
 	policy.libraries.allowUpdate.whereOld(canonical).whereNew(canonical)
 	policy.libraries.allowDelete.never()
+	policy.tagOperations.allowRead.where((row) => owns(row.libraryId))
+	policy.tagOperations.allowInsert.where((row) =>
+		allOf([
+			owns(row.libraryId),
+			anyOf([
+				allOf([
+					{ documentId: null },
+					policy.articles.exists.where({ id: row.articleId, libraryId: row.libraryId })
+				]),
+				allOf([
+					{ articleId: null },
+					policy.documents.exists.where({ id: row.documentId, libraryId: row.libraryId })
+				])
+			])
+		])
+	)
+	policy.tagOperations.allowUpdate.never()
+	policy.tagOperations.allowDelete.never()
 	policy.organizationOperations.allowRead.where((row) => owns(row.libraryId))
 	policy.organizationOperations.allowInsert.where((row) =>
 		allOf([
@@ -34,7 +52,8 @@ export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 					{ field: 'status' },
 					anyOf([{ value: 'inbox' }, { value: 'later' }, { value: 'archive' }])
 				]),
-				allOf([{ field: 'favorite' }, anyOf([{ value: 'true' }, { value: 'false' }])])
+				allOf([{ field: 'favorite' }, anyOf([{ value: 'true' }, { value: 'false' }])]),
+				allOf([{ field: 'trashed' }, anyOf([{ value: 'true' }, { value: 'false' }])])
 			])
 		])
 	)

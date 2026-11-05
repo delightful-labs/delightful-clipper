@@ -1,3 +1,5 @@
+import { projectTags } from '../../capture/tags.js'
+import type { TagOperation } from '../../capture/tags.js'
 import { projectOrganization } from '../../capture/organization.js'
 import type { OrganizationOperation } from '../../capture/organization.js'
 import { assign, enqueueActions, fromCallback, sendTo, setup } from 'xstate'
@@ -10,10 +12,12 @@ type Capability = {
 	articles: Subscribe<Article>
 	documents: Subscribe<DocumentHeader>
 	organization?: Subscribe<OrganizationOperation>
+	tags?: Subscribe<TagOperation>
 }
 type Input = { next: (rows: LibraryArticle[]) => void; error: () => void }
 type Event =
 	| { type: 'ORGANIZATION'; rows: OrganizationOperation[] }
+	| { type: 'TAGS'; rows: TagOperation[] }
 	| { type: 'ARTICLES'; rows: Article[] }
 	| { type: 'DOCUMENTS'; rows: DocumentHeader[] }
 	| { type: 'ERROR' | 'STOP' }
@@ -30,11 +34,13 @@ const model = setup<
 		articles: Article[]
 		documents: DocumentHeader[]
 		organization: OrganizationOperation[]
+		tags: TagOperation[]
 		callbacks: Input | undefined
 	},
 	Event,
 	{
 		organization: typeof subscription
+		tags: typeof subscription
 		articles: typeof subscription
 		documents: typeof subscription
 		output: typeof output
@@ -46,7 +52,13 @@ const model = setup<
 	string,
 	Input
 >({
-	actors: { organization: subscription, articles: subscription, documents: subscription, output },
+	actors: {
+		tags: subscription,
+		organization: subscription,
+		articles: subscription,
+		documents: subscription,
+		output
+	},
 	guards: { current: () => false },
 	actions: {
 		reportError: enqueueActions(({ check, enqueue }) => {
@@ -54,17 +66,27 @@ const model = setup<
 		}),
 		publish: sendTo('output', ({ context }) => ({
 			type: 'ROWS',
-			rows: projectOrganization(
-				projectLibraryArticles(context.articles, context.documents),
-				context.organization,
+			rows: projectTags(
+				projectOrganization(
+					projectLibraryArticles(context.articles, context.documents),
+					context.organization,
+					context.articles
+				),
+				context.tags,
 				context.articles
 			)
 		})),
-		clear: assign({ articles: [], documents: [], organization: [], callbacks: undefined })
+		clear: assign({ articles: [], documents: [], organization: [], tags: [], callbacks: undefined })
 	}
 }).createMachine({
 	id: 'article-collection',
-	context: ({ input }) => ({ articles: [], documents: [], organization: [], callbacks: input }),
+	context: ({ input }) => ({
+		articles: [],
+		documents: [],
+		organization: [],
+		tags: [],
+		callbacks: input
+	}),
 	initial: 'observing',
 	invoke: {
 		id: 'output',
@@ -78,10 +100,15 @@ const model = setup<
 		observing: {
 			invoke: [
 				{ src: 'articles', onError: 'failed' },
+				{ src: 'tags', onError: 'failed' },
 				{ src: 'organization', onError: 'failed' },
 				{ src: 'documents', onError: 'failed' }
 			],
 			on: {
+				TAGS: {
+					guard: 'current',
+					actions: [assign({ tags: ({ event }) => event.rows }), 'publish']
+				},
 				ORGANIZATION: {
 					guard: 'current',
 					actions: [assign({ organization: ({ event }) => event.rows }), 'publish']
@@ -121,6 +148,12 @@ export function createArticleCollectionMachine(cap: Capability) {
 	)
 	return model.provide({
 		actors: {
+			tags: fromCallback(({ sendBack }) =>
+				cap.tags?.(
+					(rows) => sendBack({ type: 'TAGS', rows }),
+					() => sendBack({ type: 'ERROR' })
+				)
+			),
 			articles,
 			documents,
 			organization: fromCallback(({ sendBack }) =>

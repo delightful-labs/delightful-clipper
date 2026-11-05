@@ -13,6 +13,7 @@ export type OrganizationSpawner = <S extends Snapshot<ArticleSaveResult>>(
 	options: { input: OrganizationRequest }
 ) => ActorRef<S, { type: 'SHUTDOWN' }>
 export type LibraryCapability = {
+	search?: import('./search.js').SearchCapability
 	spawnOrganization?: (spawn: OrganizationSpawner, request: OrganizationRequest) => SaveRef
 	libraryId: string
 	isCurrent: () => boolean
@@ -24,6 +25,9 @@ export type LibraryCapability = {
 export type LibraryEvent =
 	| { type: 'ORGANIZE'; request: OrganizationRequest }
 	| { type: 'FILTER'; view: LibraryView; favorites: boolean }
+	| { type: 'TAG_FILTER'; keys: string[] }
+	| { type: 'QUERY'; query: string }
+	| { type: 'RETRY_SEARCH' }
 	| ReadReport
 	| SyncReport
 	| QueueReport

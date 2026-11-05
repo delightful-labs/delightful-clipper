@@ -24,7 +24,9 @@
 		"jazz-napi": "2.0.0-alpha.59",
 		"jazz-tools": "2.0.0-alpha.59",
 		"jsdom": "29.1.1",
+		"minisearch": "7.2.0",
 		"svelte": "5.57.2",
+		"unicode-case-folding": "1.1.2",
 		"xstate": "5.33.2",
 		"zod": "4.6.7"
 	},

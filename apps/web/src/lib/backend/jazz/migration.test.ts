@@ -1,3 +1,5 @@
+import discoveryMigration from './migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
+import { app as preDiscoveryApp } from './prediscovery-schema.test-support.js'
 import { it, expect } from 'vitest'
 import { readFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -23,7 +25,8 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 	)
 	const legacyPermissions = Object.fromEntries(
 		Object.entries(permissions).filter(
-			([table]) => table !== 'articles' && table !== 'organizationOperations'
+			([table]) =>
+				table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
 		)
 	)
 	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-upgrade-'))
@@ -119,11 +122,21 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			...upgrade,
 			schema: preOrganizationApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'organizationOperations')
+				Object.entries(permissions).filter(
+					([table]) => table !== 'organizationOperations' && table !== 'tagOperations'
+				)
 			)
 		})
-		await deploy({ ...upgrade, migration: organizationMigration })
-		await deploy({ ...upgrade, migration: organizationMigration })
+		await deploy({
+			...upgrade,
+			schema: preDiscoveryApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'tagOperations')
+			),
+			migration: organizationMigration
+		})
+		await deploy({ ...upgrade, migration: discoveryMigration })
+		await deploy({ ...upgrade, migration: discoveryMigration })
 		context = await createJazzSession({
 			...config,
 			serverUrl: server.url,
@@ -177,3 +190,139 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		await rm(dataDir, { recursive: true, force: true })
 	}
 })
+
+it('adds tags to a populated organization-era replica without resetting identity, favorites or status', async () => {
+	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-discovery-upgrade-'))
+	const server = await startLocalJazzServer({ dataDir: join(dataDir, 'authority') })
+	const oldPermissions = Object.fromEntries(
+		Object.entries(permissions).filter(([table]) => table !== 'tagOperations')
+	)
+	const config = {
+		appId: server.appId,
+		serverUrl: server.url,
+		driver: { type: 'persistent' as const, dataPath: join(dataDir, 'replica') },
+		env: 'test' as const
+	}
+	let identity: string | null = null
+	const store = {
+		read: async () => identity,
+		update: async (transform: (value: string | null) => string) => {
+			identity = transform(identity)
+		}
+	}
+	let context: Awaited<ReturnType<typeof createJazzSession>> | undefined
+	try {
+		await deploy({
+			appId: server.appId,
+			serverUrl: server.url,
+			adminSecret: server.adminSecret,
+			schema: preDiscoveryApp,
+			permissions: oldPermissions
+		})
+		context = await createJazzSession({
+			...config,
+			app: preDiscoveryApp,
+			permissions: oldPermissions,
+			store,
+			initial: 'local-first'
+		})
+		const owner = context.getSnapshot().account!.id,
+			db = context.getSnapshot().client!.db
+		await db
+			.insert(preDiscoveryApp.libraries, { ownerId: owner, bootstrapVersion: '1' }, { id: owner })
+			.wait({ tier: 'global' })
+		const articleId = crypto.randomUUID()
+		await db
+			.insert(
+				preDiscoveryApp.articles,
+				{
+					libraryId: owner,
+					url: 'https://example.com/pre-discovery',
+					originalSavedAt: '2026-01-01',
+					contentId: null,
+					operationId: null,
+					failure: null
+				},
+				{ id: articleId }
+			)
+			.wait({ tier: 'global' })
+		for (const [field, value] of [
+			['status', 'later'],
+			['favorite', 'true']
+		])
+			await db
+				.insert(preDiscoveryApp.organizationOperations, {
+					libraryId: owner,
+					articleId,
+					documentId: null,
+					field: field!,
+					value: value!,
+					parents: '[]'
+				})
+				.wait({ tier: 'global' })
+		await context.close()
+		context = undefined
+		await deploy({
+			appId: server.appId,
+			serverUrl: server.url,
+			adminSecret: server.adminSecret,
+			schema: app,
+			permissions,
+			migration: discoveryMigration
+		})
+		context = await createJazzSession({
+			...config,
+			app,
+			permissions,
+			store,
+			initial: 'local-first'
+		})
+		expect(context.getSnapshot().account?.id).toBe(owner)
+		const current = context.getSnapshot().client!.db
+		const records = createLibraryRecords(current, owner, () => true)
+		await expect
+			.poll(() => current.one(app.articles.where({ id: articleId })))
+			.toMatchObject({ id: articleId })
+		await expect
+			.poll(
+				async () =>
+					(await current.all(app.organizationOperations.where({ libraryId: owner }))).length
+			)
+			.toBe(2)
+		const change = await toPromise(
+			createActor(records.articles.organization.machine, {
+				input: { id: articleId, field: 'tag', value: 'Migrated', assigned: true }
+			}).start()
+		)
+		expect(change.kind).toBe('saved')
+		if (change.kind !== 'saved') throw new Error('Expected tag save')
+		await Promise.all(change.receipts.map((receipt) => receipt.global()))
+		const rows = await new Promise<import('../../contracts/articles.js').LibraryArticle[]>(
+			(resolve) => {
+				const stop = records.articles.subscribe(
+					(rows) => {
+						if (rows.some((row) => row.tags?.length && row.status === 'later' && row.favorite)) {
+							queueMicrotask(() => stop())
+							resolve(rows)
+						}
+					},
+					() => {
+						throw new Error('Collection unavailable')
+					}
+				)
+			}
+		)
+		expect(rows[0]).toMatchObject({
+			id: articleId,
+			status: 'later',
+			favorite: true,
+			trashed: false,
+			tags: [{ name: 'Migrated' }],
+			originalSavedAt: '2026-01-01'
+		})
+	} finally {
+		await context?.close()
+		await server.stop()
+		await rm(dataDir, { recursive: true, force: true })
+	}
+}, 30000)

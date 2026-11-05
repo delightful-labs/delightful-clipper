@@ -141,12 +141,47 @@ export function stageAttachment(input: AttachmentInput) {
 
 /** The transaction retains the checked parent while this chart selects its native reference. */
 export function stageOrganization(
-	input: Receipt & { hasArticle: boolean; insertArticle: () => void; insertDocument: () => void }
+	input: Receipt & {
+		hasArticle: boolean
+		tagAssignment?: boolean
+		insertArticle: () => void
+		insertDocument: () => void
+		insertTagArticle?: () => void
+		insertTagDocument?: () => void
+	}
 ) {
-	const machine = setup<{ hasArticle: boolean }, { type: 'UNUSED' }>({}).createMachine({
-		context: { hasArticle: input.hasArticle },
-		initial: 'selectingParent',
+	const machine = setup<{ hasArticle: boolean; tagAssignment: boolean }, { type: 'UNUSED' }>(
+		{}
+	).createMachine({
+		context: { hasArticle: input.hasArticle, tagAssignment: input.tagAssignment === true },
+		initial: 'selectingKind',
 		states: {
+			selectingKind: {
+				always: [
+					{ guard: ({ context }) => context.tagAssignment, target: 'selectingTagParent' },
+					{ target: 'selectingParent' }
+				]
+			},
+			selectingTagParent: {
+				always: [
+					{ guard: ({ context }) => context.hasArticle, target: 'tagArticle' },
+					{ target: 'tagDocument' }
+				]
+			},
+			tagArticle: {
+				entry: () => {
+					if (!input.insertTagArticle) throw new Error('Missing tag mutation')
+					input.insertTagArticle()
+				},
+				always: 'done'
+			},
+			tagDocument: {
+				entry: () => {
+					if (!input.insertTagDocument) throw new Error('Missing tag mutation')
+					input.insertTagDocument()
+				},
+				always: 'done'
+			},
 			selectingParent: {
 				always: [
 					{ guard: ({ context }) => context.hasArticle, target: 'article' },

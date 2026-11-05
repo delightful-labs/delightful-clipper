@@ -15,7 +15,11 @@ import { app } from './schema.js'
 export type Session = JazzSession<JazzClient>
 
 export type LibraryFactory = typeof createLibraryCapability
-function bindHost(session: Session, libraryFactory: LibraryFactory): AccountHost {
+function bindHost(
+	session: Session,
+	libraryFactory: LibraryFactory,
+	cacheNamespace: string
+): AccountHost {
 	const readiness = createJazzSessionReadinessAdapter(session)
 	const recovery = createJazzRecoveryAdapter(() => session.getSnapshot().account)
 	let current: AccountObservation = { status: 'signed-out' }
@@ -52,7 +56,8 @@ function bindHost(session: Session, libraryFactory: LibraryFactory): AccountHost
 					}
 				}),
 				account.id,
-				requestCapture
+				requestCapture,
+				cacheNamespace
 			),
 			root: {
 				read: async () => {
@@ -114,7 +119,12 @@ export function accountInput(
 	// Match Finance: provision a local identity silently when no saved identity exists.
 	return {
 		startup: registry.getJazzStartupBinding({ ...config, initial: 'local-first', runtimeSources }),
-		bind: (session) => bindHost(session, libraryFactory)
+		bind: (session) =>
+			bindHost(
+				session,
+				libraryFactory,
+				JSON.stringify([config.appId, config.serverUrl, config.env])
+			)
 	}
 }
 
@@ -125,7 +135,12 @@ export function existingAccountInput(
 ): AccountInput<Session> {
 	return {
 		startup: registry.getJazzStartupBinding({ ...config, runtimeSources }),
-		bind: (session) => bindHost(session, libraryFactory)
+		bind: (session) =>
+			bindHost(
+				session,
+				libraryFactory,
+				JSON.stringify([config.appId, config.serverUrl, config.env])
+			)
 	}
 }
 

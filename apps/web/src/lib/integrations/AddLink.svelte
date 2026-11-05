@@ -29,6 +29,17 @@
 	{#if view.canCancel}<Button type="button" onclick={() => actor.send({ type: 'CANCEL' })}
 			>{t('actions.cancel')}</Button
 		>{/if}
+	{#if view.restoreCaptureId}
+		<Button
+			appearance="flat"
+			disabled={!view.canOrganize}
+			onclick={() =>
+				actor.send({
+					type: 'ORGANIZE',
+					request: { id: view.restoreCaptureId!, field: 'trashed', value: false }
+				})}>{action('restore', 'article')}</Button
+		>
+	{/if}
 	{#if view.canOpenCapture && capture && isArticleId(capture.captureId)}
 		<a href={articleHref(capture.captureId)}>{action('open', 'saved_article')}</a>
 	{/if}

@@ -1,3 +1,5 @@
+import discoveryMigration from '../src/lib/backend/jazz/migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
+import { app as preDiscoveryApp } from '../src/lib/backend/jazz/prediscovery-schema.test-support.js'
 import { openAddLink } from './add-link.js'
 import { test, expect, chromium, firefox } from '@playwright/test'
 import type { Page } from '@playwright/test'
@@ -15,7 +17,8 @@ const appId = '2db98ae3-fcf1-41e8-b7d3-9818496bde60'
 const baseURL = 'http://127.0.0.1:5180'
 const legacyPermissions = Object.fromEntries(
 	Object.entries(permissions).filter(
-		([table]) => table !== 'articles' && table !== 'organizationOperations'
+		([table]) =>
+			table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
 	)
 )
 async function savedArticle(page: Page, url: string) {
@@ -144,11 +147,21 @@ for (const browser of [chromium, firefox]) {
 						...upgrade,
 						schema: preOrganizationApp,
 						permissions: Object.fromEntries(
-							Object.entries(permissions).filter(([table]) => table !== 'organizationOperations')
+							Object.entries(permissions).filter(
+								([table]) => table !== 'organizationOperations' && table !== 'tagOperations'
+							)
 						),
 						migration
 					})
-					await deploy({ ...upgrade, migration: organizationMigration })
+					await deploy({
+						...upgrade,
+						schema: preDiscoveryApp,
+						permissions: Object.fromEntries(
+							Object.entries(permissions).filter(([table]) => table !== 'tagOperations')
+						),
+						migration: organizationMigration
+					})
+					await deploy({ ...upgrade, migration: discoveryMigration })
 					if (!keepOpen)
 						context = await browser.launchPersistentContext(join(directory, 'profile'), {
 							headless: true

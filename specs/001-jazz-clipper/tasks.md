@@ -2,7 +2,25 @@
 
 Updated 2026-11-05. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
-## Current handoff — DUI radio filters
+## Current handoff — search, article tags and Trash/restore
+
+PR #15 is merged at `72b6fc9`; work uses `feat/library-search-tags-trash` from updated main and will remain in one unmerged PR. The user authorized all testing in this session. See [ownership/design](search-tags-trash.md).
+
+- [x] Inspect native schemas/policies, document XState ownership before async implementation, retain DLF identity/recovery and DUI presentation.
+- [x] Add versioned Unicode-folded article-tag keys, shared derived vocabulary, immutable causal membership operations, native owner/parent/immutability policies and additive populated-library migration.
+- [x] Extend existing organization operations with independent Trash/restore; preserve content/status/favorites/tags and prevent duplicate capture from restoring implicitly.
+- [x] Implement dedicated MiniSearch worker, disposable deployment/account-keyed cache, native snapshot loading/invalidation, stale-query/generation/scope rejection and shutdown cleanup.
+- [x] Compose query/status/favorites/AND-tag filters in the library actor, with explicit Trash scope.
+- [x] Add actual DUI tag dialog/filter controls and existing-copy Restore actions in Add Link/reader; retain no inline article status text.
+- [x] Add domain, actor, native policy/migration and real-browser tests including cross-client offline edits, cache rebuild and full browser restart.
+- [ ] Obtain explicit approval for six exact proposed catalog additions. General feature authorization is not string approval under localization memory.
+- [ ] Expose search input, localized search feedback/retry, Trash radio and Move to Trash control after copy approval; qualify those actual controls in browser/offline suites.
+- [x] Complete final repository/browser/offline/packaged-extension validation: 497 unit tests/72 files plus one skip, full verification/build, 38 full web cases, six discovery cases, five production offline cases and eleven packaged extension cases pass; evidence/limits are in the handoff.
+- [ ] Push one Conventional Commits PR targeting main; leave draft while the copy-dependent controls are incomplete. Do not merge.
+
+No permanent deletion, bulk actions, global vocabulary rename/delete, annotation search/tags, images or annotations enter this batch.
+
+## Prior handoff — DUI radio filters
 
 PR #14 is merged at `5e3c5c6`. The radio-filter follow-up uses a new `feat/library-radio-filters` branch from updated main.
 

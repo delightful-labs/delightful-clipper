@@ -139,6 +139,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 	const organization = createOrganizationRecords(db, libraryId, isCurrent)
 	const collection = createArticleCollectionMachine({
 		organization: organization.subscribe,
+		tags: organization.subscribeTags,
 		isCurrent,
 		articles: (next, error) =>
 			db.subscribe(

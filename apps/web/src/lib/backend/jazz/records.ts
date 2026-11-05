@@ -11,6 +11,8 @@ import { createSaveRecordMachine } from '../../machines/storage/save.js'
 import { prepareSave } from '../../storage/prepare.js'
 import { app } from './schema.js'
 import { createArticleRecords } from './articles.js'
+import type { SearchDocument } from '../../search/schema.js'
+import type { LibraryArticle } from '../../contracts/articles.js'
 import type { Article } from '../../contracts/articles.js'
 
 type Resource = TransactionResource
@@ -191,6 +193,30 @@ export function createLibraryRecords(
 	}
 	return {
 		...records,
+		searchDocuments: async (
+			rows: LibraryArticle[],
+			_signal: AbortSignal
+		): Promise<SearchDocument[]> => {
+			const [documents, snapshots] = await Promise.all([
+				db.all(app.documents.where({ libraryId }), { tier: ReadTier.LocalFirst }),
+				db.all(app.snapshots.where({ libraryId }), { tier: ReadTier.LocalFirst })
+			])
+			const docs = new Map(documents.map((document) => [document.id, document]))
+			const texts = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot.text]))
+			return rows.map((row) => ({
+				id: row.id,
+				title: row.title,
+				url: row.url ?? '',
+				text: texts.get(docs.get(row.contentId ?? row.id)?.snapshotId ?? '') ?? '',
+				originalSavedAt: row.originalSavedAt
+			}))
+		},
+		observeSearch: (dirty: () => void, error: () => void) =>
+			db.subscribe(
+				app.snapshots.where({ libraryId }),
+				{ onUpdate: dirty, onError: error },
+				{ tier: ReadTier.LocalFirst }
+			),
 		articles: createArticleRecords(db, libraryId, isCurrent, records.saveMachine),
 		isCurrent,
 		hasDocument: async (id: string) => {

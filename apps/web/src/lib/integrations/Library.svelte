@@ -3,14 +3,27 @@
 	import type { ActorRefFrom, SnapshotFrom } from 'xstate'
 	import { articleHref } from '../reader/routes.js'
 	import { libraryMachine, selectLibraryView } from '../machines/capture/library.js'
-	import { Button, StatusMessage, Select, RadioGroup, RadioItem, Heading } from 'delightful-ui'
+	import {
+		Button,
+		StatusMessage,
+		Select,
+		RadioGroup,
+		RadioItem,
+		Heading,
+		Checkbox
+	} from 'delightful-ui'
 	import { articleStatuses, libraryViews, isArticleStatus } from '../capture/organization.js'
-	import { t, action } from '../localization/index.js'
+	import ArticleTags from './ArticleTags.svelte'
+	import { t, action, noun } from '../localization/index.js'
 	let {
 		actor,
 		gatewayEnabled
 	}: { actor: ActorRefFrom<typeof libraryMachine>; gatewayEnabled: boolean } = $props()
 	let snapshot = $state<SnapshotFrom<typeof libraryMachine>>()
+	// Trash presentation awaits the explicitly requested catalog approval.
+	const availableViews = libraryViews.filter((view) => view !== 'trash')
+	let tagArticleId = $state<string>()
+	let tagsOpen = $state(false)
 	const capture = $derived(snapshot?.context)
 	const view = $derived(selectLibraryView(snapshot, gatewayEnabled))
 
@@ -28,7 +41,7 @@
 		<h2>{t('library.heading')}</h2>
 		<div class="filters">
 			<RadioGroup label={t('library.status_label')} value={capture.view}>
-				{#each libraryViews as status}
+				{#each availableViews as status}
 					<RadioItem
 						value={status}
 						onchange={() =>
@@ -45,6 +58,23 @@
 				>{t('library.views.favorites')}</Button
 			>
 		</div>
+		{#if view.tags.length}
+			<div role="group" aria-label={noun('tag', 2)} class="tag-filters">
+				{#each view.tags as tag (tag.key)}
+					<Checkbox
+						label={tag.name}
+						checked={capture.selectedTags.includes(tag.key)}
+						onchange={(event) =>
+							actor.send({
+								type: 'TAG_FILTER',
+								keys: event.currentTarget.checked
+									? [...capture.selectedTags, tag.key]
+									: capture.selectedTags.filter((key) => key !== tag.key)
+							})}
+					/>
+				{/each}
+			</div>
+		{/if}
 		{#if view.organizationMessage}<StatusMessage {...view.organizationMessage} />{/if}
 		{#if view.listMessage}<StatusMessage {...view.listMessage} />{/if}
 		{#if view.emptyMessage}<p>{view.emptyMessage.text}</p>{/if}
@@ -88,6 +118,14 @@
 											request: { id: row.id, field: 'favorite', value: !row.favorite }
 										})}>{t(row.favorite ? 'library.unfavorite' : 'library.favorite')}</Button
 								>
+								<Button
+									appearance="flat"
+									disabled={!view.canOrganize}
+									onclick={() => {
+										tagArticleId = row.id
+										tagsOpen = true
+									}}>{noun('tag', 2)}</Button
+								>
 							</div>
 						</div>
 						{#if !view.readable[row.id]}
@@ -103,6 +141,13 @@
 			</ul>
 		{/if}
 	</section>
+	<ArticleTags
+		{actor}
+		row={capture.rows.find((row) => row.id === tagArticleId)}
+		tags={view.tags}
+		enabled={view.canOrganize}
+		bind:open={tagsOpen}
+	/>
 {/if}
 
 <style>
@@ -110,6 +155,12 @@
 		margin-block: 1.5rem;
 	}
 
+	.tag-filters {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--dui-spacing-sm);
+		margin-block: var(--dui-spacing-sm);
+	}
 	.filters,
 	.organization-controls {
 		display: flex;
