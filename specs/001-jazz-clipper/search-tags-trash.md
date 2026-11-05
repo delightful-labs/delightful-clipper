@@ -9,7 +9,9 @@ Authorized together in one feature PR, based on merged PR #15 (`72b6fc9`). The u
 - Trash is an independent causal scalar, retaining status/favorite/tags/content. Restore changes only that scalar. Re-clipping cannot restore implicitly or replace content. No permanent deletion or purge is authorized here.
 - Existing schemas are inspected before extension. Add native tag-assignment history and owner/parent policies with a typed additive migration; extend the existing organization operation/policy for the trash scalar. No identity/recovery changes.
 
-## MiniSearch dependency review — pending user review
+## MiniSearch dependency review
+
+**Retention approved 2026-11-05:** after reviewing purpose, alternatives and tradeoffs for both dependencies, the user said, “ok we can keep both for now.” Retain MiniSearch 7.2.0; the MiniSearch/FlexSearch benchmark task remains open. This does not approve installing FlexSearch or another dependency.
 
 This comparison was added after the user questioned the dependency installation. The original plan/research named MiniSearch and described a worker-owned disposable index, but did not adequately compare alternatives. It is not evidence of a completed pre-install comparison or explicit user approval. Installing the package without discussing it was a process error; listing it in the plan did not supply approval.
 
@@ -32,9 +34,11 @@ Concrete local-first ecosystem examples provide adoption evidence, not a popular
 - PowerSync documents client-side SQLite FTS5 with triggers maintaining derived FTS tables. Joplin documents SQLite FTS4. These are examples of using the local database's search facilities, but neither grants Clipper a supported FTS interface through Jazz. Introducing a separate SQLite/WASM search store would require evaluation and user approval. [PowerSync FTS](https://docs.powersync.com/client-sdks/full-text-search), [Joplin search](https://joplinapp.org/help/apps/search/).
 - MindooDB documents a MiniSearch-powered local full-text index fed from its changefeed. This establishes another local-first project's use, not broad community popularity. [MindooDB full-text search](https://github.com/klehmann/MindooDB#full-text-search).
 
-Limitations: the searchable index must fit in browser memory. Current Clipper code reloads/rebuilds the dataset on relevant article/tag/snapshot changes rather than using incremental index updates, even though MiniSearch offers update/removal APIs. Correctness and offline restart are covered; representative large-library memory, cold-build time and query latency have not been measured against alternatives. There is no evidence-based claim that MiniSearch is the fastest, smallest overall, or necessary for a small library. Approval of retaining/replacing the dependency remains for the user; this record does not authorize adding an alternative.
+Limitations: the searchable index must fit in browser memory. Current Clipper code reloads/rebuilds the dataset on relevant article/tag/snapshot changes rather than using incremental index updates, even though MiniSearch offers update/removal APIs. Correctness and offline restart are covered; representative large-library memory, cold-build time and query latency have not been measured against alternatives. There is no evidence-based claim that MiniSearch is the fastest, smallest overall, or necessary for a small library. The user approved retaining the current dependency for now; changing engines or adding an alternative still requires explicit approval.
 
-## Unicode case-folding dependency review — pending user review
+## Unicode case-folding dependency review
+
+**Retention approved 2026-11-05:** the same explicit “keep both for now” approval covers unicode-case-folding 1.1.2 and its current tag/search behavior. Evidence limits and durable-key compatibility requirements below remain applicable.
 
 The installed `unicode-case-folding` 1.1.2 package is used in two places: `capture/tags.ts` produces durable tag membership keys, and `search/engine.ts` normalizes both indexed terms and queries. Tag names are trimmed and NFC-normalized, folded, then NFC-normalized again for keys; the display name is retained separately. Search folds NFC-normalized tokens. The package contains a generated lookup table and mapping functions, with no runtime dependencies.
 
@@ -52,7 +56,7 @@ The rationale for the chosen package was its narrow full-fold API and fixed data
 
 Evidence limits: the package's generated header and current upstream generator refer to the Unicode `latest` data URL rather than identifying a fixed UCD release. Pinning package 1.1.2 and its lockfile integrity fixes the installed table bytes; the exact source Unicode release and exhaustive conformance have not been independently established. Current tests are targeted examples, not full Unicode conformance or a browser bundle/performance comparison. [Upstream generator](https://github.com/avivkeller/unicode-case-folding/blob/main/src/build.js).
 
-Tag keys already persisted in immutable operations include the `cf-1.1.2:` prefix and are validated against the fold function. Changing the algorithm/table requires a deliberate compatibility/migration strategy for existing memberships; it must not simply invalidate retained history or strand assignments. An equivalent vendored implementation must reproduce current keys. Search-only normalization changes require rebuilding the disposable index. Retaining/replacing the package remains pending user review; this record makes no dependency change.
+Tag keys already persisted in immutable operations include the `cf-1.1.2:` prefix and are validated against the fold function. Changing the algorithm/table requires a deliberate compatibility/migration strategy for existing memberships; it must not simply invalidate retained history or strand assignments. An equivalent vendored implementation must reproduce current keys. Search-only normalization changes require rebuilding the disposable index. The user approved retaining the current package for now; replacements or behavior changes remain separate decisions. This approval makes no dependency or schema change.
 
 ## State/resource ownership before async work
 

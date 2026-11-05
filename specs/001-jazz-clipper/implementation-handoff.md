@@ -381,3 +381,7 @@ Validation: `pnpm verify` passed (512 unit tests, one platform skip; formatting,
 At the user’s request, MiniSearch now allows 20% edit distance (rounded by the engine and capped at two edits) for terms of at least four characters. Short terms remain exact; every query term must still match. Existing engine ranking discounts fuzzy matches while preserving title boosts and stable date/ID ties. This query-time option applies equally to fresh and restored indexes, so no index/cache migration is needed. Worker/state/resource ownership and catalog copy are unchanged.
 
 Validation: `pnpm verify` passed (513 unit tests, one platform skip; formatting, lint, strict types and build). Ten discovery browser cases passed, including continue/continues and misspelled multiword queries through the actual search input. Five production offline cases passed, including fuzzy tag/body matching after a complete offline restart and derived-cache rebuild.
+
+### Dependency retention approval
+
+On 2026-11-05, after the separate MiniSearch and Unicode case-folding reviews, the user explicitly approved retaining both current packages “for now.” Keep MiniSearch 7.2.0 and unicode-case-folding 1.1.2. The MiniSearch/FlexSearch performance comparison remains an unchecked future task; this retention approval does not authorize installing FlexSearch or another new dependency. The approval and remaining evidence limits are recorded in search-tags-trash.md.
