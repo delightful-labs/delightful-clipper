@@ -24,6 +24,8 @@ Validation so far: six real native policy/transaction cases and five actor/lifec
 
 ## Current batch — search, article tags and Trash/restore
 
+The user requested a future MiniSearch/FlexSearch performance comparison. The unchecked [benchmark checklist](tasks.md#search-engine-performance-comparison--planned) covers semantic parity, representative corpora, cold/warm and update timings, memory, persisted index size, actual production bundle deltas, responsiveness, browser/device evidence and a reproducible decision report. No comparison has been run and no FlexSearch dependency has been installed; package/version approval precedes future harness setup.
+
 PR [#16](https://github.com/delightful-labs/delightful-clipper/pull/16), branch `feat/library-search-tags-trash`, starts from merged PR #15 (`72b6fc9`). The user authorized these capabilities and all testing in one session and one PR. Implementation and copy-dependent presentation are complete; do not merge without explicit authorization. [Search/tags/Trash design](search-tags-trash.md) records the model, approval and native policies.
 
 Delivered: DUI article-tag assignment/removal and AND-tag filters; actual Search articles input over saved title/URL/body text and tag names; all five status/Trash radios plus independent Favorites; per-row Move to Trash/Restore preserving content, status, favorites and tags; explicit Add Link/direct-reader Restore without automatic restoration on duplicate capture. Search/status/favorite/selected tags combine with AND. Default views exclude Trash; Trash is explicit. Row removal returns focus to the next surviving row, previous row or heading. Capture stays quiet except Already saved, and the compact sidebar follows browser online/offline events.
