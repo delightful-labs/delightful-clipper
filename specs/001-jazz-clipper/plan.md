@@ -1,7 +1,7 @@
 # Technical Plan: Jazz Clipper and Reader
 
-**Baseline**: `main` (implementation through feature branches/PRs) · **Updated**: 2026-11-04 · **Spec**: [spec.md](spec.md)
-**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is open for review. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
+**Baseline**: `main` (implementation through feature branches/PRs) · **Updated**: 2026-11-05 · **Spec**: [spec.md](spec.md)
+**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is implemented in PR #14; see [library-organization.md](library-organization.md) for the state/resource model and the handoff for qualification. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
 
 ## Summary
 
@@ -19,13 +19,13 @@ Preserve the approved reduced MVP: no content refresh/revision migration, highli
 | UI | Svelte 5.57.2 baseline shared with DLF/DUI. SvelteKit 3.0.1/Vite 8.3.4 pinned and qualified with the Netlify adapter. No `next` dependencies. |
 | Workflow | XState 5.33.2; typed owners and leaf SDK/I/O actors. Read the DLF XState memory as integration guidance. |
 | Persistence | Jazz `2.0.0-alpha.59` pinned to sibling integration baseline, behind Clipper repository capabilities. DLF granular exports, not its empty root barrel. |
-| Shared UI | DUI `0.0.25` component-properties vendor archive is pinned; consume existing controls/theme. Do not implement the deferred image viewer. |
+| Shared UI | DUI `0.0.25` floating-action vendor archive is pinned; consume shared controls/theme, including the shell-wide floating Add link button and modal URL form. Do not implement the deferred image viewer. |
 | Extraction | Readability 0.6.0 baseline with inert DOM parsing and pre-extraction collection of referenced footnotes; packaged browser-serialized capture worker implemented and tested in Chromium. First-party Node parsing handles raw fetched HTML. Defuddle is a measured alternative, not a simultaneous second pipeline at launch. |
 | Localization | i18next 26.7.1 investigated baseline, instance per application runtime with bundled English resources; reactive Svelte adapter; descriptors from workers/machines. No translation-management interface. |
 | Search | MiniSearch 7.2.0 investigated baseline inside a dedicated worker, derived per-account index persisted locally and rebuildable from saved records. No server search. |
 | Images | Worker decode/resize/re-encode with locally durable native Jazz byte values; initial policy max 2048 px long edge, quality 0.82 WebP candidate, 2 MiB output target, 20 MiB direct-extension input/40 MP decode ceiling; gateway image responses are capped at 4 MiB for buffered hosting limits. These are provisional technical limits, not validated quality claims. PNG fallback for lossless diagrams/alpha; unavailable images remain explicit rather than silently omitted. |
 | Hosting | Netlify adapter with private app rendered client-side, first-party fetch endpoints on Node functions. Verify Kit 3 Vite-based adapter configuration; legacy config is not the target. |
-| Validation | Current source/build, native policy and web/offline/Chromium extension suites pass; latest qualified runtime is `dfc675c`. Broader browser/device and full product acceptance remain open. |
+| Validation | Current source/build, native policy and web/offline/Chromium extension suites pass; basic organization runtime is `741844e`, with evidence in the handoff. Broader browser/device and full product acceptance remain open. |
 | Performance | Spec SC-001 capture target <30s excluding slow sources; bounded extraction/input limits, initial text before assets, no heavy full-text indexing on UI thread. No library-size throughput SLA is invented. |
 
 ## Original planning setup and constitution check (historical)
@@ -97,9 +97,9 @@ Minimum versions will be set from validated capability/SDK requirements before r
 1. Execute the bounded foundation batch: lock the stack/archives, document Clipper agreements, integrate DLF and implement the canonical private root with acceptance checks.
 2. Complete the actual domain schema/policies, local durability and native byte-asset acceptance before enabling dependent capture paths.
 3. Build a vertical Add Link → saved snapshot → offline restart path with redirect-safe gateway and failure entry.
-4. Chromium trusted restoration/direct capture is delivered. Select the next bounded feature with the user; Firefox packaging and source/reader exact annotation anchoring remain open.
+4. Chromium trusted restoration/direct capture is delivered. Basic library organization follows in PR #14. Firefox packaging and source/reader exact annotation anchoring remain open.
 5. Add notes, overlapping highlights, local image acquisition, position restoration and shell caching.
-6. Add organization/Trash, offline search and the retained reader controls; finish target-device qualification.
+6. Complete tags/Trash, offline search and the retained reader controls after basic status/favorite organization; finish target-device qualification.
 
 ## Open implementation gates
 

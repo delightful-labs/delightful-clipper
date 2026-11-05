@@ -1,3 +1,4 @@
+import { openAddLink } from './add-link.js'
 import { test, expect, chromium, firefox } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { startLocalJazzServer, deploy } from 'jazz-tools/dev'
@@ -7,11 +8,15 @@ import { join } from 'node:path'
 import { legacyApp } from '../src/lib/backend/jazz/legacy-schema.test-support.js'
 import { app } from '../src/lib/backend/jazz/schema.js'
 import permissions from '../src/lib/backend/jazz/permissions.js'
+import { app as preOrganizationApp } from '../src/lib/backend/jazz/preorganization-schema.test-support.js'
+import organizationMigration from '../src/lib/backend/jazz/migrations/20261105T033336-library-organization-80988faa7219-5315ce57b805.js'
 import migration from '../src/lib/backend/jazz/migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
 const appId = '2db98ae3-fcf1-41e8-b7d3-9818496bde60'
 const baseURL = 'http://127.0.0.1:5180'
 const legacyPermissions = Object.fromEntries(
-	Object.entries(permissions).filter(([table]) => table !== 'articles')
+	Object.entries(permissions).filter(
+		([table]) => table !== 'articles' && table !== 'organizationOperations'
+	)
 )
 async function savedArticle(page: Page, url: string) {
 	return page.evaluate(async (url) => {
@@ -19,6 +24,27 @@ async function savedArticle(page: Page, url: string) {
 		const [row] = await (await import(/* @vite-ignore */ path)).inspect([url])
 		return row ? { id: row.id, url: row.url, originalSavedAt: row.originalSavedAt } : null
 	}, url)
+}
+async function expectLegacyReader(page: Page, diagnostics: string[]) {
+	try {
+		await expect(
+			page.locator('article').getByText('Legacy browser content', { exact: true })
+		).toBeVisible()
+	} catch (error) {
+		// The observer emits only allowlisted state paths/outcomes, never actor context or credentials.
+		console.info(
+			'Legacy reader lifecycle',
+			JSON.stringify(diagnostics.filter((line) => line.includes('clipper:machines')).slice(-60))
+		)
+		console.info(
+			'Legacy reader presentation',
+			JSON.stringify({
+				articleCount: await page.locator('article').count(),
+				statuses: await page.getByRole('status').allTextContents()
+			})
+		)
+		throw error
+	}
 }
 for (const browser of [chromium, firefox]) {
 	for (const rejectedFirst of [false, true]) {
@@ -88,9 +114,13 @@ for (const browser of [chromium, firefox]) {
 							)
 							.toBe(true)
 						const input = page.getByLabel('Article URL', { exact: true })
-						if (await input.isVisible()) {
+						if (await page.getByRole('button', { name: 'Add link', exact: true }).isVisible()) {
+							await openAddLink(page)
 							await input.fill('https://example.com/before-migration')
-							await page.getByRole('button', { name: 'Add link', exact: true }).click()
+							await page
+								.getByRole('dialog', { name: 'Add link', exact: true })
+								.getByRole('button', { name: 'Add link', exact: true })
+								.click()
 							await expect(
 								page.getByRole('button', { name: 'Add link', exact: true })
 							).toBeEnabled()
@@ -110,7 +140,15 @@ for (const browser of [chromium, firefox]) {
 						if (!keepOpen) await context.close()
 					}
 					// In the live case the old client and any waiting new client remain open during publication.
-					await deploy({ ...upgrade, migration })
+					await deploy({
+						...upgrade,
+						schema: preOrganizationApp,
+						permissions: Object.fromEntries(
+							Object.entries(permissions).filter(([table]) => table !== 'organizationOperations')
+						),
+						migration
+					})
+					await deploy({ ...upgrade, migration: organizationMigration })
 					if (!keepOpen)
 						context = await browser.launchPersistentContext(join(directory, 'profile'), {
 							headless: true
@@ -139,7 +177,7 @@ for (const browser of [chromium, firefox]) {
 						await observe(page)
 						await page.goto(baseURL)
 					}
-					await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled({
+					await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled({
 						timeout: 20000
 					})
 					await expect(
@@ -152,18 +190,20 @@ for (const browser of [chromium, firefox]) {
 						}, before.accountId)
 					).toBe(true)
 					await page.getByRole('link', { name: 'Legacy browser article', exact: true }).click()
-					await expect(
-						page.locator('article').getByText('Legacy browser content', { exact: true })
-					).toBeVisible()
+					await expectLegacyReader(page, diagnostics)
 					await page.goto(baseURL)
 					const url = 'https://example.com/after-browser-upgrade'
+					await openAddLink(page)
 					await page.getByLabel('Article URL', { exact: true }).fill(url)
-					await page.getByRole('button', { name: 'Add link', exact: true }).click()
+					await page
+						.getByRole('dialog', { name: 'Add link', exact: true })
+						.getByRole('button', { name: 'Add link', exact: true })
+						.click()
 					await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 					await expect.poll(() => savedArticle(page, url)).not.toBeNull()
 					const saved = await savedArticle(page, url)
 					await page.reload()
-					await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled()
+					await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 					expect(await savedArticle(page, url)).toEqual(saved)
 					await context.close()
 					context = await browser.launchPersistentContext(join(directory, 'profile'), {
@@ -172,12 +212,10 @@ for (const browser of [chromium, firefox]) {
 					page = await context.newPage()
 					await observe(page)
 					await page.goto(baseURL)
-					await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled()
+					await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 					expect(await savedArticle(page, url)).toEqual(saved)
 					await page.getByRole('link', { name: 'Legacy browser article', exact: true }).click()
-					await expect(
-						page.locator('article').getByText('Legacy browser content', { exact: true })
-					).toBeVisible()
+					await expectLegacyReader(page, diagnostics)
 					expect(
 						diagnostics.some((line) =>
 							line.includes('durable catalogue must have exactly one genesis schema')

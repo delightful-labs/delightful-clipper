@@ -8,6 +8,8 @@ import { startLocalJazzServer, deploy } from 'jazz-tools/dev'
 import { app } from './schema.js'
 import { legacyApp } from './legacy-schema.test-support.js'
 import permissions from './permissions.js'
+import { app as preOrganizationApp } from './preorganization-schema.test-support.js'
+import organizationMigration from './migrations/20261105T033336-library-organization-80988faa7219-5315ce57b805.js'
 import migration from './migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
 import { createLibraryRecords } from './records.js'
 import { readRecord } from '../../machines/storage/read.test-support.js'
@@ -20,7 +22,9 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		)
 	)
 	const legacyPermissions = Object.fromEntries(
-		Object.entries(permissions).filter(([table]) => table !== 'articles')
+		Object.entries(permissions).filter(
+			([table]) => table !== 'articles' && table !== 'organizationOperations'
+		)
 	)
 	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-upgrade-'))
 	const serverOptions = {
@@ -111,8 +115,15 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			permissions,
 			migration
 		}
-		await deploy(upgrade)
-		await deploy(upgrade)
+		await deploy({
+			...upgrade,
+			schema: preOrganizationApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'organizationOperations')
+			)
+		})
+		await deploy({ ...upgrade, migration: organizationMigration })
+		await deploy({ ...upgrade, migration: organizationMigration })
 		context = await createJazzSession({
 			...config,
 			serverUrl: server.url,

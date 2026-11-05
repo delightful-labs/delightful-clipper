@@ -1,19 +1,33 @@
 # Implementation tasks and acceptance status
 
-Updated 2026-11-04. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
+Updated 2026-11-05. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
-## Current handoff — browser clipper MVP
+## Current handoff — basic library organization
 
-PR #12 is merged into main at `3149ea4`. Current work is on `feat/browser-clipper`, open PR [#13](https://github.com/delightful-labs/delightful-clipper/pull/13), targeting main. Runtime and Linux CI/Netlify evidence is qualified at `dfc675c`. The new sign-in gate is locally validated; its latest CI qualification remains pending. Do not merge without explicit authorization. See [implementation-handoff.md](implementation-handoff.md).
+PR #13 is merged into main at `2cd8731`. The user verified extension sign-in and saving into the web app's library. Basic organization is authorized on `feat/library-organization`, based on that verified current main. Do not merge its eventual PR.
 
-### Resume in the next thread
+### Basic organization — implemented in PR #14
 
-- [ ] Review the direct-save Chromium clipper with the user. Rebuild/reload the unpacked extension when needed; use trusted Options to restore the web account.
-- [ ] Recheck PR #13 status. Continue its feature branch if open; if merged, start new work from updated main on a new feature branch. Never merge or push directly to main without authorization.
-- [ ] Ask the user to select the next bounded feature after review; no next product feature is currently authorized. The remaining items below are a backlog, not an instruction to implement all of them.
-- [ ] Keep Firefox/store distribution, annotations, images and richer reader/organization features explicitly incomplete. Full retry scheduling is not a required follow-up to this delivered batch.
+- [x] Inspect actual native article/content schemas and policies; document the ownership/state model before asynchronous implementation in [library-organization.md](library-organization.md).
+- [x] Implement separate status/favorite causal projection, desired-value validation, native owner-scoped operations, local transaction drain and independent remote receipts.
+- [x] Add actor-owned status/favorites filtering and native subscription integration.
+- [x] Add focused projection, validation, lifecycle/filter/receipt tests and native policy tests.
+- [x] Obtain explicit approval for all nine exact catalog additions; the user answered “yes” in this conversation.
+- [x] Add DUI status/favorite controls, status views, an AND favorites filter and approved filtered-empty copy.
+- [x] Add four real-browser organization cases and extend the production offline-shell restart/sync case.
+- [x] Qualify native policies, browser organization, synchronization and offline restart in CI; preserve existing reader/identity/recovery coverage. Local listeners are sandbox-blocked.
+- [x] Publish `feat/library-organization` and open Conventional Commits PR [#14](https://github.com/delightful-labs/delightful-clipper/pull/14) targeting main.
+- [x] Record final CI evidence: source/build, web, offline and eleven packaged Chromium extension cases pass. Do not merge.
 
-URL-first saving and serial missing-content processing remain the web behavior. The Chromium clipper supplies rendered content through the same native save operation, using a trusted DLF session and packaged extraction worker. `pnpm verify` passes 442 unit tests with one platform-specific skip across 63 files, including strict extension checks and the production web build. All 24 web integration tests, five production offline tests and eleven real Chromium extension tests pass sequentially. Current evidence and limitations are in the handoff/tooling documentation.
+- [x] Apply readable state names to reader, worker failures, organization, offline and account feedback; retain resource ownership and existing copy.
+- [x] Use the shared DUI floating action button and modal URL form globally, preserving layout-owned save actors and approved copy.
+- [x] Verify desktop/mobile modal focus, dismissal and reader capture locally; adapt browser/offline/migration coverage. Full CI requalification follows the update.
+
+No bulk actions, tags, Trash, search, images or annotations are included. The retained backlog below remains future work.
+
+Current organization evidence: `741844e`, 471 source tests/67 files, 28 application browser cases and five production offline cases pass in [CI](https://github.com/delightful-labs/delightful-clipper/actions/runs/42011312647); all eleven extension cases also pass. The qualified runtime and immutable links are recorded in the handoff.
+
+Historical clipper baseline: URL-first saving and serial missing-content processing remain the web behavior. The Chromium clipper supplies rendered content through the same native save operation, using a trusted DLF session and packaged extraction worker. `pnpm verify` passes 442 unit tests with one platform-specific skip across 63 files, including strict extension checks and the production web build. All 24 web integration tests, five production offline tests and eleven real Chromium extension tests pass sequentially. Current evidence and limitations are in the handoff/tooling documentation.
 
 ## Chromium clipper MVP
 

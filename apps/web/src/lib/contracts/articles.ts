@@ -38,6 +38,8 @@ export type ArticleSaveCapability<
 	content: ActorLogic<C, { type: 'SHUTDOWN' }, SaveRequest>
 }
 export type LibraryArticle = {
+	status?: 'inbox' | 'later' | 'archive'
+	favorite?: boolean
 	id: string
 	title: string
 	url: string | null

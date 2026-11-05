@@ -1,0 +1,397 @@
+{
+	"organizationOperations": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "articleId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": true,
+				"references": "articles"
+			},
+			{
+				"name": "documentId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": true,
+				"references": "documents"
+			},
+			{
+				"name": "field",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "value",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "parents",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		],
+		"relations": {
+			"library": {
+				"kind": "forward",
+				"table": "libraries",
+				"column": "libraryId"
+			},
+			"article": {
+				"kind": "forward",
+				"table": "articles",
+				"column": "articleId"
+			},
+			"document": {
+				"kind": "forward",
+				"table": "documents",
+				"column": "documentId"
+			}
+		}
+	},
+	"articles": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "url",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "originalSavedAt",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "contentId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": true,
+				"references": "documents"
+			},
+			{
+				"name": "operationId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": true
+			},
+			{
+				"name": "failure",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": true
+			}
+		],
+		"relations": {
+			"library": {
+				"kind": "forward",
+				"table": "libraries",
+				"column": "libraryId"
+			},
+			"content": {
+				"kind": "forward",
+				"table": "documents",
+				"column": "contentId"
+			}
+		}
+	},
+	"articleSources": {
+		"columns": [
+			{
+				"name": "documentId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "documents"
+			},
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "finalUrl",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "submittedUrl",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "provenance",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		],
+		"relations": {
+			"library": {
+				"kind": "forward",
+				"table": "libraries",
+				"column": "libraryId"
+			},
+			"document": {
+				"kind": "forward",
+				"table": "documents",
+				"column": "documentId"
+			}
+		}
+	},
+	"libraries": {
+		"columns": [
+			{
+				"name": "ownerId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false
+			},
+			{
+				"name": "bootstrapVersion",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		],
+		"relations": {}
+	},
+	"storageOperations": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "payloadHash",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "createdAt",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		],
+		"relations": {
+			"library": {
+				"kind": "forward",
+				"table": "libraries",
+				"column": "libraryId"
+			}
+		}
+	},
+	"assets": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "operationId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "storageOperations"
+			},
+			{
+				"name": "mediaType",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "payload",
+				"column_type": {
+					"type": "Bytea"
+				},
+				"nullable": false
+			}
+		],
+		"relations": {
+			"library": {
+				"kind": "forward",
+				"table": "libraries",
+				"column": "libraryId"
+			},
+			"operation": {
+				"kind": "forward",
+				"table": "storageOperations",
+				"column": "operationId"
+			}
+		}
+	},
+	"snapshots": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "documentId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "storageOperations"
+			},
+			{
+				"name": "text",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "formatVersion",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		],
+		"relations": {
+			"library": {
+				"kind": "forward",
+				"table": "libraries",
+				"column": "libraryId"
+			},
+			"operation": {
+				"kind": "forward",
+				"table": "storageOperations",
+				"column": "documentId"
+			}
+		}
+	},
+	"documents": {
+		"columns": [
+			{
+				"name": "libraryId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "libraries"
+			},
+			{
+				"name": "operationId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "storageOperations"
+			},
+			{
+				"name": "snapshotId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "snapshots"
+			},
+			{
+				"name": "assetId",
+				"column_type": {
+					"type": "Uuid"
+				},
+				"nullable": false,
+				"references": "assets"
+			},
+			{
+				"name": "title",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			},
+			{
+				"name": "originalSavedAt",
+				"column_type": {
+					"type": "Text"
+				},
+				"nullable": false
+			}
+		],
+		"relations": {
+			"library": {
+				"kind": "forward",
+				"table": "libraries",
+				"column": "libraryId"
+			},
+			"operation": {
+				"kind": "forward",
+				"table": "storageOperations",
+				"column": "operationId"
+			},
+			"snapshot": {
+				"kind": "forward",
+				"table": "snapshots",
+				"column": "snapshotId"
+			},
+			"asset": {
+				"kind": "forward",
+				"table": "assets",
+				"column": "assetId"
+			}
+		}
+	}
+}

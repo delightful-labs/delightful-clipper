@@ -1,3 +1,4 @@
+import { createOrganizationRecords } from './organization.js'
 import { canAttachArticleContent, isPendingArticle } from '../../capture/article-policy.js'
 import { stageAttachment } from '../../machines/storage/mutations.js'
 import { createActor } from 'xstate'
@@ -17,7 +18,7 @@ type Resource = TransactionResource
 /** Reads stay bound to this DB/library; owning actors gate admission and late-result consumption.
  * Native write admission and commit scope protection live in transactionLifecycle. */
 export function createArticleRecords<S extends Snapshot<SaveResult>>(
-	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
+	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean,
 	content: ActorLogic<S, { type: 'SHUTDOWN' }, SaveRequest>
@@ -135,7 +136,9 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			return transactionReceipt(r)
 		}
 	})
+	const organization = createOrganizationRecords(db, libraryId, isCurrent)
 	const collection = createArticleCollectionMachine({
+		organization: organization.subscribe,
 		isCurrent,
 		articles: (next, error) =>
 			db.subscribe(
@@ -159,6 +162,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 
 	return {
 		libraryId,
+		organization,
 		read,
 		document,
 		intent,

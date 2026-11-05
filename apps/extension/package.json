@@ -10,7 +10,7 @@
 	"dependencies": {
 		"@mozilla/readability": "0.6.0",
 		"delightful-local-first": "file:../../vendor/delightful-local-first-aaf718d-logger.tgz",
-		"delightful-ui": "file:../../vendor/delightful-ui-0.0.25-component-properties.tgz",
+		"delightful-ui": "file:../../vendor/delightful-ui-0.0.25-floating-action.tgz",
 		"dompurify": "3.4.17",
 		"i18next": "26.7.1",
 		"jazz-tools": "2.0.0-alpha.59",

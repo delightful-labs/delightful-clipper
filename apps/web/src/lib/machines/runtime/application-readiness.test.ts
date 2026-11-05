@@ -209,8 +209,12 @@ describe('account/root ownership', () => {
 			snapshot.matches({ active: { flow: { running: 'signedOut' } } })
 		)
 		actor.send({ type: 'RESTORE', phrase: 'invalid synthetic phrase' })
-		await waitFor(actor, (snapshot) => snapshot.context.feedback === 'restoreInvalid')
+		await waitFor(
+			actor,
+			(snapshot) => selectApplicationView(snapshot, true).feedback === 'restoreInvalid'
+		)
 		expect(actor.getSnapshot().context.phrase).toBe('')
+		expect(actor.getSnapshot().matches({ active: { feedback: 'restoreInvalid' } })).toBe(true)
 		expect(selectApplicationView(actor.getSnapshot(), true).feedbackMessage).toEqual({
 			text: 'That recovery phrase is invalid. Check it and try again.',
 			variant: 'error'
@@ -445,7 +449,8 @@ it.each([
 	pending.resolve({ kind: 'unknown', operationId: id })
 	if (mode === 'shutdown' || mode.endsWith('-then-shutdown'))
 		await waitFor(actor, (s) => s.status === 'done')
-	else if (mode === 'restore') await waitFor(actor, (s) => s.context.feedback === 'restoreInvalid')
+	else if (mode === 'restore')
+		await waitFor(actor, (s) => selectApplicationView(s, true).feedback === 'restoreInvalid')
 	else if (mode === 'logout')
 		await waitFor(actor, () => vi.mocked(host.logout).mock.calls.length === 1)
 	else

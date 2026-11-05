@@ -1,3 +1,4 @@
+import { t } from '../../localization/index.js'
 import { expect, it, vi } from 'vitest'
 import { createActor, waitFor, toPromise } from 'xstate'
 import { createArticleQueueMachine } from './article-queue.js'
@@ -137,3 +138,41 @@ it('retains failure without a tight retry loop and retries explicitly on the sam
 	actor.send({ type: 'STOP' })
 	await toPromise(actor)
 })
+
+it.each([
+	['unknown', 'unknown', 'capture.status.unknown'],
+	['sessionUnavailable', 'sessionUnavailable', 'capture.errors.session_unavailable'],
+	['rateLimited', 'rateLimited', 'capture.errors.rate_limited'],
+	['canceled', 'canceled', 'capture.status.canceled'],
+	['gatewayUnavailable', 'captureFailed', 'capture.status.failed']
+] as const)(
+	'reports the named %s failure state and preserves the stored failure code',
+	async (code, state, key) => {
+		const gate = Promise.withResolvers<void>()
+		const report = vi.fn()
+		const fail = vi.fn(() => gate.promise)
+		const actor = createActor(
+			createArticleQueueMachine(
+				cap({
+					resolve: async () => {
+						throw new Error(code)
+					},
+					report,
+					fail
+				})
+			)
+		).start()
+		actor.send({ type: 'ROWS', rows: [row('https://example.com/failure-state')] })
+		await waitFor(actor, (s) => s.matches({ failing: state }))
+		expect(fail).toHaveBeenCalledWith(expect.any(String), code)
+		const name = Object.values(actor.getSnapshot().getMeta()).find((meta) => meta?.name)?.name
+		expect(name).toBe(t(key))
+		expect(report).toHaveBeenLastCalledWith(
+			expect.objectContaining({ message: { text: name, variant: 'error' }, cancelable: false })
+		)
+		gate.resolve()
+		await waitFor(actor, (s) => s.matches('idle'))
+		actor.send({ type: 'STOP' })
+		await toPromise(actor)
+	}
+)

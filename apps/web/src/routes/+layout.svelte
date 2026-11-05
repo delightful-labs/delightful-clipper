@@ -7,6 +7,7 @@
 		CAPTURE_GATEWAY_ENABLED
 	} from '$app/env/public'
 	import 'delightful-ui/theme.css'
+	import AppShell from '../lib/integrations/AppShell.svelte'
 	import Account from '../lib/integrations/Account.svelte'
 	import { t } from '../lib/localization/index.js'
 	let { children }: { children: Snippet } = $props()
@@ -14,18 +15,23 @@
 </script>
 
 <svelte:head><title>{t('app.title')}</title></svelte:head>
-<main>
-	<h1>{t('app.title')}</h1>
+{#if !admitted}<div><h1>{t('app.title')}</h1></div>{/if}
+{#if admitted}
+	<Account
+		appId={PUBLIC_JAZZ_APP_ID}
+		serverUrl={PUBLIC_JAZZ_SERVER_URL}
+		gatewayEnabled={CAPTURE_GATEWAY_ENABLED}
+	>
+		{#snippet shell(account, content)}
+			<AppShell {account}>{@render content()}</AppShell>
+		{/snippet}
+		{@render children()}
+	</Account>
+{/if}
+<div>
 	<OfflineShell
 		onAdmission={() => {
 			admitted = true
 		}}
 	/>
-	{#if admitted}
-		<Account
-			appId={PUBLIC_JAZZ_APP_ID}
-			serverUrl={PUBLIC_JAZZ_SERVER_URL}
-			gatewayEnabled={CAPTURE_GATEWAY_ENABLED}>{@render children()}</Account
-		>
-	{/if}
-</main>
+</div>

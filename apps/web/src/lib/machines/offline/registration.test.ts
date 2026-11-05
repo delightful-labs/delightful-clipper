@@ -36,7 +36,7 @@ it('keeps session admission closed until offline preparation settles, then retai
 	report?.({ type: 'STATUS', status: 'preparing' })
 	expect(selectShellView(actor.getSnapshot()).admitted).toBe(true)
 	report?.({ type: 'STATUS', status: 'waiting' })
-	expect(actor.getSnapshot().context.status).toBe('waiting')
+	expect(selectShellView(actor.getSnapshot()).status).toBe('waiting')
 	expect(selectShellView(actor.getSnapshot()).message?.text).toBe(
 		'An update is ready. Close all Clipper tabs and reopen to apply it safely.'
 	)
@@ -57,7 +57,7 @@ it('offers the normal DLF session path after unsupported or failed registration'
 			createShellRegistrationMachine({ register, observe: () => () => {} })
 		).start()
 		await waitFor(actor, (s) => selectShellView(s).admitted)
-		expect(['unsupported', 'failed']).toContain(actor.getSnapshot().context.status)
+		expect(['unsupported', 'failed']).toContain(selectShellView(actor.getSnapshot()).status)
 		actor.send({ type: 'SHUTDOWN' })
 	}
 })
@@ -91,10 +91,8 @@ it('does not block DLF acquisition forever when first installation stalls', asyn
 		s.matches({ running: { attempt: { active: { workflow: 'watching' } } } })
 	)
 	clock.increment(45000)
-	expect(actor.getSnapshot().context).toMatchObject({
-		status: 'failed',
-		registration: undefined
-	})
+	expect(selectShellView(actor.getSnapshot()).status).toBe('failed')
+	expect(actor.getSnapshot().context.registration).toBeUndefined()
 	expect(dispose).toHaveBeenCalledOnce()
 	expect(selectShellView(actor.getSnapshot()).message?.variant).toBe('error')
 	expect(selectShellView(actor.getSnapshot()).canRetry).toBe(true)
@@ -109,16 +107,16 @@ it('gives each retry a fresh deadline without revoking session admission', async
 	const actor = createActor(createShellRegistrationMachine({ register, observe: () => () => {} }), {
 		clock
 	}).start()
-	await waitFor(actor, (s) => s.context.status === 'failed')
+	await waitFor(actor, (s) => selectShellView(s).status === 'failed')
 	actor.send({ type: 'RETRY' })
 	expect(selectShellView(actor.getSnapshot()).admitted).toBe(true)
 	clock.increment(44999)
-	expect(actor.getSnapshot().context.status).toBe('preparing')
+	expect(selectShellView(actor.getSnapshot()).status).toBe('preparing')
 	clock.increment(1)
-	expect(actor.getSnapshot().context.status).toBe('failed')
+	expect(selectShellView(actor.getSnapshot()).status).toBe('failed')
 	actor.send({ type: 'RETRY' })
 	clock.increment(45000)
-	expect(actor.getSnapshot().context.status).toBe('failed')
+	expect(selectShellView(actor.getSnapshot()).status).toBe('failed')
 	expect(register).toHaveBeenCalledTimes(3)
 	actor.send({ type: 'SHUTDOWN' })
 })
@@ -143,7 +141,7 @@ it('retains admission and cancels the attempt deadline after initial readiness',
 	report?.({ type: 'STATUS', status: 'ready' })
 	report?.({ type: 'STATUS', status: 'preparing' })
 	clock.increment(90000)
-	expect(actor.getSnapshot().context.status).toBe('preparing')
+	expect(selectShellView(actor.getSnapshot()).status).toBe('preparing')
 	expect(selectShellView(actor.getSnapshot()).admitted).toBe(true)
 	expect(dispose).not.toHaveBeenCalled()
 	actor.send({ type: 'SHUTDOWN' })

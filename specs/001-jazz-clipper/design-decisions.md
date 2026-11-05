@@ -1,6 +1,6 @@
 # MVP design decisions and acceptance details
 
-**Updated**: 2026-11-04. Accepted interaction decisions and remaining product design. Implemented evidence is tracked in [tasks.md](tasks.md); unbuilt controls below remain requirements, not completion claims. The product spec governs any conflict.
+**Updated**: 2026-11-05. Accepted interaction decisions and remaining product design. Implemented evidence is tracked in [tasks.md](tasks.md); unbuilt controls below remain requirements, not completion claims. The product spec governs any conflict.
 
 ## Reader, navigation and accessibility
 
@@ -89,3 +89,11 @@ The delivered batch is ready for user review, not a claim of full product comple
 The later user correction requires sign-in before clipping, rather than silently saving into an unrelated extension-local identity. The web app still starts local-first without signup. Extension sign-in uses existing DLF recovery/restoration, not a new credential system or web-origin SSO. Existing stored identities are not automatically grandfathered as connected.
 
 Only a completed restoration can persist a nonsecret confirmation (account ID, Jazz app/server and a fresh confirmation ID). Persist it before notifying the hidden runtime. Toolbar states load that confirmation, verify the runtime’s actual account and only then inspect/capture/save the original source. Closing the popup without a fresh confirmation returns without saving. Confirmation alone is not authorization: a stale account/server scope must still fail native account admission. Source content and credentials never enter the same message boundary.
+
+## Basic organization batch
+
+PR #13 is merged and the user verified extension sign-in and saving into the web library. The next authorized batch is Inbox/Later/Archive plus independent favorites, status views with an AND favorites filter, native synchronization and offline restart. Existing articles default to Inbox/unfavorited; organization never changes original save order. The implementation state/ownership design is in [library-organization.md](library-organization.md). Tags, Trash, search, images, annotations and bulk actions remain excluded from this batch. PR #14 implements this bounded batch; the handoff records actual source/browser/offline evidence. Broader product and platform acceptance remains open.
+
+## Readable state names for workflow feedback
+
+Use localized `meta.name` and severity on owning states. Explicit states, guards and transitions select reader, capture, organization, offline and account outcomes. Parallel regions use message channels so account feedback or reader feedback cannot displace another workflow's status. Selectors project metadata; they do not reconstruct workflow outcomes from flags or translate status codes. A worker may forward an already-localized message from its owning machine. Persisted error/receipt codes remain domain data and retain their existing storage representation.

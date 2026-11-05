@@ -1,3 +1,5 @@
+import { projectOrganization } from '../../capture/organization.js'
+import type { OrganizationOperation } from '../../capture/organization.js'
 import { assign, enqueueActions, fromCallback, sendTo, setup } from 'xstate'
 import type { Article, LibraryArticle } from '../../contracts/articles.js'
 import type { DocumentHeader } from '../../contracts/storage.js'
@@ -7,9 +9,11 @@ type Capability = {
 	isCurrent: () => boolean
 	articles: Subscribe<Article>
 	documents: Subscribe<DocumentHeader>
+	organization?: Subscribe<OrganizationOperation>
 }
 type Input = { next: (rows: LibraryArticle[]) => void; error: () => void }
 type Event =
+	| { type: 'ORGANIZATION'; rows: OrganizationOperation[] }
 	| { type: 'ARTICLES'; rows: Article[] }
 	| { type: 'DOCUMENTS'; rows: DocumentHeader[] }
 	| { type: 'ERROR' | 'STOP' }
@@ -22,9 +26,19 @@ const output = fromCallback<OutputEvent, Input>(({ input, receive }) => {
 	})
 })
 const model = setup<
-	{ articles: Article[]; documents: DocumentHeader[]; callbacks: Input | undefined },
+	{
+		articles: Article[]
+		documents: DocumentHeader[]
+		organization: OrganizationOperation[]
+		callbacks: Input | undefined
+	},
 	Event,
-	{ articles: typeof subscription; documents: typeof subscription; output: typeof output },
+	{
+		organization: typeof subscription
+		articles: typeof subscription
+		documents: typeof subscription
+		output: typeof output
+	},
 	{},
 	{ publish: undefined; clear: undefined; reportError: undefined },
 	{ current: undefined },
@@ -32,7 +46,7 @@ const model = setup<
 	string,
 	Input
 >({
-	actors: { articles: subscription, documents: subscription, output },
+	actors: { organization: subscription, articles: subscription, documents: subscription, output },
 	guards: { current: () => false },
 	actions: {
 		reportError: enqueueActions(({ check, enqueue }) => {
@@ -40,13 +54,17 @@ const model = setup<
 		}),
 		publish: sendTo('output', ({ context }) => ({
 			type: 'ROWS',
-			rows: projectLibraryArticles(context.articles, context.documents)
+			rows: projectOrganization(
+				projectLibraryArticles(context.articles, context.documents),
+				context.organization,
+				context.articles
+			)
 		})),
-		clear: assign({ articles: [], documents: [], callbacks: undefined })
+		clear: assign({ articles: [], documents: [], organization: [], callbacks: undefined })
 	}
 }).createMachine({
 	id: 'article-collection',
-	context: ({ input }) => ({ articles: [], documents: [], callbacks: input }),
+	context: ({ input }) => ({ articles: [], documents: [], organization: [], callbacks: input }),
 	initial: 'observing',
 	invoke: {
 		id: 'output',
@@ -60,9 +78,14 @@ const model = setup<
 		observing: {
 			invoke: [
 				{ src: 'articles', onError: 'failed' },
+				{ src: 'organization', onError: 'failed' },
 				{ src: 'documents', onError: 'failed' }
 			],
 			on: {
+				ORGANIZATION: {
+					guard: 'current',
+					actions: [assign({ organization: ({ event }) => event.rows }), 'publish']
+				},
 				ARTICLES: {
 					guard: 'current',
 					actions: [assign({ articles: ({ event }) => event.rows }), 'publish']
@@ -97,7 +120,16 @@ export function createArticleCollectionMachine(cap: Capability) {
 		)
 	)
 	return model.provide({
-		actors: { articles, documents },
+		actors: {
+			articles,
+			documents,
+			organization: fromCallback(({ sendBack }) =>
+				cap.organization?.(
+					(rows) => sendBack({ type: 'ORGANIZATION', rows }),
+					() => sendBack({ type: 'ERROR' })
+				)
+			)
+		},
 		guards: { current: () => cap.isCurrent() }
 	})
 }

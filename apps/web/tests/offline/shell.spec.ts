@@ -1,3 +1,4 @@
+import { openAddLink } from '../add-link.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
@@ -127,8 +128,12 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await openAddLink(page)
 		await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/offline')
-		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+		await page
+			.getByRole('dialog', { name: 'Add link', exact: true })
+			.getByRole('button', { name: 'Add link', exact: true })
+			.click()
 
 		await page.evaluate(async () => {
 			await fetch('/api/private-probe', { headers: { Authorization: 'Bearer private-fixture' } })
@@ -152,6 +157,16 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.getByRole('link', { name: 'Open saved article', exact: true })
 			.getAttribute('href')
 		expect(readerPath).toMatch(/^\/articles\/[0-9a-f-]+$/)
+		const organized = page
+			.getByRole('region', { name: 'Saved articles' })
+			.locator('[data-article-id]')
+		await organized.getByLabel('Status', { exact: true }).selectOption('archive')
+		await expect(organized.getByLabel('Status', { exact: true })).toBeEnabled()
+		await organized.getByRole('button', { name: 'Favorite', exact: true }).click()
+		await expect(
+			organized.getByRole('button', { name: 'Remove favorite', exact: true })
+		).toBeEnabled()
+
 		await context.close()
 		await ui.stop()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
@@ -180,6 +195,19 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 				httpCacheCleared: true
 			})
 		)
+
+		await reopened.getByRole('link', { name: 'Open library', exact: true }).click()
+		const offlineRow = reopened
+			.getByRole('region', { name: 'Saved articles' })
+			.locator('[data-article-id]')
+		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
+		await expect(
+			offlineRow.getByRole('button', { name: 'Remove favorite', exact: true })
+		).toHaveAttribute('aria-pressed', 'true')
+		await reopened.getByRole('button', { name: 'Inbox', exact: true }).click()
+		await expect(reopened.getByText('No articles match this view.', { exact: true })).toBeVisible()
+		await reopened.getByRole('button', { name: 'Archive', exact: true }).click()
+		await expect(offlineRow).toBeVisible()
 		await context.setOffline(false)
 		await ui.start()
 		await startAuthority()
@@ -187,6 +215,16 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		expect(sourceReload?.status()).toBe(200)
 		expect(sourceReload?.fromServiceWorker()).toBe(true)
 		await restored.reload()
+
+		const syncedOrganization = restored
+			.getByRole('region', { name: 'Saved articles' })
+			.locator('[data-article-id]')
+		await expect(syncedOrganization.getByLabel('Status', { exact: true })).toHaveValue('archive', {
+			timeout: 30000
+		})
+		await expect(
+			syncedOrganization.getByRole('button', { name: 'Remove favorite', exact: true })
+		).toHaveAttribute('aria-pressed', 'true')
 		await restored
 			.getByRole('region', { name: 'Saved articles' })
 			.getByRole('link', { name: 'Completely offline article', exact: true })

@@ -219,3 +219,198 @@ it.each(['write-first', 'worker-first'] as const)(
 		expect(actor.getSnapshot().context.capability).toBeUndefined()
 	}
 )
+it('keeps an issued reader read when unrelated organization rows arrive', async () => {
+	const entered = Promise.withResolvers<void>(),
+		gate = Promise.withResolvers<import('../../contracts/storage.js').DocumentHeader | null>()
+	const document = {
+		id,
+		libraryId: 'library',
+		operationId: id,
+		snapshotId: id,
+		assetId: id,
+		title: candidate.title,
+		originalSavedAt: ''
+	}
+	const read = vi.fn(async () => {
+		entered.resolve()
+		return gate.promise
+	})
+	const actor = createActor(libraryMachine, {
+		input: testLibraryCapability(candidate, {
+			read: {
+				isCurrent: () => true,
+				document: read,
+				snapshot: async () => ({
+					id,
+					libraryId: 'library',
+					documentId: id,
+					text: candidate.text,
+					formatVersion: '1'
+				}),
+				asset: async () => null,
+				source: async () => null
+			}
+		})
+	}).start()
+	try {
+		actor.send({ type: 'OPEN', id })
+		await entered.promise
+		const generation = actor.getSnapshot().context.readerGeneration
+		for (const favorite of [true, false, true])
+			actor.send({
+				type: 'ROWS',
+				rows: [
+					{
+						id,
+						title: candidate.title,
+						url: candidate.finalUrl,
+						contentId: id,
+						originalSavedAt: '',
+						failure: null,
+						favorite
+					}
+				]
+			})
+		expect(actor.getSnapshot().context.readerGeneration).toBe(generation)
+		expect(read).toHaveBeenCalledOnce()
+		gate.resolve(document)
+		await waitFor(actor, (s) => s.context.reader?.kind === 'available')
+		expect(actor.getSnapshot().matches({ running: { reading: { shown: 'available' } } })).toBe(true)
+		expect(selectLibraryView(actor.getSnapshot()).readerMessage?.variant).toBe('info')
+	} finally {
+		gate.resolve(document)
+		actor.send({ type: 'SHUTDOWN' })
+		await toPromise(actor)
+	}
+})
+it('still reopens a missing link-only reader when its content arrives', async () => {
+	const document = {
+		id,
+		libraryId: 'library',
+		operationId: id,
+		snapshotId: id,
+		assetId: id,
+		title: candidate.title,
+		originalSavedAt: ''
+	}
+	let present = false
+	const read = vi.fn(async () => (present ? document : null))
+	const actor = createActor(libraryMachine, {
+		input: testLibraryCapability(candidate, {
+			read: {
+				isCurrent: () => true,
+				document: read,
+				snapshot: async () => ({
+					id,
+					libraryId: 'library',
+					documentId: id,
+					text: candidate.text,
+					formatVersion: '1'
+				}),
+				asset: async () => null,
+				source: async () => null
+			}
+		})
+	}).start()
+	actor.send({ type: 'OPEN', id })
+	await waitFor(actor, (s) => s.context.reader?.kind === 'missing')
+	present = true
+	actor.send({
+		type: 'ROWS',
+		rows: [
+			{
+				id,
+				title: candidate.title,
+				url: candidate.finalUrl,
+				contentId: id,
+				originalSavedAt: '',
+				failure: null
+			}
+		]
+	})
+	await waitFor(actor, (s) => s.context.reader?.kind === 'available')
+	expect(read).toHaveBeenCalledTimes(2)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+
+it('uses readable state names for capture outcomes and passes through worker feedback', async () => {
+	const gate = Promise.withResolvers<ArticleSaveResult>()
+	const { actor } = fixture(() => gate.promise)
+	actor.send({ type: 'ADD', url: candidate.finalUrl })
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage).toEqual({
+		text: 'Saving on this device…',
+		variant: 'info'
+	})
+	gate.resolve({ kind: 'saved', operationId: id, ready: false, receipts: [] })
+	await waitFor(actor, (s) => s.matches({ running: { capture: { saved: 'local' } } }))
+	expect(
+		Object.values(actor.getSnapshot().getMeta()).some(
+			(meta) => meta?.name === selectLibraryView(actor.getSnapshot()).captureMessage?.text
+		)
+	).toBe(true)
+	actor.send({ type: 'SYNC', id, status: 'accepted' })
+	expect(actor.getSnapshot().matches({ running: { capture: { saved: 'synced' } } })).toBe(true)
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage?.text).toBe('Article synced.')
+	const message = { text: 'Worker-owned status', variant: 'info' as const }
+	actor.send({ type: 'BACKGROUND_STATUS', id, message, cancelable: true })
+	expect(actor.getSnapshot().matches({ running: { capture: { saved: 'background' } } })).toBe(true)
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage).toBe(message)
+	actor.send({
+		type: 'BACKGROUND_SAVED',
+		result: { kind: 'saved', operationId: id, ready: true, receipts: [] }
+	})
+	expect(actor.getSnapshot().matches({ running: { capture: { saved: 'synced' } } })).toBe(true)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+
+it('keeps the duplicate state label when receipt status changes', async () => {
+	const { actor } = fixture(async () => ({
+		kind: 'duplicate',
+		operationId: id,
+		ready: true,
+		receipts: []
+	}))
+	actor.send({ type: 'ADD', url: candidate.finalUrl })
+	await waitFor(actor, (s) => s.matches({ running: { capture: { saved: 'duplicate' } } }))
+	actor.send({ type: 'SYNC', id, status: 'rejected' })
+	expect(actor.getSnapshot().matches({ running: { capture: { saved: 'duplicate' } } })).toBe(true)
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage?.text).toBe('Already saved.')
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+
+it('retains the worker failure name without terminating an issued save or skipping its drain', async () => {
+	const gate = Promise.withResolvers<ArticleSaveResult>()
+	const { actor, shutdown } = fixture(() => gate.promise)
+	actor.send({ type: 'ADD', url: candidate.finalUrl })
+	const save = actor.getSnapshot().context.saveRef
+	actor.send({ type: 'BACKGROUND_ERROR' })
+	actor.send({ type: 'BACKGROUND_CLOSED' })
+	expect(actor.getSnapshot().context.saveRef).toBe(save)
+	expect(shutdown).not.toHaveBeenCalled()
+	expect(actor.getSnapshot().matches({ running: { workerLifecycle: { failed: 'closed' } } })).toBe(
+		true
+	)
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage?.variant).toBe('error')
+	actor.send({ type: 'SHUTDOWN' })
+	expect(actor.getSnapshot().status).toBe('active')
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage).toBeUndefined()
+	gate.resolve({ kind: 'saved', operationId: id, receipts: [] })
+	await toPromise(actor)
+})
+
+it('replaces a worker failure name when the in-flight URL save succeeds', async () => {
+	const gate = Promise.withResolvers<ArticleSaveResult>()
+	const { actor } = fixture(() => gate.promise)
+	actor.send({ type: 'ADD', url: candidate.finalUrl })
+	actor.send({ type: 'BACKGROUND_ERROR' })
+	actor.send({ type: 'BACKGROUND_CLOSED' })
+	gate.resolve({ kind: 'saved', operationId: id, receipts: [] })
+	await waitFor(actor, (s) => s.matches({ running: { capture: { saved: 'local' } } }))
+	expect(actor.getSnapshot().matches({ running: { workerLifecycle: 'closed' } })).toBe(true)
+	expect(selectLibraryView(actor.getSnapshot()).captureMessage?.variant).toBe('info')
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})

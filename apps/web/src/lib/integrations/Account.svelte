@@ -24,12 +24,14 @@
 		gatewayEnabled,
 		children,
 		onSnapshot,
-		libraryFactory
+		libraryFactory,
+		shell
 	}: {
 		appId: string
 		serverUrl: string
 		gatewayEnabled: boolean
 		children: Snippet
+		shell?: Snippet<[Snippet, Snippet]>
 		libraryFactory?: LibraryFactory
 		onSnapshot?: (snapshot: ApplicationSnapshot<Session>) => void
 	} = $props()
@@ -71,51 +73,70 @@
 	})
 </script>
 
-<section aria-label={t('app.title')}>
-	<StatusMessage {...view.message} />
-	{#if view.feedbackMessage}
-		<StatusMessage {...view.feedbackMessage} />
-	{/if}
-	{#if view.showIdentityForm}
-		<Button type="button" onclick={() => send({ type: 'CREATE' })}
-			>{action('create', 'account')}</Button
-		>
-	{/if}
-	{#if view.canRestore}
-		<form
-			onsubmit={(event) => {
-				event.preventDefault()
-				const value = phrase
-				phrase = ''
-				send({ type: 'RESTORE', phrase: value })
-			}}
-		>
-			<Textarea
-				label={t('account.recovery.phrase_label')}
-				bind:value={phrase}
-				autocomplete="off"
-				spellcheck={false}
-				required
+{#snippet controls()}
+	<section class="account-controls" aria-label={t('app.title')}>
+		<StatusMessage {...view.message} />
+		{#if view.feedbackMessage}
+			<StatusMessage {...view.feedbackMessage} />
+		{/if}
+		{#if view.showIdentityForm}
+			<Button type="button" onclick={() => send({ type: 'CREATE' })}
+				>{action('create', 'account')}</Button
+			>
+		{/if}
+		{#if view.canRestore}
+			<form
+				onsubmit={(event) => {
+					event.preventDefault()
+					const value = phrase
+					phrase = ''
+					send({ type: 'RESTORE', phrase: value })
+				}}
+			>
+				<Textarea
+					label={t('account.recovery.phrase_label')}
+					bind:value={phrase}
+					autocomplete="off"
+					spellcheck={false}
+					required
+				/>
+				<Button type="submit">{action('restore', 'account')}</Button>
+			</form>
+		{/if}
+		{#if recovery}
+			<RecoveryPhrase
+				source={recovery.source}
+				capability={recovery.capability}
+				messages={recovery.messages}
 			/>
-			<Button type="submit">{action('restore', 'account')}</Button>
-		</form>
-	{/if}
-	{#if recovery}
-		<RecoveryPhrase
-			source={recovery.source}
-			capability={recovery.capability}
-			messages={recovery.messages}
-		/>
-	{/if}
-	{#if view.requiresReload}<Button type="button" onclick={() => window.location.reload()}
-			>{action('reload', 'page')}</Button
-		>{/if}
-	{#if view.canRetry}<Button type="button" onclick={() => send({ type: 'RETRY' })}
-			>{t('actions.retry')}</Button
-		>{/if}
-	{#if view.canLogout}<Button type="button" onclick={() => send({ type: 'LOGOUT' })}
-			>{t('actions.sign_out')}</Button
-		>{/if}
-</section>
+		{/if}
+		{#if view.requiresReload}<Button type="button" onclick={() => window.location.reload()}
+				>{action('reload', 'page')}</Button
+			>{/if}
+		{#if view.canRetry}<Button type="button" onclick={() => send({ type: 'RETRY' })}
+				>{t('actions.retry')}</Button
+			>{/if}
+		{#if view.canLogout}<Button type="button" onclick={() => send({ type: 'LOGOUT' })}
+				>{t('actions.sign_out')}</Button
+			>{/if}
+	</section>
+{/snippet}
 
-{@render children()}
+{#if shell}
+	{@render shell(controls, children)}
+{:else}
+	{@render controls()}
+	{@render children()}
+{/if}
+
+<style>
+	.account-controls {
+		display: grid;
+		gap: var(--dui-space-sm);
+		min-inline-size: 0;
+	}
+	.account-controls form {
+		display: grid;
+		gap: var(--dui-spacing-sm);
+	}
+</style>

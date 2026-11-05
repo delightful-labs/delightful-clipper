@@ -1,3 +1,4 @@
+import { openAddLink } from './add-link.js'
 import { test, expect, chromium } from '@playwright/test'
 import { startLocalJazzServer } from 'jazz-tools/testing'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -290,9 +291,12 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 		if (request.url().includes('images.example')) remoteRequests.push(request.url())
 	})
 	await page.goto('/')
-	await expect(page.getByRole('heading', { name: 'Add link', exact: true })).toBeVisible()
+	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://short.example/#intro')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByRole('button', { name: 'Save article', exact: true })).toHaveCount(0)
 	await expect(page.getByRole('region', { name: 'Article preview' })).toHaveCount(0)
 	await expect(page.getByRole('article')).toHaveCount(0)
@@ -323,10 +327,14 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	expect(await page.evaluate(() => Reflect.get(globalThis, 'readerCompromised'))).toBeUndefined()
 
+	await openAddLink(page)
 	await page
 		.getByLabel('Article URL', { exact: true })
 		.fill('https://example.com/saved?order=1&keep=2#different')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByText('Already saved.', { exact: true })).toBeVisible()
 	expect(remoteRequests).toEqual([])
 	expect(extractions()).toBe(1)
@@ -377,10 +385,14 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await openAddLink(page)
 		await page
 			.getByLabel('Article URL', { exact: true })
 			.fill('https://example.com/saved?order=1&keep=2')
-		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+		await page
+			.getByRole('dialog', { name: 'Add link', exact: true })
+			.getByRole('button', { name: 'Add link', exact: true })
+			.click()
 
 		await expect(
 			page
@@ -434,14 +446,18 @@ test('canceling background extraction retains the saved URL and leaves the form 
 		await route.fulfill({ status: 503, json: { code: 'gatewayUnavailable' } }).catch(() => {})
 	})
 	await page.goto('/')
+	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(
 		page.getByText('Resolving and extracting the article…', { exact: true }).first()
 	).toBeVisible()
 	await page.getByRole('button', { name: 'Cancel', exact: true }).click()
 	release()
-	await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled()
+	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 	await expect(page.getByRole('button', { name: 'Save article', exact: true })).toHaveCount(0)
 })
 
@@ -502,8 +518,12 @@ test('reader links support new tabs, direct reload and owner-scoped missing cont
 }) => {
 	await fixtureArticle(page)
 	await page.goto('/')
+	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/saved')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
 	const link = page
 		.getByRole('region', { name: 'Saved articles' })
@@ -545,8 +565,12 @@ test('capture continues when the initiating library page is replaced by a reader
 }) => {
 	await fixtureArticle(page)
 	await page.goto('/')
+	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/first')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
 	const first = page
 		.getByRole('region', { name: 'Saved articles' })
@@ -562,8 +586,12 @@ test('capture continues when the initiating library page is replaced by a reader
 		},
 		'https://example.com/second'
 	)
+	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/second')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await entered.promise
 	await first.click()
 	await expect(page.getByRole('article')).toContainText('Exact UI text café 🦊')
@@ -618,15 +646,23 @@ test('Add Link persists article objects before a worker processes their content 
 	const worker = await started
 	expect(await worker.evaluate(() => typeof document)).toBe('undefined')
 	const urls = ['https://example.com/one', 'https://example.com/two']
+	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill(urls[0] ?? '')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect.poll(() => count).toBe(1)
 	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 	const other = await context.newPage()
 	await other.goto('/')
 	await expect(other.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
+	await openAddLink(other)
 	await other.getByLabel('Article URL', { exact: true }).fill(urls[1] ?? '')
-	await other.getByRole('button', { name: 'Add link', exact: true }).click()
+	await other
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(other.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 	await expect(page.getByRole('link', { name: 'Open original', exact: true })).toHaveCount(2)
 	const rows = await page.evaluate(async (urls) => {
@@ -683,8 +719,12 @@ test('a worker resumes a URL-only article after complete browser restart', async
 		})
 		await page.goto('http://127.0.0.1:5180')
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await openAddLink(page)
 		await page.getByLabel('Article URL', { exact: true }).fill(url)
-		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+		await page
+			.getByRole('dialog', { name: 'Add link', exact: true })
+			.getByRole('button', { name: 'Add link', exact: true })
+			.click()
 		await entered.promise
 		await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 		const before = await page.evaluate(async (url) => {
@@ -744,8 +784,12 @@ test('Retry from a second tab reaches the worker holding the library lock', asyn
 		})
 	})
 	await page.goto('/')
+	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/cross-tab-retry')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
 	const second = await context.newPage()
 	await second.goto('/')
@@ -755,4 +799,96 @@ test('Retry from a second tab reaches the worker holding the library lock', asyn
 	await expect(page.getByRole('link', { name: 'Retried across tabs', exact: true })).toBeVisible()
 	expect(attempts).toBe(2)
 	await second.close()
+})
+
+test('keeps account controls in the desktop drawer without replacing the library session', async ({
+	page
+}) => {
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const drawer = page.locator('aside')
+	await expect(drawer.getByRole('button', { name: 'Restore account', exact: true })).toBeVisible()
+	await expect(
+		page.getByRole('main').getByRole('button', { name: 'Restore account', exact: true })
+	).toHaveCount(0)
+	await page.locator('header').getByRole('button', { name: 'Close account', exact: true }).click()
+	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
+	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
+	await page.locator('header').getByRole('button', { name: 'Show account', exact: true }).click()
+	await expect(
+		drawer.getByRole('button', { name: 'Show recovery phrase', exact: true })
+	).toBeVisible()
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+})
+
+test('mobile drawer hides account controls until opened and restores keyboard focus on Escape', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 390, height: 844 })
+	await page.goto('/')
+	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
+	const drawer = page.locator('aside')
+	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
+	await page.getByRole('button', { name: 'Show account', exact: true }).click()
+	await expect(drawer).toHaveAttribute('aria-hidden', 'false')
+	await expect(page.locator('main')).toHaveAttribute('inert', '')
+	await drawer.getByLabel('Recovery phrase', { exact: true }).focus()
+	await page.keyboard.press('Escape')
+	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
+	await expect(page.getByRole('button', { name: 'Show account', exact: true })).toBeFocused()
+	await expect(page.locator('main')).not.toHaveAttribute('inert', '')
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+		true
+	)
+})
+
+test('Add link modal focuses its URL field and dismisses without saving', async ({ page }) => {
+	await page.goto('/')
+	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
+	const dialog = await openAddLink(page)
+	const url = 'https://example.com/modal-dismissal'
+	await expect(dialog.getByLabel('Article URL', { exact: true })).toBeFocused()
+	await dialog.getByLabel('Article URL', { exact: true }).fill(url)
+	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	await expect(dialog).not.toBeVisible()
+	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeFocused()
+	await openAddLink(page)
+	await page.keyboard.press('Escape')
+	await expect(dialog).not.toBeVisible()
+	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeFocused()
+	const saved = await page.evaluate(async (url) => {
+		const path = '/tests/article-driver.ts'
+		return (await import(/* @vite-ignore */ path)).inspect([url])
+	}, url)
+	expect(saved).toEqual([null])
+})
+
+test('global Add link action saves from the reader without replacing or leaving it', async ({
+	page
+}) => {
+	await page.route('**/api/capture/resolve', (route) =>
+		route.fulfill({ status: 503, json: { code: 'gatewayUnavailable' } })
+	)
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	await page.evaluate(async () => {
+		const path = '/tests/article-driver.ts'
+		return (await import(/* @vite-ignore */ path)).supplied('https://example.com/modal-reader')
+	})
+	await page.getByRole('link', { name: 'Supplied clip', exact: true }).click()
+	await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
+	const dialog = await openAddLink(page)
+	const url = 'https://example.com/added-from-reader'
+	await dialog.getByLabel('Article URL', { exact: true }).fill(url)
+	await dialog.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(dialog).not.toBeVisible()
+	await expect
+		.poll(() =>
+			page.evaluate(async (url) => {
+				const path = '/tests/article-driver.ts'
+				return (await import(/* @vite-ignore */ path)).inspect([url])
+			}, url)
+		)
+		.not.toEqual([null])
+	await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
 })
