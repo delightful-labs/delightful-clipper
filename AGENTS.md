@@ -6,6 +6,7 @@
 - Follow `specs/001-jazz-clipper/spec.md`, `plan.md`, `design-decisions.md`, and `implementation-handoff.md`. Keep accepted scope cuts intact.
 - The workspace tooling, account integration and private library root are implemented; URL-first capture and dedicated reader workflows are implemented; images, annotations and broader product requirements remain open. The prototype and isolated proof scripts are archived on `archive/pre-jazz-rewrite-2026-11-02`; do not restore its legacy dependencies or source as the implementation baseline.
 - Use the selected strict TypeScript, Svelte 5, XState, DLF identity/recovery, DUI presentation and i18next boundaries. Model state/resource ownership before implementing asynchronous workflows.
+- Obtain explicit user approval before installing a new third-party dependency. Explain its purpose and alternatives first; a package mentioned in the technical plan is not installation approval. An explicit user request to install a named package supplies that approval.
 - Clipper owns domain schemas/policies and data operations; DLF owns reusable identity/recovery behavior; DUI owns generic presentation. Do not silently adopt a sibling repository's constitution or copy its domain models.
 - Separate local persistence from remote acceptance and retain unknown-write recovery. Never claim privacy, offline availability or platform support without the corresponding evidence.
 - Complete and report checks appropriate to each PR. Isolated investigation results do not substitute for validation of the actual implementation.
