@@ -11,19 +11,29 @@
 		row,
 		tags,
 		enabled,
+		onclose,
 		open = $bindable(false)
 	}: {
 		actor: ActorRefFrom<typeof libraryMachine>
 		row: LibraryArticle | undefined
 		tags: Tag[]
 		enabled: boolean
+		onclose?: () => void
 		open?: boolean
 	} = $props()
 	let name = $state('')
 	const valid = $derived(isValidTagName(name))
 </script>
 
-<Dialog heading={noun('tag', 2)} bind:open closedby="any">
+<Dialog
+	heading={noun('tag', 2)}
+	bind:open
+	closedby="any"
+	onclose={() => {
+		name = ''
+		onclose?.()
+	}}
+>
 	{#if row}
 		{@const article = row}
 		<div class="tags">

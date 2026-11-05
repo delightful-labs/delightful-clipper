@@ -22,6 +22,8 @@
 	let snapshot = $state<SnapshotFrom<typeof libraryMachine>>()
 	// Trash presentation awaits the explicitly requested catalog approval.
 	const availableViews = libraryViews.filter((view) => view !== 'trash')
+	let heading = $state<HTMLHeadingElement>()
+	let tagTrigger: HTMLElement | undefined
 	let tagArticleId = $state<string>()
 	let tagsOpen = $state(false)
 	const capture = $derived(snapshot?.context)
@@ -38,7 +40,7 @@
 
 {#if capture}
 	<section aria-label={t('library.heading')}>
-		<h2>{t('library.heading')}</h2>
+		<h2 bind:this={heading} tabindex="-1">{t('library.heading')}</h2>
 		<div class="filters">
 			<RadioGroup label={t('library.status_label')} value={capture.view}>
 				{#each availableViews as status}
@@ -121,7 +123,8 @@
 								<Button
 									appearance="flat"
 									disabled={!view.canOrganize}
-									onclick={() => {
+									onclick={(event) => {
+										tagTrigger = event.currentTarget
 										tagArticleId = row.id
 										tagsOpen = true
 									}}>{noun('tag', 2)}</Button
@@ -147,6 +150,9 @@
 		tags={view.tags}
 		enabled={view.canOrganize}
 		bind:open={tagsOpen}
+		onclose={() => {
+			if (!tagTrigger?.isConnected) heading?.focus()
+		}}
 	/>
 {/if}
 

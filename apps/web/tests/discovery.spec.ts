@@ -67,6 +67,7 @@ test('creates Unicode-equivalent tags once, changes membership and combines tag/
 	await expect(dialog.getByRole('checkbox')).not.toBeChecked()
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
 	await expect(second.row).toHaveCount(0)
+	await expect(page.getByRole('heading', { name: 'Saved articles', exact: true })).toBeFocused()
 	await first.row.getByLabel('Status', { exact: true }).selectOption('later')
 	await expect(first.row.getByLabel('Status', { exact: true })).toBeEnabled()
 	await first.row.getByRole('button', { name: 'Favorite', exact: true }).click()
