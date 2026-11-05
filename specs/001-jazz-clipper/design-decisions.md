@@ -93,3 +93,7 @@ Only a completed restoration can persist a nonsecret confirmation (account ID, J
 ## Basic organization batch
 
 PR #13 is merged and the user verified extension sign-in and saving into the web library. The next authorized batch is Inbox/Later/Archive plus independent favorites, status views with an AND favorites filter, native synchronization and offline restart. Existing articles default to Inbox/unfavorited; organization never changes original save order. The implementation state/ownership design is in [library-organization.md](library-organization.md). Tags, Trash, search, images, annotations and bulk actions remain excluded from this batch. PR #14 implements this bounded batch; the handoff records actual source/browser/offline evidence. Broader product and platform acceptance remains open.
+
+## Readable state names for workflow feedback
+
+Use localized `meta.name` and severity on owning states. Explicit states, guards and transitions select reader, capture, organization, offline and account outcomes. Parallel regions use message channels so account feedback or reader feedback cannot displace another workflow's status. Selectors project metadata; they do not reconstruct workflow outcomes from flags or translate status codes. A worker may forward an already-localized message from its owning machine. Persisted error/receipt codes remain domain data and retain their existing storage representation.

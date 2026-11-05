@@ -1,4 +1,6 @@
 import { t, recoveryMessages } from '../../localization/index.js'
+import { stateFeedback } from '../../contracts/feedback.js'
+import type { NamedState } from '../../contracts/feedback.js'
 import type { WorkflowMessage } from '../../contracts/feedback.js'
 import { libraryMachine } from '../capture/library.js'
 import { rootBootstrapMachine } from './root-bootstrap.js'
@@ -30,7 +32,15 @@ type Event<Session extends object> =
 	| { type: 'CREATE' | 'LOGOUT' | 'RETRY' | 'SHUTDOWN' }
 	| { type: 'RESTORE'; phrase: string }
 	| RestorationReport
-	| { type: 'OBSERVATION_RESTARTED' | 'STARTUP_CLOSED' }
+	| {
+			type:
+				| 'OBSERVATION_RESTARTED'
+				| 'STARTUP_CLOSED'
+				| 'FEEDBACK_CLEAR'
+				| 'IDENTITY_FAILED'
+				| 'RESTORE_INVALID'
+				| 'RESTORE_FAILED'
+	  }
 
 type Context<Session extends object> = {
 	host: AccountHost | undefined
@@ -43,7 +53,6 @@ type Context<Session extends object> = {
 	write: RootWrite | undefined
 	phrase: string
 	attempt: number
-	feedback: 'none' | 'identityFailed' | 'restoreFailed' | 'restoreInvalid'
 }
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Account capability unavailable')
@@ -61,11 +70,24 @@ function observe(host: AccountHost): AccountObservation {
 	}
 }
 
-function accountStatus(status: MachineStatus) {
-	return {
-		status,
-		message: (): WorkflowMessage => ({ text: t(`account.status.${status}`), variant: 'info' })
-	}
+type AccountFeedback = 'identityFailed' | 'restoreFailed' | 'restoreInvalid'
+type AccountMeta = NamedState & {
+	name: string
+	variant: WorkflowMessage['variant']
+	status?: MachineStatus
+	feedback?: AccountFeedback
+}
+function accountStatus(status: MachineStatus, name: string): AccountMeta {
+	return { status, name, variant: 'info', channel: 'account' }
+}
+const configuration = accountStatus('working', t('account.status.configuration'))
+const starting = accountStatus('starting', t('account.status.starting'))
+const working = accountStatus('working', t('account.status.working'))
+function isRestored(result: { outcome: string }) {
+	return result.outcome === 'restored'
+}
+function isInvalidRestoration(result: { outcome: string }) {
+	return result.outcome === 'invalid'
 }
 
 export function createApplicationReadinessMachine<Session extends object>() {
@@ -96,6 +118,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			clearPhrase: undefined
 			rememberObservation: undefined
 			failedIdentity: undefined
+			clearFeedback: undefined
 			clearResources: undefined
 		},
 		{
@@ -118,7 +141,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 		AccountInput<Session>,
 		undefined,
 		{ type: string },
-		{ status: MachineStatus; message: () => WorkflowMessage }
+		AccountMeta
 	>({
 		actors: accountActors,
 		guards: {
@@ -174,7 +197,8 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			rememberObservation: assign(({ event }) =>
 				event.type === 'OBSERVED' ? { observation: event.observation } : {}
 			),
-			failedIdentity: assign({ feedback: 'identityFailed' })
+			failedIdentity: raise({ type: 'IDENTITY_FAILED' }),
+			clearFeedback: raise({ type: 'FEEDBACK_CLEAR' })
 		}
 	})
 	const flow = model.createStateConfig({
@@ -216,9 +240,9 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			SHUTDOWN: '.closing'
 		},
 		states: {
-			opening: { meta: accountStatus('starting') },
+			opening: { meta: accountStatus('starting', t('account.status.starting')) },
 			openFailed: {
-				meta: accountStatus('unavailable'),
+				meta: accountStatus('unavailable', t('account.status.unavailable')),
 				on: { RETRY: { target: 'opening', actions: sendTo('startup', { type: 'RETRY' }) } }
 			},
 			running: {
@@ -252,7 +276,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				},
 				states: {
 					draining: {
-						meta: accountStatus('closing'),
+						meta: accountStatus('closing', t('account.status.closing')),
 						entry: sendTo('readiness', { type: 'SHUTDOWN' }),
 						on: {
 							OBSERVED: {},
@@ -285,16 +309,15 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						]
 					},
 					signedOut: {
-						meta: accountStatus('signedOut'),
+						meta: accountStatus('signedOut', t('account.status.signedOut')),
 						on: {
 							OBSERVED: { target: 'route', actions: 'rememberObservation' },
-							CREATE: { target: 'creating', actions: assign({ feedback: 'none' }) },
+							CREATE: { target: 'creating', actions: 'clearFeedback' },
 							RESTORE: {
 								target: 'restoring',
 								actions: assign(({ context, event }) => ({
 									phrase: event.phrase,
-									attempt: context.attempt + 1,
-									feedback: 'none'
+									attempt: context.attempt + 1
 								}))
 							}
 						}
@@ -303,7 +326,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						on: { OBSERVED: { target: 'route', actions: 'rememberObservation' } }
 					},
 					unavailable: {
-						meta: accountStatus('unavailable'),
+						meta: accountStatus('unavailable', t('account.status.unavailable')),
 						on: {
 							RETRY: [
 								{ guard: 'observationBroken', target: 'reobserving' },
@@ -348,8 +371,12 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						on: { OBSERVED: { target: 'route', actions: 'rememberObservation' } }
 					},
 					creating: {
+						entry: 'clearFeedback',
 						initial: 'active',
-						states: { active: {}, stopping: { meta: accountStatus('closing') } },
+						states: {
+							active: {},
+							stopping: { meta: accountStatus('closing', t('account.status.closing')) }
+						},
 						on: { SHUTDOWN: '.stopping' },
 						invoke: {
 							src: 'create',
@@ -365,8 +392,12 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						}
 					},
 					restoring: {
+						entry: 'clearFeedback',
 						initial: 'active',
-						states: { active: {}, stopping: { meta: accountStatus('closing') } },
+						states: {
+							active: {},
+							stopping: { meta: accountStatus('closing', t('account.status.closing')) }
+						},
 						on: {
 							SHUTDOWN: {
 								target: '.stopping',
@@ -400,19 +431,18 @@ export function createApplicationReadinessMachine<Session extends object>() {
 									actions: 'clearPhrase'
 								},
 								{
+									guard: ({ event }) => isRestored(event.output),
 									target: 'route',
-									actions: [
-										assign({
-											feedback: ({ event }) =>
-												event.output.outcome === 'restored'
-													? 'none'
-													: event.output.outcome === 'invalid'
-														? 'restoreInvalid'
-														: 'restoreFailed'
-										}),
-										'clearPhrase',
-										'refresh'
-									]
+									actions: ['clearFeedback', 'clearPhrase', 'refresh']
+								},
+								{
+									guard: ({ event }) => isInvalidRestoration(event.output),
+									target: 'route',
+									actions: [raise({ type: 'RESTORE_INVALID' }), 'clearPhrase', 'refresh']
+								},
+								{
+									target: 'route',
+									actions: [raise({ type: 'RESTORE_FAILED' }), 'clearPhrase', 'refresh']
 								}
 							],
 							onError: [
@@ -423,14 +453,17 @@ export function createApplicationReadinessMachine<Session extends object>() {
 								},
 								{
 									target: 'route',
-									actions: [assign({ feedback: 'restoreFailed' }), 'clearPhrase', 'refresh']
+									actions: [raise({ type: 'RESTORE_FAILED' }), 'clearPhrase', 'refresh']
 								}
 							]
 						}
 					},
 					loggingOut: {
 						initial: 'active',
-						states: { active: {}, stopping: { meta: accountStatus('closing') } },
+						states: {
+							active: {},
+							stopping: { meta: accountStatus('closing', t('account.status.closing')) }
+						},
 						on: { SHUTDOWN: '.stopping' },
 						invoke: {
 							src: 'logout',
@@ -484,7 +517,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 						},
 						states: {
 							bootstrapping: {
-								meta: accountStatus('openingLibrary'),
+								meta: accountStatus('openingLibrary', t('account.status.openingLibrary')),
 								on: {
 									SHUTDOWN: {
 										target: 'stopping',
@@ -500,19 +533,19 @@ export function createApplicationReadinessMachine<Session extends object>() {
 								}
 							},
 							stopping: {
-								meta: accountStatus('closing'),
+								meta: accountStatus('closing', t('account.status.closing')),
 								on: { SHUTDOWN: {}, OBSERVED: { actions: 'rememberObservation' } }
 							},
 							replacing: {
-								meta: accountStatus('openingLibrary'),
+								meta: accountStatus('openingLibrary', t('account.status.openingLibrary')),
 								on: { OBSERVED: { actions: 'rememberObservation' }, SHUTDOWN: 'stopping' }
 							},
 							conflict: {
-								meta: accountStatus('conflict'),
+								meta: accountStatus('conflict', t('account.status.conflict')),
 								on: { LOGOUT: '#application-flow.running.loggingOut' }
 							},
 							failed: {
-								meta: accountStatus('rootFailed'),
+								meta: accountStatus('rootFailed', t('account.status.rootFailed')),
 								on: {
 									RETRY: { target: '#application-flow.running.library', reenter: true },
 									LOGOUT: '#application-flow.running.loggingOut'
@@ -549,9 +582,9 @@ export function createApplicationReadinessMachine<Session extends object>() {
 										actions: [
 											assign(({ context, event }) => ({
 												phrase: event.phrase,
-												attempt: context.attempt + 1,
-												feedback: 'none' as const
+												attempt: context.attempt + 1
 											})),
+											'clearFeedback',
 											sendTo('library', { type: 'SHUTDOWN' })
 										]
 									},
@@ -575,7 +608,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 									stopping: {
 										initial: 'shutdown',
 										states: { shutdown: {}, restore: {}, logout: {}, replace: {} },
-										meta: accountStatus('closing'),
+										meta: accountStatus('closing', t('account.status.closing')),
 										on: {
 											LOGOUT: {},
 											RESTORE: {},
@@ -584,7 +617,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 										}
 									},
 									syncPending: {
-										meta: accountStatus('localSaved'),
+										meta: accountStatus('localSaved', t('account.status.localSaved')),
 										invoke: {
 											src: 'global',
 											input: ({ context }) => required(context.write),
@@ -592,9 +625,9 @@ export function createApplicationReadinessMachine<Session extends object>() {
 											onError: 'syncFailed'
 										}
 									},
-									synced: { meta: accountStatus('synced') },
+									synced: { meta: accountStatus('synced', t('account.status.synced')) },
 									syncFailed: {
-										meta: accountStatus('syncFailed'),
+										meta: accountStatus('syncFailed', t('account.status.syncFailed')),
 										on: {
 											RETRY: 'syncPending'
 										}
@@ -606,7 +639,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				}
 			},
 			closing: {
-				meta: accountStatus('closing'),
+				meta: accountStatus('closing', t('account.status.closing')),
 				entry: [
 					'clearPhrase',
 					({ context }) => context.host?.release(),
@@ -641,8 +674,7 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			observation: { status: 'signed-out' },
 			write: undefined,
 			phrase: '',
-			attempt: 0,
-			feedback: 'none'
+			attempt: 0
 		}),
 
 		entry: sendTo('startup', ({ context }) => ({ type: 'START', ...context.input.startup })),
@@ -656,6 +688,42 @@ export function createApplicationReadinessMachine<Session extends object>() {
 			active: {
 				type: 'parallel',
 				states: {
+					feedback: {
+						initial: 'none',
+						on: {
+							FEEDBACK_CLEAR: '.none',
+							IDENTITY_FAILED: '.identityFailed',
+							RESTORE_INVALID: '.restoreInvalid',
+							RESTORE_FAILED: '.restoreFailed'
+						},
+						states: {
+							none: {},
+							identityFailed: {
+								meta: {
+									channel: 'feedback',
+									feedback: 'identityFailed',
+									name: t('account.feedback.identityFailed'),
+									variant: 'error'
+								}
+							},
+							restoreInvalid: {
+								meta: {
+									channel: 'feedback',
+									feedback: 'restoreInvalid',
+									name: t('account.feedback.restoreInvalid'),
+									variant: 'error'
+								}
+							},
+							restoreFailed: {
+								meta: {
+									channel: 'feedback',
+									feedback: 'restoreFailed',
+									name: t('account.feedback.restoreFailed'),
+									variant: 'error'
+								}
+							}
+						}
+					},
 					flow,
 					ownerHealth: {
 						initial: 'healthy',
@@ -693,13 +761,17 @@ export function createApplicationReadinessMachine<Session extends object>() {
 				}
 			},
 			cleanupFailed: {
-				meta: accountStatus('cleanupFailed'),
+				meta: accountStatus('cleanupFailed', t('account.status.cleanupFailed')),
 				type: 'final',
 				entry: 'clearResources'
 			},
-			ownerFailed: { meta: accountStatus('ownerFailed'), type: 'final', entry: 'clearResources' },
+			ownerFailed: {
+				meta: accountStatus('ownerFailed', t('account.status.ownerFailed')),
+				type: 'final',
+				entry: 'clearResources'
+			},
 			closed: {
-				meta: accountStatus('closed'),
+				meta: accountStatus('closed', t('account.status.closed')),
 				type: 'final',
 				entry: assign({
 					host: undefined,
@@ -736,27 +808,17 @@ export function selectApplicationView<Session extends object>(
 	snapshot: ApplicationSnapshot<Session> | undefined,
 	configured: boolean
 ) {
-	const status: ApplicationStatus = !configured
-		? 'configuration'
-		: snapshot
-			? (Object.values(snapshot.getMeta()).find((meta) => meta !== undefined)?.status ?? 'working')
-			: 'starting'
-	const meta = snapshot
-		? Object.values(snapshot.getMeta()).find((value) => value !== undefined)
-		: undefined
-	const feedback = snapshot?.context.feedback
-
+	const metadata = snapshot ? Object.values(snapshot.getMeta()) : [starting]
+	const meta = configured
+		? (metadata.find((state) => state?.channel === 'account') ?? working)
+		: configuration
+	const feedback = metadata.find((state) => state?.channel === 'feedback')?.feedback
+	const status: ApplicationStatus = configured ? (meta.status ?? 'working') : 'configuration'
 	return {
 		status,
-		message:
-			configured && meta
-				? meta.message()
-				: { text: t(`account.status.${status}`), variant: 'info' as const },
-		feedbackMessage:
-			feedback && feedback !== 'none'
-				? { text: t(`account.feedback.${feedback}`), variant: 'error' as const }
-				: undefined,
-		feedback: snapshot?.context.feedback === 'none' ? undefined : snapshot?.context.feedback,
+		message: { text: meta.name, variant: meta.variant },
+		feedbackMessage: stateFeedback(metadata, 'feedback'),
+		feedback,
 		showIdentityForm: snapshot?.can({ type: 'CREATE' }) ?? false,
 		canLogout:
 			snapshot?.context.observation.status === 'ready' &&

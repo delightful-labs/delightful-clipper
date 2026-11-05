@@ -19,6 +19,7 @@ PR #13 is merged into main at `2cd8731`. The user verified extension sign-in and
 - [x] Publish `feat/library-organization` and open Conventional Commits PR [#14](https://github.com/delightful-labs/delightful-clipper/pull/14) targeting main.
 - [x] Record final CI evidence: source/build, web, offline and eleven packaged Chromium extension cases pass. Do not merge.
 
+- [x] Apply readable state names to reader, worker failures, organization, offline and account feedback; retain resource ownership and existing copy.
 - [x] Use the shared DUI floating action button and modal URL form globally, preserving layout-owned save actors and approved copy.
 - [x] Verify desktop/mobile modal focus, dismissal and reader capture locally; adapt browser/offline/migration coverage. Full CI requalification follows the update.
 

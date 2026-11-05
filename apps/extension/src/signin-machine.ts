@@ -16,8 +16,8 @@ export function connectionObservation<Session extends object>(
 ): ConnectionObservation {
 	if (snapshot.matches({ active: { flow: { running: 'restoring' } } })) return { kind: 'restoring' }
 	if (
-		snapshot.context.feedback === 'restoreFailed' ||
-		snapshot.context.feedback === 'restoreInvalid'
+		snapshot.matches({ active: { feedback: 'restoreFailed' } }) ||
+		snapshot.matches({ active: { feedback: 'restoreInvalid' } })
 	)
 		return { kind: 'failed' }
 	const library = selectLibraryActor(snapshot)

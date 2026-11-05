@@ -20,6 +20,7 @@ import {
 import type { OrganizationRequest, LibraryView } from '../../capture/organization.js'
 import { t } from '../../localization/index.js'
 import { normalizedSource } from '../../capture/source.js'
+import { stateFeedback } from '../../contracts/feedback.js'
 import type { WorkflowMessage } from '../../contracts/feedback.js'
 import type { LibraryCapability, LibraryEvent, SaveRef } from '../../contracts/library.js'
 import type { ArticleSaveResult, LibraryArticle, ArticleContent } from '../../contracts/articles.js'
@@ -78,12 +79,11 @@ function isValidSourceUrl(url: string) {
 	}
 }
 type Meta = {
-	organizationMessage?: (c: Context) => WorkflowMessage
+	channel?: string
 	name?: string
 	variant?: WorkflowMessage['variant']
 	priority?: number
 	message?: (c: Context) => WorkflowMessage
-	readerMessage?: (c: Context) => WorkflowMessage
 }
 function syncMessage(status: 'pending' | 'accepted' | 'rejected'): WorkflowMessage {
 	return {
@@ -97,10 +97,13 @@ function syncMessage(status: 'pending' | 'accepted' | 'rejected'): WorkflowMessa
 		variant: status === 'rejected' ? 'error' : 'info'
 	}
 }
-function organizationSyncMessage(context: Context, articleId: string): WorkflowMessage | undefined {
-	const statuses = Object.entries(context.organizationOperations)
+function organizationStatuses(context: Context, articleId: string) {
+	return Object.entries(context.organizationOperations)
 		.filter(([, id]) => id === articleId)
 		.map(([operationId]) => context.sync[operationId])
+}
+function organizationSyncMessage(context: Context, articleId: string): WorkflowMessage | undefined {
+	const statuses = organizationStatuses(context, articleId)
 	if (statuses.includes('rejected')) return syncMessage('rejected')
 	if (statuses.includes('pending')) return syncMessage('pending')
 	if (statuses.includes('accepted')) return syncMessage('accepted')
@@ -179,6 +182,10 @@ export const libraryMachine = setup<
 		isDuplicateCapture: undefined
 		isCaptureSynced: undefined
 		isCaptureRejected: undefined
+		isReaderAvailable: undefined
+		isOrganizationRejected: undefined
+		isOrganizationPending: undefined
+		isOrganizationSynced: undefined
 	},
 	never,
 	string,
@@ -189,6 +196,13 @@ export const libraryMachine = setup<
 >({
 	actors,
 	guards: {
+		isReaderAvailable: ({ context }) => context.reader?.kind === 'available',
+		isOrganizationRejected: ({ context }) =>
+			organizationStatuses(context, context.organizationId).includes('rejected'),
+		isOrganizationPending: ({ context }) =>
+			organizationStatuses(context, context.organizationId).includes('pending'),
+		isOrganizationSynced: ({ context }) =>
+			organizationStatuses(context, context.organizationId).includes('accepted'),
 		hasCaptureBackground: ({ context }) => !!context.background[context.captureId],
 		isDuplicateCapture: ({ context }) => context.failure === 'duplicate',
 		isCaptureSynced: ({ context }) => context.sync[context.captureId] === 'accepted',
@@ -416,7 +430,9 @@ export const libraryMachine = setup<
 						idle: {},
 						writing: {
 							meta: {
-								organizationMessage: () => ({ text: t('capture.status.saving'), variant: 'info' })
+								channel: 'organization',
+								name: t('capture.status.saving'),
+								variant: 'info'
 							},
 							initial: 'active',
 							entry: assign(({ context, spawn }) => ({
@@ -484,25 +500,59 @@ export const libraryMachine = setup<
 							}
 						},
 						saved: {
-							meta: {
-								organizationMessage: (c) =>
-									organizationSyncMessage(c, c.organizationId) ?? {
-										text: t('capture.status.saved'),
+							initial: 'deciding',
+							on: { CAPTURE_UPDATED: '.deciding' },
+							states: {
+								deciding: {
+									always: [
+										{ guard: 'isOrganizationRejected', target: 'rejected' },
+										{ guard: 'isOrganizationPending', target: 'pending' },
+										{ guard: 'isOrganizationSynced', target: 'synced' },
+										{ target: 'local' }
+									]
+								},
+								local: {
+									meta: {
+										channel: 'organization',
+										name: t('capture.status.saved'),
 										variant: 'info'
 									}
+								},
+								pending: {
+									meta: {
+										channel: 'organization',
+										name: t('library.sync_pending'),
+										variant: 'info'
+									}
+								},
+								synced: {
+									meta: {
+										channel: 'organization',
+										name: t('capture.status.synced'),
+										variant: 'info'
+									}
+								},
+								rejected: {
+									meta: {
+										channel: 'organization',
+										name: t('capture.status.rejected'),
+										variant: 'error'
+									}
+								}
 							}
 						},
 						unknown: {
 							meta: {
-								organizationMessage: () => ({ text: t('capture.status.unknown'), variant: 'error' })
+								channel: 'organization',
+								name: t('capture.status.unknown'),
+								variant: 'error'
 							}
 						},
 						failed: {
 							meta: {
-								organizationMessage: () => ({
-									text: t('capture.status.save_failed'),
-									variant: 'error'
-								})
+								channel: 'organization',
+								name: t('capture.status.save_failed'),
+								variant: 'error'
 							}
 						}
 					}
@@ -737,7 +787,7 @@ export const libraryMachine = setup<
 					states: {
 						empty: {},
 						loading: {
-							meta: { readerMessage: () => ({ text: t('reader.loading'), variant: 'info' }) },
+							meta: { channel: 'reader', name: t('reader.loading'), variant: 'info' },
 							invoke: {
 								src: 'read',
 								input: ({ context, self }) => ({
@@ -750,13 +800,20 @@ export const libraryMachine = setup<
 							}
 						},
 						shown: {
-							meta: {
-								readerMessage: ({ reader }) => ({
-									text: t(
-										reader?.kind === 'available' ? 'capture.text_only' : 'reader.unavailable'
-									),
-									variant: reader?.kind === 'available' ? 'info' : 'error'
-								})
+							initial: 'deciding',
+							states: {
+								deciding: {
+									always: [
+										{ guard: 'isReaderAvailable', target: 'available' },
+										{ target: 'unavailable' }
+									]
+								},
+								available: {
+									meta: { channel: 'reader', name: t('capture.text_only'), variant: 'info' }
+								},
+								unavailable: {
+									meta: { channel: 'reader', name: t('reader.unavailable'), variant: 'error' }
+								}
 							}
 						}
 					}
@@ -794,9 +851,7 @@ export function selectLibraryView(
 		snapshot.status === 'active' &&
 		!!c.capability?.isCurrent()
 	const meta = visible ? Object.values(snapshot.getMeta()) : []
-	const namedState = meta
-		.filter((state) => state?.name !== undefined || state?.message !== undefined)
-		.sort((a, b) => (b?.priority ?? 0) - (a?.priority ?? 0))[0]
+	const forwardedState = meta.find((state) => state?.message)
 	const rowMessages: Record<string, WorkflowMessage> = {}
 	if (visible)
 		for (const row of c.rows) {
@@ -808,22 +863,16 @@ export function selectLibraryView(
 	const rows = visible ? c.rows.filter((row) => matchesLibraryFilter(row, c.view, c.favorites)) : []
 	return {
 		rows,
-		organizationMessage: visible
-			? meta.find((m) => m?.organizationMessage)?.organizationMessage?.(c)
-			: undefined,
+		organizationMessage: stateFeedback(meta, 'organization'),
 		canOrganize:
 			visible &&
 			!!c.capability?.spawnOrganization &&
 			!snapshot.matches({ running: { organization: 'writing' } }),
-		captureMessage:
-			(c ? namedState?.message?.(c) : undefined) ??
-			(namedState?.name
-				? { text: namedState.name, variant: namedState.variant ?? 'info' }
-				: undefined),
+		captureMessage: stateFeedback(meta) ?? (c ? forwardedState?.message?.(c) : undefined),
 		readerMessage: !snapshot
 			? { text: t('reader.loading'), variant: 'info' as const }
 			: visible
-				? meta.find((m) => m?.readerMessage)?.readerMessage?.(c)
+				? stateFeedback(meta, 'reader')
 				: undefined,
 		listMessage:
 			visible && c.listFailed

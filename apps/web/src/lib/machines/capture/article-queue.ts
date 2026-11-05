@@ -3,6 +3,7 @@ import { assign, fromPromise, setup } from 'xstate'
 import type { Article, ArticleContent, SaveArticleRequest } from '../../contracts/articles.js'
 import type { QueueCapability } from '../../contracts/article-worker.js'
 import { articleId } from '../../capture/source.js'
+import type { WorkflowMessage } from '../../contracts/feedback.js'
 import { t } from '../../localization/index.js'
 const transient = new Set([
 	'networkUnavailable',
@@ -56,8 +57,26 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 		)
 	}
 	const input = ({ context }: { context: Context }) => context
-	const model = setup<Context, Event, typeof actors, {}, { problem: undefined }>({
+	const model = setup<
+		Context,
+		Event,
+		typeof actors,
+		{},
+		{ problem: undefined },
+		{
+			isUnknownFailure: undefined
+			isSessionFailure: undefined
+			isRateLimitedFailure: undefined
+			isCanceledFailure: undefined
+		}
+	>({
 		actors,
+		guards: {
+			isUnknownFailure: ({ context }) => context.failure === 'unknown',
+			isSessionFailure: ({ context }) => context.failure === 'sessionUnavailable',
+			isRateLimitedFailure: ({ context }) => context.failure === 'rateLimited',
+			isCanceledFailure: ({ context }) => context.failure === 'canceled'
+		},
 		actions: {
 			problem: assign({
 				failure: ({ event }) =>
@@ -65,6 +84,17 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 			})
 		}
 	})
+	const status = (name: string, variant: WorkflowMessage['variant'], cancelable: boolean) =>
+		model.createStateConfig({
+			meta: { name, variant },
+			entry: ({ context }) =>
+				cap.report({
+					type: 'STATUS',
+					id: required(context.current).id,
+					message: { text: name, variant },
+					cancelable
+				})
+		})
 	const saveStep = (payload: (args: { context: Context }) => SaveArticleRequest) =>
 		model.createStateConfig({
 			invoke: {
@@ -143,13 +173,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 				]
 			},
 			resolving: {
-				entry: ({ context }) =>
-					cap.report({
-						type: 'STATUS',
-						id: required(context.current).id,
-						message: { text: t('capture.status.pending'), variant: 'info' },
-						cancelable: true
-					}),
+				...status(t('capture.status.pending'), 'info', true),
 				on: {
 					CANCEL: {
 						guard: ({ context, event }) => context.current?.id === event.id,
@@ -244,13 +268,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 				}
 			},
 			saving: {
-				entry: ({ context }) =>
-					cap.report({
-						type: 'STATUS',
-						id: required(context.current).id,
-						message: { text: t('capture.status.saving'), variant: 'info' },
-						cancelable: false
-					}),
+				...status(t('capture.status.saving'), 'info', false),
 				always: [
 					{ guard: ({ context }) => !!context.content, target: 'savingContent' },
 					{ target: 'attachingExisting' }
@@ -265,26 +283,23 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 				contentId: context.operationId
 			})),
 			failing: {
-				entry: ({ context }) =>
-					cap.report({
-						type: 'STATUS',
-						id: required(context.current).id,
-						message: {
-							text: t(
-								context.failure === 'unknown'
-									? 'capture.status.unknown'
-									: context.failure === 'sessionUnavailable'
-										? 'capture.errors.session_unavailable'
-										: context.failure === 'rateLimited'
-											? 'capture.errors.rate_limited'
-											: context.failure === 'canceled'
-												? 'capture.status.canceled'
-												: 'capture.status.failed'
-							),
-							variant: 'error'
-						},
-						cancelable: false
-					}),
+				initial: 'deciding',
+				states: {
+					deciding: {
+						always: [
+							{ guard: 'isUnknownFailure', target: 'unknown' },
+							{ guard: 'isSessionFailure', target: 'sessionUnavailable' },
+							{ guard: 'isRateLimitedFailure', target: 'rateLimited' },
+							{ guard: 'isCanceledFailure', target: 'canceled' },
+							{ target: 'captureFailed' }
+						]
+					},
+					unknown: status(t('capture.status.unknown'), 'error', false),
+					sessionUnavailable: status(t('capture.errors.session_unavailable'), 'error', false),
+					rateLimited: status(t('capture.errors.rate_limited'), 'error', false),
+					canceled: status(t('capture.status.canceled'), 'error', false),
+					captureFailed: status(t('capture.status.failed'), 'error', false)
+				},
 				invoke: { src: 'fail', input, onDone: 'idle', onError: 'idle' }
 			},
 			closed: {

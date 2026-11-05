@@ -106,6 +106,9 @@ it('observes each independent receipt and retains earlier rejection after anothe
 			Object.values(s.context.sync).includes('rejected') &&
 			Object.values(s.context.sync).includes('accepted')
 	)
+	expect(actor.getSnapshot().matches({ running: { organization: { saved: 'rejected' } } })).toBe(
+		true
+	)
 	expect(selectLibraryView(actor.getSnapshot()).organizationMessage?.variant).toBe('error')
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
