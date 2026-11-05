@@ -294,7 +294,10 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await expect(page.getByRole('heading', { name: 'Add link', exact: true })).toBeVisible()
 	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://short.example/#intro')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByRole('button', { name: 'Save article', exact: true })).toHaveCount(0)
 	await expect(page.getByRole('region', { name: 'Article preview' })).toHaveCount(0)
 	await expect(page.getByRole('article')).toHaveCount(0)
@@ -329,7 +332,10 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await page
 		.getByLabel('Article URL', { exact: true })
 		.fill('https://example.com/saved?order=1&keep=2#different')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByText('Already saved.', { exact: true })).toBeVisible()
 	expect(remoteRequests).toEqual([])
 	expect(extractions()).toBe(1)
@@ -384,7 +390,10 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 		await page
 			.getByLabel('Article URL', { exact: true })
 			.fill('https://example.com/saved?order=1&keep=2')
-		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+		await page
+			.getByRole('dialog', { name: 'Add link', exact: true })
+			.getByRole('button', { name: 'Add link', exact: true })
+			.click()
 
 		await expect(
 			page
@@ -440,7 +449,10 @@ test('canceling background extraction retains the saved URL and leaves the form 
 	await page.goto('/')
 	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(
 		page.getByText('Resolving and extracting the article…', { exact: true }).first()
 	).toBeVisible()
@@ -509,7 +521,10 @@ test('reader links support new tabs, direct reload and owner-scoped missing cont
 	await page.goto('/')
 	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/saved')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
 	const link = page
 		.getByRole('region', { name: 'Saved articles' })
@@ -553,7 +568,10 @@ test('capture continues when the initiating library page is replaced by a reader
 	await page.goto('/')
 	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/first')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByText('Article synced.', { exact: true }).first()).toBeVisible()
 	const first = page
 		.getByRole('region', { name: 'Saved articles' })
@@ -571,7 +589,10 @@ test('capture continues when the initiating library page is replaced by a reader
 	)
 	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/second')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await entered.promise
 	await first.click()
 	await expect(page.getByRole('article')).toContainText('Exact UI text café 🦊')
@@ -628,7 +649,10 @@ test('Add Link persists article objects before a worker processes their content 
 	const urls = ['https://example.com/one', 'https://example.com/two']
 	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill(urls[0] ?? '')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect.poll(() => count).toBe(1)
 	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 	const other = await context.newPage()
@@ -636,7 +660,10 @@ test('Add Link persists article objects before a worker processes their content 
 	await expect(other.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 	await openAddLink(other)
 	await other.getByLabel('Article URL', { exact: true }).fill(urls[1] ?? '')
-	await other.getByRole('button', { name: 'Add link', exact: true }).click()
+	await other
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(other.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 	await expect(page.getByRole('link', { name: 'Open original', exact: true })).toHaveCount(2)
 	const rows = await page.evaluate(async (urls) => {
@@ -695,7 +722,10 @@ test('a worker resumes a URL-only article after complete browser restart', async
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await openAddLink(page)
 		await page.getByLabel('Article URL', { exact: true }).fill(url)
-		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+		await page
+			.getByRole('dialog', { name: 'Add link', exact: true })
+			.getByRole('button', { name: 'Add link', exact: true })
+			.click()
 		await entered.promise
 		await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 		const before = await page.evaluate(async (url) => {
@@ -757,7 +787,10 @@ test('Retry from a second tab reaches the worker holding the library lock', asyn
 	await page.goto('/')
 	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/cross-tab-retry')
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
 	const second = await context.newPage()
 	await second.goto('/')

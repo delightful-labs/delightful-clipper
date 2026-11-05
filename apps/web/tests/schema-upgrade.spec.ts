@@ -117,7 +117,10 @@ for (const browser of [chromium, firefox]) {
 						if (await page.getByRole('button', { name: 'Add link', exact: true }).isVisible()) {
 							await openAddLink(page)
 							await input.fill('https://example.com/before-migration')
-							await page.getByRole('button', { name: 'Add link', exact: true }).click()
+							await page
+								.getByRole('dialog', { name: 'Add link', exact: true })
+								.getByRole('button', { name: 'Add link', exact: true })
+								.click()
 							await expect(
 								page.getByRole('button', { name: 'Add link', exact: true })
 							).toBeEnabled()
@@ -192,7 +195,10 @@ for (const browser of [chromium, firefox]) {
 					const url = 'https://example.com/after-browser-upgrade'
 					await openAddLink(page)
 					await page.getByLabel('Article URL', { exact: true }).fill(url)
-					await page.getByRole('button', { name: 'Add link', exact: true }).click()
+					await page
+						.getByRole('dialog', { name: 'Add link', exact: true })
+						.getByRole('button', { name: 'Add link', exact: true })
+						.click()
 					await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
 					await expect.poll(() => savedArticle(page, url)).not.toBeNull()
 					const saved = await savedArticle(page, url)

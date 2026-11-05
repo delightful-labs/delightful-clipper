@@ -130,7 +130,10 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await openAddLink(page)
 		await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/offline')
-		await page.getByRole('button', { name: 'Add link', exact: true }).click()
+		await page
+			.getByRole('dialog', { name: 'Add link', exact: true })
+			.getByRole('button', { name: 'Add link', exact: true })
+			.click()
 
 		await page.evaluate(async () => {
 			await fetch('/api/private-probe', { headers: { Authorization: 'Bearer private-fixture' } })

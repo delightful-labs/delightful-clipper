@@ -185,7 +185,10 @@ test('organizes a link-only article and retains its values when supplied content
 	const url = 'https://example.com/organize-pending'
 	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill(url)
-	await page.getByRole('button', { name: 'Add link', exact: true }).click()
+	await page
+		.getByRole('dialog', { name: 'Add link', exact: true })
+		.getByRole('button', { name: 'Add link', exact: true })
+		.click()
 	const row = page
 		.locator('[data-article-id]')
 		.filter({ has: page.getByRole('link', { name: 'Open original', exact: true }) })
