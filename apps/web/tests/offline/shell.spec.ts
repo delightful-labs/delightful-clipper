@@ -173,9 +173,11 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 
 		await organized.getByRole('button', { name: 'tags', exact: true }).click()
 		const tagDialog = page.getByRole('dialog', { name: 'tags', exact: true })
-		await tagDialog.getByLabel('tag', { exact: true }).fill('Offline')
+		await tagDialog.locator('input[type="text"]').fill('Offline')
 		await tagDialog.getByRole('button', { name: 'Add tag', exact: true }).click()
-		await expect(tagDialog.getByRole('checkbox', { name: 'Offline', exact: true })).toBeChecked()
+		await expect(
+			tagDialog.getByRole('button', { name: 'Remove Offline', exact: true })
+		).toBeVisible()
 		await tagDialog.getByRole('button', { name: 'Close', exact: true }).click()
 		await page
 			.getByRole('searchbox', { name: 'Search articles', exact: true })
@@ -228,7 +230,9 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
 		await offlineRow.getByRole('button', { name: 'tags', exact: true }).click()
 		const offlineTags = reopened.getByRole('dialog', { name: 'tags', exact: true })
-		await expect(offlineTags.getByRole('checkbox', { name: 'Offline', exact: true })).toBeChecked()
+		await expect(
+			offlineTags.getByRole('button', { name: 'Remove Offline', exact: true })
+		).toBeVisible()
 		await offlineTags.getByRole('button', { name: 'Close', exact: true }).click()
 		await expect(
 			offlineRow.getByRole('button', { name: 'Remove favorite', exact: true })

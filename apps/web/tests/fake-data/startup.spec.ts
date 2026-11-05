@@ -47,7 +47,9 @@ test('flag-enabled startup populates a real library once and preserves edits, re
 	await expect(first.getByLabel('Status', { exact: true })).toBeEnabled()
 	await first.getByRole('button', { name: 'tags', exact: true }).click()
 	const tags = page.getByRole('dialog', { name: 'tags', exact: true })
-	await expect(tags.getByRole('checkbox', { checked: true })).toHaveCount(1)
+	await expect(
+		tags.getByRole('list', { name: 'tags', exact: true }).getByRole('listitem')
+	).toHaveCount(1)
 	await tags.getByRole('button', { name: 'Close', exact: true }).click()
 	await first.getByRole('heading').getByRole('link').click()
 	await expect

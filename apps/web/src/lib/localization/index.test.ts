@@ -14,6 +14,16 @@ it('composes existing action labels from approved verbs and nouns', () => {
 	expect(action('reload', 'page')).toBe('Reload page')
 	expect(action('search', 'article', 2)).toBe('Search articles')
 	expect(action('move_to', 'trash')).toBe('Move to Trash')
+	expect(t('actions.remove_name', { name: 'Research & notes' })).toBe('Remove Research & notes')
+	expect(t('status.selected_subject_name', { subject: noun('tag'), name: 'Reading' })).toBe(
+		'tag Reading selected.'
+	)
+	expect(t('status.removed_subject_name', { subject: noun('tag'), name: 'Reading' })).toBe(
+		'tag Reading removed.'
+	)
+	expect(t('errors.already_selected_subject_name', { subject: noun('tag'), name: 'Reading' })).toBe(
+		'tag Reading is already selected.'
+	)
 })
 it.each([
 	[0, 'articles'],

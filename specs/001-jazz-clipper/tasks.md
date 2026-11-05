@@ -26,6 +26,8 @@ No permanent deletion, bulk actions, global vocabulary rename/delete, annotation
 
 - [x] Remove Open original from library rows during pending and completed capture; retain reader source navigation and failure Retry. Four affected browser cases and strict types/formatting/lint pass.
 
+- [x] Replace the custom assignment form with actual DUI TagInput and the user-approved Finance label/announcement templates. Keep native full-folded membership, synchronization, filtering and offline persistence; qualify keyboard suggestions, duplicates and chip removal. All 44 web cases, ten final discovery cases, 510 unit tests plus one skip, five production offline cases and both fake-data cases pass, along with repository checks.
+
 ## Optional fake-data follow-up — PR #16
 
 - [x] Inspect Finance's flag, lazy English Faker generator, stable IDs, authority checks and exclusive setup transaction before choosing Clipper's integration.

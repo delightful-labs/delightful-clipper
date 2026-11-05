@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte'
 	import { createActor, type ActorRefFrom, type SnapshotFrom } from 'xstate'
-	import { Button, Checkbox, Dialog, InputText, FieldFeedback } from 'delightful-ui'
+	import { Button, Dialog, TagInput } from 'delightful-ui'
 	import { libraryMachine } from '../machines/capture/library.js'
 	import type { LibraryArticle } from '../contracts/articles.js'
 	import type { Tag } from '../capture/tags.js'
@@ -26,10 +26,19 @@
 		onclose?: () => void
 		open?: boolean
 	} = $props()
-	const fieldId = $props.id()
 	let snapshot = $state<SnapshotFrom<typeof tagFormMachine>>()
 	let send: (event: TagFormEvent) => void = () => {}
 	const form = $derived(selectTagFormView(snapshot))
+	let inputHost = $state<HTMLDivElement>()
+	let pendingFocus = $state<HTMLElement>()
+	$effect(() => {
+		if (!enabled || !pendingFocus) return
+		const target = pendingFocus
+		pendingFocus = undefined
+		if (document.activeElement !== document.body) return
+		if (target.isConnected) target.focus()
+		else inputHost?.querySelector<HTMLInputElement>('input[type="text"]')?.focus()
+	})
 	onMount(() => {
 		const validation = createActor(tagFormMachine, { input: { library: actor } })
 		const subscription = validation.subscribe((next) => (snapshot = next))
@@ -51,71 +60,48 @@
 		onclose?.()
 	}}
 >
-	{#if row}
+	{#if open && row}
 		{@const article = row}
-		<div class="tags">
-			{#each tags as tag (tag.key)}
-				<Checkbox
-					label={tag.name}
-					disabled={!enabled}
-					bind:checked={
-						() => article.tags?.some((assigned) => assigned.key === tag.key) ?? false,
-						(assigned) =>
-							actor.send({
-								type: 'ORGANIZE',
-								request: { id: article.id, field: 'tag', value: tag.name, assigned }
-							})
+		{#key article.id}
+			<div bind:this={inputHost} oninput={() => send({ type: 'RESET' })}>
+				<TagInput
+					label={noun('tag', 2)}
+					addLabel={action('add', 'tag')}
+					removeLabel={(name) => t('actions.remove_name', { name })}
+					selectedTagsLabel={noun('tag', 2)}
+					addedMessage={(name) =>
+						form.message?.text ?? t('status.selected_subject_name', { subject: noun('tag'), name })}
+					removedMessage={(name) =>
+						t('status.removed_subject_name', { subject: noun('tag'), name })}
+					duplicateMessage={(name) =>
+						t('errors.already_selected_subject_name', { subject: noun('tag'), name })}
+					suggestions={tags.map((tag) => tag.name)}
+					readonly={!enabled}
+					{...form.message ? { errorMessage: form.message.text } : {}}
+					bind:value={
+						() => {
+							void form.revision
+							return article.tags?.map((tag) => tag.name) ?? []
+						},
+						(names) => {
+							pendingFocus =
+								document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+							send({ type: 'SELECT', id: article.id, names, previous: article.tags ?? [], enabled })
+						}
 					}
 				/>
-			{/each}
-		</div>
-		<form
-			novalidate
-			onsubmit={(event) => {
-				event.preventDefault()
-				send({ type: 'SUBMIT', id: article.id, enabled })
-			}}
-		>
-			<InputText
-				label={noun('tag')}
-				id={fieldId}
-				bind:value={() => form.name, (name) => send({ type: 'CHANGE', name })}
-				aria-invalid={form.invalid || undefined}
-				aria-describedby={form.message ? `${fieldId}-error` : undefined}
-				required
-				maxlength={256}
-				disabled={!enabled}
-			/>
-			{#if form.message}<FieldFeedback
-					id={`${fieldId}-error`}
-					role="alert"
-					errorMessage={form.message.text}
-				/>{/if}
-			<div class="actions">
-				<Button
-					type="button"
-					onclick={() => {
-						open = false
-						send({ type: 'RESET' })
-					}}>{t('actions.close')}</Button
-				>
-				<Button type="submit" disabled={!enabled}>{action('add', 'tag')}</Button>
 			</div>
-		</form>
+			<div class="actions">
+				<Button type="button" onclick={() => (open = false)}>{t('actions.close')}</Button>
+			</div>
+		{/key}
 	{/if}
 </Dialog>
 
 <style>
-	.tags,
-	form {
-		display: grid;
-		gap: var(--dui-spacing-sm);
-		margin-block: var(--dui-spacing-sm);
-	}
 	.actions {
 		display: flex;
-		flex-wrap: wrap;
 		justify-content: end;
-		gap: var(--dui-spacing-sm);
+		margin-block-start: var(--dui-spacing-sm);
 	}
 </style>

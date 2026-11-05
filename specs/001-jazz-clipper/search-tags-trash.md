@@ -56,10 +56,24 @@ The user explicitly requested the following revisions to the earlier proposal. S
 | `actions.move_to_subject` | Move to {{subject}} | Per-article action; `subject` is the approved Trash noun |
 | `nouns.trash_one`, `nouns.trash_other` | Trash | Radio label and action subject |
 | `library.search_failed` | search is unavailable. | Search machine failed-state name, with existing Retry action |
-| `forms.enter_subject` | Enter {{subject}} | Generic field feedback; `subject` uses the existing localized tag noun, rendered through DUI FieldFeedback |
+| `forms.enter_subject` | Enter {{subject}} | Generic field feedback; `subject` uses the existing localized tag noun, rendered by DUI TagInput |
 
 The user rejected Preparing search as unnecessary. Loading/indexing/querying states have no visible message, and no preparation catalog entry is added. The initial Check-the-form generic sentence was also rejected; the user clarified Finance’s `forms.enter_subject` template. It produces “Enter tag” using the existing noun, with no new noun, punctuation or tag-specific length message. This shared error replaces the proposed tag-specific length sentence. Existing Add tag, Restore article and Retry labels are reused. Clipper’s catalog/action/noun search found no existing correct equivalents for these additions.
 
-The actual DUI search field, all five radios and per-row Move to Trash/Restore are exposed. A small synchronous tag-form machine has editing/invalid states: SUBMIT uses the reusable name predicate, valid submissions use XState sendTo to the library, and edits/reset clear feedback. Native writes, local/global receipts and draining remain library/storage-owned. Components project the error name and field validity, connect it with aria-describedby, and add no English fallback. Removing/restoring a row returns focus to its next surviving sibling, previous sibling, or library heading; the native tag dialog retains its separate removed-trigger fallback.
+The actual DUI search field, all five radios and per-row Move to Trash/Restore are exposed. DUI TagInput owns chips, draft input, suggestions, keyboard entry and announcements. A small synchronous machine validates SELECT events, computes at most one canonical membership change, delegates through XState sendTo, and clears feedback on input/reset. Native writes, local/global receipts and draining remain library/storage-owned. Components project the error name and field validity, connect it with aria-describedby, and add no English fallback. Removing/restoring a row returns focus to its next surviving sibling, previous sibling, or library heading; the native tag dialog retains its separate removed-trigger fallback.
 
 Real-browser coverage now exercises those controls rather than treating worker/native fixture coverage as search-input/Trash-action coverage. Both styles of coverage remain useful: actual input/filter/retry/validation interactions plus native fault/offline/cache/scope boundaries. Production shell qualification deletes the derived search cache before closing the browser, then uses search, retained tags and Trash/restore after a cold restart with both servers stopped and HTTP cache cleared.
+
+
+## Approved DUI TagInput templates
+
+The user explicitly approved reusing these four Finance templates for TagInput's required remove label and announcements. `name` is the literal tag name; `subject` reuses noun('tag'). No plural or context variants are needed. The selected-list label reuses noun('tag', 2); Add tag and the generic forms.enter_subject error remain unchanged.
+
+| Key | Text |
+| --- | --- |
+| `actions.remove_name` | Remove {{name}} |
+| `status.selected_subject_name` | {{subject}} {{name}} selected. |
+| `status.removed_subject_name` | {{subject}} {{name}} removed. |
+| `errors.already_selected_subject_name` | {{subject}} {{name}} is already selected. |
+
+TagInput's full selection is validated through the existing normalized name schema and full-fold keys. Equivalent spellings do not create another native assignment. A single addition/removal becomes one desired-value organization request; multiple simultaneous differences are rejected rather than overwriting concurrent metadata. The library remains the sole asynchronous mutation/receipt owner. Native membership drives the widget value; readonly preserves input focus during native settlement. No custom chip styles, bespoke suggestions or local persistence are added.

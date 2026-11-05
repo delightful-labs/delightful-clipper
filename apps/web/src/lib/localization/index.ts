@@ -21,9 +21,12 @@ void i18n.init({
 	lng: 'en',
 	fallbackLng: 'en',
 	initAsync: false,
+	// Svelte/DUI render messages as text, including interpolated tag names.
+	interpolation: { escapeValue: false },
 	resources: { en: { translation: english } }
 })
-export const t = (key: MessageKey, options: { subject?: string } = {}) => i18n.t(key, options)
+export const t = (key: MessageKey, options: { subject?: string; name?: string } = {}) =>
+	i18n.t(key, options)
 /** Always pass count: i18next selects CLDR plural forms through Intl.PluralRules. */
 export const noun = (subject: Noun, count = 1) => i18n.t(`nouns.${subject}`, { count })
 export const action = (verb: Action, subject: Noun, count = 1) =>

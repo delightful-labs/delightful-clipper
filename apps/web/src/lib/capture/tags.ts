@@ -66,3 +66,22 @@ export function projectTags(
 export function matchesTags(row: LibraryArticle, keys: readonly string[]) {
 	return keys.every((key) => row.tags?.some((tag) => tag.key === key))
 }
+
+export type TagSelectionChange =
+	| { kind: 'invalid' | 'unchanged' }
+	| { kind: 'changed'; name: string; assigned: boolean }
+const tagSelectionSchema = z.array(tagNameSchema).max(4096)
+/** DUI emits a complete selection; native membership changes remain one desired-value operation. */
+export function tagSelectionChange(previous: readonly Tag[], names: unknown): TagSelectionChange {
+	const parsed = tagSelectionSchema.safeParse(names)
+	if (!parsed.success) return { kind: 'invalid' }
+	const before = new Map(previous.map((tag) => [tag.key, tag.name]))
+	const after = new Map(parsed.data.map((name) => [tagKey(name), name]))
+	const added = [...after].filter(([key]) => !before.has(key))
+	const removed = [...before].filter(([key]) => !after.has(key))
+	if (!added.length && !removed.length) return { kind: 'unchanged' }
+	if (added.length + removed.length !== 1) return { kind: 'invalid' }
+	const item = added[0] ?? removed[0]
+	if (!item) return { kind: 'invalid' }
+	return { kind: 'changed', name: item[1], assigned: added.length === 1 }
+}
