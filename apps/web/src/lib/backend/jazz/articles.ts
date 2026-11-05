@@ -18,7 +18,7 @@ type Resource = TransactionResource
 /** Reads stay bound to this DB/library; owning actors gate admission and late-result consumption.
  * Native write admission and commit scope protection live in transactionLifecycle. */
 export function createArticleRecords<S extends Snapshot<SaveResult>>(
-	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
+	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean,
 	content: ActorLogic<S, { type: 'SHUTDOWN' }, SaveRequest>

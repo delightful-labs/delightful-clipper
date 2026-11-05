@@ -382,7 +382,7 @@ export const libraryMachine = setup<
 							]),
 							target: '.writing',
 							actions: assign({
-								organizationRequest: ({ event }) => event.request,
+								organizationRequest: ({ event }) => ({ ...event.request }),
 								organizationId: ({ event }) => event.request.id
 							})
 						}

@@ -16,7 +16,8 @@ PR #13 is merged into main at `2cd8731`. The user verified extension sign-in and
 - [x] Add DUI status/favorite controls, status views, an AND favorites filter and approved filtered-empty copy.
 - [x] Add four real-browser organization cases and extend the production offline-shell restart/sync case.
 - [ ] Qualify native policies, browser organization, synchronization and offline restart in CI; local listeners are sandbox-blocked. Preserve existing reader/extension/identity/recovery suites.
-- [ ] Complete final checks, push the branch and create a Conventional Commits PR targeting main.
+- [x] Publish `feat/library-organization` and open Conventional Commits PR [#14](https://github.com/delightful-labs/delightful-clipper/pull/14) targeting main.
+- [ ] Complete final CI qualification and record evidence. Do not merge.
 
 No bulk actions, tags, Trash, search, images or annotations are included. The retained backlog below remains future work.
 

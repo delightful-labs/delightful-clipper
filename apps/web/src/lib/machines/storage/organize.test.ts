@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
-import { createOrganizationMachine } from './organize.js'
+import { createOrganizationMachine, type OrganizationDraft } from './organize.js'
 import type { OrganizationRequest } from '../../capture/organization.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 const request: OrganizationRequest = { id: crypto.randomUUID(), field: 'status', value: 'later' }
@@ -23,7 +23,7 @@ it.each(['open', 'read', 'stage', 'commit', 'local', 'unknown', 'scope'] as cons
 			}),
 			rollback = vi.fn(() => true)
 		const stage = createWorkspaceCreationTransaction<
-			OrganizationRequest,
+			OrganizationDraft,
 			object,
 			null,
 			SyncReceipt,
@@ -65,7 +65,7 @@ it.each(['open', 'read', 'stage', 'commit', 'local', 'unknown', 'scope'] as cons
 it('rejects stale admission before opening a transaction', async () => {
 	const open = vi.fn(() => ({}))
 	const stage = createWorkspaceCreationTransaction<
-		OrganizationRequest,
+		OrganizationDraft,
 		object,
 		null,
 		SyncReceipt,
@@ -91,3 +91,84 @@ it('rejects stale admission before opening a transaction', async () => {
 	).toBe('interrupted')
 	expect(open).not.toHaveBeenCalled()
 })
+it('snapshots the desired scalar before asynchronous transaction work', async () => {
+	const entered = Promise.withResolvers<void>(),
+		gate = Promise.withResolvers<void>()
+	const observed: string[] = []
+	const input: OrganizationRequest = { id: crypto.randomUUID(), field: 'status', value: 'later' }
+	const stage = createWorkspaceCreationTransaction<
+		OrganizationDraft,
+		object,
+		null,
+		SyncReceipt,
+		object
+	>({
+		open: () => ({}),
+		readLocal: async () => {
+			entered.resolve()
+			await gate.promise
+			return null
+		},
+		assess: () => ({ outcome: 'eligible' }),
+		stage: (_, attempt) => {
+			observed.push(String(attempt.draft.value))
+			return { global: async () => {} }
+		},
+		commit: () => ({}),
+		persistLocal: async () => {},
+		rollback: () => true
+	})
+	const actor = createActor(
+		createOrganizationMachine(stage, () => true),
+		{ input }
+	).start()
+	await entered.promise
+	input.value = 'archive'
+	gate.resolve()
+	expect((await toPromise(actor)).kind).toBe('saved')
+	expect(observed).toEqual(['later'])
+})
+it.each(['shutdown', 'scope', 'failure'] as const)(
+	'drains immutable history observation on %s before admitting a transaction',
+	async (mode) => {
+		const observation = Promise.withResolvers<never[]>(),
+			entered = Promise.withResolvers<void>()
+		let current = true
+		const open = vi.fn(() => ({}))
+		const stage = createWorkspaceCreationTransaction<
+			OrganizationDraft,
+			object,
+			null,
+			SyncReceipt,
+			object
+		>({
+			open,
+			readLocal: async () => null,
+			assess: () => ({ outcome: 'eligible' }),
+			stage: () => ({ global: async () => {} }),
+			commit: () => ({}),
+			persistLocal: async () => {},
+			rollback: () => true
+		})
+		const actor = createActor(
+			createOrganizationMachine(
+				stage,
+				() => current,
+				async () => {
+					entered.resolve()
+					return observation.promise
+				}
+			),
+			{ input: request }
+		).start()
+		await entered.promise
+		if (mode === 'scope') current = false
+		else if (mode === 'shutdown') actor.send({ type: 'SHUTDOWN' })
+		expect(actor.getSnapshot().status).toBe('active')
+		if (mode === 'failure') observation.reject(new Error('history unavailable'))
+		else observation.resolve([])
+		expect((await toPromise(actor)).kind).toBe(mode === 'failure' ? 'failed' : 'interrupted')
+		expect(open).not.toHaveBeenCalled()
+		expect(actor.getSnapshot().context.operations).toEqual([])
+	}
+)

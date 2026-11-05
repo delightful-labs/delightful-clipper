@@ -10,19 +10,22 @@ import {
 	canOrganizeArticle
 } from '../../capture/organization.js'
 import type { OrganizationOperation, OrganizationRequest } from '../../capture/organization.js'
-import { createOrganizationMachine } from '../../machines/storage/organize.js'
+import {
+	createOrganizationMachine,
+	type OrganizationDraft
+} from '../../machines/storage/organize.js'
 import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 import { app } from './schema.js'
 export function createOrganizationRecords(
-	db: Pick<Db, 'one' | 'beginTransaction' | 'subscribe'>,
+	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
 	type Resource = TransactionResource & { parents?: string[] }
 	const stage = createWorkspaceCreationTransaction<
-		OrganizationRequest,
+		OrganizationDraft,
 		Resource,
 		{ article: unknown; document: unknown },
 		SyncReceipt,
@@ -50,17 +53,8 @@ export function createOrganizationRecords(
 				article?.contentId ?? document?.id ?? null,
 				aliases
 			)
-			const rows = await r.tx.all(
-				app.organizationOperations.where({
-					libraryId,
-					field: request.field
-				}),
-				{ tier: ReadTier.LocalFirst }
-			)
 			r.parents = organizationHeads(
-				rows
-					.filter((row) => targets.has((row.articleId ?? row.documentId)!))
-					.map((row) => organizationOperationSchema.parse(row))
+				a.draft.operations.filter((row) => targets.has(row.articleId))
 			).map((row) => row.id)
 			return { article, document }
 		},
@@ -97,7 +91,13 @@ export function createOrganizationRecords(
 		}
 	})
 	return {
-		machine: createOrganizationMachine(stage, isCurrent),
+		machine: createOrganizationMachine(stage, isCurrent, async (request) => {
+			const rows = await db.all(
+				app.organizationOperations.where({ libraryId, field: request.field }),
+				{ tier: ReadTier.LocalFirst }
+			)
+			return rows.map((row) => organizationOperationSchema.parse(row))
+		}),
 		subscribe: (next: (rows: OrganizationOperation[]) => void, error: () => void) =>
 			db.subscribe(
 				app.organizationOperations.where({ libraryId }),

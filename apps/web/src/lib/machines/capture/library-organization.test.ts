@@ -3,7 +3,7 @@ import { createActor, toPromise, waitFor } from 'xstate'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import { libraryMachine, selectLibraryView } from './library.js'
 import { testLibraryCapability } from './library.test-support.js'
-import { createOrganizationMachine } from '../storage/organize.js'
+import { createOrganizationMachine, type OrganizationDraft } from '../storage/organize.js'
 import type { OrganizationRequest } from '../../capture/organization.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 const id = crypto.randomUUID()
@@ -30,7 +30,7 @@ const row = {
 function fixture(local = async () => {}, global = async () => {}) {
 	const commit = vi.fn(() => ({}))
 	const stage = createWorkspaceCreationTransaction<
-		OrganizationRequest,
+		OrganizationDraft,
 		object,
 		null,
 		SyncReceipt,

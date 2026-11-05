@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import {
 	organizationHeads,
+	organizationOperationSchema,
 	projectOrganization,
 	matchesLibraryFilter,
 	organizationRequestSchema
@@ -88,4 +89,25 @@ it('retains organization from pending aliases and legacy document rows after con
 		status: 'archive',
 		favorite: true
 	})
+})
+it('decodes exactly one native parent reference and rejects malformed persisted operations', () => {
+	const base = { id, libraryId: id, field: 'status', value: 'later', parents: '[]' }
+	for (const refs of [
+		{ articleId: id, documentId: null },
+		{ articleId: null, documentId: id }
+	])
+		expect(organizationOperationSchema.parse({ ...base, ...refs }).articleId).toBe(id)
+	for (const refs of [
+		{ articleId: null, documentId: null },
+		{ articleId: id, documentId: id }
+	])
+		expect(organizationOperationSchema.safeParse({ ...base, ...refs }).success).toBe(false)
+	expect(
+		organizationOperationSchema.safeParse({
+			...base,
+			articleId: id,
+			documentId: null,
+			parents: '["bad-id"]'
+		}).success
+	).toBe(false)
 })
