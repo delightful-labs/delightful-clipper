@@ -1,3 +1,4 @@
+import { createArticleTargetLookup } from '../../capture/causal.js'
 import { projectTags } from '../../capture/tags.js'
 import type { TagOperation } from '../../capture/tags.js'
 import { projectOrganization } from '../../capture/organization.js'
@@ -64,18 +65,12 @@ const model = setup<
 		reportError: enqueueActions(({ check, enqueue }) => {
 			if (check('current')) enqueue.sendTo('output', { type: 'ERROR' })
 		}),
-		publish: sendTo('output', ({ context }) => ({
-			type: 'ROWS',
-			rows: projectTags(
-				projectOrganization(
-					projectLibraryArticles(context.articles, context.documents),
-					context.organization,
-					context.articles
-				),
-				context.tags,
-				context.articles
-			)
-		})),
+		publish: sendTo('output', ({ context }) => {
+			const targets = createArticleTargetLookup(context.articles)
+			const rows = projectLibraryArticles(context.articles, context.documents)
+			const organized = projectOrganization(rows, context.organization, context.articles, targets)
+			return { type: 'ROWS', rows: projectTags(organized, context.tags, context.articles, targets) }
+		}),
 		clear: assign({ articles: [], documents: [], organization: [], tags: [], callbacks: undefined })
 	}
 }).createMachine({

@@ -103,45 +103,10 @@ type Meta = {
 	priority?: number
 	message?: (c: Context) => WorkflowMessage
 }
-function syncMessage(status: 'pending' | 'accepted' | 'rejected'): WorkflowMessage {
-	return {
-		text: t(
-			status === 'accepted'
-				? 'capture.status.synced'
-				: status === 'rejected'
-					? 'capture.status.rejected'
-					: 'library.sync_pending'
-		),
-		variant: status === 'rejected' ? 'error' : 'info'
-	}
-}
 function organizationStatuses(context: Context, articleId: string) {
 	return Object.entries(context.organizationOperations)
 		.filter(([, id]) => id === articleId)
 		.map(([operationId]) => context.sync[operationId])
-}
-function organizationSyncMessage(context: Context, articleId: string): WorkflowMessage | undefined {
-	const statuses = organizationStatuses(context, articleId)
-	if (statuses.includes('rejected')) return syncMessage('rejected')
-	if (statuses.includes('pending')) return syncMessage('pending')
-	if (statuses.includes('accepted')) return syncMessage('accepted')
-	return undefined
-}
-function failureMessage(code: string): WorkflowMessage {
-	return {
-		text: t(
-			code === 'unknown'
-				? 'capture.status.unknown'
-				: code === 'canceled'
-					? 'capture.status.canceled'
-					: code === 'sessionUnavailable'
-						? 'capture.errors.session_unavailable'
-						: code === 'rateLimited'
-							? 'capture.errors.rate_limited'
-							: 'capture.status.failed'
-		),
-		variant: 'error'
-	}
 }
 const actors = {
 	search: createSearchMachine(),
@@ -839,18 +804,37 @@ export const libraryMachine = setup<
 									}
 								},
 								synced: { meta: { name: t('capture.status.synced'), variant: 'info' } },
-								rejected: { meta: { name: t('capture.status.rejected'), variant: 'error' } },
+								rejected: {
+									meta: {
+										name: t('capture.status.rejected'),
+										variant: 'error',
+										channel: 'capture-problem'
+									}
+								},
 								background: {
 									meta: { message: (context) => required(context.background[context.captureId]) }
 								}
 							}
 						},
-						invalidUrl: { meta: { name: t('capture.errors.invalid_url'), variant: 'error' } },
-						failed: { meta: { name: t('capture.status.save_failed'), variant: 'error' } },
+						invalidUrl: {
+							meta: {
+								name: t('capture.errors.invalid_url'),
+								variant: 'error',
+								channel: 'capture-problem'
+							}
+						},
+						failed: {
+							meta: {
+								name: t('capture.status.save_failed'),
+								variant: 'error',
+								channel: 'capture-problem'
+							}
+						},
 						uncertain: {
 							meta: {
 								name: t('capture.status.unknown'),
-								variant: 'error'
+								variant: 'error',
+								channel: 'capture-problem'
 							}
 						},
 						canceled: {
@@ -961,14 +945,6 @@ export function selectLibraryView(
 		!!c.capability?.isCurrent()
 	const meta = visible ? Object.values(snapshot.getMeta()) : []
 	const forwardedState = meta.find((state) => state?.message)
-	const rowMessages: Record<string, WorkflowMessage> = {}
-	if (visible)
-		for (const row of c.rows) {
-			if (!row.contentId || c.background[row.id]) {
-				if (row.failure) rowMessages[row.id] = failureMessage(row.failure)
-				else if (c.background[row.id]) rowMessages[row.id] = required(c.background[row.id])
-			}
-		}
 	const search = selectSearchView(visible ? snapshot.children.search?.getSnapshot() : undefined)
 	const resultIds = search.query === c?.query ? search.ids : undefined
 	const matches = visible
@@ -996,7 +972,9 @@ export function selectLibraryView(
 			!!c.capability?.spawnOrganization &&
 			!snapshot.matches({ running: { organization: 'writing' } }),
 		duplicateMessage: stateFeedback(meta, 'duplicate'),
+		captureProblemMessage: stateFeedback(meta, 'capture-problem'),
 		captureMessage:
+			stateFeedback(meta, 'capture-problem') ??
 			stateFeedback(meta) ??
 			stateFeedback(meta, 'duplicate') ??
 			(c ? forwardedState?.message?.(c) : undefined),
@@ -1016,22 +994,6 @@ export function selectLibraryView(
 						variant: 'info' as const
 					}
 				: undefined,
-		syncMessages: visible
-			? Object.fromEntries(
-					Object.entries(c.sync)
-						.filter(([id]) => !c.background[id])
-						.map(([id, status]) => [id, syncMessage(status)])
-				)
-			: {},
-		organizationMessages: visible
-			? Object.fromEntries(
-					c.rows.flatMap((row) => {
-						const message = organizationSyncMessage(c, row.id)
-						return message ? [[row.id, message]] : []
-					})
-				)
-			: {},
-		rowMessages,
 		readable: visible ? Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId])) : {},
 		canOpenCapture:
 			visible && c.captureReady && !c.background[c.captureId] && captured?.trashed !== true,

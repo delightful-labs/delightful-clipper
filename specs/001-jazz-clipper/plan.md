@@ -19,7 +19,7 @@ Preserve the approved reduced MVP: no content refresh/revision migration, highli
 | UI | Svelte 5.57.2 baseline shared with DLF/DUI. SvelteKit 3.0.1/Vite 8.3.4 pinned and qualified with the Netlify adapter. No `next` dependencies. |
 | Workflow | XState 5.33.2; typed owners and leaf SDK/I/O actors. Read the DLF XState memory as integration guidance. |
 | Persistence | Jazz `2.0.0-alpha.59` pinned to sibling integration baseline, behind Clipper repository capabilities. DLF granular exports, not its empty root barrel. |
-| Shared UI | DUI `0.0.25` radio-group archive from commit `04b3230` is pinned; consume shared controls/theme, including the shell-wide floating Add link button and modal URL form. Do not implement the deferred image viewer. |
+| Shared UI | DUI `0.0.25` archive from commit `20ef7be` (DUI PR #15) is pinned, including radio controls and configurable TagInput comparison; consume shared controls/theme, including the shell-wide floating Add link button and modal URL form. Do not implement the deferred image viewer. |
 | Extraction | Readability 0.6.0 baseline with inert DOM parsing and pre-extraction collection of referenced footnotes; packaged browser-serialized capture worker implemented and tested in Chromium. First-party Node parsing handles raw fetched HTML. Defuddle is a measured alternative, not a simultaneous second pipeline at launch. |
 | Localization | i18next 26.7.1 investigated baseline, instance per application runtime with bundled English resources; reactive Svelte adapter; descriptors from workers/machines. No translation-management interface. |
 | Search | MiniSearch 7.2.0 pinned and implemented inside a dedicated worker, derived per-account index persisted locally and rebuildable from saved records. No server search. |

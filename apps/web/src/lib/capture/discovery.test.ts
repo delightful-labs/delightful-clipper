@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { tagNameSchema, tagKey, projectTags, tagOperationSchema } from './tags.js'
+import { tagNameSchema, tagKey, tagComparisonKey, projectTags, tagOperationSchema } from './tags.js'
 import type { TagOperation } from './tags.js'
 import { projectOrganization, matchesLibraryFilter } from './organization.js'
 import type { LibraryArticle } from '../contracts/articles.js'
@@ -80,4 +80,51 @@ it('Trash is independent and restores previous organization without content repl
 		trashed: false,
 		contentId: null
 	})
+})
+
+it('shares draft comparison and durable key folding without validating incomplete drafts', () => {
+	for (const name of [' Straße ', 'STRASSE', 'Cafe\u0301', 'Café', 'ΟΣ', 'ος'])
+		expect(tagKey(name)).toBe('cf-1.1.2:' + tagComparisonKey(name))
+	expect(tagComparisonKey('')).toBe('')
+	expect(tagComparisonKey('a'.repeat(65))).toBe('a'.repeat(65))
+	expect(tagNameSchema.safeParse('a'.repeat(65)).success).toBe(false)
+})
+it('merges alias histories without leaking unrelated tags or changing causal dominance', () => {
+	const contentId = crypto.randomUUID(),
+		aliasId = crypto.randomUUID(),
+		otherId = crypto.randomUUID()
+	const first = { ...row, contentId },
+		other = { ...row, id: otherId, contentId: null }
+	const articles = [
+		{ id: first.id, contentId },
+		{ id: aliasId, contentId }
+	]
+	const assigned = { ...tag('Reading'), articleId: contentId }
+	const removed = { ...tag('READING', false, [assigned.id]), articleId: aliasId }
+	const retained = { ...tag('Work'), articleId: aliasId }
+	const unrelated = { ...tag('Other'), articleId: otherId }
+	const rows = projectTags([first, other], [assigned, removed, retained, unrelated], articles)
+	expect(rows[0]?.tags?.map((tag) => tag.key)).toEqual([tagKey('Work')])
+	expect(rows[1]?.tags?.map((tag) => tag.key)).toEqual([tagKey('Other')])
+	expect(rows[0]?.tagVocabulary?.map((tag) => tag.key)).toEqual(
+		[tagKey('Other'), tagKey('Reading'), tagKey('Work')].sort()
+	)
+	const status = {
+		id: crypto.randomUUID(),
+		libraryId,
+		articleId: contentId,
+		field: 'status' as const,
+		value: 'later',
+		parents: []
+	}
+	const newer = {
+		...status,
+		id: crypto.randomUUID(),
+		articleId: aliasId,
+		value: 'archive',
+		parents: [status.id]
+	}
+	expect(
+		projectOrganization([first, other], [status, newer], articles).map((row) => row.status)
+	).toEqual(['archive', 'inbox'])
 })

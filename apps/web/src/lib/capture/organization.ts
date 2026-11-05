@@ -1,6 +1,14 @@
 import { z } from 'zod'
 import { tagRequestSchema } from './tags.js'
-import { causalHeads, causalParentsSchema, hasSingleParent, articleTargets } from './causal.js'
+import {
+	causalHeads,
+	causalParentsSchema,
+	hasSingleParent,
+	articleTargets,
+	createArticleTargetLookup,
+	indexCausalHistory
+} from './causal.js'
+import type { ArticleTargetLookup } from './causal.js'
 import { lowercaseUuidSchema } from '../validation/values.js'
 import type { Article, LibraryArticle } from '../contracts/articles.js'
 export const articleStatuses = ['inbox', 'later', 'archive'] as const
@@ -42,19 +50,18 @@ export const organizationTargets = articleTargets
 export function projectOrganization(
 	rows: LibraryArticle[],
 	operations: OrganizationOperation[],
-	articles: Pick<Article, 'id' | 'contentId'>[] = []
+	articles: Pick<Article, 'id' | 'contentId'>[] = [],
+	targets: ArticleTargetLookup = createArticleTargetLookup(articles)
 ) {
+	const history = indexCausalHistory(operations, (operation) => operation.field)
 	return rows.map((row) => {
-		const targets = organizationTargets(row.id, row.contentId, articles)
-		const own = operations.filter((o) => targets.has(o.articleId))
-		const status =
-			organizationHeads(own.filter((o) => o.field === 'status')).at(-1)?.value ?? 'inbox'
-		const favorite =
-			organizationHeads(own.filter((o) => o.field === 'favorite')).at(-1)?.value === 'true'
-		const trashed =
-			organizationHeads(own.filter((operation) => operation.field === 'trashed')).at(-1)?.value ===
-			'true'
-		return { ...row, status: z.enum(articleStatuses).parse(status), favorite, trashed }
+		const heads = history(targets(row.id, row.contentId))
+		return {
+			...row,
+			status: z.enum(articleStatuses).parse(heads.get('status')?.value ?? 'inbox'),
+			favorite: heads.get('favorite')?.value === 'true',
+			trashed: heads.get('trashed')?.value === 'true'
+		}
 	})
 }
 export function matchesLibraryFilter(row: LibraryArticle, view: LibraryView, favorites: boolean) {

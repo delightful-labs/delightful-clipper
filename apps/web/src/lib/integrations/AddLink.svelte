@@ -22,6 +22,8 @@
 	})
 </script>
 
+{#if view.captureProblemMessage}<StatusMessage {...view.captureProblemMessage} />{/if}
+
 {#if view.duplicateMessage}<StatusMessage {...view.duplicateMessage} />{/if}
 
 {#if view.restoreCaptureId}

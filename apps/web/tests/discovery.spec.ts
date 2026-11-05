@@ -540,3 +540,55 @@ test('extracted article components keep single borders, compact controls and nex
 	await expect(page.getByRole('heading', { name: 'Saved articles', exact: true })).toBeFocused()
 	await expect(list).toHaveCount(0)
 })
+
+test('Add Link exposes invalid-source feedback without showing processing or success', async ({
+	page
+}) => {
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const dialog = await openAddLink(page)
+	await dialog.getByLabel('Article URL', { exact: true }).fill('ftp://example.com/')
+	await dialog.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(
+		page.getByText('Enter a valid public HTTP or HTTPS URL.', { exact: true })
+	).toBeVisible()
+	await expect(page.locator('[data-article-id]')).toHaveCount(0)
+	const next = await openAddLink(page)
+	await next
+		.getByLabel('Article URL', { exact: true })
+		.fill('https://example.com/valid-after-error')
+	await next.getByRole('button', { name: 'Add link', exact: true }).click()
+	await expect(page.locator('[data-article-id]')).toHaveCount(1)
+	await expect(
+		page.getByText('Enter a valid public HTTP or HTTPS URL.', { exact: true })
+	).toHaveCount(0)
+	await expect(page.getByText('Saving on this device…', { exact: true })).toHaveCount(0)
+})
+test('DUI shares Unicode comparison for duplicate feedback and suggestion filtering', async ({
+	page
+}) => {
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const first = await supplied(page, 'https://example.com/canonical-first')
+	const second = await supplied(page, 'https://example.com/canonical-second')
+	await addTag(page, first.row, 'Straße')
+	await addTag(page, first.row, 'Café')
+	let dialog = await tags(page, first.row)
+	const input = dialog.getByRole('combobox')
+	await input.fill('STRASSE')
+	await input.press('Enter')
+	await expect(dialog.getByRole('status')).toHaveText('tag STRASSE is already selected.')
+	await expect(
+		dialog.getByRole('list', { name: 'tags', exact: true }).getByRole('listitem')
+	).toHaveCount(2)
+	await input.fill('Cafe\u0301')
+	await input.press('Enter')
+	await expect(dialog.getByRole('status')).toHaveText('tag Cafe\u0301 is already selected.')
+	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	dialog = await tags(page, second.row)
+	await dialog.getByRole('combobox').fill('STRASSE')
+	await expect(page.getByRole('option', { name: 'Straße', exact: true })).toBeVisible()
+	await dialog.getByRole('combobox').press('ArrowDown')
+	await dialog.getByRole('combobox').press('Enter')
+	await expect(dialog.getByRole('button', { name: 'Remove Straße', exact: true })).toBeVisible()
+})

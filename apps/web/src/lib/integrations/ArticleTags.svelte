@@ -4,7 +4,7 @@
 	import { Button, Dialog, TagInput } from 'delightful-ui'
 	import { libraryMachine } from '../machines/capture/library.js'
 	import type { LibraryArticle } from '../contracts/articles.js'
-	import type { Tag } from '../capture/tags.js'
+	import { tagComparisonKey, type Tag } from '../capture/tags.js'
 	import {
 		tagFormMachine,
 		selectTagFormView,
@@ -65,6 +65,7 @@
 		{#key article.id}
 			<div bind:this={inputHost} oninput={() => send({ type: 'RESET' })}>
 				<TagInput
+					normalizeTag={tagComparisonKey}
 					label={noun('tag', 2)}
 					addLabel={action('add', 'tag')}
 					removeLabel={(name) => t('actions.remove_name', { name })}

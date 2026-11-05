@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { tagOperationSchema, tagRequestSchema, tagKey } from '../../capture/tags.js'
 import type { TagOperation } from '../../capture/tags.js'
 import { stageOrganization } from '../../machines/storage/mutations.js'
@@ -20,13 +21,17 @@ import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 import { app } from './schema.js'
+const tagHistorySchema = z.array(tagOperationSchema)
+const organizationHistorySchema = z.array(organizationOperationSchema)
 /** Data projection only: observed spelling is reused without renaming the shared tag. */
-function tagAssignmentValues(draft: OrganizationDraft) {
+function tagAssignmentValues(draft: OrganizationDraft, libraryId: string, parents: string[]) {
 	const request = tagRequestSchema.parse(draft)
 	const known = draft.operations
 		.filter((operation) => operation.field === 'tag')
 		.sort((a, b) => a.id.localeCompare(b.id))[0]
 	return {
+		libraryId,
+		parents: JSON.stringify(parents),
 		key: tagKey(request.value),
 		name: known?.name ?? request.value,
 		assigned: request.assigned
@@ -78,43 +83,29 @@ export function createOrganizationRecords(
 				: { outcome: 'blocked', reason: 'Article unavailable' },
 		stage: (r, a) => {
 			if (!r.parents) throw new Error('Missing organization observation')
+			const parents = r.parents
 			const values = {
 				libraryId,
 				field: a.draft.field,
 				value: String(a.draft.value),
 				parents: JSON.stringify(r.parents)
 			}
+			const insertTag = (reference: 'articleId' | 'documentId') =>
+				r.tx.insert(
+					app.tagOperations,
+					{
+						articleId: null,
+						documentId: null,
+						[reference]: a.draft.id,
+						...tagAssignmentValues(a.draft, libraryId, parents)
+					},
+					{ id: a.operationId }
+				)
 			return stageOrganization({
 				hasArticle: !!r.article,
 				tagAssignment: a.draft.field === 'tag',
-				insertTagArticle: () => {
-					const request = tagRequestSchema.parse(a.draft)
-					r.tx.insert(
-						app.tagOperations,
-						{
-							libraryId,
-							articleId: request.id,
-							documentId: null,
-							...tagAssignmentValues(a.draft),
-							parents: JSON.stringify(r.parents)
-						},
-						{ id: a.operationId }
-					)
-				},
-				insertTagDocument: () => {
-					const request = tagRequestSchema.parse(a.draft)
-					r.tx.insert(
-						app.tagOperations,
-						{
-							libraryId,
-							articleId: null,
-							documentId: request.id,
-							...tagAssignmentValues(a.draft),
-							parents: JSON.stringify(r.parents)
-						},
-						{ id: a.operationId }
-					)
-				},
+				insertTagArticle: () => insertTag('articleId'),
+				insertTagDocument: () => insertTag('documentId'),
 				insertArticle: () => {
 					r.tx.insert(
 						app.organizationOperations,
@@ -142,14 +133,14 @@ export function createOrganizationRecords(
 					app.organizationOperations.where({ libraryId, field: request.field }),
 					{ tier: ReadTier.LocalFirst }
 				)
-				return rows.map((row) => organizationOperationSchema.parse(row))
+				return organizationHistorySchema.parse(rows)
 			},
 			async (request) => {
 				const tag = tagRequestSchema.parse(request)
 				const rows = await db.all(app.tagOperations.where({ libraryId, key: tagKey(tag.value) }), {
 					tier: ReadTier.LocalFirst
 				})
-				return rows.map((row) => tagOperationSchema.parse(row))
+				return tagHistorySchema.parse(rows)
 			}
 		),
 		subscribeTags: (next: (rows: TagOperation[]) => void, error: () => void) =>
@@ -157,12 +148,12 @@ export function createOrganizationRecords(
 				app.tagOperations.where({ libraryId }),
 				{
 					onUpdate: (rows) => {
-						const parsed = rows.map((row) => tagOperationSchema.safeParse(row))
-						if (parsed.some((row) => !row.success)) {
+						const parsed = tagHistorySchema.safeParse(rows)
+						if (!parsed.success) {
 							error()
 							return
 						}
-						next(parsed.flatMap((row) => (row.success ? [row.data] : [])))
+						next(parsed.data)
 					},
 					onError: error
 				},
@@ -173,12 +164,12 @@ export function createOrganizationRecords(
 				app.organizationOperations.where({ libraryId }),
 				{
 					onUpdate: (rows) => {
-						const parsed = rows.map((row) => organizationOperationSchema.safeParse(row))
-						if (parsed.some((row) => !row.success)) {
+						const parsed = organizationHistorySchema.safeParse(rows)
+						if (!parsed.success) {
 							error()
 							return
 						}
-						next(parsed.flatMap((row) => (row.success ? [row.data] : [])))
+						next(parsed.data)
 					},
 					onError: error
 				},

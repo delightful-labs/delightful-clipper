@@ -18,7 +18,7 @@
 		"@faker-js/faker": "10.6.0",
 		"@mozilla/readability": "0.6.0",
 		"delightful-local-first": "file:../../vendor/delightful-local-first-aaf718d-logger.tgz",
-		"delightful-ui": "file:../../vendor/delightful-ui-04b3230-radio-group.tgz",
+		"delightful-ui": "file:../../vendor/delightful-ui-20ef7be-tag-normalization.tgz",
 		"dompurify": "3.4.17",
 		"i18next": "26.7.1",
 		"ipaddr.js": "2.3.0",

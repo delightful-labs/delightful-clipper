@@ -479,3 +479,7 @@ No general version-history or diff viewer was selected. Historical retention, re
 - Resolve simultaneous clipping from extension and PWA during Jazz planning, preserving annotations and successful captures. Concurrent refresh and current-revision selection are deferred with refresh.
 
 Launch requirements include snapshot-preserving duplicate saves (FR-018), redirects/short links (FR-002), and honest anchor outcomes (FR-008). FR-019–FR-023 retain deferred refresh/repair design intent; they do not require those workflows for MVP.
+
+### Library review qualification
+
+Add Link keeps routine processing/save/sync outcomes quiet, retains Already saved feedback, and exposes invalid-source, failed/uncertain-save and rejected-save errors selected by the owning machine. Tag entry uses DUI TagInput with Clipper's existing comparison policy for both admission and suggestions: equivalent Unicode spellings cannot be announced as newly selected. Comparison does not rename display values or replace domain validation. This follow-up changes no persisted schema or library organization semantics.

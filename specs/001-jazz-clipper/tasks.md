@@ -242,3 +242,6 @@ The shared extraction/display policy retains `details`, `summary`, `open`, and s
 - [x] Include assigned tag names in keyword search; tag membership/name changes invalidate the existing search dataset, and tagged document fingerprints rebuild older derived caches. Cover Unicode/AND queries, remote add/remove, and production offline restart.
 
 - [x] Enable bounded fuzzy article search for continue/continues and small spelling errors, retaining AND queries, title boosts and short-term exact matching. Cover fresh/restored indexes, real search controls and cold offline restart.
+
+- [x] Complete the PR #16 simplification review: restore machine-owned Add Link error feedback while keeping progress/success quiet; share TagInput comparison through DUI PR #15; index causal history and native aliases once per snapshot; remove unused feedback/query projections; reuse batch schemas and tag insertion payloads without changing mutation-chart ownership.
+- [x] Add regressions for equivalent Unicode tag announcements/suggestions, invalid Add Link feedback, failed/uncertain save feedback, and causal updates through native article/document aliases.

@@ -1,7 +1,13 @@
 import { z } from 'zod'
 import { caseFold } from 'unicode-case-folding'
 import { lowercaseUuidSchema } from '../validation/values.js'
-import { causalHeads, causalParentsSchema, hasSingleParent, articleTargets } from './causal.js'
+import {
+	causalParentsSchema,
+	hasSingleParent,
+	createArticleTargetLookup,
+	indexCausalHistory
+} from './causal.js'
+import type { ArticleTargetLookup } from './causal.js'
 import type { LibraryArticle, Article } from '../contracts/articles.js'
 /** The package's pinned folding table is part of durable key version 1; do not upgrade it silently. */
 export const tagNameSchema = z
@@ -13,8 +19,11 @@ export const tagNameSchema = z
 export function isValidTagName(value: string) {
 	return tagNameSchema.safeParse(value).success
 }
+export function tagComparisonKey(name: string) {
+	return caseFold(name.trim().normalize('NFC')).normalize('NFC')
+}
 export function tagKey(name: string) {
-	return 'cf-1.1.2:' + caseFold(tagNameSchema.parse(name)).normalize('NFC')
+	return 'cf-1.1.2:' + tagComparisonKey(tagNameSchema.parse(name))
 }
 export type Tag = { key: string; name: string }
 export const tagRequestSchema = z.object({
@@ -46,20 +55,24 @@ export type TagOperation = z.infer<typeof tagOperationSchema>
 export function projectTags(
 	rows: LibraryArticle[],
 	operations: TagOperation[],
-	articles: Pick<Article, 'id' | 'contentId'>[] = []
+	articles: Pick<Article, 'id' | 'contentId'>[] = [],
+	targets: ArticleTargetLookup = createArticleTargetLookup(articles)
 ): LibraryArticle[] {
 	const vocabulary = new Map<string, Tag>()
 	for (const operation of [...operations].sort((a, b) => a.id.localeCompare(b.id)))
 		if (!vocabulary.has(operation.key))
 			vocabulary.set(operation.key, { key: operation.key, name: operation.name })
 	const tagVocabulary = [...vocabulary.values()].sort((a, b) => a.key.localeCompare(b.key))
+	const tagOrder = new Map(tagVocabulary.map((tag, index) => [tag.key, index]))
+	const history = indexCausalHistory(operations, (operation) => operation.key)
 	return rows.map((row) => {
-		const targets = articleTargets(row.id, row.contentId, articles)
-		const own = operations.filter((operation) => targets.has(operation.articleId))
-		const tags = tagVocabulary.filter(
-			(tag) =>
-				causalHeads(own.filter((operation) => operation.key === tag.key)).at(-1)?.assigned === true
-		)
+		const heads = history(targets(row.id, row.contentId))
+		const tags = [...heads]
+			.flatMap(([key, head]) => {
+				const tag = vocabulary.get(key)
+				return head.assigned && tag ? [tag] : []
+			})
+			.sort((a, b) => tagOrder.get(a.key)! - tagOrder.get(b.key)!)
 		return { ...row, tags, tagVocabulary }
 	})
 }

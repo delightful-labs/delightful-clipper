@@ -19,7 +19,6 @@ type Context = Input & {
 	query: string
 	generation: number
 	ids: string[]
-	matchedQuery: string | undefined
 }
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Search resource unavailable')
@@ -126,8 +125,7 @@ export function createSearchMachine() {
 			rows: [],
 			query: '',
 			generation: 0,
-			ids: [],
-			matchedQuery: undefined
+			ids: []
 		}),
 		on: { STOP: '.closed' },
 		states: {
@@ -165,7 +163,7 @@ export function createSearchMachine() {
 				},
 				states: {
 					loading: {
-						entry: assign({ ids: [], matchedQuery: undefined }),
+						entry: assign({ ids: [] }),
 						invoke: {
 							src: 'load',
 							input: ({ context }) => ({ cap: required(context.capability), rows: context.rows }),
@@ -201,8 +199,7 @@ export function createSearchMachine() {
 								guard: 'currentResult',
 								target: 'ready',
 								actions: assign({
-									ids: ({ event }) => event.ids,
-									matchedQuery: ({ event }) => event.query
+									ids: ({ event }) => event.ids
 								})
 							}
 						}
@@ -231,8 +228,7 @@ export function createSearchMachine() {
 					capability: undefined,
 					rows: [],
 					query: '',
-					ids: [],
-					matchedQuery: undefined
+					ids: []
 				})
 			}
 		}
