@@ -54,6 +54,7 @@ test('changes all statuses, keeps favorites independent, combines filters, and p
 			first.getByRole('button', { name: 'Remove favorite', exact: true })
 		).toHaveAttribute('aria-pressed', 'true')
 	}
+	await expect(first.getByRole('status')).toHaveCount(0)
 	await first.getByLabel('Status', { exact: true }).selectOption('later')
 	await expect(first.getByLabel('Status', { exact: true })).toBeEnabled()
 	await page.getByRole('radio', { name: 'Later', exact: true }).check()

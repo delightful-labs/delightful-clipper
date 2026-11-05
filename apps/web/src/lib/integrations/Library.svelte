@@ -51,7 +51,6 @@
 		{#if view.rows.length}
 			<ul class="article-list">
 				{#each view.rows as row (row.id)}
-					{@const rowMessage = view.rowMessages[row.id]}
 					<li data-article-id={row.id}>
 						<div class="article-header">
 							<div class="article-title">
@@ -99,13 +98,6 @@
 									>{t('actions.retry')}</Button
 								>{/if}
 						{/if}
-						{#if view.organizationMessages[row.id]}<StatusMessage
-								{...view.organizationMessages[row.id]!}
-							/>{/if}
-						{#if rowMessage}<StatusMessage {...rowMessage} />{/if}
-						{#if view.syncMessages[row.id]}<span class="sync-message"
-								>{view.syncMessages[row.id]?.text}</span
-							>{/if}
 					</li>
 				{/each}
 			</ul>
@@ -153,10 +145,5 @@
 	.article-title {
 		flex: 1 1 16rem;
 		min-inline-size: 0;
-	}
-
-	.sync-message {
-		display: block;
-		font-size: var(--dui-font-size-sm);
 	}
 </style>
