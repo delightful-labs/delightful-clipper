@@ -1,7 +1,7 @@
 # Technical Plan: Jazz Clipper and Reader
 
-**Baseline**: `main` (implementation through feature branches/PRs) · **Updated**: 2026-11-04 · **Spec**: [spec.md](spec.md)
-**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is the authorized next batch, in progress; see [library-organization.md](library-organization.md). Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
+**Baseline**: `main` (implementation through feature branches/PRs) · **Updated**: 2026-11-05 · **Spec**: [spec.md](spec.md)
+**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is implemented in PR #14; see [library-organization.md](library-organization.md) for the state/resource model and the handoff for qualification. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
 
 ## Summary
 
@@ -25,7 +25,7 @@ Preserve the approved reduced MVP: no content refresh/revision migration, highli
 | Search | MiniSearch 7.2.0 investigated baseline inside a dedicated worker, derived per-account index persisted locally and rebuildable from saved records. No server search. |
 | Images | Worker decode/resize/re-encode with locally durable native Jazz byte values; initial policy max 2048 px long edge, quality 0.82 WebP candidate, 2 MiB output target, 20 MiB direct-extension input/40 MP decode ceiling; gateway image responses are capped at 4 MiB for buffered hosting limits. These are provisional technical limits, not validated quality claims. PNG fallback for lossless diagrams/alpha; unavailable images remain explicit rather than silently omitted. |
 | Hosting | Netlify adapter with private app rendered client-side, first-party fetch endpoints on Node functions. Verify Kit 3 Vite-based adapter configuration; legacy config is not the target. |
-| Validation | Current source/build, native policy and web/offline/Chromium extension suites pass; latest qualified runtime is `dfc675c`. Broader browser/device and full product acceptance remain open. |
+| Validation | Current source/build, native policy and web/offline/Chromium extension suites pass; basic organization runtime is `741844e`, with evidence in the handoff. Broader browser/device and full product acceptance remain open. |
 | Performance | Spec SC-001 capture target <30s excluding slow sources; bounded extraction/input limits, initial text before assets, no heavy full-text indexing on UI thread. No library-size throughput SLA is invented. |
 
 ## Original planning setup and constitution check (historical)
@@ -97,9 +97,9 @@ Minimum versions will be set from validated capability/SDK requirements before r
 1. Execute the bounded foundation batch: lock the stack/archives, document Clipper agreements, integrate DLF and implement the canonical private root with acceptance checks.
 2. Complete the actual domain schema/policies, local durability and native byte-asset acceptance before enabling dependent capture paths.
 3. Build a vertical Add Link → saved snapshot → offline restart path with redirect-safe gateway and failure entry.
-4. Chromium trusted restoration/direct capture is delivered. Select the next bounded feature with the user; Firefox packaging and source/reader exact annotation anchoring remain open.
+4. Chromium trusted restoration/direct capture is delivered. Basic library organization follows in PR #14. Firefox packaging and source/reader exact annotation anchoring remain open.
 5. Add notes, overlapping highlights, local image acquisition, position restoration and shell caching.
-6. Add organization/Trash, offline search and the retained reader controls; finish target-device qualification.
+6. Complete tags/Trash, offline search and the retained reader controls after basic status/favorite organization; finish target-device qualification.
 
 ## Open implementation gates
 

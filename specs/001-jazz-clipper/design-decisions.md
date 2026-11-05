@@ -1,6 +1,6 @@
 # MVP design decisions and acceptance details
 
-**Updated**: 2026-11-04. Accepted interaction decisions and remaining product design. Implemented evidence is tracked in [tasks.md](tasks.md); unbuilt controls below remain requirements, not completion claims. The product spec governs any conflict.
+**Updated**: 2026-11-05. Accepted interaction decisions and remaining product design. Implemented evidence is tracked in [tasks.md](tasks.md); unbuilt controls below remain requirements, not completion claims. The product spec governs any conflict.
 
 ## Reader, navigation and accessibility
 
@@ -92,4 +92,4 @@ Only a completed restoration can persist a nonsecret confirmation (account ID, J
 
 ## Basic organization batch
 
-PR #13 is merged and the user verified extension sign-in and saving into the web library. The next authorized batch is Inbox/Later/Archive plus independent favorites, status views with an AND favorites filter, native synchronization and offline restart. Existing articles default to Inbox/unfavorited; organization never changes original save order. The implementation state/ownership design is in [library-organization.md](library-organization.md). Tags, Trash, search, images, annotations and bulk actions remain excluded from this batch. This records authorization and design, not completed runtime qualification.
+PR #13 is merged and the user verified extension sign-in and saving into the web library. The next authorized batch is Inbox/Later/Archive plus independent favorites, status views with an AND favorites filter, native synchronization and offline restart. Existing articles default to Inbox/unfavorited; organization never changes original save order. The implementation state/ownership design is in [library-organization.md](library-organization.md). Tags, Trash, search, images, annotations and bulk actions remain excluded from this batch. PR #14 implements this bounded batch; the handoff records actual source/browser/offline evidence. Broader product and platform acceptance remains open.
