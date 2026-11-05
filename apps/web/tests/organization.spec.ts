@@ -190,9 +190,7 @@ test('organizes a link-only article and retains its values when supplied content
 		.getByRole('dialog', { name: 'Add link', exact: true })
 		.getByRole('button', { name: 'Add link', exact: true })
 		.click()
-	const row = page
-		.locator('[data-article-id]')
-		.filter({ has: page.getByRole('link', { name: 'Open original', exact: true }) })
+	const row = page.locator('[data-article-id]').filter({ hasText: url })
 	await expect(row).toBeVisible()
 	await row.getByLabel('Status', { exact: true }).selectOption('later')
 	await expect(row.getByLabel('Status', { exact: true })).toBeEnabled()

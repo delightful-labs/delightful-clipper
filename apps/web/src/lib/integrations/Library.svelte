@@ -178,7 +178,6 @@
 							</div>
 						</div>
 						{#if !view.readable[row.id]}
-							{#if row.url}<a href={row.url} rel="noreferrer">{action('open', 'original')}</a>{/if}
 							{#if row.failure}<Button
 									type="button"
 									onclick={() => actor.send({ type: 'RETRY', id: row.id })}

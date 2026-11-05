@@ -306,6 +306,7 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await page.getByRole('link', { name: 'UI saved article', exact: true }).click()
 	await expect(page.getByRole('article')).toContainText('Literal <script> stays text.')
 	const reader = page.getByRole('article')
+	await expect(reader.getByRole('link', { name: 'Open original', exact: true })).toBeVisible()
 	await expect(reader.getByRole('heading', { name: 'Structured heading' })).toBeVisible()
 	await expect(reader.locator('code')).toHaveText('const safe = true')
 	await expect(reader.locator('svg')).toBeHidden()
@@ -458,6 +459,7 @@ test('background extraction stays quiet and leaves the saved URL and form usable
 		.click()
 	await entered.promise
 	await expect(page.locator('[data-article-id]')).toContainText('https://example.com/')
+	await expect(page.getByRole('link', { name: 'Open original', exact: true })).toHaveCount(0)
 	await expect(
 		page.getByText('Resolving and extracting the article…', { exact: true })
 	).toHaveCount(0)
@@ -671,7 +673,8 @@ test('Add Link persists article objects before a worker processes their content 
 		.getByRole('button', { name: 'Add link', exact: true })
 		.click()
 	await expect(other.getByRole('button', { name: 'Add link', exact: true })).toBeEnabled()
-	await expect(page.getByRole('link', { name: 'Open original', exact: true })).toHaveCount(2)
+	await expect(page.locator('[data-article-id]')).toHaveCount(2)
+	await expect(page.getByRole('link', { name: 'Open original', exact: true })).toHaveCount(0)
 	const rows = await page.evaluate(async (urls) => {
 		const path = '/tests/article-driver.ts'
 		return (await import(/* @vite-ignore */ path)).inspect(urls)

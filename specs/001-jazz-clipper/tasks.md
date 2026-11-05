@@ -24,6 +24,8 @@ PR #15 is merged at `72b6fc9`; work uses `feat/library-search-tags-trash` from u
 
 No permanent deletion, bulk actions, global vocabulary rename/delete, annotation search/tags, images or annotations enter this batch.
 
+- [x] Remove Open original from library rows during pending and completed capture; retain reader source navigation and failure Retry. Four affected browser cases and strict types/formatting/lint pass.
+
 ## Optional fake-data follow-up — PR #16
 
 - [x] Inspect Finance's flag, lazy English Faker generator, stable IDs, authority checks and exclusive setup transaction before choosing Clipper's integration.
