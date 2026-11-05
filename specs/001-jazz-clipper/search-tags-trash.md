@@ -9,6 +9,23 @@ Authorized together in one feature PR, based on merged PR #15 (`72b6fc9`). The u
 - Trash is an independent causal scalar, retaining status/favorite/tags/content. Restore changes only that scalar. Re-clipping cannot restore implicitly or replace content. No permanent deletion or purge is authorized here.
 - Existing schemas are inspected before extension. Add native tag-assignment history and owner/parent policies with a typed additive migration; extend the existing organization operation/policy for the trash scalar. No identity/recovery changes.
 
+## MiniSearch dependency review — pending user review
+
+This comparison was added after the user questioned the dependency installation. The original plan/research named MiniSearch and described a worker-owned disposable index, but did not adequately compare alternatives. It is not evidence of a completed pre-install comparison or explicit user approval. Installing the package without discussing it was a process error; listing it in the plan did not supply approval.
+
+The product needs offline keyword search over saved title, URL, body and assigned tag names, with all query terms required, title weighting, deterministic ties and now bounded typo tolerance. Those requirements do not mandate MiniSearch. Jazz remains the authoritative store; the search engine can be replaced without migrating article/tag records.
+
+MiniSearch 7.2.0 supplies a local in-memory full-text index, AND queries, relevance scores, field boosts, configurable edit-distance matching and JSON index serialization. Its installed manifest has no runtime dependencies. These features fit an ordinary module worker controlled by the existing XState resource owner; Clipper persists its serialized index only as an account-scoped rebuildable cache. The rationale for retaining it is the direct fit of these APIs and avoiding application-owned implementations of indexing, fuzzy matching and ranking. This is a feature/integration rationale, not a measured performance advantage. [Pinned MiniSearch source and documentation](https://github.com/lucaong/minisearch/tree/v7.2.0), [API and serialization](https://lucaong.github.io/minisearch/classes/MiniSearch.MiniSearch.html).
+
+| Alternative | What it offers | Tradeoff for Clipper |
+| --- | --- | --- |
+| Scan saved text in the existing worker, with no new package | Straightforward literal/keyword search and no additional search index dependency | A credible choice for small libraries. Each query examines the searchable corpus; application code would also need to implement and maintain fuzzy matching and ranking to preserve the current behavior. No local benchmark establishes when this becomes insufficient. |
+| Fuse.js | Browser-side fuzzy search, weighted fields, and current documented token/logical search options | A credible alternative, particularly for fuzzy record lookup. Long-article matching and all-word semantics would need qualification against the same fixtures. No head-to-head Clipper measurements establish inferiority. [Official documentation](https://www.fusejs.io/). |
+| FlexSearch | Local full-text search, document fields, worker support and persistent-index options | A credible alternative, particularly if larger-corpus measurements justify its indexing/storage options. Choosing its encoders, matching and persistence model would need a separate integration evaluation. MiniSearch's directly configurable edit distance and JSON cache fit the current implementation; this does not prove it simpler or faster in every workload. [Official source/documentation](https://github.com/nextapps-de/flexsearch). |
+| A hosted search service | A remotely managed index and query execution | It cannot be the sole search path because the accepted product must search offline. It would add remote data handling, credentials and another index lifecycle; retaining offline behavior would still require a local implementation. No hosted service is installed or required. |
+
+Limitations: the searchable index must fit in browser memory. Current Clipper code reloads/rebuilds the dataset on relevant article/tag/snapshot changes rather than using incremental index updates, even though MiniSearch offers update/removal APIs. Correctness and offline restart are covered; representative large-library memory, cold-build time and query latency have not been measured against alternatives. There is no evidence-based claim that MiniSearch is the fastest, smallest overall, or necessary for a small library. Approval of retaining/replacing the dependency remains for the user; this record does not authorize adding an alternative.
+
 ## State/resource ownership before async work
 
 ```mermaid
