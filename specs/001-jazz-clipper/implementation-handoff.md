@@ -4,9 +4,9 @@
 
 ## Article list presentation — PR #15 follow-up
 
-At the user's request, the list has one 1px outer border and a bottom divider on each row except the last, preventing doubled borders. Rows have no bullets and use DUI spacing for padding. A larger DUI Heading contains each article title, with status/favorite controls in the same wrapping header row. Existing reader links, link-only source/retry actions and machine feedback are retained. Empty views do not render an empty bordered list. No copy or workflow changes are included.
+At the user's request, the list has one 1px outer border and a bottom divider on each row except the last, preventing doubled borders. Rows have no bullets and use compact 12px DUI spacing for padding. Status and Favorite align at their bottom edges, and Favorite uses DUI appearance="flat". A larger DUI Heading contains each article title, with status/favorite controls in the same wrapping header row. Existing reader links, link-only source/retry actions and machine feedback are retained. Empty views do not render an empty bordered list. No copy or workflow changes are included.
 
-Visual browser review confirms the outer border is 1px on all sides, only the first of two rows has a 1px bottom divider, and rows have padding without bullets. Desktop titles/controls share a row; mobile layout wraps without horizontal overflow. All five existing organization browser cases pass. `pnpm verify` passes vendor, formatting, lint, strict types, production build and 481 unit tests with one Linux-specific skip across 68 files. Temporary review/test files were removed.
+Visual browser review confirms the outer border is 1px on all sides, only the first of two rows has a 1px bottom divider, and rows have padding without bullets. Desktop titles/controls share a row; mobile layout wraps without horizontal overflow. All five existing organization browser cases pass. `pnpm verify` passes vendor, formatting, lint, strict types, production build and 481 unit tests with one Linux-specific skip across 68 files. The compact-row refinement also passes formatting, strict type checks and desktop/mobile browser review, including aligned control bottoms and computed Favorite shadow of none. Temporary review/test files were removed.
 
 ## DUI radio filters — current follow-up
 

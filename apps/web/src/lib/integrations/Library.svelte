@@ -80,6 +80,7 @@
 								</Select>
 								<Button
 									type="button"
+									appearance="flat"
 									aria-pressed={row.favorite === true}
 									disabled={!view.canOrganize}
 									onclick={() =>
@@ -122,10 +123,6 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.filters {
 		align-items: end;
 	}
 
@@ -138,7 +135,7 @@
 
 	.article-list > li {
 		margin: 0;
-		padding: var(--dui-space-md);
+		padding: var(--dui-spacing-sm);
 		border-block-end: 1px solid var(--dui-color-foreground);
 	}
 
@@ -150,7 +147,7 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: var(--dui-space-md);
+		gap: var(--dui-spacing-sm);
 	}
 
 	.article-title {
