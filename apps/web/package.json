@@ -15,16 +15,19 @@
 		"build:parser-worker": "esbuild src/lib/server/capture/extract-worker.ts --bundle --platform=node --format=esm --target=node24 --external:jsdom --external:@mozilla/readability --external:dompurify --outfile=.netlify/v1/parser/extract-worker.mjs"
 	},
 	"dependencies": {
+		"@faker-js/faker": "10.6.0",
 		"@mozilla/readability": "0.6.0",
 		"delightful-local-first": "file:../../vendor/delightful-local-first-aaf718d-logger.tgz",
-		"delightful-ui": "file:../../vendor/delightful-ui-04b3230-radio-group.tgz",
+		"delightful-ui": "file:../../vendor/delightful-ui-20ef7be-tag-normalization.tgz",
 		"dompurify": "3.4.17",
 		"i18next": "26.7.1",
 		"ipaddr.js": "2.3.0",
 		"jazz-napi": "2.0.0-alpha.59",
 		"jazz-tools": "2.0.0-alpha.59",
 		"jsdom": "29.1.1",
+		"minisearch": "7.2.0",
 		"svelte": "5.57.2",
+		"unicode-case-folding": "1.1.2",
 		"xstate": "5.33.2",
 		"zod": "4.6.7"
 	},

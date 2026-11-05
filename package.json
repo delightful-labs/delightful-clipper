@@ -26,7 +26,8 @@
 		"deploy:jazz": "pnpm --filter @delightful-clipper/web deploy:jazz",
 		"test:offline": "node --experimental-strip-types apps/web/tests/offline-build.ts && playwright test --config playwright.offline.config.ts",
 		"build:extension": "pnpm --filter @delightful-clipper/extension build",
-		"test:extension": "node --experimental-strip-types apps/extension/tooling/test-build.ts && playwright test --config playwright.extension.config.ts"
+		"test:extension": "node --experimental-strip-types apps/extension/tooling/test-build.ts && playwright test --config playwright.extension.config.ts",
+		"test:fake-data": "playwright test --config playwright.fake-data.config.ts"
 	},
 	"devDependencies": {
 		"@types/node": "24.19.2",

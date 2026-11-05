@@ -1,3 +1,4 @@
+import type { FakeDataOutcome } from '../../samples/machine.js'
 import {
 	assign,
 	enqueueActions,
@@ -18,11 +19,20 @@ import {
 	matchesLibraryFilter
 } from '../../capture/organization.js'
 import type { OrganizationRequest, LibraryView } from '../../capture/organization.js'
+import { z } from 'zod'
+import { createSearchMachine, selectSearchView } from '../../search/machine.js'
+import { querySchema } from '../../search/schema.js'
+import { matchesTags } from '../../capture/tags.js'
 import { t } from '../../localization/index.js'
 import { normalizedSource } from '../../capture/source.js'
 import { stateFeedback } from '../../contracts/feedback.js'
 import type { WorkflowMessage } from '../../contracts/feedback.js'
-import type { LibraryCapability, LibraryEvent, SaveRef } from '../../contracts/library.js'
+import type {
+	LibraryCapability,
+	LibraryEvent,
+	SaveRef,
+	FakeDataRef
+} from '../../contracts/library.js'
 import type { ArticleSaveResult, LibraryArticle, ArticleContent } from '../../contracts/articles.js'
 import type { QueueControl } from '../../contracts/article-worker.js'
 import type { ReadResult } from '../../contracts/storage.js'
@@ -32,18 +42,26 @@ function required<T>(v: T | undefined): T {
 	if (v === undefined) throw new Error('Library unavailable')
 	return v
 }
-function savedResult(result: ArticleSaveResult) {
+function saveOutcome(result: ArticleSaveResult | FakeDataOutcome): ArticleSaveResult {
+	if (typeof result === 'string') throw new Error('Expected article write outcome')
+	return result
+}
+function savedResult(value: ArticleSaveResult | FakeDataOutcome) {
+	const result = saveOutcome(value)
 	if (result.kind !== 'saved' && result.kind !== 'duplicate')
 		throw new Error('Expected locally saved result')
 	return result
 }
 type Context = {
+	fakeDataRef: FakeDataRef | undefined
 	organizationRef: SaveRef | undefined
 	organizationRequest: OrganizationRequest | undefined
 	organizationId: string
 	organizationOperations: Record<string, string>
 	view: LibraryView
 	favorites: boolean
+	selectedTags: string[]
+	query: string
 	capability: LibraryCapability | undefined
 	saveRef: SaveRef | undefined
 	url: string
@@ -85,47 +103,13 @@ type Meta = {
 	priority?: number
 	message?: (c: Context) => WorkflowMessage
 }
-function syncMessage(status: 'pending' | 'accepted' | 'rejected'): WorkflowMessage {
-	return {
-		text: t(
-			status === 'accepted'
-				? 'capture.status.synced'
-				: status === 'rejected'
-					? 'capture.status.rejected'
-					: 'library.sync_pending'
-		),
-		variant: status === 'rejected' ? 'error' : 'info'
-	}
-}
 function organizationStatuses(context: Context, articleId: string) {
 	return Object.entries(context.organizationOperations)
 		.filter(([, id]) => id === articleId)
 		.map(([operationId]) => context.sync[operationId])
 }
-function organizationSyncMessage(context: Context, articleId: string): WorkflowMessage | undefined {
-	const statuses = organizationStatuses(context, articleId)
-	if (statuses.includes('rejected')) return syncMessage('rejected')
-	if (statuses.includes('pending')) return syncMessage('pending')
-	if (statuses.includes('accepted')) return syncMessage('accepted')
-	return undefined
-}
-function failureMessage(code: string): WorkflowMessage {
-	return {
-		text: t(
-			code === 'unknown'
-				? 'capture.status.unknown'
-				: code === 'canceled'
-					? 'capture.status.canceled'
-					: code === 'sessionUnavailable'
-						? 'capture.errors.session_unavailable'
-						: code === 'rateLimited'
-							? 'capture.errors.rate_limited'
-							: 'capture.status.failed'
-		),
-		variant: 'error'
-	}
-}
 const actors = {
+	search: createSearchMachine(),
 	collection: fromCallback<LibraryEvent, LibraryCapability | undefined>(({ input, sendBack }) => {
 		try {
 			return input?.subscribe(
@@ -164,11 +148,21 @@ export const libraryMachine = setup<
 	| LibraryEvent
 	| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
 	| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-	| { type: `xstate.done.actor.${string}`; actorId: string; output: ArticleSaveResult }
+	| {
+			type: `xstate.done.actor.${string}`
+			actorId: string
+			output: ArticleSaveResult | FakeDataOutcome
+	  }
 	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown },
 	typeof actors,
-	{},
-	{ close: undefined; watch: undefined; updateRows: undefined; refreshCapture: undefined },
+	{ search: 'search' },
+	{
+		close: undefined
+		watch: undefined
+		updateRows: undefined
+		refreshCapture: undefined
+		updateSearch: undefined
+	},
 	{
 		canUseLibrary: undefined
 		canStartSave: undefined
@@ -216,6 +210,7 @@ export const libraryMachine = setup<
 		canStartSave: and(['canUseLibrary', not('writing')]),
 		drained: and([
 			'closing',
+			stateIn({ running: { fakeDataLifecycle: 'closed' } }),
 			not('writing'),
 			not('organizing'),
 			or([
@@ -225,13 +220,17 @@ export const libraryMachine = setup<
 		])
 	},
 	actions: {
+		updateSearch: sendTo('search', ({ context }) => ({ type: 'ROWS', rows: context.rows })),
 		refreshCapture: raise({ type: 'CAPTURE_UPDATED' }),
 		close: enqueueActions(({ enqueue }) => {
 			enqueue.sendTo('worker', { type: 'STOP' })
+			enqueue.sendTo('search', { type: 'STOP' })
 			enqueue.sendTo('receipts', { type: 'SHUTDOWN' })
 			enqueue.assign({
 				reader: undefined,
 				rows: [],
+				query: '',
+				selectedTags: [],
 				url: '',
 				content: undefined,
 				sync: {},
@@ -246,7 +245,7 @@ export const libraryMachine = setup<
 					: 'output' in event
 						? event.output
 						: undefined
-			return { type: 'WATCH_RECEIPTS', result: required(result) }
+			return { type: 'WATCH_RECEIPTS', result: saveOutcome(required(result)) }
 		}),
 		updateRows: assign(({ context, event }) => {
 			if (event.type !== 'ROWS') throw new Error('Expected collection rows')
@@ -273,12 +272,15 @@ export const libraryMachine = setup<
 	initial: 'running',
 	context: ({ input }) => ({
 		capability: input,
+		fakeDataRef: undefined,
 		organizationRef: undefined,
 		organizationRequest: undefined,
 		organizationId: '',
 		organizationOperations: {},
 		view: 'all',
 		favorites: false,
+		selectedTags: [],
+		query: '',
 		saveRef: undefined,
 		url: '',
 		content: undefined,
@@ -300,6 +302,12 @@ export const libraryMachine = setup<
 			type: 'parallel',
 			invoke: [
 				{ id: 'collection', src: 'collection', input: ({ context }) => context.capability },
+				{
+					id: 'search',
+					src: 'search',
+					input: ({ context }) => ({ capability: context.capability?.search }),
+					onSnapshot: {}
+				},
 				{ id: 'worker', src: 'worker', input: ({ context }) => context.capability },
 				{ id: 'receipts', src: 'receipts', input: ({ self }) => ({ reportTo: self }) }
 			],
@@ -308,6 +316,25 @@ export const libraryMachine = setup<
 				target: 'closed'
 			},
 			on: {
+				QUERY: {
+					guard: and([
+						'canUseLibrary',
+						({ context, event }) =>
+							!!context.capability?.search && querySchema.safeParse(event.query).success
+					]),
+					actions: [
+						assign({ query: ({ event }) => event.query }),
+						sendTo('search', ({ event }) => ({ type: 'QUERY', query: event.query }))
+					]
+				},
+				RETRY_SEARCH: { guard: 'canUseLibrary', actions: sendTo('search', { type: 'RETRY' }) },
+				TAG_FILTER: {
+					guard: and([
+						'canUseLibrary',
+						({ event }) => z.array(z.string().min(1).max(512)).max(64).safeParse(event.keys).success
+					]),
+					actions: assign({ selectedTags: ({ event }) => [...new Set(event.keys)] })
+				},
 				FILTER: {
 					guard: and([
 						'canUseLibrary',
@@ -344,13 +371,14 @@ export const libraryMachine = setup<
 						]),
 						actions: [
 							'updateRows',
+							'updateSearch',
 							'refreshCapture',
 							raise(({ context }) => ({ type: 'OPEN', id: context.readerId }))
 						]
 					},
 					{
 						guard: 'canUseLibrary',
-						actions: ['updateRows', 'refreshCapture']
+						actions: ['updateRows', 'updateSearch', 'refreshCapture']
 					}
 				],
 				LIST_FAILED: { actions: assign({ listFailed: true }) },
@@ -408,6 +436,39 @@ export const libraryMachine = setup<
 				}
 			},
 			states: {
+				fakeDataLifecycle: {
+					initial: 'checking',
+					states: {
+						checking: {
+							always: [
+								{ guard: ({ context }) => !!context.capability?.spawnFakeData, target: 'active' },
+								{ target: 'closed' }
+							]
+						},
+						active: {
+							entry: assign({
+								fakeDataRef: ({ context, spawn }) =>
+									required(context.capability?.spawnFakeData)(spawn)
+							}),
+							on: {
+								'xstate.done.actor.*': {
+									guard: ({ context, event }) => event.actorId === context.fakeDataRef?.id,
+									target: 'closed'
+								},
+								'xstate.error.actor.*': {
+									guard: ({ context, event }) => event.actorId === context.fakeDataRef?.id,
+									target: 'closed'
+								},
+								SHUTDOWN: {
+									actions: sendTo(({ context }) => required(context.fakeDataRef), {
+										type: 'SHUTDOWN'
+									})
+								}
+							}
+						},
+						closed: {}
+					}
+				},
 				organization: {
 					initial: 'idle',
 					on: {
@@ -470,14 +531,14 @@ export const libraryMachine = setup<
 									{
 										guard: ({ context, event }) =>
 											event.actorId === context.organizationRef?.id &&
-											event.output.kind === 'saved',
+											saveOutcome(event.output).kind === 'saved',
 										target: 'saved',
 										actions: [
 											'watch',
 											assign({
 												organizationOperations: ({ context, event }) => ({
 													...context.organizationOperations,
-													[event.output.operationId]: context.organizationId
+													[saveOutcome(event.output).operationId]: context.organizationId
 												})
 											})
 										]
@@ -485,7 +546,7 @@ export const libraryMachine = setup<
 									{
 										guard: ({ context, event }) =>
 											event.actorId === context.organizationRef?.id &&
-											event.output.kind === 'unknown',
+											saveOutcome(event.output).kind === 'unknown',
 										target: 'unknown'
 									},
 									{
@@ -681,34 +742,38 @@ export const libraryMachine = setup<
 									{
 										guard: ({ context, event }) =>
 											event.actorId === context.saveRef?.id &&
-											(event.output.kind === 'saved' || event.output.kind === 'duplicate'),
+											(saveOutcome(event.output).kind === 'saved' ||
+												saveOutcome(event.output).kind === 'duplicate'),
 										target: 'saved',
 										actions: [
 											'watch',
 											assign({
-												captureId: ({ event }) => event.output.operationId,
-												captureReady: ({ event }) =>
-													'ready' in event.output && event.output.ready === true,
+												captureId: ({ event }) => saveOutcome(event.output).operationId,
+												captureReady: ({ event }) => savedResult(event.output).ready === true,
 												failure: ({ event }) =>
-													event.output.kind === 'duplicate' ? 'duplicate' : ''
+													saveOutcome(event.output).kind === 'duplicate' ? 'duplicate' : ''
 											}),
 											raise({ type: 'CAPTURE_SAVED' })
 										]
 									},
 									{
 										guard: ({ context, event }) =>
-											event.actorId === context.saveRef?.id && event.output.kind === 'interrupted',
+											event.actorId === context.saveRef?.id &&
+											saveOutcome(event.output).kind === 'interrupted',
 										target: 'canceled'
 									},
 									{
 										guard: ({ context, event }) =>
-											event.actorId === context.saveRef?.id && event.output.kind === 'failed',
+											event.actorId === context.saveRef?.id &&
+											saveOutcome(event.output).kind === 'failed',
 										target: 'failed'
 									},
 									{
 										guard: ({ context, event }) => event.actorId === context.saveRef?.id,
 										target: 'uncertain',
-										actions: assign({ captureId: ({ event }) => event.output.operationId })
+										actions: assign({
+											captureId: ({ event }) => saveOutcome(event.output).operationId
+										})
 									}
 								],
 								'xstate.error.actor.*': {
@@ -731,20 +796,45 @@ export const libraryMachine = setup<
 									]
 								},
 								local: { meta: { name: t('capture.status.saved'), variant: 'info' } },
-								duplicate: { meta: { name: t('capture.status.duplicate'), variant: 'info' } },
+								duplicate: {
+									meta: {
+										name: t('capture.status.duplicate'),
+										variant: 'info',
+										channel: 'duplicate'
+									}
+								},
 								synced: { meta: { name: t('capture.status.synced'), variant: 'info' } },
-								rejected: { meta: { name: t('capture.status.rejected'), variant: 'error' } },
+								rejected: {
+									meta: {
+										name: t('capture.status.rejected'),
+										variant: 'error',
+										channel: 'capture-problem'
+									}
+								},
 								background: {
 									meta: { message: (context) => required(context.background[context.captureId]) }
 								}
 							}
 						},
-						invalidUrl: { meta: { name: t('capture.errors.invalid_url'), variant: 'error' } },
-						failed: { meta: { name: t('capture.status.save_failed'), variant: 'error' } },
+						invalidUrl: {
+							meta: {
+								name: t('capture.errors.invalid_url'),
+								variant: 'error',
+								channel: 'capture-problem'
+							}
+						},
+						failed: {
+							meta: {
+								name: t('capture.status.save_failed'),
+								variant: 'error',
+								channel: 'capture-problem'
+							}
+						},
 						uncertain: {
 							meta: {
 								name: t('capture.status.unknown'),
-								variant: 'error'
+								variant: 'error',
+								channel: 'capture-problem'
 							}
 						},
 						canceled: {
@@ -824,12 +914,15 @@ export const libraryMachine = setup<
 			type: 'final',
 			entry: assign({
 				capability: undefined,
+				fakeDataRef: undefined,
 				organizationRef: undefined,
 				organizationRequest: undefined,
 				organizationId: '',
 				organizationOperations: {},
 				reader: undefined,
 				rows: [],
+				selectedTags: [],
+				query: '',
 				sync: {},
 				background: {},
 				url: '',
@@ -852,23 +945,39 @@ export function selectLibraryView(
 		!!c.capability?.isCurrent()
 	const meta = visible ? Object.values(snapshot.getMeta()) : []
 	const forwardedState = meta.find((state) => state?.message)
-	const rowMessages: Record<string, WorkflowMessage> = {}
-	if (visible)
-		for (const row of c.rows) {
-			if (!row.contentId || c.background[row.id]) {
-				if (row.failure) rowMessages[row.id] = failureMessage(row.failure)
-				else if (c.background[row.id]) rowMessages[row.id] = required(c.background[row.id])
-			}
-		}
-	const rows = visible ? c.rows.filter((row) => matchesLibraryFilter(row, c.view, c.favorites)) : []
+	const search = selectSearchView(visible ? snapshot.children.search?.getSnapshot() : undefined)
+	const resultIds = search.query === c?.query ? search.ids : undefined
+	const matches = visible
+		? c.rows.filter(
+				(row) => matchesLibraryFilter(row, c.view, c.favorites) && matchesTags(row, c.selectedTags)
+			)
+		: []
+	const byId = new Map(matches.map((row) => [row.id, row]))
+	const rows =
+		visible && c.query.trim()
+			? (resultIds?.flatMap((id) => (byId.has(id) ? [required(byId.get(id))] : [])) ?? [])
+			: matches
+	const captured = visible
+		? c.rows.find((row) => row.id === c.captureId || row.contentId === c.captureId)
+		: undefined
+
 	return {
 		rows,
+		search,
+		restoreCaptureId: captured?.trashed ? captured.id : undefined,
+		tags: visible ? (c.rows[0]?.tagVocabulary ?? []) : [],
 		organizationMessage: stateFeedback(meta, 'organization'),
 		canOrganize:
 			visible &&
 			!!c.capability?.spawnOrganization &&
 			!snapshot.matches({ running: { organization: 'writing' } }),
-		captureMessage: stateFeedback(meta) ?? (c ? forwardedState?.message?.(c) : undefined),
+		duplicateMessage: stateFeedback(meta, 'duplicate'),
+		captureProblemMessage: stateFeedback(meta, 'capture-problem'),
+		captureMessage:
+			stateFeedback(meta, 'capture-problem') ??
+			stateFeedback(meta) ??
+			stateFeedback(meta, 'duplicate') ??
+			(c ? forwardedState?.message?.(c) : undefined),
 		readerMessage: !snapshot
 			? { text: t('reader.loading'), variant: 'info' as const }
 			: visible
@@ -879,30 +988,15 @@ export function selectLibraryView(
 				? { text: t('library.list_failed'), variant: 'error' as const }
 				: undefined,
 		emptyMessage:
-			visible && !rows.length
+			visible && !rows.length && (!c.query.trim() || resultIds !== undefined)
 				? {
 						text: t(c.rows.length ? 'library.filtered_empty' : 'library.empty'),
 						variant: 'info' as const
 					}
 				: undefined,
-		syncMessages: visible
-			? Object.fromEntries(
-					Object.entries(c.sync)
-						.filter(([id]) => !c.background[id])
-						.map(([id, status]) => [id, syncMessage(status)])
-				)
-			: {},
-		organizationMessages: visible
-			? Object.fromEntries(
-					c.rows.flatMap((row) => {
-						const message = organizationSyncMessage(c, row.id)
-						return message ? [[row.id, message]] : []
-					})
-				)
-			: {},
-		rowMessages,
 		readable: visible ? Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId])) : {},
-		canOpenCapture: visible && c.captureReady && !c.background[c.captureId],
+		canOpenCapture:
+			visible && c.captureReady && !c.background[c.captureId] && captured?.trashed !== true,
 		canCancel:
 			visible &&
 			snapshot.can({ type: 'CANCEL' }) &&

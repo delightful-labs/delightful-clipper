@@ -41,9 +41,16 @@ async function clearHttpCache(page: Page) {
 	await cdp.detach()
 }
 async function ready(page: Page) {
-	await expect(
-		page.getByText('Offline startup prepared on this browser.', { exact: true })
-	).toBeVisible({ timeout: 45000 })
+	await expect
+		.poll(
+			() =>
+				page.evaluate(async () => {
+					const registration = await navigator.serviceWorker.getRegistration()
+					return registration?.active?.state === 'activated'
+				}),
+			{ timeout: 45000 }
+		)
+		.toBe(true)
 }
 async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 	await page.route('**/api/capture/*', async (route) => {
@@ -150,11 +157,8 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		)
 		expect(cachePaths.filter((path) => path.endsWith('.wasm'))).toHaveLength(1)
 
-		await expect(
-			page.getByText('Article saved on this device. Sync pending.', { exact: true })
-		).toBeVisible()
 		const readerPath = await page
-			.getByRole('link', { name: 'Open saved article', exact: true })
+			.getByRole('link', { name: 'Completely offline article', exact: true })
 			.getAttribute('href')
 		expect(readerPath).toMatch(/^\/articles\/[0-9a-f-]+$/)
 		const organized = page
@@ -167,6 +171,25 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			organized.getByRole('button', { name: 'Remove favorite', exact: true })
 		).toBeEnabled()
 
+		await organized.getByRole('button', { name: 'tags', exact: true }).click()
+		const tagDialog = page.getByRole('dialog', { name: 'tags', exact: true })
+		await tagDialog.locator('input[type="text"]').fill('RestartOnlyTag')
+		await tagDialog.getByRole('button', { name: 'Add tag', exact: true }).click()
+		await expect(
+			tagDialog.getByRole('button', { name: 'Remove RestartOnlyTag', exact: true })
+		).toBeVisible()
+		await tagDialog.getByRole('button', { name: 'Close', exact: true }).click()
+		await page
+			.getByRole('searchbox', { name: 'Search articles', exact: true })
+			.fill('offline shell')
+		await expect(organized).toBeVisible()
+		await page.evaluate(async () => {
+			await new Promise<void>((resolve, reject) => {
+				const request = indexedDB.deleteDatabase('delightful-clipper-search-v1')
+				request.onsuccess = () => resolve()
+				request.onerror = () => reject(new Error('Cache deletion failed'))
+			})
+		})
 		await context.close()
 		await ui.stop()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
@@ -177,6 +200,10 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const response = await reopened.goto('http://127.0.0.1:5190' + readerPath)
 		expect(response?.fromServiceWorker()).toBe(true)
 		await ready(reopened)
+		await expect(reopened.getByText('offline', { exact: true })).toBeVisible()
+		await expect(
+			reopened.getByText('Offline startup prepared on this browser.', { exact: true })
+		).toHaveCount(0)
 		await expect(reopened.getByRole('article')).toContainText('Exact offline shell text café 🦊')
 		await expect(
 			reopened.getByRole('article').getByRole('heading', { name: 'Offline structure' })
@@ -201,6 +228,12 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.getByRole('region', { name: 'Saved articles' })
 			.locator('[data-article-id]')
 		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
+		await offlineRow.getByRole('button', { name: 'tags', exact: true }).click()
+		const offlineTags = reopened.getByRole('dialog', { name: 'tags', exact: true })
+		await expect(
+			offlineTags.getByRole('button', { name: 'Remove RestartOnlyTag', exact: true })
+		).toBeVisible()
+		await offlineTags.getByRole('button', { name: 'Close', exact: true }).click()
 		await expect(
 			offlineRow.getByRole('button', { name: 'Remove favorite', exact: true })
 		).toHaveAttribute('aria-pressed', 'true')
@@ -208,7 +241,24 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await expect(reopened.getByText('No articles match this view.', { exact: true })).toBeVisible()
 		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
+		const search = reopened.getByRole('searchbox', { name: 'Search articles', exact: true })
+		await search.fill('RESTARTONLYTAGS shel')
+		await expect(offlineRow).toBeVisible()
+		await search.fill('no-such-keyword')
+		await expect(offlineRow).toHaveCount(0)
+		await search.fill('RESTARTONLYTAGS shel')
+		await expect(offlineRow).toBeVisible()
+		await offlineRow.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+		await expect(offlineRow).toHaveCount(0)
+		await reopened.getByRole('radio', { name: 'Trash', exact: true }).check()
+		await expect(offlineRow).toBeVisible()
+		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
+		await offlineRow.getByRole('button', { name: 'Restore article', exact: true }).click()
+		await expect(offlineRow).toHaveCount(0)
+		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
+		await expect(offlineRow).toBeVisible()
 		await context.setOffline(false)
+		await expect(reopened.getByText('online', { exact: true })).toBeVisible()
 		await ui.start()
 		await startAuthority()
 		const sourceReload = await reopened.reload()
@@ -366,7 +416,10 @@ test('first-install failure admits the DLF account path and retry prepares offli
 			false
 		)
 		ui.failWorker(false)
-		await page.getByRole('button', { name: 'Retry', exact: true }).click()
+		await page
+			.locator('[data-offline-shell]')
+			.getByRole('button', { name: 'Retry', exact: true })
+			.click()
 		await ready(page)
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Create account', exact: true })).toHaveCount(0)

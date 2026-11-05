@@ -101,7 +101,7 @@ export function createShellRegistrationMachine(platform: ShellPlatform) {
 				},
 				states: {
 					preparing: status('preparing', t('offline.preparing')),
-					ready: status('ready', t('offline.ready')),
+					ready: { meta: { status: 'ready' } },
 					waiting: status('waiting', t('offline.update')),
 					failed: { ...status('failed', t('offline.failed'), 'error'), tags: 'retryable' },
 					unsupported: status('unsupported', t('offline.unsupported'))

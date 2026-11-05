@@ -2,7 +2,63 @@
 
 Updated 2026-11-05. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
-## Current handoff — DUI radio filters
+## Current handoff — search, article tags and Trash/restore
+
+PR #15 is merged at `72b6fc9`; work uses `feat/library-search-tags-trash` from updated main and will remain in one unmerged PR. The user authorized all testing in this session. See [ownership/design](search-tags-trash.md).
+
+- [x] Inspect native schemas/policies, document XState ownership before async implementation, retain DLF identity/recovery and DUI presentation.
+- [x] Add versioned Unicode-folded article-tag keys, shared derived vocabulary, immutable causal membership operations, native owner/parent/immutability policies and additive populated-library migration.
+- [x] Extend existing organization operations with independent Trash/restore; preserve content/status/favorites/tags and prevent duplicate capture from restoring implicitly.
+- [x] Implement dedicated MiniSearch worker, disposable deployment/account-keyed cache, native snapshot loading/invalidation, stale-query/generation/scope rejection and shutdown cleanup.
+- [x] Compose query/status/favorites/AND-tag filters in the library actor, with explicit Trash scope.
+- [x] Add actual DUI tag dialog/filter controls and existing-copy Restore actions in Add Link/reader; retain no inline article status text.
+- [x] Add domain, actor, native policy/migration and real-browser tests including cross-client offline edits, cache rebuild and full browser restart.
+- [x] Record explicit revised copy approval: shared Search/Move to action templates, Trash noun, short search error and generic Enter-subject feedback. Omit rejected preparation and tag-specific messages.
+- [x] Expose the actual DUI search input, localized failure/retry, Trash radio and Move to Trash/Restore controls; add real control, keyboard, filter-composition, retry and generic form-validation coverage. Search preparation stays silent.
+- [x] Complete final repository/browser/offline/packaged-extension validation: 498 unit tests/73 files plus one skip, full verification/build, 43 full web cases, 14 final organization/discovery cases, five production offline cases and eleven packaged extension cases pass; evidence/limits are in the handoff.
+- [x] Push one Conventional Commits PR [#16](https://github.com/delightful-labs/delightful-clipper/pull/16) targeting main; copy approval and final local validation are complete; leave the PR unmerged. Do not merge.
+
+- [x] Apply subsequent quiet-capture request, retaining Already saved through a dedicated machine feedback channel and normal reader title links.
+- [x] Use Finance-style compact sidebar connectivity with the user’s explicitly requested lowercase online/offline copy; retain offline-shell admission/error/retry/update behavior.
+- [x] Requalify capture/duplicate/offline restart and connectivity transitions: all 40 web cases, five production offline cases and eleven packaged extension cases pass. Keep duplicate feedback in the existing shared capture projection for the extension as well as the new web duplicate channel.
+
+No permanent deletion, bulk actions, global vocabulary rename/delete, annotation search/tags, images or annotations enter this batch.
+
+- [x] Remove Open original from library rows during pending and completed capture; retain reader source navigation and failure Retry. Four affected browser cases and strict types/formatting/lint pass.
+
+- [x] Replace the custom assignment form with actual DUI TagInput and the user-approved Finance label/announcement templates. Keep native full-folded membership, synchronization, filtering and offline persistence; qualify keyboard suggestions, duplicates and chip removal. All 44 web cases, ten final discovery cases, 510 unit tests plus one skip, five production offline cases and both fake-data cases pass, along with repository checks.
+
+## Presentation and state ownership follow-up — PR #16
+
+- [x] Consolidate the approved Trash mass noun into one catalog entry and correct the search-error sentence to “Search is unavailable.” Preserve counted noun and action composition through native i18next resolution.
+- [x] Split Library into controlled reusable DUI search, filter, list, row and action components, keeping actor ownership and typed event admission in the existing integration/machines. Preserve list geometry and row/dialog focus behavior.
+- [x] Move checking/online/offline states and browser-observer lifetime into a parallel region of the main application machine. Make ConnectionStatus a renderer; dispose listeners on shutdown/direct stop without delaying issued-write draining or gating local readiness.
+- [x] Pass pnpm format and pnpm verify (517 unit passed, one platform skip), all 45 web browser cases, five production offline cases, eleven rebuilt extension cases and two fake-data cases. Include real row geometry/focus and application-owned connection lifecycle regressions; remove temporary isolated harnesses.
+
+## Search engine performance comparison — planned
+
+- [ ] Benchmark MiniSearch against FlexSearch in Clipper's actual browser-worker architecture and record a recommendation in [the dependency review](search-tags-trash.md#minisearch-dependency-review). This is a future evaluation task, not a decision to replace the engine.
+- [ ] Before installing benchmark dependencies, propose the exact FlexSearch version, required packages and isolated harness, and obtain explicit user approval. Keep the comparison out of the shipped application bundle except for separate controlled production builds used to measure each candidate.
+- [ ] Define reproducible, seeded corpora at 100, 1,000 and 10,000 articles, with an optional larger stress case. Include realistic short/long article distributions, titles, URLs, tags, Unicode/multilingual text and repeated/common terms. Record total source bytes, document lengths, token counts and fixture provenance; use no private user library data.
+- [ ] Establish equivalent search semantics before comparing timings: AND keywords across title/URL/body/tags, title weighting, deterministic ties, current filters/Trash scope, Unicode handling and bounded fuzzy matching. Exercise common/rare/absent terms, multiword queries, tag-only matches and spelling/suffix variants. Record precision/recall and ranking differences against expected matches; report unsupported or non-equivalent behavior separately rather than scoring weaker matching as a speed improvement. Measure exact and fuzzy modes separately.
+- [ ] Measure cold full-index build and rebuild time, serialized-index restore and first-search readiness after a full browser restart, warm query latency (p50/p95), and end-to-end input-to-result latency. Include queries arriving during indexing and sustained typing; separate Jazz record loading, worker startup/message transfer, indexing, cache I/O and query costs.
+- [ ] Measure additions, body replacements, tag assignment/removal and deletion bursts, both engine-level incremental operations and Clipper's current full-rebuild path. Record time to searchable results, throughput, CPU time and main-thread long tasks/responsiveness while indexing and searching.
+- [ ] Measure baseline-subtracted steady-state and peak memory for the main page and worker, including corpus copies, index build/restore/query and overlapping rebuilds. Check retained memory after repeated updates and worker disposal. Document the browser measurement method, garbage-collection treatment and unsupported memory metrics rather than presenting partial JS heap figures as total process memory.
+- [ ] Measure serialized index size, actual persisted IndexedDB size/usage delta, transient storage during replacement and cache write/read time. Separately measure incremental production bundle cost versus an engine-free baseline: tree-shaken raw/gzip/Brotli bytes, initial versus lazy/worker chunks, transfer size and parse/startup overhead. Include required adapters/language data and avoid attributing existing Jazz/WASM bytes to either candidate.
+- [ ] Run repeated warm/cold trials with identical fixtures, production settings and controlled cache conditions. Record engine/config/commit versions, browser/OS/hardware, trial counts and variability; alternate candidate order. Cover Chromium and Firefox desktop plus a representative constrained/mobile device where available, labeling emulation and untested platforms explicitly.
+- [ ] Commit the runnable harness, raw measurements and a comparison report covering correctness, speed, memory, storage, bundle cost, integration/maintenance complexity and failure/offline restart behavior. State workload-dependent tradeoffs and evidence limits; recommend retain/switch/further testing for user review. Do not switch production dependencies automatically based on the benchmark.
+
+## Optional fake-data follow-up — PR #16
+
+- [x] Inspect Finance's flag, lazy English Faker generator, stable IDs, authority checks and exclusive setup transaction before choosing Clipper's integration.
+- [x] Record state/resource ownership before async work in [fake-data.md](fake-data.md).
+- [x] Pin `@faker-js/faker` 10.6.0; add strict `PUBLIC_FAKE_DATA` default false and documented startup/test commands.
+- [x] Populate 24 complete native articles with varied status/favorite/Trash/tag metadata, reusing prepareSave/content insertion and the DLF transaction owner. Require local and authoritative emptiness, then recheck ownership/emptiness under an exclusive transaction.
+- [x] Keep readiness independent of seeding; drain issued work on account changes/shutdown and retain uncertain outcomes without replay. Keep extension/default fixtures disabled and the shared dev server unchanged.
+- [x] Add native tests for private ownership, existing data, concurrent seeders and issued-settlement drain; actor tests cover disabled/unavailable authority/unknown results and parent shutdown drain. Enabled/offline browser cases qualify real startup, reload/edit preservation, readers, tags/search/Trash, restored clients and no capture requests.
+- [x] Complete and record final checks: 509 unit tests plus one platform skip across 75 files, vendor/format/lint/strict types/build, 43 default web cases, two enabled/offline fake-data cases, five production offline cases and eleven packaged extension cases pass. Fake-data coverage is included in CI; publish in PR #16 without merging.
+
+## Prior handoff — DUI radio filters
 
 PR #14 is merged at `5e3c5c6`. The radio-filter follow-up uses a new `feat/library-radio-filters` branch from updated main.
 
@@ -182,3 +238,10 @@ Svelte components render machine-provided text/severity rather than switching st
 ## SVG and native disclosure policy
 
 The shared extraction/display policy retains `details`, `summary`, `open`, and static SVG shapes, paths, groups, text, title/description, geometry and solid paints. SVG links/IDs/references, CSS, images, embedded HTML, filters and animation are removed; gradients and `use` definitions remain unsupported. SVG attributes are limited to 16 KiB each and the existing article byte/node limits still apply. Display width is constrained to the reader. This is a bounded static subset, not arbitrary SVG support or a general SVG security audit. See the accepted [design decision](design-decisions.md#retained-disclosure-and-svg-content).
+
+- [x] Include assigned tag names in keyword search; tag membership/name changes invalidate the existing search dataset, and tagged document fingerprints rebuild older derived caches. Cover Unicode/AND queries, remote add/remove, and production offline restart.
+
+- [x] Enable bounded fuzzy article search for continue/continues and small spelling errors, retaining AND queries, title boosts and short-term exact matching. Cover fresh/restored indexes, real search controls and cold offline restart.
+
+- [x] Complete the PR #16 simplification review: restore machine-owned Add Link error feedback while keeping progress/success quiet; share TagInput comparison through DUI PR #15; index causal history and native aliases once per snapshot; remove unused feedback/query projections; reuse batch schemas and tag insertion payloads without changing mutation-chart ownership.
+- [x] Add regressions for equivalent Unicode tag announcements/suggestions, invalid Add Link feedback, failed/uncertain save feedback, and causal updates through native article/document aliases.

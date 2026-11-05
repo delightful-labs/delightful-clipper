@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { observeBrowserConnection } from '../offline/browser.js'
+	import type { WorkflowMessage } from '../contracts/feedback.js'
 	import { inspectMachines } from '../diagnostics/inspect.js'
 	import { onMount, setContext, type Snippet } from 'svelte'
 	import { libraryContextKey, type LibraryContext } from '../runtime/library-context.js'
@@ -17,7 +19,8 @@
 	import { accountInput, type Session, type LibraryFactory } from '../backend/jazz/account.js'
 	import { t, action } from '../localization/index.js'
 
-	const applicationReadinessMachine = createApplicationReadinessMachine<Session>()
+	const applicationReadinessMachine =
+		createApplicationReadinessMachine<Session>(observeBrowserConnection)
 	let {
 		appId,
 		serverUrl,
@@ -31,7 +34,7 @@
 		serverUrl: string
 		gatewayEnabled: boolean
 		children: Snippet
-		shell?: Snippet<[Snippet, Snippet]>
+		shell?: Snippet<[Snippet, Snippet, WorkflowMessage | undefined]>
 		libraryFactory?: LibraryFactory
 		onSnapshot?: (snapshot: ApplicationSnapshot<Session>) => void
 	} = $props()
@@ -123,7 +126,7 @@
 {/snippet}
 
 {#if shell}
-	{@render shell(controls, children)}
+	{@render shell(controls, children, view.connectionMessage)}
 {:else}
 	{@render controls()}
 	{@render children()}

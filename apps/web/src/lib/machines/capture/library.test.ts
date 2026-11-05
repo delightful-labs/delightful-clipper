@@ -103,7 +103,7 @@ it('keeps global rejection separate from local article and content saves', async
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })
-it('localizes pending article failures in the owner and does not offer a fake reader', async () => {
+it('keeps pending article failures on their rows without offering a fake reader', async () => {
 	const { actor } = fixture()
 	actor.send({
 		type: 'ROWS',
@@ -118,9 +118,7 @@ it('localizes pending article failures in the owner and does not offer a fake re
 			}
 		]
 	})
-	expect(selectLibraryView(actor.getSnapshot()).rowMessages[id]?.text).toContain(
-		'could not be fetched'
-	)
+	expect(selectLibraryView(actor.getSnapshot()).rows[0]?.failure).toBe('captureFailed')
 	expect(selectLibraryView(actor.getSnapshot()).canOpenCapture).toBe(false)
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
@@ -376,6 +374,7 @@ it('keeps the duplicate state label when receipt status changes', async () => {
 	await waitFor(actor, (s) => s.matches({ running: { capture: { saved: 'duplicate' } } }))
 	actor.send({ type: 'SYNC', id, status: 'rejected' })
 	expect(actor.getSnapshot().matches({ running: { capture: { saved: 'duplicate' } } })).toBe(true)
+	expect(selectLibraryView(actor.getSnapshot()).duplicateMessage?.text).toBe('Already saved.')
 	expect(selectLibraryView(actor.getSnapshot()).captureMessage?.text).toBe('Already saved.')
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
@@ -414,3 +413,19 @@ it('replaces a worker failure name when the in-flight URL save succeeds', async 
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })
+
+it.each(['failed', 'unknown'] as const)(
+	'keeps %s save feedback separate from quiet progress and success',
+	async (kind) => {
+		const { actor } = fixture(async () => ({ kind, operationId: id }))
+		expect(selectLibraryView(actor.getSnapshot()).captureProblemMessage).toBeUndefined()
+		actor.send({ type: 'ADD', url: candidate.finalUrl })
+		await waitFor(actor, (snapshot) =>
+			snapshot.matches({ running: { capture: kind === 'failed' ? 'failed' : 'uncertain' } })
+		)
+		expect(selectLibraryView(actor.getSnapshot()).captureProblemMessage?.variant).toBe('error')
+		expect(selectLibraryView(actor.getSnapshot()).duplicateMessage).toBeUndefined()
+		actor.send({ type: 'SHUTDOWN' })
+		await toPromise(actor)
+	}
+)

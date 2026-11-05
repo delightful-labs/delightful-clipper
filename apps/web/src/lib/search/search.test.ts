@@ -1,0 +1,128 @@
+import { expect, it, vi } from 'vitest'
+import { createActor, toPromise, waitFor } from 'xstate'
+import { buildIndex, searchIndex, searchFingerprint, restoreIndex } from './engine.js'
+import { createSearchWorkerMachine } from './worker-machine.js'
+import type { SearchDocument } from './schema.js'
+const documents: SearchDocument[] = [
+	{
+		id: crypto.randomUUID(),
+		title: 'Quiet reading',
+		url: 'https://example.com/one',
+		text: 'An orchard with pears and apples.',
+		tags: '',
+		originalSavedAt: '2026-01-01'
+	},
+	{
+		id: crypto.randomUUID(),
+		title: 'Apples and pears',
+		url: 'https://example.com/two',
+		text: 'Quiet reading in an orchard.',
+		tags: '',
+		originalSavedAt: '2026-01-02'
+	},
+	{
+		id: crypto.randomUUID(),
+		title: 'Another',
+		url: 'https://example.com/needle',
+		text: 'Only apples.',
+		tags: '',
+		originalSavedAt: '2026-01-03'
+	}
+]
+it('requires every keyword, boosts titles, searches URLs/body, and keeps short terms exact', async () => {
+	const index = await buildIndex(documents)
+	expect(searchIndex(index, 'APPLES pears')).toEqual([documents[1]!.id, documents[0]!.id])
+	expect(searchIndex(index, 'needle')).toEqual([documents[2]!.id])
+	expect(searchIndex(index, 'orchard')).toHaveLength(2)
+	expect(searchIndex(index, 'app')).toEqual([])
+	expect(searchIndex(index, 'appls').sort()).toEqual(
+		documents.map((document) => document.id).sort()
+	)
+})
+it('rebuilds a corrupt derived cache and remains searchable when cache persistence fails', async () => {
+	const reports: unknown[] = []
+	const write = vi.fn(async () => {
+		throw new Error('Storage blocked')
+	})
+	const actor = createActor(
+		createSearchWorkerMachine({
+			read: async () => {
+				throw new Error('Corrupt cache')
+			},
+			write,
+			report: (message) => reports.push(message)
+		})
+	).start()
+	actor.send({ type: 'INDEX', key: 'account-one', generation: 1, documents })
+	await waitFor(actor, (s) => s.matches('ready'))
+	expect(write).toHaveBeenCalledOnce()
+	actor.send({ type: 'QUERY', generation: 0, query: 'needle' })
+	expect(reports).toHaveLength(1)
+	actor.send({ type: 'QUERY', generation: 1, query: 'needle' })
+	expect(reports.at(-1)).toMatchObject({ type: 'RESULT', generation: 1, ids: [documents[2]!.id] })
+	actor.send({ type: 'STOP' })
+	await toPromise(actor)
+	expect(actor.getSnapshot().context.index).toBeUndefined()
+})
+it('restores a matching account cache and rejects older in-flight generations', async () => {
+	const writes = new Map<string, { fingerprint: string; index: string }>()
+	const reports: unknown[] = []
+	const cap = {
+		read: async (key: string) => writes.get(key),
+		write: async (key: string, value: { fingerprint: string; index: string }) => {
+			writes.set(key, value)
+		},
+		report: (message: unknown) => reports.push(message)
+	}
+	let actor = createActor(createSearchWorkerMachine(cap)).start()
+	actor.send({ type: 'INDEX', key: 'account-one', generation: 1, documents })
+	await waitFor(actor, (s) => s.matches('ready'))
+	actor.send({ type: 'STOP' })
+	await toPromise(actor)
+	const write = vi.fn(cap.write)
+	actor = createActor(createSearchWorkerMachine({ ...cap, write })).start()
+	actor.send({ type: 'INDEX', key: 'account-one', generation: 2, documents })
+	await waitFor(actor, (s) => s.matches('ready'))
+	expect(write).not.toHaveBeenCalled()
+	actor.send({ type: 'QUERY', generation: 1, query: 'needle' })
+	expect(reports.at(-1)).toMatchObject({ type: 'INDEX_READY', generation: 2 })
+	actor.send({ type: 'QUERY', generation: 2, query: 'needle' })
+	expect(reports.at(-1)).toMatchObject({ type: 'RESULT', generation: 2, ids: [documents[2]!.id] })
+	actor.send({ type: 'STOP' })
+	await toPromise(actor)
+})
+
+it('searches Unicode tag names with body keywords and invalidates the cache when membership changes', async () => {
+	const tagged = [{ ...documents[0]!, tags: 'Straße Café' }, documents[1]!]
+	const index = await buildIndex(tagged)
+	expect(searchIndex(index, 'STRASSE')).toEqual([documents[0]!.id])
+	expect(searchIndex(restoreIndex(JSON.stringify(index)), 'STRASSE')).toEqual([documents[0]!.id])
+	expect(searchIndex(index, 'cafe\u0301 orchard')).toEqual([documents[0]!.id])
+	expect(searchIndex(index, 'strasse missing')).toEqual([])
+	expect(searchIndex(await buildIndex(documents), 'strasse')).toEqual([])
+	expect(await searchFingerprint(tagged)).not.toBe(await searchFingerprint(documents.slice(0, 2)))
+	const { tags: _tags, ...legacy } = documents[0]!
+	const legacyBytes = new TextEncoder().encode(JSON.stringify([legacy]))
+	const legacyFingerprint = Array.from(
+		new Uint8Array(await crypto.subtle.digest('SHA-256', legacyBytes)),
+		(byte) => byte.toString(16).padStart(2, '0')
+	).join('')
+	expect(await searchFingerprint([documents[0]!])).not.toBe(legacyFingerprint)
+})
+
+it('matches close spellings and suffixes, prioritizes exact matches, and bounds typo tolerance after cache restoration', async () => {
+	const entries = [
+		{ ...documents[0]!, title: 'Continue', text: '', tags: '' },
+		{ ...documents[1]!, title: 'Continues', text: '', tags: 'Research' },
+		{ ...documents[2]!, title: 'Continuations', text: '', tags: '' }
+	]
+	const index = await buildIndex(entries)
+	for (const searchable of [index, restoreIndex(JSON.stringify(index))]) {
+		expect(searchIndex(searchable, 'continue')).toEqual([entries[0]!.id, entries[1]!.id])
+		expect(searchIndex(searchable, 'continues')).toEqual([entries[1]!.id, entries[0]!.id])
+		expect(searchIndex(searchable, 'continus researh')).toEqual([entries[1]!.id])
+		expect(searchIndex(searchable, 'continue missing')).toEqual([])
+		expect(searchIndex(searchable, 'con')).toEqual([])
+		expect(searchIndex(searchable, 'contxxxx')).toEqual([])
+	}
+})

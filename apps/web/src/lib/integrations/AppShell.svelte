@@ -1,12 +1,19 @@
 <script lang="ts">
+	import type { WorkflowMessage } from '../contracts/feedback.js'
 	import { onMount, type Snippet } from 'svelte'
 	import { page } from '$app/state'
 	import { Button, Drawer, Heading, Navigation, TopNavigation } from 'delightful-ui'
 	import AddLink from './AddLink.svelte'
+	import ConnectionStatus from './ConnectionStatus.svelte'
 	import { useLibrary } from '../runtime/library-context.js'
 	import { action, noun, t } from '../localization/index.js'
 
-	let { account, children }: { account: Snippet; children: Snippet } = $props()
+	let {
+		account,
+		children,
+		connectionMessage
+	}: { account: Snippet; children: Snippet; connectionMessage: WorkflowMessage | undefined } =
+		$props()
 	const library = useLibrary()
 	const id = $props.id()
 	const drawerId = `${id}-account`
@@ -71,6 +78,7 @@
 				<div class="account-panel">
 					<Heading level="h2" size="md">{noun('account')}</Heading>
 					{@render account()}
+					<ConnectionStatus message={connectionMessage} />
 				</div>
 			</div>
 		</Drawer>

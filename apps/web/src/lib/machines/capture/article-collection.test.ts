@@ -28,6 +28,7 @@ function fixture() {
 	let current = true
 	const releaseArticles = vi.fn(),
 		releaseDocuments = vi.fn(),
+		releaseTags = vi.fn(),
 		next = vi.fn(),
 		error = vi.fn()
 	const actor = createActor(
@@ -39,6 +40,7 @@ function fixture() {
 				update([article])
 				return releaseArticles
 			},
+			tags: () => releaseTags,
 			documents: (update) => {
 				documents = update
 				return releaseDocuments
@@ -52,6 +54,7 @@ function fixture() {
 		error,
 		releaseArticles,
 		releaseDocuments,
+		releaseTags,
 		articles: (rows: Article[]) => articles(rows),
 		documents: (rows: DocumentHeader[]) => documents(rows),
 		fail: () => fail(),
@@ -72,10 +75,12 @@ it('joins independent updates, deduplicates content, preserves legacy documents 
 	f.actor.send({ type: 'STOP' })
 	expect(f.releaseArticles).toHaveBeenCalledOnce()
 	expect(f.releaseDocuments).toHaveBeenCalledOnce()
+	expect(f.releaseTags).toHaveBeenCalledOnce()
 	expect(f.actor.getSnapshot().context).toEqual({
 		articles: [],
 		documents: [],
 		organization: [],
+		tags: [],
 		callbacks: undefined
 	})
 	const calls = f.next.mock.calls.length
@@ -89,6 +94,7 @@ it('fails once and releases both subscriptions before ignoring late callbacks', 
 	expect(f.error).toHaveBeenCalledOnce()
 	expect(f.releaseArticles).toHaveBeenCalledOnce()
 	expect(f.releaseDocuments).toHaveBeenCalledOnce()
+	expect(f.releaseTags).toHaveBeenCalledOnce()
 })
 it('suppresses updates and errors after the account binding expires', () => {
 	const f = fixture()

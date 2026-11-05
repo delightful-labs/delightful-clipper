@@ -48,3 +48,4 @@ jobs:
       - run: pnpm test:e2e
       - run: pnpm test:offline
       - run: pnpm test:extension
+      - run: pnpm test:fake-data

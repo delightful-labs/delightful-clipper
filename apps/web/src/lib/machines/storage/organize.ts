@@ -1,9 +1,11 @@
 import { assign, setup, sendTo, stateIn, fromPromise } from 'xstate'
 import type { ActorLogic, Snapshot } from 'xstate'
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
+import type { TagOperation } from '../../capture/tags.js'
 import type { OrganizationRequest, OrganizationOperation } from '../../capture/organization.js'
 import type { SaveResult, SyncReceipt } from '../../contracts/storage.js'
-export type OrganizationDraft = OrganizationRequest & { operations: OrganizationOperation[] }
+export type OrganizationHistory = OrganizationOperation | TagOperation
+export type OrganizationDraft = OrganizationRequest & { operations: OrganizationHistory[] }
 export type OrganizationStageResult = WorkspaceCreationResult<OrganizationDraft, SyncReceipt>
 export type OrganizationStage<S extends Snapshot<OrganizationStageResult>> = ActorLogic<
 	S,
@@ -24,28 +26,34 @@ function required<T>(v: T | undefined): T {
 export function createOrganizationMachine<S extends Snapshot<OrganizationStageResult>>(
 	stage: OrganizationStage<S>,
 	isCurrent: () => boolean,
-	observe: (request: OrganizationRequest) => Promise<OrganizationOperation[]> = async () => []
+	observe: (request: OrganizationRequest) => Promise<OrganizationHistory[]> = async () => [],
+	observeTags: (request: OrganizationRequest) => Promise<OrganizationHistory[]> = async () => []
 ) {
 	const history = fromPromise(({ input }: { input: OrganizationRequest }) => observe(input))
+	const tagHistory = fromPromise(({ input }: { input: OrganizationRequest }) => observeTags(input))
 	const model = setup<
 		{
 			request: OrganizationRequest | undefined
-			operations: OrganizationOperation[]
+			operations: OrganizationHistory[]
 			operationId: string
 			result: SaveResult | undefined
 		},
 		{ type: 'SHUTDOWN' },
-		{ stage: typeof stage; history: typeof history },
+		{ stage: typeof stage; history: typeof history; tagHistory: typeof tagHistory },
 		{},
 		{},
-		{ stale: undefined; stopping: undefined },
+		{ stale: undefined; stopping: undefined; tagRequest: undefined },
 		never,
 		string,
 		OrganizationRequest,
 		SaveResult
 	>({
-		actors: { stage, history },
-		guards: { stale: () => !isCurrent(), stopping: stateIn({ working: { control: 'stopping' } }) }
+		actors: { stage, history, tagHistory },
+		guards: {
+			tagRequest: ({ context }) => context.request?.field === 'tag',
+			stale: () => !isCurrent(),
+			stopping: stateIn({ working: { control: 'stopping' } })
+		}
 	})
 	const terminal = (kind: Exclude<SaveResult['kind'], 'saved'>) =>
 		model.createStateConfig({
@@ -55,6 +63,26 @@ export function createOrganizationMachine<S extends Snapshot<OrganizationStageRe
 				request: undefined,
 				operations: []
 			})
+		})
+	const observeHistory = (src: 'history' | 'tagHistory') =>
+		model.createStateConfig({
+			invoke: {
+				src,
+				input: ({ context }) => required(context.request),
+				onDone: [
+					{ guard: 'stopping', target: '#organization-save.interrupted' },
+					{ guard: 'stale', target: '#organization-save.interrupted' },
+					{
+						target: 'writing',
+						actions: assign({ operations: ({ event }) => event.output })
+					}
+				],
+				onError: [
+					{ guard: 'stopping', target: '#organization-save.interrupted' },
+					{ guard: 'stale', target: '#organization-save.interrupted' },
+					{ target: '#organization-save.failed' }
+				]
+			}
 		})
 	return model.createMachine({
 		id: 'organization-save',
@@ -79,24 +107,13 @@ export function createOrganizationMachine<S extends Snapshot<OrganizationStageRe
 						initial: 'observing',
 						states: {
 							observing: {
-								invoke: {
-									src: 'history',
-									input: ({ context }) => required(context.request),
-									onDone: [
-										{ guard: 'stopping', target: '#organization-save.interrupted' },
-										{ guard: 'stale', target: '#organization-save.interrupted' },
-										{
-											target: 'writing',
-											actions: assign({ operations: ({ event }) => event.output })
-										}
-									],
-									onError: [
-										{ guard: 'stopping', target: '#organization-save.interrupted' },
-										{ guard: 'stale', target: '#organization-save.interrupted' },
-										{ target: '#organization-save.failed' }
-									]
-								}
+								always: [
+									{ guard: 'tagRequest', target: 'observingTags' },
+									{ target: 'observingProperty' }
+								]
 							},
+							observingTags: observeHistory('tagHistory'),
+							observingProperty: observeHistory('history'),
 							writing: {
 								initial: 'active',
 								states: {

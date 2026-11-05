@@ -11,6 +11,7 @@ for (const version of ['a', 'b']) {
 			cwd: root,
 			stdio: 'inherit',
 			env: {
+				PUBLIC_FAKE_DATA: 'false',
 				...process.env,
 				CLIPPER_SHELL_VERSION: `offline-${version}`,
 				CAPTURE_GATEWAY_ENABLED: 'true',

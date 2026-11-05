@@ -1,3 +1,5 @@
+import discoveryMigration from '../src/lib/backend/jazz/migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
+import { app as preDiscoveryApp } from '../src/lib/backend/jazz/prediscovery-schema.test-support.js'
 import { openAddLink } from './add-link.js'
 import { test, expect, chromium, firefox } from '@playwright/test'
 import type { Page } from '@playwright/test'
@@ -15,7 +17,8 @@ const appId = '2db98ae3-fcf1-41e8-b7d3-9818496bde60'
 const baseURL = 'http://127.0.0.1:5180'
 const legacyPermissions = Object.fromEntries(
 	Object.entries(permissions).filter(
-		([table]) => table !== 'articles' && table !== 'organizationOperations'
+		([table]) =>
+			table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
 	)
 )
 async function savedArticle(page: Page, url: string) {
@@ -144,11 +147,21 @@ for (const browser of [chromium, firefox]) {
 						...upgrade,
 						schema: preOrganizationApp,
 						permissions: Object.fromEntries(
-							Object.entries(permissions).filter(([table]) => table !== 'organizationOperations')
+							Object.entries(permissions).filter(
+								([table]) => table !== 'organizationOperations' && table !== 'tagOperations'
+							)
 						),
 						migration
 					})
-					await deploy({ ...upgrade, migration: organizationMigration })
+					await deploy({
+						...upgrade,
+						schema: preDiscoveryApp,
+						permissions: Object.fromEntries(
+							Object.entries(permissions).filter(([table]) => table !== 'tagOperations')
+						),
+						migration: organizationMigration
+					})
+					await deploy({ ...upgrade, migration: discoveryMigration })
 					if (!keepOpen)
 						context = await browser.launchPersistentContext(join(directory, 'profile'), {
 							headless: true
@@ -192,6 +205,11 @@ for (const browser of [chromium, firefox]) {
 					await page.getByRole('link', { name: 'Legacy browser article', exact: true }).click()
 					await expectLegacyReader(page, diagnostics)
 					await page.goto(baseURL)
+					// Admission precedes collection delivery; wait for the migrated row before
+					// clicking the floating action, whose position follows the library content.
+					await expect(
+						page.getByRole('link', { name: 'Legacy browser article', exact: true })
+					).toBeVisible()
 					const url = 'https://example.com/after-browser-upgrade'
 					await openAddLink(page)
 					await page.getByLabel('Article URL', { exact: true }).fill(url)

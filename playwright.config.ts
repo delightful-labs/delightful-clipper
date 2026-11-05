@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
 	testDir: './apps/web/tests',
-	testIgnore: ['**/offline/**'],
+	testIgnore: ['**/offline/**', '**/fake-data/**'],
 	fullyParallel: false,
 	workers: 1,
 	timeout: 45000,
@@ -13,6 +13,7 @@ export default defineConfig({
 		reuseExistingServer: false,
 		env: {
 			CLIPPER_TEST: 'true',
+			PUBLIC_FAKE_DATA: 'false',
 			PUBLIC_DEBUG: 'true',
 			CAPTURE_GATEWAY_ENABLED: 'true',
 			JAZZ_ACCOUNT_REGISTRY:

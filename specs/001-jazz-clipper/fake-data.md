@@ -1,0 +1,16 @@
+# Environment-gated fake data
+
+Follow Finance's PUBLIC_FAKE_DATA string flag (strict true/false, default false), English Faker locale, lazy generator import, stable scoped IDs and authoritative-empty/exclusive-transaction recheck. No sample-data UI copy or controls. Generated article text is sample content, not application copy.
+
+Before async implementation: library owns a parallel seed lifecycle, independent of local readiness. The seed chart checks the gate/current scope, reads local emptiness, reads authoritative emptiness/ownership with a bounded timeout, prepares a payload, then invokes the existing DLF transaction owner using an exclusive native transaction. That owner rechecks emptiness/ownership under the same transaction as staging, commits and observes authoritative settlement. Shutdown before writing cancels observation; during writing it forwards shutdown and drains the native owner before the library closes. Failed/uncertain writes are never replayed automatically.
+
+Seed only wholly empty private libraries (articles, legacy documents and storage intents all absent). Existing data, unavailable authority or failed ownership checks cause no seed writes. Stable URLs/record IDs and the exclusive recheck prevent duplication/racing seeds. Faker stays outside the default startup bundle through dynamic import. Complete saved samples use native intents, immutable assets/snapshots/documents/sources, article rows and independent status/favorite/Trash/tag operations; no journal or new schema. Reuse the existing prepareSave and content-insertion leaf.
+
+Qualification: disabled gate performs no reads/imports/writes; existing local/remote/legacy content skips; native policy/empty/concurrent startup tests; shutdown drain and uncertain failure tests; actual flag-enabled browser startup, reader/filter/search/tag/Trash behavior, reload and restored-profile behavior. Preserve normal local-first startup when the flag is disabled or authority is offline. Do not enable the flag on the shared development account automatically.
+
+
+## Usage and final evidence
+
+`PUBLIC_FAKE_DATA=true pnpm dev` enables the web-only option for empty owned libraries. Restart after changing the static environment value; use a fresh browser profile when the existing library is populated. Existing data is not cleared, replaced or supplemented. The shared development server was not restarted or enabled automatically. Extension code binds the flag to false. Faker 10.6.0 matches Finance's version and is pinned exactly under Clipper's package convention.
+
+`pnpm verify` passes 509 tests with one platform skip in 75 files plus vendor, formatting, lint, strict web/extension types and build. Six native policy/transaction tests and five actor tests cover the new behavior. All 43 default web cases, both opt-in fake-data cases, five production offline cases and eleven packaged extension cases pass locally. Fake-data cases also assert no capture calls, imperatively executed built-in action warnings or replies to a stopped library owner. Native tests cover concurrent exclusive seeds and shutdown after an issued write; these do not claim exhaustive crash-point or quota testing. CI includes the new `pnpm test:fake-data` command after the existing browser suites.

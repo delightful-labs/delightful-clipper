@@ -1,3 +1,5 @@
+import { observeBrowserConnection } from '../../offline/browser.js'
+import type { ConnectionEvent } from '../../contracts/connection.js'
 import { controlledSave, testLibraryCapability } from '../capture/library.test-support.js'
 import {
 	createSessionAcquisitionMachine,
@@ -511,4 +513,119 @@ it('preserves observer cleanup failure precedence when its acquisition owner als
 		requiresReload: true
 	})
 	expect(host.release).toHaveBeenCalledOnce()
+})
+
+describe('application-owned browser connectivity', () => {
+	it('tracks connectivity in the main snapshot across account observations and releases its observer on shutdown', async () => {
+		let report: (event: ConnectionEvent) => void = () => {}
+		const dispose = vi.fn()
+		const observe = vi.fn((next: typeof report) => {
+			report = next
+			next({ type: 'OFFLINE' })
+			return dispose
+		})
+		const f = fixture({ status: 'signed-out' })
+		const { owner, attach } = startup(async () => f.host)
+		const actor = createActor(createApplicationReadinessMachine<AccountHost>(observe), {
+			input: attach()
+		}).start()
+		try {
+			await waitFor(actor, (s) => s.matches({ active: { flow: { running: 'signedOut' } } }))
+			expect(
+				actor.getSnapshot().matches({ active: { connection: { observing: 'offline' } } })
+			).toBe(true)
+			expect(selectApplicationView(actor.getSnapshot(), true).connectionMessage).toEqual({
+				text: 'offline',
+				variant: 'info'
+			})
+			expect(selectApplicationView(actor.getSnapshot(), true).status).toBe('signedOut')
+			report({ type: 'ONLINE' })
+			expect(selectApplicationView(actor.getSnapshot(), true).connectionMessage?.text).toBe(
+				'online'
+			)
+			f.emit({ status: 'transitioning' })
+			await waitFor(actor, (s) => s.context.observation.status === 'transitioning')
+			expect(observe).toHaveBeenCalledOnce()
+			expect(dispose).not.toHaveBeenCalled()
+			expect(actor.getSnapshot().matches({ active: { connection: { observing: 'online' } } })).toBe(
+				true
+			)
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (s) => s.status === 'done')
+			expect(dispose).toHaveBeenCalledOnce()
+			report({ type: 'OFFLINE' })
+			expect(selectApplicationView(actor.getSnapshot(), true).connectionMessage).toBeUndefined()
+		} finally {
+			actor.stop()
+			owner.stop()
+		}
+	})
+
+	it('releases connectivity immediately while an issued root write continues draining', async () => {
+		const dispose = vi.fn()
+		const pending = Promise.withResolvers<void>()
+		const access = root(pending.promise, Promise.resolve())
+		const f = fixture(ready('owner', access))
+		const { owner, attach } = startup(async () => f.host)
+		const actor = createActor(
+			createApplicationReadinessMachine<AccountHost>((report) => {
+				report({ type: 'ONLINE' })
+				return dispose
+			}),
+			{ input: attach() }
+		).start()
+		try {
+			await vi.waitFor(() => expect(access.localWait).toHaveBeenCalledOnce())
+			actor.send({ type: 'SHUTDOWN' })
+			expect(dispose).toHaveBeenCalledOnce()
+			expect(actor.getSnapshot().matches({ active: { connection: 'closed' } })).toBe(true)
+			expect(selectApplicationView(actor.getSnapshot(), true).connectionMessage).toBeUndefined()
+			expect(f.host.release).not.toHaveBeenCalled()
+			pending.resolve()
+			await waitFor(actor, (s) => s.status === 'done')
+			expect(f.host.release).toHaveBeenCalledOnce()
+			expect(dispose).toHaveBeenCalledOnce()
+		} finally {
+			pending.resolve()
+			actor.stop()
+			owner.stop()
+		}
+	})
+
+	it('owns the actual browser listeners and removes them on direct application stop', async () => {
+		const target = new EventTarget()
+		const browser = { onLine: false }
+		const add = vi.spyOn(target, 'addEventListener')
+		const remove = vi.spyOn(target, 'removeEventListener')
+		vi.stubGlobal('window', target)
+		vi.stubGlobal('navigator', browser)
+		const f = fixture({ status: 'signed-out' })
+		const { owner, attach } = startup(async () => f.host)
+		const actor = createActor(
+			createApplicationReadinessMachine<AccountHost>(observeBrowserConnection),
+			{ input: attach() }
+		).start()
+		try {
+			expect(selectApplicationView(actor.getSnapshot(), true).connectionMessage?.text).toBe(
+				'offline'
+			)
+			browser.onLine = true
+			target.dispatchEvent(new Event('online'))
+			expect(selectApplicationView(actor.getSnapshot(), true).connectionMessage?.text).toBe(
+				'online'
+			)
+			browser.onLine = false
+			target.dispatchEvent(new Event('offline'))
+			expect(selectApplicationView(actor.getSnapshot(), true).connectionMessage?.text).toBe(
+				'offline'
+			)
+			expect(add.mock.calls.map((call) => call[0])).toEqual(['online', 'offline'])
+			actor.stop()
+			expect(remove.mock.calls.map((call) => call[0])).toEqual(['online', 'offline'])
+		} finally {
+			actor.stop()
+			owner.stop()
+			vi.unstubAllGlobals()
+		}
+	})
 })

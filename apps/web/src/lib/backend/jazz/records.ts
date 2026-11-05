@@ -10,7 +10,11 @@ import type { PreparedSave, StorageIntent, SyncReceipt } from '../../contracts/s
 import { createSaveRecordMachine } from '../../machines/storage/save.js'
 import { prepareSave } from '../../storage/prepare.js'
 import { app } from './schema.js'
+import { insertPreparedContent } from './content.js'
+import { createFakeDataRecords } from './fake-data.js'
 import { createArticleRecords } from './articles.js'
+import type { SearchDocument } from '../../search/schema.js'
+import type { LibraryArticle } from '../../contracts/articles.js'
 import type { Article } from '../../contracts/articles.js'
 
 type Resource = TransactionResource
@@ -33,7 +37,7 @@ function canPublishContent(rows: StageRows, draft: PreparedSave, operationId: st
 /** Reads stay bound to this DB/library; owning actors gate admission and late-result consumption.
  * Native write admission and commit scope protection live in transactionLifecycle. */
 export function createLibraryRecords(
-	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'subscribe'>,
+	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'beginExclusiveTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
@@ -116,14 +120,7 @@ export function createLibraryRecords(
 			stagePublication({
 				articleLinked: !!draft.articleId,
 				hasSource: !!draft.source,
-				publishContent: () => {
-					const { id: assetId, ...asset } = draft.asset
-					resource.tx.insert(app.assets, asset, { id: assetId })
-					const { id: snapshotId, ...snapshot } = draft.snapshot
-					resource.tx.insert(app.snapshots, snapshot, { id: snapshotId })
-					const { id, ...document } = draft.document
-					resource.tx.insert(app.documents, document, { id })
-				},
+				publishContent: () => insertPreparedContent(resource.tx, draft),
 				attachContent: () => {
 					resource.tx.update(app.articles, required(draft.articleId), {
 						contentId: draft.document.id,
@@ -191,6 +188,32 @@ export function createLibraryRecords(
 	}
 	return {
 		...records,
+		fakeData: createFakeDataRecords(db, libraryId, isCurrent),
+		searchDocuments: async (
+			rows: LibraryArticle[],
+			_signal: AbortSignal
+		): Promise<SearchDocument[]> => {
+			const [documents, snapshots] = await Promise.all([
+				db.all(app.documents.where({ libraryId }), { tier: ReadTier.LocalFirst }),
+				db.all(app.snapshots.where({ libraryId }), { tier: ReadTier.LocalFirst })
+			])
+			const docs = new Map(documents.map((document) => [document.id, document]))
+			const texts = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot.text]))
+			return rows.map((row) => ({
+				id: row.id,
+				title: row.title,
+				url: row.url ?? '',
+				text: texts.get(docs.get(row.contentId ?? row.id)?.snapshotId ?? '') ?? '',
+				tags: (row.tags ?? []).map((tag) => tag.name).join(' '),
+				originalSavedAt: row.originalSavedAt
+			}))
+		},
+		observeSearch: (dirty: () => void, error: () => void) =>
+			db.subscribe(
+				app.snapshots.where({ libraryId }),
+				{ onUpdate: dirty, onError: error },
+				{ tier: ReadTier.LocalFirst }
+			),
 		articles: createArticleRecords(db, libraryId, isCurrent, records.saveMachine),
 		isCurrent,
 		hasDocument: async (id: string) => {

@@ -3,7 +3,6 @@
 	import type { ActorRefFrom, SnapshotFrom } from 'xstate'
 	import { Button, Dialog, FloatingActionButton, InputText, StatusMessage } from 'delightful-ui'
 	import { libraryMachine, selectLibraryView } from '../machines/capture/library.js'
-	import { articleHref, isArticleId } from '../reader/routes.js'
 	import { action, t } from '../localization/index.js'
 
 	let { actor }: { actor: ActorRefFrom<typeof libraryMachine> } = $props()
@@ -13,7 +12,6 @@
 	let url = $state('')
 	const canAdd = $derived(snapshot?.can({ type: 'ADD', url }) ?? false)
 	const view = $derived(selectLibraryView(snapshot))
-	const capture = $derived(snapshot?.context)
 
 	onMount(() => {
 		const subscription = actor.subscribe((next) => (snapshot = next))
@@ -24,15 +22,21 @@
 	})
 </script>
 
-<section aria-label={action('add', 'link')}>
-	{#if view.captureMessage}<StatusMessage {...view.captureMessage} />{/if}
-	{#if view.canCancel}<Button type="button" onclick={() => actor.send({ type: 'CANCEL' })}
-			>{t('actions.cancel')}</Button
-		>{/if}
-	{#if view.canOpenCapture && capture && isArticleId(capture.captureId)}
-		<a href={articleHref(capture.captureId)}>{action('open', 'saved_article')}</a>
-	{/if}
-</section>
+{#if view.captureProblemMessage}<StatusMessage {...view.captureProblemMessage} />{/if}
+
+{#if view.duplicateMessage}<StatusMessage {...view.duplicateMessage} />{/if}
+
+{#if view.restoreCaptureId}
+	<Button
+		appearance="flat"
+		disabled={!view.canOrganize}
+		onclick={() =>
+			actor.send({
+				type: 'ORGANIZE',
+				request: { id: view.restoreCaptureId!, field: 'trashed', value: false }
+			})}>{action('restore', 'article')}</Button
+	>
+{/if}
 
 <FloatingActionButton
 	type="button"
