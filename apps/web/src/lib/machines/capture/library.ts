@@ -1,3 +1,4 @@
+import type { FakeDataOutcome } from '../../samples/machine.js'
 import {
 	assign,
 	enqueueActions,
@@ -26,7 +27,12 @@ import { t } from '../../localization/index.js'
 import { normalizedSource } from '../../capture/source.js'
 import { stateFeedback } from '../../contracts/feedback.js'
 import type { WorkflowMessage } from '../../contracts/feedback.js'
-import type { LibraryCapability, LibraryEvent, SaveRef } from '../../contracts/library.js'
+import type {
+	LibraryCapability,
+	LibraryEvent,
+	SaveRef,
+	FakeDataRef
+} from '../../contracts/library.js'
 import type { ArticleSaveResult, LibraryArticle, ArticleContent } from '../../contracts/articles.js'
 import type { QueueControl } from '../../contracts/article-worker.js'
 import type { ReadResult } from '../../contracts/storage.js'
@@ -36,12 +42,18 @@ function required<T>(v: T | undefined): T {
 	if (v === undefined) throw new Error('Library unavailable')
 	return v
 }
-function savedResult(result: ArticleSaveResult) {
+function saveOutcome(result: ArticleSaveResult | FakeDataOutcome): ArticleSaveResult {
+	if (typeof result === 'string') throw new Error('Expected article write outcome')
+	return result
+}
+function savedResult(value: ArticleSaveResult | FakeDataOutcome) {
+	const result = saveOutcome(value)
 	if (result.kind !== 'saved' && result.kind !== 'duplicate')
 		throw new Error('Expected locally saved result')
 	return result
 }
 type Context = {
+	fakeDataRef: FakeDataRef | undefined
 	organizationRef: SaveRef | undefined
 	organizationRequest: OrganizationRequest | undefined
 	organizationId: string
@@ -171,7 +183,11 @@ export const libraryMachine = setup<
 	| LibraryEvent
 	| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
 	| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-	| { type: `xstate.done.actor.${string}`; actorId: string; output: ArticleSaveResult }
+	| {
+			type: `xstate.done.actor.${string}`
+			actorId: string
+			output: ArticleSaveResult | FakeDataOutcome
+	  }
 	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown },
 	typeof actors,
 	{ search: 'search' },
@@ -229,6 +245,7 @@ export const libraryMachine = setup<
 		canStartSave: and(['canUseLibrary', not('writing')]),
 		drained: and([
 			'closing',
+			stateIn({ running: { fakeDataLifecycle: 'closed' } }),
 			not('writing'),
 			not('organizing'),
 			or([
@@ -263,7 +280,7 @@ export const libraryMachine = setup<
 					: 'output' in event
 						? event.output
 						: undefined
-			return { type: 'WATCH_RECEIPTS', result: required(result) }
+			return { type: 'WATCH_RECEIPTS', result: saveOutcome(required(result)) }
 		}),
 		updateRows: assign(({ context, event }) => {
 			if (event.type !== 'ROWS') throw new Error('Expected collection rows')
@@ -290,6 +307,7 @@ export const libraryMachine = setup<
 	initial: 'running',
 	context: ({ input }) => ({
 		capability: input,
+		fakeDataRef: undefined,
 		organizationRef: undefined,
 		organizationRequest: undefined,
 		organizationId: '',
@@ -453,6 +471,39 @@ export const libraryMachine = setup<
 				}
 			},
 			states: {
+				fakeDataLifecycle: {
+					initial: 'checking',
+					states: {
+						checking: {
+							always: [
+								{ guard: ({ context }) => !!context.capability?.spawnFakeData, target: 'active' },
+								{ target: 'closed' }
+							]
+						},
+						active: {
+							entry: assign({
+								fakeDataRef: ({ context, spawn }) =>
+									required(context.capability?.spawnFakeData)(spawn)
+							}),
+							on: {
+								'xstate.done.actor.*': {
+									guard: ({ context, event }) => event.actorId === context.fakeDataRef?.id,
+									target: 'closed'
+								},
+								'xstate.error.actor.*': {
+									guard: ({ context, event }) => event.actorId === context.fakeDataRef?.id,
+									target: 'closed'
+								},
+								SHUTDOWN: {
+									actions: sendTo(({ context }) => required(context.fakeDataRef), {
+										type: 'SHUTDOWN'
+									})
+								}
+							}
+						},
+						closed: {}
+					}
+				},
 				organization: {
 					initial: 'idle',
 					on: {
@@ -515,14 +566,14 @@ export const libraryMachine = setup<
 									{
 										guard: ({ context, event }) =>
 											event.actorId === context.organizationRef?.id &&
-											event.output.kind === 'saved',
+											saveOutcome(event.output).kind === 'saved',
 										target: 'saved',
 										actions: [
 											'watch',
 											assign({
 												organizationOperations: ({ context, event }) => ({
 													...context.organizationOperations,
-													[event.output.operationId]: context.organizationId
+													[saveOutcome(event.output).operationId]: context.organizationId
 												})
 											})
 										]
@@ -530,7 +581,7 @@ export const libraryMachine = setup<
 									{
 										guard: ({ context, event }) =>
 											event.actorId === context.organizationRef?.id &&
-											event.output.kind === 'unknown',
+											saveOutcome(event.output).kind === 'unknown',
 										target: 'unknown'
 									},
 									{
@@ -726,34 +777,38 @@ export const libraryMachine = setup<
 									{
 										guard: ({ context, event }) =>
 											event.actorId === context.saveRef?.id &&
-											(event.output.kind === 'saved' || event.output.kind === 'duplicate'),
+											(saveOutcome(event.output).kind === 'saved' ||
+												saveOutcome(event.output).kind === 'duplicate'),
 										target: 'saved',
 										actions: [
 											'watch',
 											assign({
-												captureId: ({ event }) => event.output.operationId,
-												captureReady: ({ event }) =>
-													'ready' in event.output && event.output.ready === true,
+												captureId: ({ event }) => saveOutcome(event.output).operationId,
+												captureReady: ({ event }) => savedResult(event.output).ready === true,
 												failure: ({ event }) =>
-													event.output.kind === 'duplicate' ? 'duplicate' : ''
+													saveOutcome(event.output).kind === 'duplicate' ? 'duplicate' : ''
 											}),
 											raise({ type: 'CAPTURE_SAVED' })
 										]
 									},
 									{
 										guard: ({ context, event }) =>
-											event.actorId === context.saveRef?.id && event.output.kind === 'interrupted',
+											event.actorId === context.saveRef?.id &&
+											saveOutcome(event.output).kind === 'interrupted',
 										target: 'canceled'
 									},
 									{
 										guard: ({ context, event }) =>
-											event.actorId === context.saveRef?.id && event.output.kind === 'failed',
+											event.actorId === context.saveRef?.id &&
+											saveOutcome(event.output).kind === 'failed',
 										target: 'failed'
 									},
 									{
 										guard: ({ context, event }) => event.actorId === context.saveRef?.id,
 										target: 'uncertain',
-										actions: assign({ captureId: ({ event }) => event.output.operationId })
+										actions: assign({
+											captureId: ({ event }) => saveOutcome(event.output).operationId
+										})
 									}
 								],
 								'xstate.error.actor.*': {
@@ -875,6 +930,7 @@ export const libraryMachine = setup<
 			type: 'final',
 			entry: assign({
 				capability: undefined,
+				fakeDataRef: undefined,
 				organizationRef: undefined,
 				organizationRequest: undefined,
 				organizationId: '',

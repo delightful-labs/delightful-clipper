@@ -12,7 +12,16 @@ export type OrganizationSpawner = <S extends Snapshot<ArticleSaveResult>>(
 	logic: ActorLogic<S, { type: 'SHUTDOWN' }, OrganizationRequest>,
 	options: { input: OrganizationRequest }
 ) => ActorRef<S, { type: 'SHUTDOWN' }>
+export type FakeDataRef = ActorRef<
+	Snapshot<import('../samples/machine.js').FakeDataOutcome>,
+	{ type: 'SHUTDOWN' }
+>
+export type FakeDataSpawner = <S extends Snapshot<import('../samples/machine.js').FakeDataOutcome>>(
+	logic: ActorLogic<S, { type: 'SHUTDOWN' }, undefined>,
+	options: { input: undefined }
+) => FakeDataRef
 export type LibraryCapability = {
+	spawnFakeData?: (spawn: FakeDataSpawner) => FakeDataRef
 	search?: import('./search.js').SearchCapability
 	spawnOrganization?: (spawn: OrganizationSpawner, request: OrganizationRequest) => SaveRef
 	libraryId: string

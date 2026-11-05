@@ -24,6 +24,16 @@ PR #15 is merged at `72b6fc9`; work uses `feat/library-search-tags-trash` from u
 
 No permanent deletion, bulk actions, global vocabulary rename/delete, annotation search/tags, images or annotations enter this batch.
 
+## Optional fake-data follow-up — PR #16
+
+- [x] Inspect Finance's flag, lazy English Faker generator, stable IDs, authority checks and exclusive setup transaction before choosing Clipper's integration.
+- [x] Record state/resource ownership before async work in [fake-data.md](fake-data.md).
+- [x] Pin `@faker-js/faker` 10.6.0; add strict `PUBLIC_FAKE_DATA` default false and documented startup/test commands.
+- [x] Populate 24 complete native articles with varied status/favorite/Trash/tag metadata, reusing prepareSave/content insertion and the DLF transaction owner. Require local and authoritative emptiness, then recheck ownership/emptiness under an exclusive transaction.
+- [x] Keep readiness independent of seeding; drain issued work on account changes/shutdown and retain uncertain outcomes without replay. Keep extension/default fixtures disabled and the shared dev server unchanged.
+- [x] Add native tests for private ownership, existing data, concurrent seeders and issued-settlement drain; actor tests cover disabled/unavailable authority/unknown results and parent shutdown drain. Enabled/offline browser cases qualify real startup, reload/edit preservation, readers, tags/search/Trash, restored clients and no capture requests.
+- [x] Complete and record final checks: 509 unit tests plus one platform skip across 75 files, vendor/format/lint/strict types/build, 43 default web cases, two enabled/offline fake-data cases, five production offline cases and eleven packaged extension cases pass. Fake-data coverage is included in CI; publish in PR #16 without merging.
+
 ## Prior handoff — DUI radio filters
 
 PR #14 is merged at `5e3c5c6`. The radio-filter follow-up uses a new `feat/library-radio-filters` branch from updated main.

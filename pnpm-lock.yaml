@@ -81,6 +81,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@faker-js/faker':
+        specifier: 10.6.0
+        version: 10.6.0
       '@mozilla/readability':
         specifier: 0.6.0
         version: 0.6.0
@@ -377,6 +380,10 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
+
+  '@faker-js/faker@10.6.0':
+    resolution: {integrity: sha512-3RQHgEtvL1Frl/d1cSreo7qhJ3Gk1OdNUai/CtZ8G+wYeRQnJih3s9xJ9/kgYekPQRdwgh0HXRPqMlzWGwivIQ==}
+    engines: {node: ^20.19.0 || ^22.13.0 || ^23.5.0 || >=24.0.0, npm: '>=10'}
 
   '@garden-co/jazz-napi-darwin-arm64@2.0.0-alpha.59':
     resolution: {integrity: sha512-7gXDiDQ421sdOn4YUZaoqLOZNgHwSPexonw53F6u62DPuYYS1csgQQnRJ8nqV8XLy/C4g9FRAEQxlgIAnoqheQ==}
@@ -1805,6 +1812,8 @@ snapshots:
   '@exodus/bytes@1.16.0(@noble/hashes@2.4.0)':
     optionalDependencies:
       '@noble/hashes': 2.4.0
+
+  '@faker-js/faker@10.6.0': {}
 
   '@garden-co/jazz-napi-darwin-arm64@2.0.0-alpha.59':
     optional: true

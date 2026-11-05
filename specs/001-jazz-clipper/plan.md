@@ -81,6 +81,10 @@ Web capture lifecycle: URL article saved → awaiting-session/network → resolv
 
 Chromium toolbar lifecycle: admit gesture → load confirmed account (or trusted sign-in popup) → verify actual SDK account → validate document → persist bounded reference → show bar → ensure offscreen owner → enqueue clip → extract supplied content (or retain URL only) → mark issued → native save → observe local/remote receipt. Open article is explicit; Close only dismisses the bar. Missing acknowledgements remain uncertain and are not replayed. Source references are not an article database or captured-HTML journal.
 
+## Optional fake-data startup
+
+The library now owns a parallel environment-gated sample setup actor. It follows Finance's PUBLIC_FAKE_DATA convention and lazy English Faker import while reusing Clipper's native preparation/content graph and the existing DLF transaction owner. Local readiness stays independent; only authoritative emptiness plus a same-transaction ownership/emptiness recheck admit the exclusive batch. Issued writes drain during account changes/shutdown. There is no new schema or journal. See [fake-data.md](fake-data.md) for scope, state ownership and completed validation.
+
 ## Platform matrix
 
 | Surface | Planned behavior / validation status |

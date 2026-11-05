@@ -24,6 +24,10 @@ The user authorized these capabilities together in one PR based on updated main 
 
 This batch does not implement global tag rename/delete, annotation search/tags, permanent deletion, bulk actions, images or annotations. The user approved revised shared Search/Move to action templates, the Trash noun and short search error, rejected preparation feedback, and requested generic Enter-subject form feedback. The actual DUI search field, Trash radio/actions and tag field validation are implemented; native/worker fixture coverage is supplemented by real control and production-offline browser coverage. Existing Add Link and direct-reader Restore actions reuse approved wording. Full product acceptance remains open.
 
+### Optional development samples
+
+The user requested Finance-style environment-gated fake data, including Faker. `PUBLIC_FAKE_DATA=true` lazily generates 24 complete saved articles only for an authoritatively empty, owned library; it preserves existing data and does not gate local readiness on connectivity. Samples use the same native content and independent organization/tag records as ordinary articles. The default is false; the extension does not auto-seed. See [ownership and qualification](fake-data.md). No new product UI copy or schema is introduced.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Capture and read a web article (Priority: P1)
