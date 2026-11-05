@@ -3,7 +3,7 @@
 	import type { ActorRefFrom, SnapshotFrom } from 'xstate'
 	import { articleHref } from '../reader/routes.js'
 	import { libraryMachine, selectLibraryView } from '../machines/capture/library.js'
-	import { Button, StatusMessage, Select } from 'delightful-ui'
+	import { Button, StatusMessage, Select, RadioGroup, RadioItem, Heading } from 'delightful-ui'
 	import { articleStatuses, libraryViews, isArticleStatus } from '../capture/organization.js'
 	import { t, action } from '../localization/index.js'
 	let {
@@ -27,14 +27,16 @@
 	<section aria-label={t('library.heading')}>
 		<h2>{t('library.heading')}</h2>
 		<div class="filters">
-			{#each libraryViews as status}
-				<Button
-					type="button"
-					aria-pressed={capture.view === status}
-					onclick={() => actor.send({ type: 'FILTER', view: status, favorites: capture.favorites })}
-					>{t(`library.views.${status}`)}</Button
-				>
-			{/each}
+			<RadioGroup label={t('library.status_label')} value={capture.view}>
+				{#each libraryViews as status}
+					<RadioItem
+						value={status}
+						onchange={() =>
+							actor.send({ type: 'FILTER', view: status, favorites: capture.favorites })}
+						>{t(`library.views.${status}`)}</RadioItem
+					>
+				{/each}
+			</RadioGroup>
 			<Button
 				type="button"
 				aria-pressed={capture.favorites}
@@ -46,54 +48,60 @@
 		{#if view.organizationMessage}<StatusMessage {...view.organizationMessage} />{/if}
 		{#if view.listMessage}<StatusMessage {...view.listMessage} />{/if}
 		{#if view.emptyMessage}<p>{view.emptyMessage.text}</p>{/if}
-		<ul>
-			{#each view.rows as row (row.id)}
-				{@const rowMessage = view.rowMessages[row.id]}
-				<li data-article-id={row.id}>
-					{#if view.readable[row.id]}<a href={articleHref(row.id)}>{row.title}</a>{:else}<span
-							>{row.title}</span
-						>
-						{#if row.url}<a href={row.url} rel="noreferrer">{action('open', 'original')}</a>{/if}
-						{#if row.failure}<Button
-								type="button"
-								onclick={() => actor.send({ type: 'RETRY', id: row.id })}
-								>{t('actions.retry')}</Button
-							>{/if}
-					{/if}
-					<div class="organization-controls">
-						<Select
-							label={t('library.status_label')}
-							value={row.status ?? 'inbox'}
-							disabled={!view.canOrganize}
-							onchange={(event) => {
-								const value = event.currentTarget.value
-								if (isArticleStatus(value))
-									actor.send({ type: 'ORGANIZE', request: { id: row.id, field: 'status', value } })
-							}}
-						>
-							{#each articleStatuses as status}
-								<option value={status}>{t(`library.views.${status}`)}</option>
-							{/each}
-						</Select>
-						<Button
-							type="button"
-							aria-pressed={row.favorite === true}
-							disabled={!view.canOrganize}
-							onclick={() =>
-								actor.send({
-									type: 'ORGANIZE',
-									request: { id: row.id, field: 'favorite', value: !row.favorite }
-								})}>{t(row.favorite ? 'library.unfavorite' : 'library.favorite')}</Button
-						>
-					</div>
-					{#if view.organizationMessages[row.id]}<StatusMessage
-							{...view.organizationMessages[row.id]!}
-						/>{/if}
-					{#if rowMessage}<StatusMessage {...rowMessage} />{/if}
-					{#if view.syncMessages[row.id]}<span>{view.syncMessages[row.id]?.text}</span>{/if}
-				</li>
-			{/each}
-		</ul>
+		{#if view.rows.length}
+			<ul class="article-list">
+				{#each view.rows as row (row.id)}
+					<li data-article-id={row.id}>
+						<div class="article-header">
+							<div class="article-title">
+								<Heading level="h3" size="xl">
+									{#if view.readable[row.id]}<a href={articleHref(row.id)}>{row.title}</a
+										>{:else}{row.title}{/if}
+								</Heading>
+							</div>
+							<div class="organization-controls">
+								<Select
+									label={t('library.status_label')}
+									value={row.status ?? 'inbox'}
+									disabled={!view.canOrganize}
+									onchange={(event) => {
+										const value = event.currentTarget.value
+										if (isArticleStatus(value))
+											actor.send({
+												type: 'ORGANIZE',
+												request: { id: row.id, field: 'status', value }
+											})
+									}}
+								>
+									{#each articleStatuses as status}
+										<option value={status}>{t(`library.views.${status}`)}</option>
+									{/each}
+								</Select>
+								<Button
+									type="button"
+									appearance="flat"
+									aria-pressed={row.favorite === true}
+									disabled={!view.canOrganize}
+									onclick={() =>
+										actor.send({
+											type: 'ORGANIZE',
+											request: { id: row.id, field: 'favorite', value: !row.favorite }
+										})}>{t(row.favorite ? 'library.unfavorite' : 'library.favorite')}</Button
+								>
+							</div>
+						</div>
+						{#if !view.readable[row.id]}
+							{#if row.url}<a href={row.url} rel="noreferrer">{action('open', 'original')}</a>{/if}
+							{#if row.failure}<Button
+									type="button"
+									onclick={() => actor.send({ type: 'RETRY', id: row.id })}
+									>{t('actions.retry')}</Button
+								>{/if}
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	</section>
 {/if}
 
@@ -107,15 +115,35 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
+		align-items: end;
+	}
+
+	.article-list {
+		list-style: none;
+		margin-block: var(--dui-space-md);
+		padding: 0;
+		border: 1px solid var(--dui-color-foreground);
+	}
+
+	.article-list > li {
+		margin: 0;
+		padding: var(--dui-spacing-sm);
+		border-block-end: 1px solid var(--dui-color-foreground);
+	}
+
+	.article-list > li:last-child {
+		border-block-end: 0;
+	}
+
+	.article-header {
+		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
+		gap: var(--dui-spacing-sm);
 	}
 
-	li {
-		margin-block: 0.75rem;
-	}
-
-	li span {
-		display: block;
-		font-size: 0.875rem;
+	.article-title {
+		flex: 1 1 16rem;
+		min-inline-size: 0;
 	}
 </style>

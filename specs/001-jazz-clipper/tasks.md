@@ -2,9 +2,19 @@
 
 Updated 2026-11-05. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
-## Current handoff — basic library organization
+## Current handoff — DUI radio filters
 
-PR #13 is merged into main at `2cd8731`. The user verified extension sign-in and saving into the web app's library. Basic organization is authorized on `feat/library-organization`, based on that verified current main. Do not merge its eventual PR.
+PR #14 is merged at `5e3c5c6`. The radio-filter follow-up uses a new `feat/library-radio-filters` branch from updated main.
+
+- [x] Inspect and pin the actual DUI RadioGroup/RadioItem build, with a verified vendor digest.
+- [x] Replace mutually exclusive article-view buttons with native radios; retain independent Favorites and existing actor events/copy.
+- [x] Add keyboard/mobile/filter composition browser coverage and adapt offline filter assertions.
+- [x] Pass repository verification, five organization browser cases and five production offline cases locally.
+- [x] Publish the feature branch and open a PR targeting main; do not merge it.
+
+## Prior handoff — basic library organization
+
+PR #13 is merged into main at `2cd8731`. The user verified extension sign-in and saving into the web app's library. Basic organization is authorized on `feat/library-organization`, based on that verified current main. The user subsequently merged PR #14.
 
 ### Basic organization — implemented in PR #14
 

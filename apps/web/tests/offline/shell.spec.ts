@@ -204,9 +204,9 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await expect(
 			offlineRow.getByRole('button', { name: 'Remove favorite', exact: true })
 		).toHaveAttribute('aria-pressed', 'true')
-		await reopened.getByRole('button', { name: 'Inbox', exact: true }).click()
+		await reopened.getByRole('radio', { name: 'Inbox', exact: true }).check()
 		await expect(reopened.getByText('No articles match this view.', { exact: true })).toBeVisible()
-		await reopened.getByRole('button', { name: 'Archive', exact: true }).click()
+		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
 		await context.setOffline(false)
 		await ui.start()
