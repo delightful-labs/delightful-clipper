@@ -3,7 +3,7 @@
 	import type { ActorRefFrom, SnapshotFrom } from 'xstate'
 	import { articleHref } from '../reader/routes.js'
 	import { libraryMachine, selectLibraryView } from '../machines/capture/library.js'
-	import { Button, StatusMessage, Select } from 'delightful-ui'
+	import { Button, StatusMessage, Select, RadioGroup, RadioItem } from 'delightful-ui'
 	import { articleStatuses, libraryViews, isArticleStatus } from '../capture/organization.js'
 	import { t, action } from '../localization/index.js'
 	let {
@@ -27,14 +27,16 @@
 	<section aria-label={t('library.heading')}>
 		<h2>{t('library.heading')}</h2>
 		<div class="filters">
-			{#each libraryViews as status}
-				<Button
-					type="button"
-					aria-pressed={capture.view === status}
-					onclick={() => actor.send({ type: 'FILTER', view: status, favorites: capture.favorites })}
-					>{t(`library.views.${status}`)}</Button
-				>
-			{/each}
+			<RadioGroup label={t('library.status_label')} value={capture.view}>
+				{#each libraryViews as status}
+					<RadioItem
+						value={status}
+						onchange={() =>
+							actor.send({ type: 'FILTER', view: status, favorites: capture.favorites })}
+						>{t(`library.views.${status}`)}</RadioItem
+					>
+				{/each}
+			</RadioGroup>
 			<Button
 				type="button"
 				aria-pressed={capture.favorites}
@@ -108,6 +110,10 @@
 		flex-wrap: wrap;
 		gap: 0.5rem;
 		align-items: center;
+	}
+
+	.filters {
+		align-items: end;
 	}
 
 	li {

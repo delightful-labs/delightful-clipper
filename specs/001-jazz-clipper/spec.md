@@ -3,7 +3,7 @@
 **Baseline**: `main` — subsequent implementation uses feature branches and PRs
 **Created**: 2026-11-02
 **Updated**: 2026-11-05
-**Status**: Accepted product requirements with partial implementation. Local-first storage, URL-first Add Link, the saved reader/offline shell and Chromium direct browser clipping are implemented. Basic library organization is implemented in PR #14, targeting main; qualification is recorded in the handoff. Full product/release acceptance remains open. The [technical plan](plan.md), [tasks](tasks.md) and [handoff](implementation-handoff.md) distinguish delivered behavior from remaining work; the [completion review](specification-review.md) records the original specification review.
+**Status**: Accepted product requirements with partial implementation. Local-first storage, URL-first Add Link, the saved reader/offline shell and Chromium direct browser clipping are implemented. Basic library organization is merged in PR #14 at `5e3c5c6`; qualification is recorded in the handoff. Full product/release acceptance remains open. The [technical plan](plan.md), [tasks](tasks.md) and [handoff](implementation-handoff.md) distinguish delivered behavior from remaining work; the [completion review](specification-review.md) records the original specification review.
 **Input**: Replace the unsupported legacy Clipper foundation with a local-first, Jazz-backed clipping and reading app, with a standards-oriented browser extension and mobile share intake.
 
 ## Product direction

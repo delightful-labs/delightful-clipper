@@ -56,7 +56,7 @@ test('changes all statuses, keeps favorites independent, combines filters, and p
 	}
 	await first.getByLabel('Status', { exact: true }).selectOption('later')
 	await expect(first.getByLabel('Status', { exact: true })).toBeEnabled()
-	await page.getByRole('button', { name: 'Later', exact: true }).click()
+	await page.getByRole('radio', { name: 'Later', exact: true }).check()
 	await expect(second).toHaveCount(0)
 	await page.getByRole('button', { name: 'Favorites', exact: true }).click()
 	await expect(first).toBeVisible()
@@ -208,4 +208,40 @@ test('organizes a link-only article and retains its values when supplied content
 	await expect(
 		completed.getByRole('button', { name: 'Remove favorite', exact: true })
 	).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('native status radios support keyboard navigation and mobile wrapping while Favorites stays independent', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 390, height: 844 })
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const inbox = await supplied(page, 'radio-inbox')
+	const archived = await supplied(page, 'radio-archive')
+	await archived.getByLabel('Status', { exact: true }).selectOption('archive')
+	await expect(archived.getByLabel('Status', { exact: true })).toBeEnabled()
+	await inbox.getByRole('button', { name: 'Favorite', exact: true }).click()
+	const favorites = page.getByRole('button', { name: 'Favorites', exact: true })
+	await favorites.click()
+	const group = page.getByRole('group', { name: 'Status', exact: true })
+	await expect(group.getByRole('radio')).toHaveCount(4)
+	await expect(group.getByRole('radio', { name: 'All', exact: true })).toBeChecked()
+	await expect(inbox).toBeVisible()
+	await expect(archived).toHaveCount(0)
+	await group.getByRole('radio', { name: 'All', exact: true }).focus()
+	for (const name of ['Inbox', 'Later', 'Archive', 'All']) {
+		await page.keyboard.press('ArrowRight')
+		await expect(group.getByRole('radio', { name, exact: true })).toBeChecked()
+		await expect(group.getByRole('radio', { name, exact: true })).toBeFocused()
+		await expect(group.locator('input:checked')).toHaveCount(1)
+		await expect(favorites).toHaveAttribute('aria-pressed', 'true')
+	}
+	await page.keyboard.press('ArrowLeft')
+	await expect(group.getByRole('radio', { name: 'Archive', exact: true })).toBeChecked()
+	await expect(inbox).toHaveCount(0)
+	await expect(archived).toHaveCount(0)
+	await favorites.click()
+	await expect(group.getByRole('radio', { name: 'Archive', exact: true })).toBeChecked()
+	await expect(archived).toBeVisible()
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
