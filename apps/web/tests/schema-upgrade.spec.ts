@@ -24,6 +24,27 @@ async function savedArticle(page: Page, url: string) {
 		return row ? { id: row.id, url: row.url, originalSavedAt: row.originalSavedAt } : null
 	}, url)
 }
+async function expectLegacyReader(page: Page, diagnostics: string[]) {
+	try {
+		await expect(
+			page.locator('article').getByText('Legacy browser content', { exact: true })
+		).toBeVisible()
+	} catch (error) {
+		// The observer emits only allowlisted state paths/outcomes, never actor context or credentials.
+		console.info(
+			'Legacy reader lifecycle',
+			JSON.stringify(diagnostics.filter((line) => line.includes('clipper:machines')).slice(-60))
+		)
+		console.info(
+			'Legacy reader presentation',
+			JSON.stringify({
+				articleCount: await page.locator('article').count(),
+				statuses: await page.getByRole('status').allTextContents()
+			})
+		)
+		throw error
+	}
+}
 for (const browser of [chromium, firefox]) {
 	for (const rejectedFirst of [false, true]) {
 		for (const keepOpen of [false, true]) {
@@ -164,9 +185,7 @@ for (const browser of [chromium, firefox]) {
 						}, before.accountId)
 					).toBe(true)
 					await page.getByRole('link', { name: 'Legacy browser article', exact: true }).click()
-					await expect(
-						page.locator('article').getByText('Legacy browser content', { exact: true })
-					).toBeVisible()
+					await expectLegacyReader(page, diagnostics)
 					await page.goto(baseURL)
 					const url = 'https://example.com/after-browser-upgrade'
 					await page.getByLabel('Article URL', { exact: true }).fill(url)
@@ -187,9 +206,7 @@ for (const browser of [chromium, firefox]) {
 					await expect(page.getByLabel('Article URL', { exact: true })).toBeEnabled()
 					expect(await savedArticle(page, url)).toEqual(saved)
 					await page.getByRole('link', { name: 'Legacy browser article', exact: true }).click()
-					await expect(
-						page.locator('article').getByText('Legacy browser content', { exact: true })
-					).toBeVisible()
+					await expectLegacyReader(page, diagnostics)
 					expect(
 						diagnostics.some((line) =>
 							line.includes('durable catalogue must have exactly one genesis schema')
