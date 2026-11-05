@@ -219,3 +219,115 @@ it.each(['write-first', 'worker-first'] as const)(
 		expect(actor.getSnapshot().context.capability).toBeUndefined()
 	}
 )
+it('keeps an issued reader read when unrelated organization rows arrive', async () => {
+	const entered = Promise.withResolvers<void>(),
+		gate = Promise.withResolvers<import('../../contracts/storage.js').DocumentHeader | null>()
+	const document = {
+		id,
+		libraryId: 'library',
+		operationId: id,
+		snapshotId: id,
+		assetId: id,
+		title: candidate.title,
+		originalSavedAt: ''
+	}
+	const read = vi.fn(async () => {
+		entered.resolve()
+		return gate.promise
+	})
+	const actor = createActor(libraryMachine, {
+		input: testLibraryCapability(candidate, {
+			read: {
+				isCurrent: () => true,
+				document: read,
+				snapshot: async () => ({
+					id,
+					libraryId: 'library',
+					documentId: id,
+					text: candidate.text,
+					formatVersion: '1'
+				}),
+				asset: async () => null,
+				source: async () => null
+			}
+		})
+	}).start()
+	try {
+		actor.send({ type: 'OPEN', id })
+		await entered.promise
+		const generation = actor.getSnapshot().context.readerGeneration
+		for (const favorite of [true, false, true])
+			actor.send({
+				type: 'ROWS',
+				rows: [
+					{
+						id,
+						title: candidate.title,
+						url: candidate.finalUrl,
+						contentId: id,
+						originalSavedAt: '',
+						failure: null,
+						favorite
+					}
+				]
+			})
+		expect(actor.getSnapshot().context.readerGeneration).toBe(generation)
+		expect(read).toHaveBeenCalledOnce()
+		gate.resolve(document)
+		await waitFor(actor, (s) => s.context.reader?.kind === 'available')
+	} finally {
+		gate.resolve(document)
+		actor.send({ type: 'SHUTDOWN' })
+		await toPromise(actor)
+	}
+})
+it('still reopens a missing link-only reader when its content arrives', async () => {
+	const document = {
+		id,
+		libraryId: 'library',
+		operationId: id,
+		snapshotId: id,
+		assetId: id,
+		title: candidate.title,
+		originalSavedAt: ''
+	}
+	let present = false
+	const read = vi.fn(async () => (present ? document : null))
+	const actor = createActor(libraryMachine, {
+		input: testLibraryCapability(candidate, {
+			read: {
+				isCurrent: () => true,
+				document: read,
+				snapshot: async () => ({
+					id,
+					libraryId: 'library',
+					documentId: id,
+					text: candidate.text,
+					formatVersion: '1'
+				}),
+				asset: async () => null,
+				source: async () => null
+			}
+		})
+	}).start()
+	actor.send({ type: 'OPEN', id })
+	await waitFor(actor, (s) => s.context.reader?.kind === 'missing')
+	present = true
+	actor.send({
+		type: 'ROWS',
+		rows: [
+			{
+				id,
+				title: candidate.title,
+				url: candidate.finalUrl,
+				contentId: id,
+				originalSavedAt: '',
+				failure: null
+			}
+		]
+	})
+	await waitFor(actor, (s) => s.context.reader?.kind === 'available')
+	expect(read).toHaveBeenCalledTimes(2)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})

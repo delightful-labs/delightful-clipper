@@ -169,6 +169,7 @@ export const libraryMachine = setup<
 		closing: undefined
 		drained: undefined
 		organizing: undefined
+		readInFlight: undefined
 	},
 	never,
 	string,
@@ -183,6 +184,7 @@ export const libraryMachine = setup<
 		closing: stateIn({ running: { control: 'closing' } }),
 		writing: stateIn({ running: { capture: 'saving' } }),
 		organizing: stateIn({ running: { organization: 'writing' } }),
+		readInFlight: stateIn({ running: { reading: 'loading' } }),
 		canUseLibrary: and(['accepting', ({ context }) => !!context.capability?.isCurrent()]),
 		canStartSave: and(['canUseLibrary', not('writing')]),
 		drained: and([
@@ -305,6 +307,7 @@ export const libraryMachine = setup<
 					{
 						guard: and([
 							'canUseLibrary',
+							not('readInFlight'),
 							({ context, event }) => shouldReopenReader(context, event.rows)
 						]),
 						actions: [
