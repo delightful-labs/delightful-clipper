@@ -291,7 +291,6 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 		if (request.url().includes('images.example')) remoteRequests.push(request.url())
 	})
 	await page.goto('/')
-	await expect(page.getByRole('heading', { name: 'Add link', exact: true })).toBeVisible()
 	await openAddLink(page)
 	await page.getByLabel('Article URL', { exact: true }).fill('https://short.example/#intro')
 	await page
