@@ -12,16 +12,17 @@
 	import { t } from '../lib/localization/index.js'
 	let { children }: { children: Snippet } = $props()
 	let admitted = $state(false)
+	const serverUrl = $derived(
+		import.meta.env.DEV && PUBLIC_JAZZ_SERVER_URL === 'same-origin'
+			? window.location.origin
+			: PUBLIC_JAZZ_SERVER_URL
+	)
 </script>
 
 <svelte:head><title>{t('app.title')}</title></svelte:head>
 {#if !admitted}<div><h1>{t('app.title')}</h1></div>{/if}
 {#if admitted}
-	<Account
-		appId={PUBLIC_JAZZ_APP_ID}
-		serverUrl={PUBLIC_JAZZ_SERVER_URL}
-		gatewayEnabled={CAPTURE_GATEWAY_ENABLED}
-	>
+	<Account appId={PUBLIC_JAZZ_APP_ID} {serverUrl} gatewayEnabled={CAPTURE_GATEWAY_ENABLED}>
 		{#snippet shell(account, content, connectionMessage)}
 			<AppShell {account} {connectionMessage}>{@render content()}</AppShell>
 		{/snippet}

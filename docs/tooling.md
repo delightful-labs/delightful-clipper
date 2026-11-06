@@ -141,3 +141,24 @@ Like Finance, `PUBLIC_FAKE_DATA` is a strict public build-time `true`/`false` fl
 The enabled web app lazily loads the English Faker locale and creates 24 complete native saved articles with recent save dates, varied Inbox/Later/Archive values, independent favorites, tags and two trashed entries. Text is stored natively; no capture gateway, image downloads or external fake-content requests are needed. IDs and synthetic `.invalid` URLs are stable per library. Local and authoritative emptiness/ownership checks precede an exclusive transaction that checks again before inserting the whole graph. Unavailable authority skips setup without blocking local use; reload online to try again. Failed or uncertain writes are not replayed automatically. The extension never auto-seeds.
 
 `pnpm test:fake-data` runs isolated enabled/offline startup tests on 5182/5183; normal web/offline/extension fixtures explicitly disable the flag. Run it sequentially with the other major suites. The existing shared 5180/5181 development authority is preserved, and its environment is not changed by the tests. See [fake-data design](../specs/001-jazz-clipper/fake-data.md).
+
+## User-facing network development
+
+User-facing development servers run on `0.0.0.0` in a named tmux window. Provide the LAN URL and verify the browser can reach Jazz as well as the page. Network access uses HTTPS for the browser crypto APIs. The development-only `PUBLIC_JAZZ_SERVER_URL=same-origin` option resolves to the browser's actual origin; production continues to use its configured absolute service URL.
+
+The current reader branch is available through an HTTPS frontend on port 5182 in tmux `main:7` (`clipper-network`). Its ignored local configuration is `apps/web/.netlify/network-dev/vite.config.ts`, with a local development certificate in the same directory. It proxies `/apps/` HTTP and WebSocket traffic to the existing agent authority on `127.0.0.1:5181`, preserving that in-memory process. Its generated SvelteKit output uses `.svelte-kit/network`, separate from local/agent/E2E output. Netlify builds leave the network configuration directory intact.
+
+Both the standard web configuration and the local network configuration use the explicitly approved @poppanator/sveltekit-svg 7.0.1 plugin and exclude delightful-ui from dependency prebundling, following Finance. DUI's default SVG components require this processing; do not replace library presentation with Clipper-specific caret snippets to avoid the loader. The Jazz dev plugin hands its running authority between Vite configurations on restart; do not terminate the authority process when updating frontend configuration.
+
+Launch this frontend from the repository root with the existing authority running:
+
+```sh
+PUBLIC_JAZZ_APP_ID=8d217851-cec3-4c24-a595-d130259d497c \
+PUBLIC_JAZZ_SERVER_URL=same-origin \
+JAZZ_ACCOUNT_REGISTRY=http://127.0.0.1:5181/apps/8d217851-cec3-4c24-a595-d130259d497c/accounts \
+CAPTURE_GATEWAY_ENABLED=true \
+pnpm --filter @delightful-clipper/web exec vite dev \
+  --config .netlify/network-dev/vite.config.ts --mode agent --host 0.0.0.0 --port 5182
+```
+
+Current addresses: `https://192.168.8.183:5182/` on the LAN and `https://100.78.47.102:5182/` over Tailscale; `https://localhost:5182/` also works on the host. The browser must accept the local development certificate. Isolated Chromium checks with that certificate trusted initialized and synchronized a fresh library through both network addresses. The original 5180 frontend and 5181 authority remain running in `main:6` (`clipper-reader`).

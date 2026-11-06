@@ -3,6 +3,8 @@
 	import { onMount, type Snippet } from 'svelte'
 	import { page } from '$app/state'
 	import { Button, Drawer, Heading, Navigation, TopNavigation } from 'delightful-ui'
+	import { selectLibraryView } from '../machines/capture/library.js'
+	import type { ReaderPreferences } from '../reader/schema.js'
 	import AddLink from './AddLink.svelte'
 	import ConnectionStatus from './ConnectionStatus.svelte'
 	import { useLibrary } from '../runtime/library-context.js'
@@ -19,6 +21,27 @@
 	const drawerId = `${id}-account`
 	let drawerOpen = $state(false)
 	let mobile = $state(false)
+	let readerFocused = $state(false)
+	let theme = $state<ReaderPreferences['theme']>('system')
+	$effect(() => {
+		const actor = library.actor
+		if (!actor) {
+			readerFocused = false
+			theme = 'system'
+			return
+		}
+		const subscription = actor.subscribe((snapshot) => {
+			const view = selectLibraryView(snapshot).readerExperience
+			readerFocused = view.focused
+			theme = view.preferences.theme
+		})
+		return () => subscription.unsubscribe()
+	})
+	$effect(() => {
+		if (theme === 'system') document.documentElement.removeAttribute('data-dui-theme')
+		else document.documentElement.setAttribute('data-dui-theme', theme)
+		return () => document.documentElement.removeAttribute('data-dui-theme')
+	})
 	const modal = $derived(mobile && drawerOpen)
 
 	onMount(() => {
@@ -39,54 +62,60 @@
 	}
 </script>
 
-<div class="app-shell">
-	<TopNavigation sticky class="clipper-header">
-		<Button
-			id={`${id}-toggle`}
-			type="button"
-			appearance="flat"
-			aria-label={drawerOpen ? action('close', 'account') : action('show', 'account')}
-			aria-controls={drawerId}
-			aria-expanded={drawerOpen}
-			onclick={() => setDrawerOpen(!drawerOpen)}
-			>{drawerOpen ? action('close', 'account') : action('show', 'account')}</Button
-		>
-		<Heading level="h1" size="lg"><a href="/">{t('app.title')}</a></Heading>
-	</TopNavigation>
+<div class="app-shell" class:focused={readerFocused}>
+	{#if !readerFocused}
+		<TopNavigation sticky class="clipper-header">
+			<Button
+				id={`${id}-toggle`}
+				type="button"
+				appearance="flat"
+				aria-label={drawerOpen ? action('close', 'account') : action('show', 'account')}
+				aria-controls={drawerId}
+				aria-expanded={drawerOpen}
+				onclick={() => setDrawerOpen(!drawerOpen)}
+				>{drawerOpen ? action('close', 'account') : action('show', 'account')}</Button
+			>
+			<Heading level="h1" size="lg"><a href="/">{t('app.title')}</a></Heading>
+		</TopNavigation>
+	{/if}
 	<div class="workspace">
-		<Drawer
-			id={drawerId}
-			class="clipper-drawer"
-			heading={noun('account')}
-			headingHidden
-			showCloseButton={false}
-			closeLabel={action('close', 'account')}
-			bind:open={() => drawerOpen, setDrawerOpen}
-		>
-			<div class="sidebar-content">
-				<Navigation label={t('library.heading')}>
-					<li>
-						<a
-							href="/"
-							aria-current={page.url.pathname === '/' ? 'page' : undefined}
-							onclick={() => {
-								if (mobile) setDrawerOpen(false)
-							}}>{t('library.heading')}</a
-						>
-					</li>
-				</Navigation>
-				<div class="account-panel">
-					<Heading level="h2" size="md">{noun('account')}</Heading>
-					{@render account()}
-					<ConnectionStatus message={connectionMessage} />
+		{#if !readerFocused}
+			<Drawer
+				id={drawerId}
+				class="clipper-drawer"
+				heading={noun('account')}
+				headingHidden
+				showCloseButton={false}
+				closeLabel={action('close', 'account')}
+				bind:open={() => drawerOpen, setDrawerOpen}
+			>
+				<div class="sidebar-content">
+					<Navigation label={t('library.heading')}>
+						<li>
+							<a
+								href="/"
+								aria-current={page.url.pathname === '/' ? 'page' : undefined}
+								onclick={() => {
+									if (mobile) setDrawerOpen(false)
+								}}>{t('library.heading')}</a
+							>
+						</li>
+					</Navigation>
+					<div class="account-panel">
+						<Heading level="h2" size="md">{noun('account')}</Heading>
+						{@render account()}
+						<ConnectionStatus message={connectionMessage} />
+					</div>
 				</div>
-			</div>
-		</Drawer>
-		<main class="content" inert={modal}>
+			</Drawer>
+		{/if}
+		<main class="content" inert={modal && !readerFocused}>
 			{@render children()}
-			{#if library.actor}{#key library.actor}<AddLink actor={library.actor} />{/key}{/if}
+			{#if library.actor && !readerFocused}{#key library.actor}<AddLink
+						actor={library.actor}
+					/>{/key}{/if}
 		</main>
-		{#if modal}
+		{#if modal && !readerFocused}
 			<button
 				class="drawer-dismiss"
 				type="button"
@@ -105,6 +134,10 @@
 		grid-template-rows: max-content minmax(0, 1fr);
 		height: 100dvh;
 		overflow: hidden;
+	}
+
+	.app-shell.focused {
+		grid-template-rows: minmax(0, 1fr);
 	}
 
 	.workspace {

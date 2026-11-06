@@ -1,5 +1,7 @@
 # Repository working agreements
 
+- Run user-facing dev servers on the network (`0.0.0.0`) in a named tmux window. Provide a working LAN URL and ensure the browser’s Jazz URL is reachable there. Preserve existing authorities; localhost-only servers are for isolated tests or explicit user requests.
+
 - All subsequent work must use a feature branch and a pull request targeting `main`. Do not push directly to `main`. The specification-baseline reset was a one-time explicit user instruction.
 - Use Conventional Commits PR titles: `type(scope): description` (scope optional; `!` before the colon for breaking changes). The PR title workflow validates this format.
 - Do not merge a PR without explicit user authorization. Do not configure branch protection or change repository settings unless requested.

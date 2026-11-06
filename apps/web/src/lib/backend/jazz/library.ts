@@ -30,6 +30,7 @@ export function createLibraryCapability(
 		failure: records.articles.failure
 	})
 	return {
+		reader: records.reader.capability,
 		spawnFakeData: (spawn) =>
 			spawn(records.fakeData(PUBLIC_FAKE_DATA === 'true'), { input: undefined }),
 		libraryId: records.articles.libraryId,

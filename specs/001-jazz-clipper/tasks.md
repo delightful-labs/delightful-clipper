@@ -1,8 +1,27 @@
+# Reader experience — current batch
+
+- [x] Start from merged main `b21691f` on `feat/reader-experience`; inspect DUI before selecting components.
+- [x] Model library-owned positions/preferences, native transactions, scoped viewport observation/restoration, receipt handling and shutdown drain before async implementation.
+- [x] Implement additive private readerOperations schema/migration, independent preference fields, causal positions and furthest progress.
+- [x] Add small controlled settings/progress/contents/actions and bundled reader toolbar/view compositions using DUI primitives and its theme contract.
+- [x] Add the first 17 reader labels/errors explicitly approved in the conversation.
+- [x] Record explicit approval ("add them") and add actions.sync, status.failed_subject and the revised actionable status.save_unknown. Compose failure feedback from the shared template and localized action name.
+- [x] Complete reader UI/browser qualification: native controls, typography/resize reanchoring, contents, footnotes, focus mode with native fullscreen/fallback, Archive, concurrent clients and full offline restart. Include short articles that cannot scroll.
+- [x] Qualify all 52 web cases, five final production offline cases, eleven rebuilt extension cases, two sample-data cases and 544 unit/native tests (one platform skip); pass formatting, lint, vendor and root/service-worker typing checks.
+- [x] Complete web/extension strict catalog typing and pnpm verify after adding the approved copy; all source checks, 544 unit/native tests (one platform skip) and production build pass.
+- [x] Finish handoff, push feat/reader-experience and create [PR #17](https://github.com/delightful-labs/delightful-clipper/pull/17), feat(reader): add synchronized reading preferences and progress, targeting main. Leave it unmerged.
+- [x] Fix live percentage updates independently of the save debounce; preserve the furthest unsaved point while scrolling back and keep the current text anchor. Verify scope expiry, native persistence after debounce, actual network fullscreen, all 53 web cases, five production offline cases and pnpm verify with 545 unit/native tests (one skip).
+- [x] Remove the custom caret, add the explicitly approved Finance SVG loader/configuration, and model viewport observation/restoration as invoked XState children. Pass seven new lifecycle regressions, pnpm verify (552 unit/native tests plus one skip), all 53 web, five offline, eleven rebuilt extension and two sample-data cases; preserve shared authorities.
+
+- [x] Replace the function-based viewport contract and observation/restoration wrappers with one DOM-owning viewport machine; pass nodes directly, keep decisions in states/guards, join final sampling during shutdown, and cover native failures/disposal with real DOM fixtures. Nine direct DOM tests and twelve parent tests pass; pnpm verify passes 554 tests plus one skip, all 53 web cases and five production offline cases pass, and actual network progress/fullscreen retain location.
+
+- [x] Replace combined viewport setup/disposal with explicit resource acquisition/registration/active/disposal states and independently owned native leases. Move resize geometry into a measurement state and fullscreen support/change/exit decisions into named guards; await native change-listener registration before requesting fullscreen. Twelve viewport and fifteen parent tests pass; pnpm verify passes 560 tests plus one skip, all 53 web cases and five production offline cases pass, and actual network progress/fullscreen retain location.
+
 # Implementation tasks and acceptance status
 
 Updated 2026-11-05. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.
 
-## Current handoff — search, article tags and Trash/restore
+## Merged handoff — search, article tags and Trash/restore
 
 PR #15 is merged at `72b6fc9`; work uses `feat/library-search-tags-trash` from updated main and will remain in one unmerged PR. The user authorized all testing in this session. See [ownership/design](search-tags-trash.md).
 

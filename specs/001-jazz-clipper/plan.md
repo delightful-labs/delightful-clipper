@@ -1,7 +1,7 @@
 # Technical Plan: Jazz Clipper and Reader
 
 **Baseline**: `main` (implementation through feature branches/PRs) · **Updated**: 2026-11-05 · **Spec**: [spec.md](spec.md)
-**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is merged in PR #14 and DUI radio/list refinements in PR #15 (`72b6fc9`). The current combined search/article-tags/Trash batch is described in [search-tags-trash.md](search-tags-trash.md), including approved action/noun composition and silent search preparation; see [library-organization.md](library-organization.md) for the state/resource model and the handoff for qualification. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
+**Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is merged in PR #14 and DUI radio/list refinements in PR #15 (`72b6fc9`). The merged PR #16 search/article-tags/Trash batch is described in [search-tags-trash.md](search-tags-trash.md), including approved action/noun composition and silent search preparation; see [library-organization.md](library-organization.md) for the state/resource model and the handoff for qualification. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
 
 ## Summary
 
@@ -72,7 +72,8 @@ Trusted Options: DLF recovery/restoration; notify runtime of the selected accoun
 Service worker: public shell/worker/WASM cache; incoming mobile sharing remains unbuilt
 Netlify gateway: authenticated, bounded public-source fetch and inert extraction
 Search child → native snapshot reader + dedicated index/cache worker
-Future owners: annotations, note drafts, images, positions and preferences
+Library-owned reader experience: preferences/positions subscription + debounced native writes/receipt ownership + viewport states
+Future owners: annotations, note drafts and images
 ```
 
 Actors are attached to the application runtime, not a reader/list component. Each actor defines states, guards, ownership, cancellation and cleanup before async leaf operations are implemented. Every report has account binding, generation and request identity. Account change drains/settles owners, terminates workers, revokes blob URLs, and stops subscriptions; stale A→B→A reports cannot write into the new binding.
@@ -126,3 +127,7 @@ No gate permits silently weakening an accepted requirement. A passed capability 
 The necessary complexity is cross-origin intake plus local-first ownership, not additional product features. First-party fetching exists because arbitrary PWA reads face CORS; workers exist for responsiveness; local durability receipts and native content availability establish what “saved offline” means. Prefer one repository, one parser baseline, one account preference set and one immutable snapshot. No formal constitution exception is asserted.
 
 See [research.md](research.md), [data-model.md](data-model.md), [contracts/runtime.md](contracts/runtime.md), [contracts/capture-http.md](contracts/capture-http.md), [contracts/platform-intake.md](contracts/platform-intake.md), and [quickstart.md](quickstart.md).
+
+## Current reader implementation batch
+
+Start from merged main `b21691f` on `feat/reader-experience`. [Reader design](reader-experience.md) records inspected DUI reuse, the parent shutdown join, native additive readerOperations migration (`86d3840835d8 → 3d99c179e109`), causal preference/position semantics, native fullscreen lifecycle and explicit copy approval. Existing schema and immutable content remain intact. The user approved @poppanator/sveltekit-svg 7.0.1 as a development dependency to use DUI's default caret, matching Finance; no runtime dependency or custom palette is introduced. Viewport observation and restoration are invoked XState children with explicit frame, measurement, resize and failure/resource ownership. Source/build, web, production offline, rebuilt extension and sample-data qualification pass; hosted CI and broader platform/release qualification remain separate.

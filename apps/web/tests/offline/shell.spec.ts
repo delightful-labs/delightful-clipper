@@ -1,4 +1,5 @@
 import { openAddLink } from '../add-link.js'
+import { readingControls, visibleReadingParagraph } from '../reader-ui.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
@@ -53,6 +54,11 @@ async function ready(page: Page) {
 		.toBe(true)
 }
 async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
+	const readingParagraphs = Array.from(
+		{ length: 60 },
+		(_, index) =>
+			`<p>Paragraph ${index + 1}. ${'Saved offline reading context café 🦊. '.repeat(14)}</p>`
+	).join('')
 	await page.route('**/api/capture/*', async (route) => {
 		const input: { operationId: string; url: string } = route.request().postDataJSON()
 		const base = { operationId: input.operationId, finalUrl: 'https://example.com/offline' }
@@ -69,8 +75,12 @@ async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 						},
 						candidate: {
 							title: 'Completely offline article',
-							text: 'Exact offline shell text café 🦊',
-							html: '<h3>Offline structure</h3><details><summary>Offline diagram</summary><svg viewBox="0 0 100 100"><title>Chart</title><path d="M0 0 L10 10" stroke="red"/></svg></details><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p><ol><li id="fn1">Offline footnote</li></ol>',
+							text:
+								'Exact offline shell text café 🦊 ' + readingParagraphs.replace(/<[^>]*>/g, ' '),
+							html:
+								'<h3>Offline structure</h3><details><summary>Offline diagram</summary><svg viewBox="0 0 100 100"><title>Chart</title><path d="M0 0 L10 10" stroke="red"/></svg></details><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p>' +
+								readingParagraphs +
+								'<ol><li id="fn1">Offline footnote</li></ol>',
 							assetCandidates: [],
 							partialEvidence: [],
 							parserVersion: 'fixture',
@@ -190,6 +200,24 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 				request.onerror = () => reject(new Error('Cache deletion failed'))
 			})
 		})
+		await page.getByRole('link', { name: 'Completely offline article', exact: true }).click()
+		const settings = await readingControls(page)
+		await settings.getByRole('radio', { name: 'Dark', exact: true }).check()
+		await settings.getByLabel('Font family', { exact: true }).selectOption('sans')
+		await settings.getByRole('button', { name: 'Close', exact: true }).click()
+		await page.getByRole('main').hover()
+		await page.mouse.wheel(0, 3000)
+		await expect
+			.poll(async () => Number(await page.getByRole('progressbar').getAttribute('value')))
+			.toBeGreaterThan(0.05)
+		const readingParagraph = await visibleReadingParagraph(page)
+		expect(readingParagraph).toBeTruthy()
+		// Leaving flushes the debounced position; live progress is not a persistence receipt.
+		await page.getByRole('link', { name: 'Open library', exact: true }).click()
+		await page.getByRole('link', { name: 'Completely offline article', exact: true }).click()
+		await expect.poll(() => visibleReadingParagraph(page)).toBe(readingParagraph)
+		await page.reload()
+		await expect.poll(() => visibleReadingParagraph(page)).toBe(readingParagraph)
 		await context.close()
 		await ui.stop()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
@@ -205,6 +233,11 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			reopened.getByText('Offline startup prepared on this browser.', { exact: true })
 		).toHaveCount(0)
 		await expect(reopened.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		await expect.poll(() => visibleReadingParagraph(reopened)).toBe(readingParagraph)
+		const savedSettings = await readingControls(reopened)
+		await expect(savedSettings.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked()
+		await expect(savedSettings.getByLabel('Font family', { exact: true })).toHaveValue('sans')
+		await savedSettings.getByRole('button', { name: 'Close', exact: true }).click()
 		await expect(
 			reopened.getByRole('article').getByRole('heading', { name: 'Offline structure' })
 		).toBeVisible()
@@ -212,6 +245,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await expect(reopened.getByRole('article').locator('svg')).toBeVisible()
 		await expect(reopened.getByRole('article').locator('path')).toHaveAttribute('stroke', 'red')
 		await reopened.getByRole('article').getByRole('link', { name: 'Citation', exact: true }).click()
+		await reopened.getByRole('note').getByRole('link', { name: 'Open note', exact: true }).click()
 		await expect(reopened.getByRole('article').locator('li')).toBeFocused()
 
 		console.info(

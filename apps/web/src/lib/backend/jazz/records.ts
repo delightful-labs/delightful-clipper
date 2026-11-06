@@ -11,6 +11,7 @@ import { createSaveRecordMachine } from '../../machines/storage/save.js'
 import { prepareSave } from '../../storage/prepare.js'
 import { app } from './schema.js'
 import { insertPreparedContent } from './content.js'
+import { createReaderRecords } from './reader.js'
 import { createFakeDataRecords } from './fake-data.js'
 import { createArticleRecords } from './articles.js'
 import type { SearchDocument } from '../../search/schema.js'
@@ -188,6 +189,7 @@ export function createLibraryRecords(
 	}
 	return {
 		...records,
+		reader: createReaderRecords(db, libraryId, isCurrent),
 		fakeData: createFakeDataRecords(db, libraryId, isCurrent),
 		searchDocuments: async (
 			rows: LibraryArticle[],
