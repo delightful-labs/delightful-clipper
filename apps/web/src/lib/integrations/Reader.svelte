@@ -12,7 +12,6 @@
 		type ReaderHeading,
 		type ReaderFootnote
 	} from '../reader/structure.js'
-	import { readingViewport } from '../reader/viewport.js'
 	import type { ReaderExperienceEvent } from '../machines/reader/experience.js'
 	let { actor, id }: { actor: ActorRefFrom<typeof libraryMachine>; id: string } = $props()
 	let snapshot = $state<SnapshotFrom<typeof libraryMachine>>()
@@ -44,7 +43,8 @@
 			send({
 				type: 'ATTACH',
 				documentId: reader.document.snapshotId,
-				viewport: readingViewport(node, scroller)
+				root: node,
+				scroller
 			})
 	}
 	function release() {

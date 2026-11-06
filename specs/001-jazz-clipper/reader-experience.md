@@ -4,7 +4,7 @@ This authorized batch follows merged Clipper PR #16 (`b21691f`). It adds positio
 
 ## Inspected reusable presentation
 
-Pinned DUI provides InputRange, Select, RadioGroup/RadioItem, Button, Dialog, Popover, Heading, StatusMessage and theme.css. Its `data-dui-theme` root attribute selects light/dark; absence follows the system live. No new palette or font download is needed. The approved SVG build dependency described below follows Finance's DUI consumer configuration. Controlled FontSettings, ThemeSettings, ReadingProgress, ContentsNavigation, ReaderActions and ReaderToolbar compose a ReaderView; Reader integration connects actors and DOM ports. SavedContent remains the sole sanitized-content renderer. DOM measurement/anchor helpers are separate from presentation.
+Pinned DUI provides InputRange, Select, RadioGroup/RadioItem, Button, Dialog, Popover, Heading, StatusMessage and theme.css. Its `data-dui-theme` root attribute selects light/dark; absence follows the system live. No new palette or font download is needed. The approved SVG build dependency described below follows Finance's DUI consumer configuration. Controlled FontSettings, ThemeSettings, ReadingProgress, ContentsNavigation, ReaderActions and ReaderToolbar compose a ReaderView; Reader integration passes rendered DOM elements to the owning actor. SavedContent remains the sole sanitized-content renderer. DOM measurement/anchor helpers are separate from presentation.
 
 ## State and resource ownership before async implementation
 
@@ -14,33 +14,47 @@ The child models observing, subscription failure, idle/debouncing/writing, local
 
 The viewport region owns listeners, ResizeObserver and scheduled restoration. It waits for local reading data and rendered content before applying the initial position once. It stores a normalized code-point offset and quote/context tied to the immutable snapshot. Typography/viewport changes reanchor the current location. A mismatched anchor opens at the beginning and does not overwrite evidence until user interaction. Later remote records update available state without scrolling an attached reader. Scroll observation is debounced one second for storage; departure flushes the last observation. Transient popovers retain native dismissal/focus behavior. Focus mode hides shell panels/ordinary controls and always retains an accessible Show controls exit; there is no automatic focus-sensitive hiding timer.
 
-## Native schema
+## DOM ownership and default DUI caret
 
-### Viewport ownership refactor and default DUI caret
+The user clarified that the viewport machine should work directly with the DOM. Reader passes root/scroller elements to the library-owned reader experience, which invokes one viewport machine. That machine owns the nodes, text index, size snapshots, listeners, ResizeObserver, animation frames, DOM reads and scroll writes. The ReadingViewport method object and separate observation/restoration wrappers are removed.
 
-The user requested removal of Clipper's custom caret and approved adding Finance's SVG component loader, @poppanator/sveltekit-svg 7.0.1. The web Vite configuration uses that plugin and excludes the vendored DUI package from dependency prebundling, following Finance. Native DUI Details owns its disclosure icon; no Clipper replacement snippet or icon path remains. The alternative was changing DUI's package to precompile its SVG imports, which is broader than the selected consumer configuration. This is an approved development dependency, not new runtime application logic or user-facing copy.
-
-Before implementing the viewport refactor, the state/resource plan is: the existing library-owned reader continues invoking observation and restoration children. Observation owns the DOM event/ResizeObserver subscription for its active lifetime. Its explicit idle → framePending → measuring → idle states coalesce scroll events into one animation frame; eligible interactions notify the reader immediately and request that same coalesced measurement. Initial size baselines are recorded without requesting a restore; a named size-change guard compares subsequent immutable dimension snapshots before reporting resize. Subscription, frame or measurement failure reports VIEWPORT_FAILED, and exiting the child disposes subscriptions and cancels frames. Restoration uses waitingForLayout → restoring → waitingForPaint → restored states, with failure reporting and cancellation on exit. Geometry/indexing stays in DOM helpers; callbacks only report raw input, dimensions or frame completion. No private createActor or scheduling flags live in the DOM adapter.
+The state/resource plan is implemented directly in viewport.ts. Parallel flow and measurement regions coordinate restoration and reading. Named guards decide interaction eligibility, actual size changes, anchor validity and changed positions. Invoked leaves perform individual native operations; their errors enter the failed state and release active resources. They do not choose the next workflow. Restoration waits for layout, locates the anchor, explicitly selects an anchor or beginning scroll, and waits for paint before admitting ordinary scroll measurements. User interaction cancels restoration. Reflow restarts it with the current location. Remote positions never scroll the open reader.
 
 ```mermaid
 stateDiagram-v2
-    state Observation {
-        [*] --> idle
-        idle --> framePending: SCROLL or eligible interaction
-        framePending --> measuring: animation frame
-        measuring --> idle: measured or empty
+    state active {
+        state flow {
+            [*] --> waitingForLayout
+            waitingForLayout --> locatingAnchor: layout frame
+            locatingAnchor --> choosingAnchor: DOM anchor
+            choosingAnchor --> scrollingToAnchor: valid anchor
+            choosingAnchor --> scrollingToStart: missing or mismatched
+            scrollingToAnchor --> waitingForPaint: scroll completed
+            scrollingToStart --> waitingForPaint: scroll completed
+            waitingForPaint --> passive: paint frame
+            passive --> reading: reading interaction
+        }
+        --
+        state measurement {
+            [*] --> idle
+            idle --> framePending: scroll or reading interaction
+            framePending --> measuring: measurement frame
+            measuring --> idle: DOM measurement
+        }
     }
-    state Restoration {
-        [*] --> waitingForLayout
-        waitingForLayout --> restoring: animation frame
-        restoring --> waitingForPaint: DOM restored
-        waitingForPaint --> restored: animation frame
-    }
+    active --> departing: detach while reading
+    departing --> closed: final measurement or last reliable position
+    active --> closed: detach while passive or restoring
+    active --> failed: native resource or DOM operation failure
 ```
 
-Both children are invoked under the reader experience, with no independently started actors in the DOM adapter. Live measurement failures report through explicit failed states; final departure measurement retains the last reliable anchor if the DOM has already disappeared. The existing main reader still decides whether to restore, admit user interaction, persist, reflow, discard stale generations or shut down. Focused regressions cover frame coalescing, excluded controls, baseline/real resize, cancellation and listener disposal, stale reports, empty/failed measurement, failed observation startup and failed restoration.
+Departure releases event resources and cancels pending frames before sampling the DOM once more. If that final sample is unavailable or fails, the last reliable position remains available. The parent retains native persistence, receipts, furthest progress and scope admission; it joins viewport closure before finishing shutdown and never replays an uncertain write. Direct DOM unit fixtures cover restoration, mismatched anchors, excluded controls, frame coalescing, actual size changes, disposal, final sampling and native failures; parent tests also use DOM elements instead of mocked viewport methods.
 
-This refactor passes pnpm verify with 552 unit/native tests across 81 files plus one platform skip, all 53 web cases, five production offline cases, eleven rebuilt extension cases and two sample-data cases. Seven new child-lifecycle regressions pass alongside the twelve existing parent reader tests. Real network testing opens the Stately reader using DUI's default caret and retains progress/location through native fullscreen. Formatting, lint, strict web/extension types and production build pass; temporary harnesses were removed and the original authority/network frontend processes were preserved.
+ContentsNavigation uses DUI Details' default caret. The explicitly approved @poppanator/sveltekit-svg 7.0.1 development dependency and DUI prebundle exclusion follow Finance's Vite configuration, including the network frontend. The alternative was precompiling SVG imports in DUI, a broader package change. No additional package, copy or schema change is needed for direct DOM ownership.
+
+Current direct-DOM validation passes pnpm verify (554 unit/native tests, one platform skip, 81 files, strict types, formatting/lint/vendor checks and production build), all 53 web cases in one run and all five production offline cases. Real network testing also confirms Stately progress and fullscreen location retention. Earlier rebuilt extension/sample-data evidence is recorded below; these suites were not rerun for this internal viewport contract refactor. Shared servers were preserved and temporary harnesses removed.
+
+## Native schema
 
 An additive readerOperations table stores libraryId, nullable documentId, field, JSON desired value and causal parents. Preferences belong to the library (null document); positions reference a same-library immutable document/snapshot. Owner-only policies deny history edits/deletion and foreign document references. Existing roots/content/operations are preserved by the additive migration. History compaction is future work; no large-library performance claim is made.
 
@@ -78,6 +92,6 @@ The initial strict Svelte check reported only references to the 19 proposed read
 
 The user reported failures for Stately's `/docs/invoke` page and a Men’s Journal article through the Tailscale frontend. Exact authenticated reproduction found Stately resolve 200/extract 415 (`unsupportedMedia`) and Men’s Journal resolve/extract 502 (`sourceUnavailable`). Stately returned `text/markdown` when HTML and plain text had equal Accept preference; explicitly weighting HTML higher returns HTML with Clipper's existing identifying user agent. The transport now requests `text/html,application/xhtml+xml;q=0.9,text/plain;q=0.5`. Native HTTP/worker regressions cover negotiated HTML and retained plain-text support. No new parser/dependency, media-type relaxation, identity or transport-boundary change is introduced.
 
-Real Tailscale Add Link now resolves/extracts Stately with HTTP 200, saves its native article as “Invoke” and opens its saved reader (about 22,000 text characters). That proof also found a reader-only `CaretIcon_1 is not a function` error in the packaged DUI Details default SVG import. ContentsNavigation uses the documented caret snippet with DUI Icon and a decorative path, preserving DUI presentation and native disclosure without a consumer SVG-loader dependency. The two existing capture/structured-reader/duplicate and direct/new-tab/missing-reader browser regressions pass on isolated ports 5194/5195. The full unit/native suite passes 542 tests plus one platform skip, with formatting/lint passing on changed files. Subsequent full reader/copy/UI qualification is recorded above.
+Real Tailscale Add Link now resolves/extracts Stately with HTTP 200, saves its native article as “Invoke” and opens its saved reader (about 22,000 text characters). That proof also found a reader-only `CaretIcon_1 is not a function` error in the packaged DUI Details default SVG import. That temporary custom-caret workaround has been replaced by the approved SVG loader and default DUI caret described above. The two existing capture/structured-reader/duplicate and direct/new-tab/missing-reader browser regressions pass on isolated ports 5194/5195. The full unit/native suite passes 542 tests plus one platform skip, with formatting/lint passing on changed files. Subsequent full reader/copy/UI qualification is recorded above.
 
 Men’s Journal returns HTTP 403 with a DataDome JavaScript challenge to the server fetch. Its failed capture retains the URL and Retry; it is not falsely saved as readable challenge content. Rendered-page extension capture is the existing route when the user can read the page in their browser; no headless challenge bypass or arbitrary source-page script execution is added to the gateway. Original tracking/source provenance is unchanged.

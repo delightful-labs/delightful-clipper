@@ -1,11 +1,18 @@
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createActor, toPromise, waitFor } from 'xstate'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import { readerExperienceMachine, selectReaderExperience } from '../machines/reader/experience.js'
 import type { ReaderChange, ReaderOperation, ReadingPosition } from './schema.js'
 import { readerOperationSchema } from './schema.js'
 import type { SyncReceipt } from '../contracts/storage.js'
-import type { ReadingViewport, ReaderCapability } from '../contracts/reader.js'
+import type { ReaderCapability } from '../contracts/reader.js'
+import {
+	viewportDOM,
+	installViewportDOM,
+	closeViewportDOMs,
+	TestResizeObserver
+} from './viewport.test-support.js'
+beforeEach(installViewportDOM)
 const documentId = crypto.randomUUID(),
 	libraryId = crypto.randomUUID()
 const position = (offset = 10): ReadingPosition => ({
@@ -52,6 +59,7 @@ function fixture(local = async () => {}, global = async () => {}) {
 	return { actor, writes, dispose, expire: () => (current = false) }
 }
 afterEach(() => {
+	closeViewportDOMs()
 	vi.useRealTimers()
 	vi.unstubAllGlobals()
 })
@@ -152,9 +160,10 @@ it('restores once, ignores late remote positions, preserves the current anchor o
 		setTimeout(() => callback(0), 1)
 	)
 	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
-	const { actor, writes } = fixture()
-	const first = position(10),
-		remote = position(70)
+	const { actor, writes } = fixture(),
+		dom = viewportDOM()
+	const first = dom.position(10),
+		remote = dom.position(70)
 	const row = (value: ReadingPosition): ReaderOperation =>
 		readerOperationSchema.parse({
 			id: crypto.randomUUID(),
@@ -165,80 +174,52 @@ it('restores once, ignores late remote positions, preserves the current anchor o
 			parents: '[]'
 		})
 	actor.send({ type: 'ROWS', rows: [row(first)] })
-	let report!: Parameters<ReadingViewport['observe']>[0]
-	let measured = position(0)
-	const dispose = vi.fn(),
-		restore = vi.fn()
-	actor.send({
-		type: 'ATTACH',
-		documentId,
-		viewport: {
-			measure: () => measured,
-			restore,
-			observe: (next) => {
-				report = next
-				return dispose
-			}
-		}
-	})
+	actor.send({ type: 'ATTACH', documentId, root: dom.root, scroller: dom.scroller })
 	await vi.advanceTimersByTimeAsync(3)
-	expect(restore).toHaveBeenCalledExactlyOnceWith(first)
-	report({ type: 'SCROLL' })
+	expect(dom.scroller.scrollTop).toBe(10)
+	dom.scroll(0)
 	await vi.advanceTimersByTimeAsync(1)
 	expect(writes).toEqual([])
 	actor.send({ type: 'ROWS', rows: [row(remote)] })
-	expect(restore).toHaveBeenCalledTimes(1)
-	measured = position(30)
-	report({ type: 'INTERACT', eligible: true })
+	expect(dom.scroller.scrollTop).toBe(0)
+	dom.interact()
+	dom.scroll(30)
 	await vi.advanceTimersByTimeAsync(1)
-	report({ type: 'RESIZE', sizes: [{ width: 800, height: 600 }] })
+	dom.resize(700)
 	await vi.advanceTimersByTimeAsync(3)
-	expect(restore).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 30 }))
-	report({ type: 'INTERACT', eligible: true })
+	expect(dom.scroller.scrollTop).toBe(30)
+	dom.interact()
 	actor.send({ type: 'DETACH' })
 	await vi.advanceTimersByTimeAsync(0)
-	expect(dispose).toHaveBeenCalledOnce()
+	expect(TestResizeObserver.instances[0]?.disconnect).toHaveBeenCalledOnce()
 	const before = writes.length
-	measured = position(80)
-	report({ type: 'SCROLL' })
+	dom.scroll(80)
 	await vi.advanceTimersByTimeAsync(1500)
 	expect(writes.length).toBe(before)
 	expect(writes.at(-1)).toMatchObject({ value: { offset: 30 } })
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })
+
 it('shows progress before persistence and retains the furthest point when scrolling back within the debounce interval', async () => {
 	vi.useFakeTimers()
 	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
 		setTimeout(() => callback(0), 1)
 	)
 	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
-	const { actor, writes, expire } = fixture()
-	let report!: Parameters<ReadingViewport['observe']>[0]
-	let measured = position(60)
-	actor.send({
-		type: 'ATTACH',
-		documentId,
-		viewport: {
-			measure: () => measured,
-			restore: () => {},
-			observe: (next) => {
-				report = next
-				return () => {}
-			}
-		}
-	})
+	const { actor, writes, expire } = fixture(),
+		dom = viewportDOM()
+	actor.send({ type: 'ATTACH', documentId, root: dom.root, scroller: dom.scroller })
 	await vi.advanceTimersByTimeAsync(3)
-	report({ type: 'INTERACT', eligible: true })
+	dom.interact()
+	dom.scroll(60)
 	await vi.advanceTimersByTimeAsync(1)
 	expect(selectReaderExperience(actor.getSnapshot()).progress[documentId]).toBe(0.6)
 	await vi.advanceTimersByTimeAsync(500)
-	measured = position(30)
-	report({ type: 'SCROLL' })
+	dom.scroll(30)
 	await vi.advanceTimersByTimeAsync(1)
 	await vi.advanceTimersByTimeAsync(500)
-	measured = position(40)
-	report({ type: 'SCROLL' })
+	dom.scroll(40)
 	await vi.advanceTimersByTimeAsync(1)
 	expect(writes).toEqual([])
 	expect(selectReaderExperience(actor.getSnapshot()).progress[documentId]).toBe(0.6)
@@ -249,6 +230,7 @@ it('shows progress before persistence and retains the furthest point when scroll
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })
+
 it('does not flush a new automatic position on departure after an uncertain write', async () => {
 	vi.useFakeTimers()
 	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
@@ -256,34 +238,23 @@ it('does not flush a new automatic position on departure after an uncertain writ
 	)
 	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
 	const { actor, writes } = fixture(async () => {
-		throw new Error('Unknown settlement')
-	})
-	let report!: Parameters<ReadingViewport['observe']>[0]
-	let measured = position(30)
-	actor.send({
-		type: 'ATTACH',
-		documentId,
-		viewport: {
-			measure: () => measured,
-			restore: () => {},
-			observe: (next) => {
-				report = next
-				return () => {}
-			}
-		}
-	})
+			throw new Error('Unknown settlement')
+		}),
+		dom = viewportDOM()
+	actor.send({ type: 'ATTACH', documentId, root: dom.root, scroller: dom.scroller })
 	await vi.advanceTimersByTimeAsync(3)
-	report({ type: 'INTERACT', eligible: true })
-	await vi.advanceTimersByTimeAsync(1)
-	await vi.advanceTimersByTimeAsync(1000)
+	dom.interact()
+	dom.scroll(30)
+	await vi.advanceTimersByTimeAsync(1001)
 	expect(selectReaderExperience(actor.getSnapshot()).enabled).toBe(false)
-	measured = position(60)
+	dom.scroll(60)
 	actor.send({ type: 'DETACH' })
 	await vi.advanceTimersByTimeAsync(1000)
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 	expect(writes).toHaveLength(1)
 })
+
 it('models subscription failure without allowing writes and disposes the failed observation', async () => {
 	const { actor, dispose, writes } = fixture()
 	actor.send({ type: 'OBSERVATION_FAILED' })
@@ -320,22 +291,20 @@ it('drains a pending fullscreen request and exit before shutdown completes', asy
 	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
 	const entered = Promise.withResolvers<void>(),
 		exited = Promise.withResolvers<void>()
-	const { actor } = fixture()
-	const enter = vi.fn(() => entered.promise),
-		exit = vi.fn(() => exited.promise),
-		dispose = vi.fn()
-	actor.send({
-		type: 'ATTACH',
-		documentId,
-		viewport: {
-			measure: () => undefined,
-			restore: () => {},
-			observe: () => () => {},
-			fullscreen: { enter, exit, observe: () => dispose }
-		}
+	const { actor } = fixture(),
+		dom = viewportDOM()
+	dom.enter.mockImplementation(async () => {
+		await entered.promise
+		dom.setFullscreen(true)
 	})
+	dom.exit.mockImplementation(async () => {
+		await exited.promise
+		dom.setFullscreen(false)
+	})
+	const remove = vi.spyOn(dom.document, 'removeEventListener')
+	actor.send({ type: 'ATTACH', documentId, root: dom.root, scroller: dom.scroller })
 	actor.send({ type: 'FOCUS' })
-	expect(enter).toHaveBeenCalledOnce()
+	expect(dom.enter).toHaveBeenCalledOnce()
 	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(true)
 	actor.send({ type: 'SHUTDOWN' })
 	expect(actor.getSnapshot().status).toBe('active')
@@ -343,38 +312,23 @@ it('drains a pending fullscreen request and exit before shutdown completes', asy
 	await waitFor(actor, (snapshot) =>
 		snapshot.matches({ active: { focus: { focused: 'exiting' } } })
 	)
-	expect(exit).toHaveBeenCalledOnce()
+	expect(dom.exit).toHaveBeenCalledOnce()
 	exited.resolve()
 	await toPromise(actor)
-	expect(dispose).toHaveBeenCalledOnce()
+	expect(remove).toHaveBeenCalledWith('fullscreenchange', expect.any(Function))
 })
+
 it('uses distraction-free fallback when fullscreen is declined and responds to a native fullscreen exit', async () => {
 	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
 		setTimeout(() => callback(0), 1)
 	)
 	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
-	const { actor } = fixture()
-	let nativeExit!: () => void
-	const enter = vi.fn<() => Promise<void>>(async () => {
+	const { actor } = fixture(),
+		dom = viewportDOM()
+	dom.enter.mockImplementationOnce(async () => {
 		throw new Error('Browser declined fullscreen')
 	})
-	actor.send({
-		type: 'ATTACH',
-		documentId,
-		viewport: {
-			measure: () => undefined,
-			restore: () => {},
-			observe: () => () => {},
-			fullscreen: {
-				enter,
-				exit: async () => {},
-				observe: (next) => {
-					nativeExit = next
-					return () => {}
-				}
-			}
-		}
-	})
+	actor.send({ type: 'ATTACH', documentId, root: dom.root, scroller: dom.scroller })
 	actor.send({ type: 'FOCUS' })
 	await waitFor(actor, (snapshot) =>
 		snapshot.matches({ active: { focus: { focused: 'fallback' } } })
@@ -382,12 +336,11 @@ it('uses distraction-free fallback when fullscreen is declined and responds to a
 	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(true)
 	actor.send({ type: 'SHOW_CONTROLS' })
 	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(false)
-	enter.mockImplementation(async () => {})
 	actor.send({ type: 'FOCUS' })
 	await waitFor(actor, (snapshot) =>
 		snapshot.matches({ active: { focus: { focused: 'fullscreen' } } })
 	)
-	nativeExit()
+	dom.setFullscreen(false)
 	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(false)
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)

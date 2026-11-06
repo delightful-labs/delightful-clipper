@@ -14,7 +14,6 @@ import type {
 	ReaderCapability,
 	ReaderStageRef,
 	ReaderStageResult,
-	ReadingViewport,
 	ReadingFullscreen
 } from '../../contracts/reader.js'
 import type { ReaderChange, ReaderOperation, ReadingPosition } from '../../reader/schema.js'
@@ -24,13 +23,9 @@ import {
 	projectReaderState,
 	readerChangeKey
 } from '../../reader/schema.js'
-import {
-	finalReadingPosition,
-	viewportObservation,
-	viewportRestoration
-} from '../../reader/viewport-actors.js'
 import { positionSchema } from '../../reader/schema.js'
-import { sameReadingLocation } from '../../reader/anchors.js'
+import { viewportMachine, type ViewportElements } from '../../reader/viewport.js'
+import { readingFullscreen } from '../../reader/fullscreen.js'
 import { syncOwnerMachine } from '../storage/sync-owner.js'
 import type { SyncReport } from '../../contracts/storage.js'
 import { t } from '../../localization/index.js'
@@ -38,11 +33,11 @@ import { stateFeedback } from '../../contracts/feedback.js'
 import type { SnapshotFrom } from 'xstate'
 
 type Input = { capability: ReaderCapability | undefined }
-type Attachment = { documentId: string; viewport: ReadingViewport }
+type Attachment = ViewportElements & { documentId: string }
 type OwnedAttachment = Attachment & { id: string }
 export type ReaderExperienceEvent =
 	| { type: 'MEASURE'; position: ReadingPosition; attachmentId: string }
-	| { type: 'INTERACT' | 'RESIZE' | 'RESTORED' | 'VIEWPORT_FAILED'; attachmentId: string }
+	| { type: 'VIEWPORT_FAILED'; attachmentId: string }
 	| { type: 'CHANGE'; change: ReaderChange }
 	| { type: 'ROWS'; rows: ReaderOperation[] }
 	| ({ type: 'ATTACH' } & Attachment)
@@ -68,7 +63,6 @@ type Context = Input & {
 	operationId: string
 	issued: ReaderChange | undefined
 	attachment: OwnedAttachment | undefined
-	currentPosition: ReadingPosition | undefined
 	progress: Record<string, number>
 	display: ReadingFullscreen | undefined
 	sync: Record<string, 'pending' | 'accepted' | 'rejected'>
@@ -108,14 +102,13 @@ const model = setup<
 	ReaderExperienceEvent,
 	{
 		observation: typeof observation
-		viewportObservation: typeof viewportObservation
-		viewportRestoration: typeof viewportRestoration
+		viewport: typeof viewportMachine
 		receipts: typeof syncOwnerMachine
 		fullscreenEntry: typeof fullscreenEntry
 		fullscreenExit: typeof fullscreenExit
 		fullscreenObservation: typeof fullscreenObservation
 	},
-	{},
+	{ viewport: 'viewport' },
 	{ enqueue: undefined; dropIssuedDraft: undefined; updateRows: undefined },
 	{
 		current: undefined
@@ -126,7 +119,6 @@ const model = setup<
 		queued: undefined
 		ownCompletion: undefined
 		currentViewport: undefined
-		validFinalPosition: undefined
 	},
 	never,
 	string,
@@ -134,8 +126,7 @@ const model = setup<
 >({
 	actors: {
 		observation,
-		viewportObservation,
-		viewportRestoration,
+		viewport: viewportMachine,
 		receipts: syncOwnerMachine,
 		fullscreenEntry,
 		fullscreenExit,
@@ -144,7 +135,6 @@ const model = setup<
 	guards: {
 		currentViewport: ({ context, event }) =>
 			'attachmentId' in event && event.attachmentId === context.attachment?.id,
-		validFinalPosition: ({ context }) => positionSchema.safeParse(context.currentPosition).success,
 		current: ({ context }) => !!context.capability?.isCurrent(),
 		accepting: stateIn({ active: { control: 'accepting' } }),
 		closing: stateIn({ active: { control: 'closing' } }),
@@ -194,7 +184,6 @@ export const readerExperienceMachine = model.createMachine({
 		operationId: '',
 		issued: undefined,
 		attachment: undefined,
-		currentPosition: undefined,
 		progress: {},
 		display: undefined,
 		sync: {}
@@ -273,7 +262,10 @@ export const readerExperienceMachine = model.createMachine({
 									guard: and(['accepting', 'current']),
 									target: 'focused',
 									actions: assign({
-										display: ({ context }) => context.attachment?.viewport.fullscreen
+										display: ({ context }) =>
+											context.attachment
+												? readingFullscreen(context.attachment.root.ownerDocument)
+												: undefined
 									})
 								}
 							}
@@ -354,79 +346,87 @@ export const readerExperienceMachine = model.createMachine({
 							on: {
 								ATTACH: {
 									guard: and(['accepting', 'current']),
-									target: 'attached',
+									target: 'waiting',
 									actions: assign({
 										attachment: ({ event }) => ({
+											root: event.root,
+											scroller: event.scroller,
 											documentId: event.documentId,
-											viewport: event.viewport,
 											id: crypto.randomUUID()
-										}),
-										currentPosition: undefined
+										})
 									})
 								}
 							}
 						},
-						attached: {
-							initial: 'waiting',
+						waiting: {
+							always: { guard: 'dataReady', target: 'owning' },
+							on: {
+								DETACH: { target: 'detached', actions: assign({ attachment: undefined }) },
+								SHUTDOWN: { target: 'detached', actions: assign({ attachment: undefined }) }
+							}
+						},
+						owning: {
+							initial: 'active',
 							invoke: {
-								src: 'viewportObservation',
-								input: ({ context }) => required(context.attachment)
+								id: 'viewport',
+								src: 'viewport',
+								input: ({ context }) => ({
+									root: required(context.attachment).root,
+									scroller: required(context.attachment).scroller,
+									attachmentId: required(context.attachment).id,
+									position: projectReaderState(context.rows).positions[
+										required(context.attachment).documentId
+									]
+								}),
+								onError: 'failed',
+								onDone: [
+									{
+										guard: and([
+											'current',
+											({ event }) => positionSchema.safeParse(event.output.position).success,
+											not(stateIn({ active: { writer: 'uncertain' } }))
+										]),
+										target: 'detached',
+										actions: assign(({ context, event }) => {
+											const documentId = required(context.attachment).documentId
+											const position = required(event.output.position)
+											const progress = mergeReadingProgress(context.progress, {
+												[documentId]: position.progress
+											})
+											const change: ReaderChange = {
+												documentId,
+												field: 'position',
+												value: { ...position, progress: required(progress[documentId]) }
+											}
+											return {
+												progress,
+												queue: replaceDesired(context.queue, change),
+												drafts: replaceDesired(context.drafts, change),
+												attachment: undefined
+											}
+										})
+									},
+									{ target: 'detached', actions: assign({ attachment: undefined }) }
+								]
 							},
 							on: {
-								FOCUS: { guard: 'dataReady', target: '.restoring' },
-								SHOW_CONTROLS: { guard: 'dataReady', target: '.restoring' },
-								FULLSCREEN_EXITED: { guard: 'dataReady', target: '.restoring' },
-								DETACH: { target: 'detached', actions: assign({ attachment: undefined }) },
-								SHUTDOWN: { target: 'detached', actions: assign({ attachment: undefined }) },
+								REFLOW: { actions: sendTo('viewport', { type: 'REFLOW' }) },
+								FOCUS: { actions: sendTo('viewport', { type: 'REFLOW' }) },
+								SHOW_CONTROLS: { actions: sendTo('viewport', { type: 'REFLOW' }) },
+								FULLSCREEN_EXITED: { actions: sendTo('viewport', { type: 'REFLOW' }) },
 								VIEWPORT_FAILED: { guard: 'currentViewport', target: 'failed' }
 							},
 							states: {
-								waiting: {
-									always: {
-										guard: stateIn({ active: { data: { observing: 'ready' } } }),
-										target: 'restoring',
-										actions: assign({
-											currentPosition: ({ context }) =>
-												projectReaderState(context.rows).positions[
-													required(context.attachment).documentId
-												]
-										})
-									}
-								},
-								restoring: {
-									invoke: {
-										src: 'viewportRestoration',
-										input: ({ context }) => ({
-											...required(context.attachment),
-											position: context.currentPosition
-										})
-									},
-									on: {
-										RESTORED: { guard: 'currentViewport', target: 'passive' },
-										INTERACT: { guard: 'currentViewport', target: 'reading' },
-										RESIZE: { guard: 'currentViewport', target: 'restoring', reenter: true },
-										REFLOW: { target: 'restoring', reenter: true }
-									}
-								},
-								passive: {
-									on: {
-										INTERACT: { guard: 'currentViewport', target: 'reading' },
-										RESIZE: { guard: 'currentViewport', target: 'restoring' },
-										REFLOW: 'restoring'
-									}
-								},
-								reading: {
+								active: {
 									on: {
 										MEASURE: {
 											guard: and([
 												'currentViewport',
-												({ context, event }) =>
-													positionSchema.safeParse(event.position).success &&
-													!sameReadingLocation(context.currentPosition, event.position)
+												'current',
+												({ event }) => positionSchema.safeParse(event.position).success
 											]),
 											actions: [
 												assign(({ context, event }) => ({
-													currentPosition: event.position,
 													progress: mergeReadingProgress(context.progress, {
 														[required(context.attachment).documentId]: event.position.progress
 													})
@@ -446,62 +446,12 @@ export const readerExperienceMachine = model.createMachine({
 												}))
 											]
 										},
-										RESIZE: { guard: 'currentViewport', target: 'restoring' },
-										REFLOW: 'restoring',
-										DETACH: {
-											target: '#reader-experience.active.viewport.detaching',
-											actions: assign({
-												currentPosition: ({ context }) =>
-													finalReadingPosition(
-														required(context.attachment).viewport,
-														context.currentPosition
-													)
-											})
-										},
-										SHUTDOWN: {
-											target: '#reader-experience.active.viewport.detaching',
-											actions: assign({
-												currentPosition: ({ context }) =>
-													finalReadingPosition(
-														required(context.attachment).viewport,
-														context.currentPosition
-													)
-											})
-										}
+										DETACH: { target: 'closing', actions: sendTo('viewport', { type: 'DETACH' }) },
+										SHUTDOWN: { target: 'closing', actions: sendTo('viewport', { type: 'DETACH' }) }
 									}
-								}
-							}
-						},
-						detaching: {
-							always: [
-								{
-									guard: and([
-										'current',
-										'validFinalPosition',
-										not(stateIn({ active: { writer: 'uncertain' } }))
-									]),
-									target: 'detached',
-									actions: assign(({ context }) => {
-										const documentId = required(context.attachment).documentId
-										const position = required(context.currentPosition)
-										const progress = mergeReadingProgress(context.progress, {
-											[documentId]: position.progress
-										})
-										const change: ReaderChange = {
-											documentId,
-											field: 'position',
-											value: { ...position, progress: required(progress[documentId]) }
-										}
-										return {
-											progress,
-											queue: replaceDesired(context.queue, change),
-											drafts: replaceDesired(context.drafts, change),
-											attachment: undefined
-										}
-									})
 								},
-								{ target: 'detached', actions: assign({ attachment: undefined }) }
-							]
+								closing: { on: { DETACH: {}, SHUTDOWN: {} } }
+							}
 						},
 						failed: {
 							meta: { name: t('reader.data_unavailable'), variant: 'error', priority: 4 },
@@ -658,7 +608,6 @@ export const readerExperienceMachine = model.createMachine({
 				write: undefined,
 				capability: undefined,
 				issued: undefined,
-				currentPosition: undefined,
 				progress: {},
 				display: undefined,
 				operationId: '',

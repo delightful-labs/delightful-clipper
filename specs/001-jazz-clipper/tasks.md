@@ -13,6 +13,8 @@
 - [x] Fix live percentage updates independently of the save debounce; preserve the furthest unsaved point while scrolling back and keep the current text anchor. Verify scope expiry, native persistence after debounce, actual network fullscreen, all 53 web cases, five production offline cases and pnpm verify with 545 unit/native tests (one skip).
 - [x] Remove the custom caret, add the explicitly approved Finance SVG loader/configuration, and model viewport observation/restoration as invoked XState children. Pass seven new lifecycle regressions, pnpm verify (552 unit/native tests plus one skip), all 53 web, five offline, eleven rebuilt extension and two sample-data cases; preserve shared authorities.
 
+- [x] Replace the function-based viewport contract and observation/restoration wrappers with one DOM-owning viewport machine; pass nodes directly, keep decisions in states/guards, join final sampling during shutdown, and cover native failures/disposal with real DOM fixtures. Nine direct DOM tests and twelve parent tests pass; pnpm verify passes 554 tests plus one skip, all 53 web cases and five production offline cases pass, and actual network progress/fullscreen retain location.
+
 # Implementation tasks and acceptance status
 
 Updated 2026-11-05. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.

@@ -1,6 +1,6 @@
 import type { ActorLogic, ActorRef, Snapshot } from 'xstate'
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
-import type { ReaderChange, ReaderOperation, ReadingPosition } from '../reader/schema.js'
+import type { ReaderChange, ReaderOperation } from '../reader/schema.js'
 import type { SyncReceipt } from './storage.js'
 export type ReaderStageResult = WorkspaceCreationResult<ReaderChange, SyncReceipt>
 export type ReaderStage<S extends Snapshot<ReaderStageResult> = Snapshot<ReaderStageResult>> =
@@ -44,15 +44,4 @@ export type ReadingFullscreen = {
 	enter: () => Promise<void>
 	exit: () => Promise<void>
 	observe: (exited: () => void) => () => void
-}
-export type ViewportSize = { width: number; height: number }
-export type ViewportObservationEvent =
-	| { type: 'SCROLL' | 'VIEWPORT_FAILED' }
-	| { type: 'INTERACT'; eligible: boolean }
-	| { type: 'BASELINE' | 'RESIZE'; sizes: readonly ViewportSize[] }
-export type ReadingViewport = {
-	fullscreen?: ReadingFullscreen
-	measure: () => ReadingPosition | undefined
-	restore: (position: ReadingPosition | undefined) => void
-	observe: (report: (event: ViewportObservationEvent) => void) => () => void
 }
