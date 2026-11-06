@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -eu
 
+# Deploy Previews expose the PR source branch through HEAD; BRANCH may be a PR ref.
+case "${CONTEXT:-}" in
+  deploy-preview) proof_branch="${HEAD:-${BRANCH:-}}" ;;
+  branch-deploy) proof_branch="${BRANCH:-}" ;;
+  *) echo 'AT Protocol proof build requires a preview or branch deploy.' >&2; exit 1 ;;
+esac
+
 # Require the exact proof app rather than inheriting the production app.
-if [ "${BRANCH:-}" != "research/atproto-jwt-proof" ] || [ "${CONTEXT:-}" = "production" ]; then
+if [ "$proof_branch" != "research/atproto-jwt-proof" ]; then
   echo 'AT Protocol proof build requires the non-production proof branch.' >&2
   exit 1
 fi
