@@ -152,3 +152,56 @@ it('resolve mode bypasses the extraction actor after a successful fetch', async 
 	if (result.kind !== 'success') throw new Error('Expected resolution')
 	expect(result.extraction).toBeUndefined()
 })
+
+it('returns bounded raster bytes through the same redirect and destination checks without article parsing', async () => {
+	const deps = fixture(),
+		bytes = new Uint8Array([137, 80, 78, 71])
+	deps.fetch
+		.mockResolvedValueOnce({
+			status: 302,
+			location: 'https://cdn.example/photo.png',
+			mediaType: '',
+			body: new Uint8Array()
+		})
+		.mockResolvedValueOnce({
+			status: 200,
+			location: undefined,
+			mediaType: 'image/png',
+			body: bytes
+		})
+	const result = await toPromise(
+		createActor(createGatewayMachine(deps), { input: { ...input(), mode: 'asset' } }).start()
+	)
+	expect(result).toMatchObject({
+		kind: 'success',
+		finalUrl: 'https://cdn.example/photo.png',
+		asset: { bytes, mediaType: 'image/png' }
+	})
+	expect(deps.resolve).toHaveBeenCalledTimes(2)
+	expect(deps.extract).not.toHaveBeenCalled()
+})
+it('rejects oversized or non-raster image responses and private redirect targets', async () => {
+	for (const hop of [
+		{ status: 200, location: undefined, mediaType: 'image/svg+xml', body: new Uint8Array([1]) },
+		{
+			status: 200,
+			location: undefined,
+			mediaType: 'image/png',
+			body: new Uint8Array(4 * 1024 * 1024 + 1)
+		},
+		{ status: 302, location: 'http://127.0.0.1/photo.png', mediaType: '', body: new Uint8Array() }
+	]) {
+		const deps = fixture()
+		deps.fetch.mockResolvedValue(hop)
+		if (hop.status === 302)
+			deps.resolve
+				.mockResolvedValueOnce({ address: '8.8.8.8', family: 4 })
+				.mockRejectedValueOnce(new CaptureError('redirectBlocked', 400))
+		const result = await toPromise(
+			createActor(createGatewayMachine(deps), { input: { ...input(), mode: 'asset' } }).start()
+		)
+		expect(result.kind).toBe('failed')
+		expect(deps.extract).not.toHaveBeenCalled()
+		expect(deps.fetch).toHaveBeenCalledOnce()
+	}
+})

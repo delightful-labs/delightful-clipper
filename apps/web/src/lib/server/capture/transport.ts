@@ -18,8 +18,10 @@ export type Hop = {
 export async function fetchHop(
 	url: URL,
 	destination: { address: string; family: number },
-	signal: AbortSignal
+	signal: AbortSignal,
+	mode: 'resolve' | 'extract' | 'asset' = 'extract'
 ): Promise<Hop> {
+	const bodyLimit = mode === 'asset' ? 4 * 1024 * 1024 : BODY_LIMIT
 	const response = await new Promise<Hop>((resolve, reject) => {
 		const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
 			url,
@@ -30,7 +32,10 @@ export async function fetchHop(
 				signal,
 				maxHeaderSize: 16 * 1024,
 				headers: {
-					Accept: 'text/html,application/xhtml+xml;q=0.9,text/plain;q=0.5',
+					Accept:
+						mode === 'asset'
+							? 'image/webp,image/png,image/jpeg,image/gif'
+							: 'text/html,application/xhtml+xml;q=0.9,text/plain;q=0.5',
 					'Accept-Encoding': 'gzip, deflate, br',
 					'User-Agent': 'Delightful-Clipper/1'
 				},
@@ -65,7 +70,7 @@ export async function fetchHop(
 				let size = 0
 				incoming.on('data', (chunk: Buffer) => {
 					size += chunk.length
-					if (size > BODY_LIMIT) incoming.destroy(new CaptureError('sourceTooLarge', 413))
+					if (size > bodyLimit) incoming.destroy(new CaptureError('sourceTooLarge', 413))
 					else chunks.push(chunk)
 				})
 				incoming.once('error', reject)
@@ -85,7 +90,7 @@ export async function fetchHop(
 								headers: { status, location, mediaType },
 								decode: (format, bytes) =>
 									formats[format](bytes, {
-										maxOutputLength: Math.min(BODY_LIMIT, Math.max(1024, bytes.length * 100))
+										maxOutputLength: Math.min(bodyLimit, Math.max(1024, bytes.length * 100))
 									})
 							}
 						}).start()

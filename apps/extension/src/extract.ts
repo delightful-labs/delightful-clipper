@@ -53,6 +53,16 @@ export function extractRenderedSource(value: unknown) {
 			/* Rendering has its own sanitizer boundary. */
 		}
 	}
+	for (const image of result.getElementsByTagName('img')) {
+		image.removeAttribute('data-clipper-image')
+		try {
+			const url = new URL(image.getAttribute('src') ?? '', source.base)
+			if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) continue
+			image.setAttribute('data-clipper-image', encodeURIComponent(url.href))
+		} catch {
+			/* Unsupported sources remain inert in the reader. */
+		}
+	}
 	let html = result.body.innerHTML
 	for (const [id, note] of notes) {
 		if (result.getElementById(id)) continue

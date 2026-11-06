@@ -1,3 +1,4 @@
+import { imageQueueMachine } from '../../images/queue-machine.js'
 import { readerExperienceMachine, selectReaderExperience } from '../reader/experience.js'
 import type { FakeDataOutcome } from '../../samples/machine.js'
 import {
@@ -111,6 +112,7 @@ function organizationStatuses(context: Context, articleId: string) {
 }
 const actors = {
 	readerExperience: readerExperienceMachine,
+	images: imageQueueMachine,
 	search: createSearchMachine(),
 	collection: fromCallback<LibraryEvent, LibraryCapability | undefined>(({ input, sendBack }) => {
 		try {
@@ -157,7 +159,7 @@ export const libraryMachine = setup<
 	  }
 	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown },
 	typeof actors,
-	{ search: 'search'; readerExperience: 'readerExperience' },
+	{ search: 'search'; readerExperience: 'readerExperience'; images: 'images' },
 	{
 		close: undefined
 		watch: undefined
@@ -213,6 +215,10 @@ export const libraryMachine = setup<
 		drained: and([
 			'closing',
 			stateIn({ running: { fakeDataLifecycle: 'closed' } }),
+			or([
+				stateIn({ running: { imageLifecycle: 'closed' } }),
+				stateIn({ running: { imageLifecycle: 'failed' } })
+			]),
 			or([
 				stateIn({ running: { readerLifecycle: 'closed' } }),
 				stateIn({ running: { readerLifecycle: 'failed' } })
@@ -322,10 +328,24 @@ export const libraryMachine = setup<
 				target: 'closed'
 			},
 			on: {
-				READER_EVENT: {
-					guard: and(['canUseLibrary', stateIn({ running: { readerLifecycle: 'active' } })]),
-					actions: sendTo('readerExperience', ({ event }) => event.event)
-				},
+				READER_EVENT: [
+					{
+						guard: and([
+							'canUseLibrary',
+							stateIn({ running: { readerLifecycle: 'active' } }),
+							stateIn({ running: { imageLifecycle: 'active' } })
+						]),
+						actions: [
+							sendTo('readerExperience', ({ event }) => event.event),
+							sendTo('images', ({ event }) => event.event)
+						]
+					},
+					{
+						guard: and(['canUseLibrary', stateIn({ running: { readerLifecycle: 'active' } })]),
+						actions: sendTo('readerExperience', ({ event }) => event.event)
+					}
+				],
+
 				QUERY: {
 					guard: and([
 						'canUseLibrary',
@@ -446,6 +466,39 @@ export const libraryMachine = setup<
 				}
 			},
 			states: {
+				imageLifecycle: {
+					initial: 'active',
+					states: {
+						active: {
+							invoke: {
+								id: 'images',
+								src: 'images',
+								input: ({ context }) => ({ capability: context.capability?.images }),
+								onSnapshot: {},
+								onDone: 'closed',
+								onError: 'failed'
+							},
+							on: {
+								SHUTDOWN: { actions: sendTo('images', { type: 'SHUTDOWN' }) },
+								CLOSE_READER: { actions: sendTo('images', { type: 'DETACH' }) },
+								IMAGE_ERROR: {
+									guard: 'canUseLibrary',
+									actions: sendTo('images', ({ event }) => ({
+										type: 'IMAGE_ERROR',
+										id: event.id,
+										url: event.url
+									}))
+								},
+								RETRY_IMAGE: {
+									guard: 'canUseLibrary',
+									actions: sendTo('images', ({ event }) => ({ type: 'RETRY', id: event.id }))
+								}
+							}
+						},
+						closed: {},
+						failed: {}
+					}
+				},
 				readerLifecycle: {
 					initial: 'active',
 					states: {
@@ -931,9 +984,7 @@ export const libraryMachine = setup<
 										{ target: 'unavailable' }
 									]
 								},
-								available: {
-									meta: { channel: 'reader', name: t('capture.text_only'), variant: 'info' }
-								},
+								available: {},
 								unavailable: {
 									meta: { channel: 'reader', name: t('reader.unavailable'), variant: 'error' }
 								}
@@ -998,6 +1049,7 @@ export function selectLibraryView(
 		visible ? snapshot?.children.readerExperience?.getSnapshot() : undefined
 	)
 	return {
+		imageViews: visible ? (snapshot?.children.images?.getSnapshot().context.views ?? {}) : {},
 		readerExperience,
 		rows: rows.map((row) => ({
 			...row,

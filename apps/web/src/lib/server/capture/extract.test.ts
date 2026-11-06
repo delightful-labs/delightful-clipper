@@ -14,7 +14,10 @@ it('extracts inert sanitized content and preserves referenced footnotes without 
 	expect(result.candidate.text).toContain('useful article')
 	expect(result.candidate.text).toContain('Footnote evidence')
 	expect(result.candidate.footnotes).toContain('fn1')
-	expect(result.candidate.html).not.toMatch(/<script|<iframe|<img|onerror|javascript:/i)
+	expect(result.candidate.html).not.toMatch(/<script|<iframe|\bsrc=|\bsrcset=|onerror|javascript:/i)
+	expect(result.candidate.html).toContain(
+		'data-clipper-image="https%3A%2F%2Fexample.com%2Fphoto.jpg"'
+	)
 	expect(result.canonicalCandidate).toBe('https://canonical.example/article')
 	expect(
 		result.candidate.assetCandidates.some(

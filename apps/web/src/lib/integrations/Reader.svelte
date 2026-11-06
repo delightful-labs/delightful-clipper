@@ -85,6 +85,9 @@
 	<ReaderView
 		title={reader.document.title}
 		asset={reader.asset}
+		imageViews={view.imageViews}
+		onretryimage={(id) => actor.send({ type: 'RETRY_IMAGE', id })}
+		onimageerror={(id, url) => actor.send({ type: 'IMAGE_ERROR', id, url })}
 		text={reader.text}
 		sourceUrl={originalUrl}
 		preferences={reading.preferences}

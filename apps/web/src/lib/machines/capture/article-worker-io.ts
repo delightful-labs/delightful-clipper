@@ -11,6 +11,15 @@ export async function readCaptureResponse(
 		{ protocolVersion: 1, operationId: call.requestId, url: call.url },
 		signal
 	)
+	const bytes = await readResponseBytes(response, signal, isCurrent)
+	return { method: call.method, bytes, status: response.status }
+}
+export async function readResponseBytes(
+	response: Response,
+	signal: AbortSignal,
+	isCurrent: () => boolean,
+	limit = 5 * 1024 * 1024
+) {
 	const reader = response.body?.getReader()
 	if (!reader) throw new Error('invalidResponse')
 	const chunks: Uint8Array[] = []
@@ -29,7 +38,7 @@ export async function readCaptureResponse(
 			const next = await reader.read()
 			if (next.done) break
 			size += next.value.byteLength
-			if (size > 5 * 1024 * 1024) throw new Error('sourceTooLarge')
+			if (size > limit) throw new Error('sourceTooLarge')
 			chunks.push(next.value)
 		}
 		signal.throwIfAborted()
@@ -40,7 +49,7 @@ export async function readCaptureResponse(
 			bytes.set(chunk, offset)
 			offset += chunk.length
 		}
-		return { method: call.method, bytes, status: response.status }
+		return bytes
 	} finally {
 		signal.removeEventListener('abort', abort)
 		await reader.cancel().catch(() => {})

@@ -20,7 +20,7 @@ const machine = createCaptureRequestMachine({
 export async function capture(
 	request: Request,
 	accountId: string | undefined,
-	mode: 'resolve' | 'extract',
+	mode: 'resolve' | 'extract' | 'asset',
 	enabled = false
 ) {
 	const actor = createActor(machine, { input: { request, accountId, mode, enabled } }).start()

@@ -37,6 +37,7 @@ const htmlAttributes = new Set(['href', 'id', 'title', 'colspan', 'rowspan'])
 export const articlePolicy = {
 	ALLOWED_TAGS: [
 		'article',
+		'img',
 		'section',
 		'p',
 		'h1',
@@ -87,7 +88,17 @@ export const articlePolicy = {
 		'title',
 		'desc'
 	],
-	ALLOWED_ATTR: ['href', 'id', 'title', 'colspan', 'rowspan', 'open', ...svgAttributes],
+	ALLOWED_ATTR: [
+		'href',
+		'id',
+		'title',
+		'colspan',
+		'rowspan',
+		'open',
+		'data-clipper-image',
+		'alt',
+		...svgAttributes
+	],
 	ALLOW_DATA_ATTR: false,
 	ALLOW_ARIA_ATTR: false
 } satisfies Config
@@ -111,6 +122,7 @@ export function articlePurifier(window: WindowLike) {
 		} else {
 			event.keepAttr =
 				htmlAttributes.has(event.attrName) ||
+				(node.localName === 'img' && ['data-clipper-image', 'alt'].includes(event.attrName)) ||
 				(node.localName === 'details' && event.attrName === 'open')
 		}
 	})

@@ -1,3 +1,4 @@
+import { createImageCapability } from '../../images/browser.js'
 import { PUBLIC_FAKE_DATA } from '$app/env/public'
 import { openSearchWorker } from '../../search/browser.js'
 import type { LibraryCapability } from '../../contracts/library.js'
@@ -12,7 +13,11 @@ import type { LibraryRecords } from './records.js'
 export function createLibraryCapability(
 	records: LibraryRecords,
 	_libraryId: string,
-	request: (mode: 'resolve' | 'extract', body: unknown, signal: AbortSignal) => Promise<Response>,
+	request: (
+		mode: 'resolve' | 'extract' | 'asset',
+		body: unknown,
+		signal: AbortSignal
+	) => Promise<Response>,
 	cacheNamespace: string
 ): LibraryCapability {
 	const workerMachine = createArticleWorkerHostMachine({
@@ -31,6 +36,7 @@ export function createLibraryCapability(
 	})
 	return {
 		reader: records.reader.capability,
+		images: createImageCapability(records.images.capability, request),
 		spawnFakeData: (spawn) =>
 			spawn(records.fakeData(PUBLIC_FAKE_DATA === 'true'), { input: undefined }),
 		libraryId: records.articles.libraryId,

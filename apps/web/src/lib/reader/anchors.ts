@@ -11,7 +11,7 @@ export function readingTextIndex(root: HTMLElement) {
 	let node: Node | null
 	let space: Point | undefined
 	while ((node = walker.nextNode())) {
-		if (!isTextNode(node)) continue
+		if (!isTextNode(node) || node.parentElement?.closest('[data-reader-image]')) continue
 		const text = node
 		let offset = 0
 		for (const character of text.data) {

@@ -113,6 +113,15 @@ export async function extract(body: Uint8Array, mediaType: string, url: string) 
 						return []
 					}
 				})
+			for (const img of root.querySelectorAll('img')) {
+				img.removeAttribute('data-clipper-image')
+				try {
+					const imageUrl = sourceUrl(new URL(img.getAttribute('src') ?? '', url).href).href
+					img.setAttribute('data-clipper-image', encodeURIComponent(imageUrl))
+				} catch {
+					img.remove()
+				}
+			}
 			for (const link of root.querySelectorAll('a[href]')) {
 				const href = link.getAttribute('href') ?? ''
 				if (!href.startsWith('#'))
