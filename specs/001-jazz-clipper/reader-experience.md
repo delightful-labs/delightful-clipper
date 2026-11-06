@@ -4,7 +4,7 @@ This authorized batch follows merged Clipper PR #16 (`b21691f`). It adds positio
 
 ## Inspected reusable presentation
 
-Pinned DUI provides InputRange, Select, RadioGroup/RadioItem, Button, Dialog, Popover, Heading, StatusMessage and theme.css. Its `data-dui-theme` root attribute selects light/dark; absence follows the system live. No new palette, font download or dependency is needed. Controlled FontSettings, ThemeSettings, ReadingProgress, ContentsNavigation, ReaderActions and ReaderToolbar compose a ReaderView; Reader integration connects actors and DOM ports. SavedContent remains the sole sanitized-content renderer. DOM measurement/anchor helpers are separate from presentation.
+Pinned DUI provides InputRange, Select, RadioGroup/RadioItem, Button, Dialog, Popover, Heading, StatusMessage and theme.css. Its `data-dui-theme` root attribute selects light/dark; absence follows the system live. No new palette or font download is needed. The approved SVG build dependency described below follows Finance's DUI consumer configuration. Controlled FontSettings, ThemeSettings, ReadingProgress, ContentsNavigation, ReaderActions and ReaderToolbar compose a ReaderView; Reader integration connects actors and DOM ports. SavedContent remains the sole sanitized-content renderer. DOM measurement/anchor helpers are separate from presentation.
 
 ## State and resource ownership before async implementation
 
@@ -15,6 +15,32 @@ The child models observing, subscription failure, idle/debouncing/writing, local
 The viewport region owns listeners, ResizeObserver and scheduled restoration. It waits for local reading data and rendered content before applying the initial position once. It stores a normalized code-point offset and quote/context tied to the immutable snapshot. Typography/viewport changes reanchor the current location. A mismatched anchor opens at the beginning and does not overwrite evidence until user interaction. Later remote records update available state without scrolling an attached reader. Scroll observation is debounced one second for storage; departure flushes the last observation. Transient popovers retain native dismissal/focus behavior. Focus mode hides shell panels/ordinary controls and always retains an accessible Show controls exit; there is no automatic focus-sensitive hiding timer.
 
 ## Native schema
+
+### Viewport ownership refactor and default DUI caret
+
+The user requested removal of Clipper's custom caret and approved adding Finance's SVG component loader, @poppanator/sveltekit-svg 7.0.1. The web Vite configuration uses that plugin and excludes the vendored DUI package from dependency prebundling, following Finance. Native DUI Details owns its disclosure icon; no Clipper replacement snippet or icon path remains. The alternative was changing DUI's package to precompile its SVG imports, which is broader than the selected consumer configuration. This is an approved development dependency, not new runtime application logic or user-facing copy.
+
+Before implementing the viewport refactor, the state/resource plan is: the existing library-owned reader continues invoking observation and restoration children. Observation owns the DOM event/ResizeObserver subscription for its active lifetime. Its explicit idle → framePending → measuring → idle states coalesce scroll events into one animation frame; eligible interactions notify the reader immediately and request that same coalesced measurement. Initial size baselines are recorded without requesting a restore; a named size-change guard compares subsequent immutable dimension snapshots before reporting resize. Subscription, frame or measurement failure reports VIEWPORT_FAILED, and exiting the child disposes subscriptions and cancels frames. Restoration uses waitingForLayout → restoring → waitingForPaint → restored states, with failure reporting and cancellation on exit. Geometry/indexing stays in DOM helpers; callbacks only report raw input, dimensions or frame completion. No private createActor or scheduling flags live in the DOM adapter.
+
+```mermaid
+stateDiagram-v2
+    state Observation {
+        [*] --> idle
+        idle --> framePending: SCROLL or eligible interaction
+        framePending --> measuring: animation frame
+        measuring --> idle: measured or empty
+    }
+    state Restoration {
+        [*] --> waitingForLayout
+        waitingForLayout --> restoring: animation frame
+        restoring --> waitingForPaint: DOM restored
+        waitingForPaint --> restored: animation frame
+    }
+```
+
+Both children are invoked under the reader experience, with no independently started actors in the DOM adapter. Live measurement failures report through explicit failed states; final departure measurement retains the last reliable anchor if the DOM has already disappeared. The existing main reader still decides whether to restore, admit user interaction, persist, reflow, discard stale generations or shut down. Focused regressions cover frame coalescing, excluded controls, baseline/real resize, cancellation and listener disposal, stale reports, empty/failed measurement, failed observation startup and failed restoration.
+
+This refactor passes pnpm verify with 552 unit/native tests across 81 files plus one platform skip, all 53 web cases, five production offline cases, eleven rebuilt extension cases and two sample-data cases. Seven new child-lifecycle regressions pass alongside the twelve existing parent reader tests. Real network testing opens the Stately reader using DUI's default caret and retains progress/location through native fullscreen. Formatting, lint, strict web/extension types and production build pass; temporary harnesses were removed and the original authority/network frontend processes were preserved.
 
 An additive readerOperations table stores libraryId, nullable documentId, field, JSON desired value and causal parents. Preferences belong to the library (null document); positions reference a same-library immutable document/snapshot. Owner-only policies deny history edits/deletion and foreign document references. Existing roots/content/operations are preserved by the additive migration. History compaction is future work; no large-library performance claim is made.
 

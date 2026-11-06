@@ -24,7 +24,11 @@ import {
 	projectReaderState,
 	readerChangeKey
 } from '../../reader/schema.js'
-import { viewportObservation, viewportRestoration } from '../../reader/viewport-actors.js'
+import {
+	finalReadingPosition,
+	viewportObservation,
+	viewportRestoration
+} from '../../reader/viewport-actors.js'
 import { positionSchema } from '../../reader/schema.js'
 import { sameReadingLocation } from '../../reader/anchors.js'
 import { syncOwnerMachine } from '../storage/sync-owner.js'
@@ -448,14 +452,20 @@ export const readerExperienceMachine = model.createMachine({
 											target: '#reader-experience.active.viewport.detaching',
 											actions: assign({
 												currentPosition: ({ context }) =>
-													required(context.attachment).viewport.measure() ?? context.currentPosition
+													finalReadingPosition(
+														required(context.attachment).viewport,
+														context.currentPosition
+													)
 											})
 										},
 										SHUTDOWN: {
 											target: '#reader-experience.active.viewport.detaching',
 											actions: assign({
 												currentPosition: ({ context }) =>
-													required(context.attachment).viewport.measure() ?? context.currentPosition
+													finalReadingPosition(
+														required(context.attachment).viewport,
+														context.currentPosition
+													)
 											})
 										}
 									}

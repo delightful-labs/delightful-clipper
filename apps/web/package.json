@@ -33,6 +33,7 @@
 	},
 	"devDependencies": {
 		"@opentelemetry/api": "1.9.1",
+		"@poppanator/sveltekit-svg": "7.0.1",
 		"@sveltejs/adapter-netlify": "7.0.1",
 		"@sveltejs/kit": "3.0.1",
 		"@sveltejs/vite-plugin-svelte": "7.2.0",

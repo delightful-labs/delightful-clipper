@@ -5,6 +5,7 @@ import { defineConfig } from 'vite'
 import { dirname, join } from 'node:path'
 import { resolveJazzWasmEntry } from 'jazz-tools/dev/vite'
 import { jazzSvelteKit } from 'jazz-tools/dev/sveltekit'
+import svg from '@poppanator/sveltekit-svg'
 
 const wasmEntry = resolveJazzWasmEntry()
 if (!wasmEntry) throw new Error('Jazz WASM package is unavailable')
@@ -24,6 +25,7 @@ export default defineConfig(({ command, mode }) => {
 		process.env.JAZZ_ACCOUNT_REGISTRY = `http://127.0.0.1:${mode === 'agent' ? 5181 : 5174}/apps/${appId}/accounts`
 	}
 	return {
+		optimizeDeps: { exclude: ['delightful-ui'] },
 		resolve: {
 			alias: [
 				{ find: /^#jazz-wasm-binary/, replacement: join(dirname(wasmEntry), 'jazz_wasm_bg.wasm') }
@@ -68,7 +70,8 @@ export default defineConfig(({ command, mode }) => {
 				...(process.env.CLIPPER_SHELL_VERSION
 					? { version: { name: process.env.CLIPPER_SHELL_VERSION } }
 					: {})
-			})
+			}),
+			svg()
 		],
 		server: {
 			host: '127.0.0.1',

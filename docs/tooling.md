@@ -148,6 +148,8 @@ User-facing development servers run on `0.0.0.0` in a named tmux window. Provide
 
 The current reader branch is available through an HTTPS frontend on port 5182 in tmux `main:7` (`clipper-network`). Its ignored local configuration is `apps/web/.netlify/network-dev/vite.config.ts`, with a local development certificate in the same directory. It proxies `/apps/` HTTP and WebSocket traffic to the existing agent authority on `127.0.0.1:5181`, preserving that in-memory process. Its generated SvelteKit output uses `.svelte-kit/network`, separate from local/agent/E2E output. Netlify builds leave the network configuration directory intact.
 
+Both the standard web configuration and the local network configuration use the explicitly approved @poppanator/sveltekit-svg 7.0.1 plugin and exclude delightful-ui from dependency prebundling, following Finance. DUI's default SVG components require this processing; do not replace library presentation with Clipper-specific caret snippets to avoid the loader. The Jazz dev plugin hands its running authority between Vite configurations on restart; do not terminate the authority process when updating frontend configuration.
+
 Launch this frontend from the repository root with the existing authority running:
 
 ```sh

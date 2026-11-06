@@ -39,13 +39,7 @@ export function readingViewport(root: HTMLElement, scroller: HTMLElement): Readi
 	const fullscreen = readingFullscreen(root.ownerDocument)
 	return {
 		...(fullscreen ? { fullscreen } : {}),
-		measure: () => {
-			try {
-				return measurePosition()
-			} catch {
-				return undefined
-			}
-		},
+		measure: measurePosition,
 		restore: (position) => {
 			if (!position || !quoteMatches(index, position)) {
 				scroller.scrollTop = 0
@@ -59,53 +53,42 @@ export function readingViewport(root: HTMLElement, scroller: HTMLElement): Readi
 			scroller.scrollTop += rect.top - viewportTop()
 		},
 		observe: (report) => {
-			let frame: number | undefined
-			const measure = () => {
-				frame = undefined
+			const targets = [
+				root,
+				scroller,
+				...scroller.querySelectorAll<HTMLElement>('[data-reader-overlay]')
+			]
+			const sizes = () =>
+				targets.map((target) => {
+					const { width, height } = target.getBoundingClientRect()
+					return { width, height }
+				})
+			const controller = new AbortController()
+			const resize = new ResizeObserver(() => {
 				try {
-					const position = measurePosition()
-					if (position) report({ type: 'MEASURE', position })
+					report({ type: 'RESIZE', sizes: sizes() })
 				} catch {
 					report({ type: 'VIEWPORT_FAILED' })
 				}
-			}
-			const scroll = () => {
-				if (frame === undefined) frame = requestAnimationFrame(measure)
-			}
-			const interact = (event: Event) => {
-				if (!isReadingInteraction(event, root, scroller)) return
-				report({ type: 'INTERACT' })
-				scroll()
-			}
-			const sizes = new Map<Element, { width: number; height: number }>()
-			const resize = new ResizeObserver((entries) => {
-				let changed = false
-				for (const { target } of entries) {
-					const rect = target.getBoundingClientRect()
-					const previous = sizes.get(target)
-					if (previous?.width !== rect.width || previous.height !== rect.height) changed = true
-					sizes.set(target, { width: rect.width, height: rect.height })
-				}
-				if (changed) report({ type: 'RESIZE' })
 			})
-			for (const target of [
-				root,
-				scroller,
-				...scroller.querySelectorAll('[data-reader-overlay]')
-			]) {
-				const { width, height } = target.getBoundingClientRect()
-				sizes.set(target, { width, height })
-				resize.observe(target)
-			}
-			scroller.addEventListener('scroll', scroll, { passive: true })
-			for (const name of ['wheel', 'touchstart', 'pointerdown', 'keydown'])
-				scroller.addEventListener(name, interact, { passive: true })
-			return () => {
+			const dispose = () => {
 				resize.disconnect()
-				scroller.removeEventListener('scroll', scroll)
+				controller.abort()
+			}
+			const scroll = () => report({ type: 'SCROLL' })
+			const interact = (event: Event) =>
+				report({ type: 'INTERACT', eligible: isReadingInteraction(event, root, scroller) })
+			try {
+				report({ type: 'BASELINE', sizes: sizes() })
+				for (const target of targets) resize.observe(target)
+				const options = { passive: true, signal: controller.signal }
+				scroller.addEventListener('scroll', scroll, options)
 				for (const name of ['wheel', 'touchstart', 'pointerdown', 'keydown'])
-					scroller.removeEventListener(name, interact)
-				if (frame !== undefined) cancelAnimationFrame(frame)
+					scroller.addEventListener(name, interact, options)
+				return dispose
+			} catch (error) {
+				dispose()
+				throw error
 			}
 		}
 	}

@@ -11,6 +11,7 @@
 - [x] Complete web/extension strict catalog typing and pnpm verify after adding the approved copy; all source checks, 544 unit/native tests (one platform skip) and production build pass.
 - [x] Finish handoff, push feat/reader-experience and create [PR #17](https://github.com/delightful-labs/delightful-clipper/pull/17), feat(reader): add synchronized reading preferences and progress, targeting main. Leave it unmerged.
 - [x] Fix live percentage updates independently of the save debounce; preserve the furthest unsaved point while scrolling back and keep the current text anchor. Verify scope expiry, native persistence after debounce, actual network fullscreen, all 53 web cases, five production offline cases and pnpm verify with 545 unit/native tests (one skip).
+- [x] Remove the custom caret, add the explicitly approved Finance SVG loader/configuration, and model viewport observation/restoration as invoked XState children. Pass seven new lifecycle regressions, pnpm verify (552 unit/native tests plus one skip), all 53 web, five offline, eleven rebuilt extension and two sample-data cases; preserve shared authorities.
 
 # Implementation tasks and acceptance status
 

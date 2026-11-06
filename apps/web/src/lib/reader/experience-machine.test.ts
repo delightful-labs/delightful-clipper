@@ -166,13 +166,14 @@ it('restores once, ignores late remote positions, preserves the current anchor o
 		})
 	actor.send({ type: 'ROWS', rows: [row(first)] })
 	let report!: Parameters<ReadingViewport['observe']>[0]
+	let measured = position(0)
 	const dispose = vi.fn(),
 		restore = vi.fn()
 	actor.send({
 		type: 'ATTACH',
 		documentId,
 		viewport: {
-			measure: () => position(30),
+			measure: () => measured,
 			restore,
 			observe: (next) => {
 				report = next
@@ -182,21 +183,24 @@ it('restores once, ignores late remote positions, preserves the current anchor o
 	})
 	await vi.advanceTimersByTimeAsync(3)
 	expect(restore).toHaveBeenCalledExactlyOnceWith(first)
-	report({ type: 'MEASURE', position: position(0) })
+	report({ type: 'SCROLL' })
+	await vi.advanceTimersByTimeAsync(1)
 	expect(writes).toEqual([])
 	actor.send({ type: 'ROWS', rows: [row(remote)] })
 	expect(restore).toHaveBeenCalledTimes(1)
-	report({ type: 'INTERACT' })
-	report({ type: 'MEASURE', position: position(30) })
-	report({ type: 'RESIZE' })
+	measured = position(30)
+	report({ type: 'INTERACT', eligible: true })
+	await vi.advanceTimersByTimeAsync(1)
+	report({ type: 'RESIZE', sizes: [{ width: 800, height: 600 }] })
 	await vi.advanceTimersByTimeAsync(3)
 	expect(restore).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 30 }))
-	report({ type: 'INTERACT' })
+	report({ type: 'INTERACT', eligible: true })
 	actor.send({ type: 'DETACH' })
 	await vi.advanceTimersByTimeAsync(0)
 	expect(dispose).toHaveBeenCalledOnce()
 	const before = writes.length
-	report({ type: 'MEASURE', position: position(80) })
+	measured = position(80)
+	report({ type: 'SCROLL' })
 	await vi.advanceTimersByTimeAsync(1500)
 	expect(writes.length).toBe(before)
 	expect(writes.at(-1)).toMatchObject({ value: { offset: 30 } })
@@ -211,11 +215,12 @@ it('shows progress before persistence and retains the furthest point when scroll
 	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
 	const { actor, writes, expire } = fixture()
 	let report!: Parameters<ReadingViewport['observe']>[0]
+	let measured = position(60)
 	actor.send({
 		type: 'ATTACH',
 		documentId,
 		viewport: {
-			measure: () => position(40),
+			measure: () => measured,
 			restore: () => {},
 			observe: (next) => {
 				report = next
@@ -224,13 +229,17 @@ it('shows progress before persistence and retains the furthest point when scroll
 		}
 	})
 	await vi.advanceTimersByTimeAsync(3)
-	report({ type: 'INTERACT' })
-	report({ type: 'MEASURE', position: position(60) })
+	report({ type: 'INTERACT', eligible: true })
+	await vi.advanceTimersByTimeAsync(1)
 	expect(selectReaderExperience(actor.getSnapshot()).progress[documentId]).toBe(0.6)
 	await vi.advanceTimersByTimeAsync(500)
-	report({ type: 'MEASURE', position: position(30) })
+	measured = position(30)
+	report({ type: 'SCROLL' })
+	await vi.advanceTimersByTimeAsync(1)
 	await vi.advanceTimersByTimeAsync(500)
-	report({ type: 'MEASURE', position: position(40) })
+	measured = position(40)
+	report({ type: 'SCROLL' })
+	await vi.advanceTimersByTimeAsync(1)
 	expect(writes).toEqual([])
 	expect(selectReaderExperience(actor.getSnapshot()).progress[documentId]).toBe(0.6)
 	await vi.advanceTimersByTimeAsync(1000)
@@ -250,11 +259,12 @@ it('does not flush a new automatic position on departure after an uncertain writ
 		throw new Error('Unknown settlement')
 	})
 	let report!: Parameters<ReadingViewport['observe']>[0]
+	let measured = position(30)
 	actor.send({
 		type: 'ATTACH',
 		documentId,
 		viewport: {
-			measure: () => position(60),
+			measure: () => measured,
 			restore: () => {},
 			observe: (next) => {
 				report = next
@@ -263,10 +273,11 @@ it('does not flush a new automatic position on departure after an uncertain writ
 		}
 	})
 	await vi.advanceTimersByTimeAsync(3)
-	report({ type: 'INTERACT' })
-	report({ type: 'MEASURE', position: position(30) })
+	report({ type: 'INTERACT', eligible: true })
+	await vi.advanceTimersByTimeAsync(1)
 	await vi.advanceTimersByTimeAsync(1000)
 	expect(selectReaderExperience(actor.getSnapshot()).enabled).toBe(false)
+	measured = position(60)
 	actor.send({ type: 'DETACH' })
 	await vi.advanceTimersByTimeAsync(1000)
 	actor.send({ type: 'SHUTDOWN' })

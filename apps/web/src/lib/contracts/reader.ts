@@ -45,15 +45,14 @@ export type ReadingFullscreen = {
 	exit: () => Promise<void>
 	observe: (exited: () => void) => () => void
 }
+export type ViewportSize = { width: number; height: number }
+export type ViewportObservationEvent =
+	| { type: 'SCROLL' | 'VIEWPORT_FAILED' }
+	| { type: 'INTERACT'; eligible: boolean }
+	| { type: 'BASELINE' | 'RESIZE'; sizes: readonly ViewportSize[] }
 export type ReadingViewport = {
 	fullscreen?: ReadingFullscreen
 	measure: () => ReadingPosition | undefined
 	restore: (position: ReadingPosition | undefined) => void
-	observe: (
-		report: (
-			event:
-				| { type: 'INTERACT' | 'RESIZE' | 'VIEWPORT_FAILED' }
-				| { type: 'MEASURE'; position: ReadingPosition }
-		) => void
-	) => () => void
+	observe: (report: (event: ViewportObservationEvent) => void) => () => void
 }
