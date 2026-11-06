@@ -10,7 +10,7 @@ Qualification: pnpm verify passes vendor checks, formatting (including Svelte), 
 
 ## PR #18 transaction naming and input types
 
-The failure-persistence transaction is named recordImageFailure, distinguishing a recorded acquisition failure from a transaction failure. ReadyImageWrite and FailedImageWrite narrow the native transaction and capability inputs; the spawner preserves each draft type. This removes three redundant kind checks while retaining the DLF transaction state machine, processing-result validation, eligibility checks, persistence/rollback and unknown-outcome handling. Native tests use the same typed capability methods as the queue. All eleven image transaction/queue tests, formatting, lint and strict root/web/service-worker/extension checks pass.
+The failure-persistence transaction is named recordImageFailure, distinguishing a recorded acquisition failure from a transaction failure. ReadyImageWrite and FailedImageWrite narrow the native transaction and capability inputs; the spawner preserves each draft type. This removes three redundant kind checks while retaining the DLF transaction state machine, processing-result validation, eligibility checks, persistence/rollback and unknown-outcome handling. Native tests use the same typed capability methods as the queue. Image transport binding is extracted to images/browser.ts as createImageCapability, leaving library.ts to compose the capability. The extraction preserves bounded response reading, scope/cancellation checks, error decoding and Retry-After handling. All eleven image transaction/queue tests, formatting, lint and strict root/web/service-worker/extension checks pass.
 
 ## PR #18 CI follow-up — image fixture ordering
 

@@ -1,7 +1,4 @@
-import { ImageFetchError, retryAfterMilliseconds } from '../../images/failure.js'
-import { readResponseBytes } from '../../machines/capture/article-worker-io.js'
-import { captureErrorSchema } from '../../contracts/capture-response.js'
-import { IMAGE_INPUT_LIMIT } from '../../images/schema.js'
+import { createImageCapability } from '../../images/browser.js'
 import { PUBLIC_FAKE_DATA } from '$app/env/public'
 import { openSearchWorker } from '../../search/browser.js'
 import type { LibraryCapability } from '../../contracts/library.js'
@@ -39,39 +36,7 @@ export function createLibraryCapability(
 	})
 	return {
 		reader: records.reader.capability,
-		images: {
-			...records.images.capability,
-			request: async (url, id, signal) => {
-				const response = await request(
-					'asset',
-					{ protocolVersion: 1, operationId: id, url },
-					signal
-				)
-				const bytes = await readResponseBytes(
-					response,
-					signal,
-					records.isCurrent,
-					IMAGE_INPUT_LIMIT
-				)
-				if (!response.ok) {
-					let error: unknown
-					try {
-						error = JSON.parse(new TextDecoder().decode(bytes))
-					} catch {
-						throw new Error('invalidResponse')
-					}
-					const parsed = captureErrorSchema.safeParse(error)
-					throw new ImageFetchError(
-						parsed.success ? parsed.data.code : 'invalidResponse',
-						retryAfterMilliseconds(response.headers.get('retry-after'))
-					)
-				}
-				return {
-					bytes,
-					mediaType: (response.headers.get('content-type') ?? '').split(';')[0]!.toLowerCase()
-				}
-			}
-		},
+		images: createImageCapability(records.images.capability, request),
 		spawnFakeData: (spawn) =>
 			spawn(records.fakeData(PUBLIC_FAKE_DATA === 'true'), { input: undefined }),
 		libraryId: records.articles.libraryId,
