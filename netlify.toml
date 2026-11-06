@@ -24,6 +24,8 @@ command = "bash tooling/netlify-atproto-proof.sh"
 
 [context."research/atproto-jwt-proof".environment]
 CAPTURE_GATEWAY_ENABLED = "true"
+# Public app origin is not a credential; retain scanning of all actual secrets.
+SECRETS_SCAN_OMIT_KEYS = "AUTH_BASE_URL"
 
 [functions]
 node_bundler = "esbuild"
