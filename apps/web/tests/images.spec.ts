@@ -125,18 +125,25 @@ test('continues background acquisition after leaving the reader and retries a fa
 	page
 }) => {
 	const bytes = await png(page, 20, 10),
-		gate = Promise.withResolvers<void>()
+		gate = Promise.withResolvers<void>(),
+		urls = ['https://images.example/retry.png', 'https://images.example/slow.png']
 	let failing = true
+	let failedUrl: string | undefined
 	await page.route('**/api/capture/asset', async (route) => {
 		const { url } = route.request().postDataJSON()
-		if (url.endsWith('/slow.png')) await gate.promise
-		if (url.endsWith('/retry.png') && failing)
+		// Native declarations have no ordering guarantee. Fail the first acquired source
+		// so a held request cannot block the serial queue before the failure assertion.
+		failedUrl ??= url
+		if (url !== failedUrl) await gate.promise
+		if (url === failedUrl && failing)
 			await route.fulfill({ status: 415, json: { code: 'unsupportedMedia', retryable: false } })
 		else await route.fulfill({ status: 200, contentType: 'image/png', body: bytes })
 	})
-	await seed(page, ['https://images.example/retry.png', 'https://images.example/slow.png'])
+	await seed(page, urls)
 	await page.getByRole('link', { name: 'Offline image fixture', exact: true }).click()
 	await expect.poll(async () => (await rows(page)).map((row) => row.status)).toContain('failed')
+	const failedName = 'Saved image ' + (urls.findIndex((url) => url === failedUrl) + 1),
+		backgroundName = 'Saved image ' + (urls.findIndex((url) => url !== failedUrl) + 1)
 	await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	gate.resolve()
@@ -144,10 +151,10 @@ test('continues background acquisition after leaving the reader and retries a fa
 		.poll(async () => (await rows(page)).filter((row) => row.status === 'ready').length)
 		.toBe(1)
 	await page.getByRole('link', { name: 'Offline image fixture', exact: true }).click()
-	await imageLoaded(page, 'Saved image 2', 20)
+	await imageLoaded(page, backgroundName, 20)
 	failing = false
 	await page.getByRole('button', { name: 'Retry', exact: true }).click()
-	await imageLoaded(page, 'Saved image 1', 20)
+	await imageLoaded(page, failedName, 20)
 	await expect(page.getByRole('article')).toContainText('Saved text stays readable')
 	await expect
 		.poll(async () => (await rows(page)).filter((row) => row.status === 'ready').length)
