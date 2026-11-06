@@ -17,7 +17,16 @@ import {
 } from '../../notes/schema.js'
 import type { Note, NoteCreate, NoteRevision } from '../../notes/schema.js'
 import { storedArticleNoteHistorySchema } from '../../notes/legacy.js'
-import type { ArticleNoteRevision as LegacyRevision } from '../../notes/legacy.js'
+import {
+	belongsToArticle,
+	canCreateNote,
+	canWriteNoteRevision,
+	canImportLegacy,
+	hasUnusedNoteId,
+	hasUnusedRevisionId,
+	matchesNoteOperation
+} from '../../notes/eligibility.js'
+import type { NoteAssociation, LegacyNoteImportRows } from '../../notes/eligibility.js'
 import { articleTargets } from '../../capture/causal.js'
 import { stageNoteParent } from '../../machines/storage/note-parent.js'
 
@@ -26,53 +35,6 @@ type Resource = TransactionResource & {
 	note?: Note | null
 	imported?: NoteRevision[]
 }
-type Association = { library: unknown; parent: unknown; targets: Set<string>; notes: Note[] }
-function belongsToArticle(note: Note, targets: ReadonlySet<string>) {
-	return targets.has(note.articleId ?? note.documentId ?? '')
-}
-function canCreateNote(rows: Association) {
-	return (
-		!!rows.library &&
-		!!rows.parent &&
-		!rows.notes.some((note) => belongsToArticle(note, rows.targets))
-	)
-}
-function canWriteNoteRevision(
-	rows: { note: Note | null; history: NoteRevision[] },
-	revision: NoteRevision
-) {
-	if (!rows.note || rows.history.some((row) => row.id === revision.id)) return false
-	const parents = new Set(
-		rows.history.filter((row) => row.noteId === revision.noteId).map((row) => row.id)
-	)
-	return revision.parents.every((id) => parents.has(id))
-}
-function canImportLegacy(
-	rows: Association & {
-		note: Note | null
-		source: LegacyRevision[]
-		history: NoteRevision[]
-		expected: NoteRevision[]
-		missing: NoteRevision[]
-	}
-) {
-	if (!rows.library || !rows.parent || !rows.source.length || !rows.missing.length) return false
-	if (rows.note && !belongsToArticle(rows.note, rows.targets)) return false
-	if (!rows.note && rows.notes.some((note) => belongsToArticle(note, rows.targets))) return false
-	const known = new Map(rows.history.map((revision) => [revision.id, revision]))
-	if (
-		rows.expected.some(
-			(revision) => known.has(revision.id) && !sameNoteRevision(known.get(revision.id)!, revision)
-		)
-	)
-		return false
-	const validParents = new Set([
-		...rows.expected.map((row) => row.id),
-		...rows.history.filter((row) => row.noteId === rows.expected[0]?.noteId).map((row) => row.id)
-	])
-	return rows.expected.every((row) => row.parents.every((id) => validParents.has(id)))
-}
-
 /** Entity creation, source writes and legacy import each have one DLF transaction
  * owner. IDs are supplied by the caller's operation owner and never derived from
  * an article, account-provider identifier or external protocol address. */
@@ -82,7 +44,10 @@ export function createNoteRecords(
 	isCurrent: () => boolean
 ) {
 	const lifecycle = transactionLifecycle(db, isCurrent)
-	const readAssociation = async (resource: Resource, targetId: string): Promise<Association> => {
+	const readAssociation = async (
+		resource: Resource,
+		targetId: string
+	): Promise<NoteAssociation> => {
 		const tx = resource.tx
 		const library = await tx.one(app.libraries.where({ id: libraryId }), {
 			tier: ReadTier.LocalFirst
@@ -111,7 +76,7 @@ export function createNoteRecords(
 	}
 	function validateCreate(input: unknown, operationId: string) {
 		const request = noteCreateSchema.parse(input)
-		if (request.libraryId !== libraryId || request.id !== operationId)
+		if (!matchesNoteOperation(request, libraryId, operationId))
 			throw new Error('Invalid note scope')
 		return request
 	}
@@ -138,7 +103,7 @@ export function createNoteRecords(
 	const create = createWorkspaceCreationTransaction<
 		NoteCreate,
 		Resource,
-		Association & { unused: boolean },
+		NoteAssociation & { unused: boolean },
 		SyncReceipt,
 		WriteHandle
 	>({
@@ -146,10 +111,10 @@ export function createNoteRecords(
 		readLocal: async (resource, attempt) => {
 			const request = validateCreate(attempt.draft, attempt.operationId)
 			const rows = await readAssociation(resource, request.articleId)
-			return { ...rows, unused: !rows.notes.some((note) => note.id === request.id) }
+			return { ...rows, unused: hasUnusedNoteId(rows.notes, request.id) }
 		},
 		assess: (rows) =>
-			canCreateNote(rows) && rows.unused
+			canCreateNote(rows)
 				? { outcome: 'eligible' }
 				: { outcome: 'blocked', reason: 'Note parent or identity unavailable' },
 		stage: (resource, attempt) =>
@@ -165,7 +130,7 @@ export function createNoteRecords(
 		...lifecycle,
 		readLocal: async (resource, attempt) => {
 			const revision = noteRevisionSchema.parse(attempt.draft)
-			if (revision.libraryId !== libraryId || revision.id !== attempt.operationId)
+			if (!matchesNoteOperation(revision, libraryId, attempt.operationId))
 				throw new Error('Invalid note scope')
 			const row = await resource.tx.one(app.notes.where({ id: revision.noteId, libraryId }), {
 				tier: ReadTier.LocalFirst
@@ -190,17 +155,10 @@ export function createNoteRecords(
 			return transactionReceipt(resource)
 		}
 	})
-	type ImportRows = Association & {
-		note: Note | null
-		source: LegacyRevision[]
-		history: NoteRevision[]
-		expected: NoteRevision[]
-		missing: NoteRevision[]
-	}
 	const importLegacy = createWorkspaceCreationTransaction<
 		NoteCreate,
 		Resource,
-		ImportRows,
+		LegacyNoteImportRows,
 		SyncReceipt,
 		WriteHandle
 	>({
@@ -224,8 +182,8 @@ export function createNoteRecords(
 				...row,
 				noteId: request.id
 			}))
-			const seen = new Set(history.map((row) => row.id))
-			const missing = expected.filter((row) => !seen.has(row.id))
+			const knownIds = new Set(history.map((row) => row.id))
+			const missing = expected.filter((row) => hasUnusedRevisionId(knownIds, row.id))
 			resource.imported = missing
 			return { ...rows, note, source, history, expected, missing }
 		},
