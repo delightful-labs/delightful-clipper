@@ -212,6 +212,30 @@ test('retains offline reading settings and location through a complete browser r
 		await rm(directory, { recursive: true, force: true })
 	}
 })
+test('shows live progress before a debounced save and keeps the furthest progress while scrolling back', async ({
+	page
+}) => {
+	await seed(page)
+	await page.clock.install()
+	const main = page.getByRole('main')
+	await main.hover()
+	await page.mouse.wheel(0, 6000)
+	await expect.poll(() => main.evaluate((node) => node.scrollTop)).toBeGreaterThan(2000)
+	await page.clock.runFor(100)
+	const progress = Number(await page.getByRole('progressbar').getAttribute('value'))
+	expect(progress).toBeGreaterThan(0)
+	expect((await state(page)).progress).toEqual({})
+	const paragraph = Number(await visibleParagraph(page))
+	await page.mouse.wheel(0, -3000)
+	await expect.poll(() => visibleParagraph(page)).not.toBe(String(paragraph))
+	await page.clock.runFor(100)
+	expect(Number(await visibleParagraph(page))).toBeLessThan(paragraph)
+	await expect(page.getByRole('progressbar')).toHaveAttribute('value', String(progress))
+	await page.clock.runFor(1100)
+	await expect
+		.poll(async () => Math.max(...Object.values((await state(page)).progress)))
+		.toBe(progress)
+})
 test('updates progress for a short article when a reading gesture cannot scroll it', async ({
 	page
 }) => {

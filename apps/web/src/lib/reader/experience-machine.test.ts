@@ -203,6 +203,43 @@ it('restores once, ignores late remote positions, preserves the current anchor o
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })
+it('shows progress before persistence and retains the furthest point when scrolling back within the debounce interval', async () => {
+	vi.useFakeTimers()
+	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+		setTimeout(() => callback(0), 1)
+	)
+	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+	const { actor, writes, expire } = fixture()
+	let report!: Parameters<ReadingViewport['observe']>[0]
+	actor.send({
+		type: 'ATTACH',
+		documentId,
+		viewport: {
+			measure: () => position(40),
+			restore: () => {},
+			observe: (next) => {
+				report = next
+				return () => {}
+			}
+		}
+	})
+	await vi.advanceTimersByTimeAsync(3)
+	report({ type: 'INTERACT' })
+	report({ type: 'MEASURE', position: position(60) })
+	expect(selectReaderExperience(actor.getSnapshot()).progress[documentId]).toBe(0.6)
+	await vi.advanceTimersByTimeAsync(500)
+	report({ type: 'MEASURE', position: position(30) })
+	await vi.advanceTimersByTimeAsync(500)
+	report({ type: 'MEASURE', position: position(40) })
+	expect(writes).toEqual([])
+	expect(selectReaderExperience(actor.getSnapshot()).progress[documentId]).toBe(0.6)
+	await vi.advanceTimersByTimeAsync(1000)
+	expect(writes.at(-1)).toMatchObject({ field: 'position', value: { offset: 40, progress: 0.6 } })
+	expire()
+	expect(selectReaderExperience(actor.getSnapshot()).progress).toEqual({})
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
 it('does not flush a new automatic position on departure after an uncertain write', async () => {
 	vi.useFakeTimers()
 	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>

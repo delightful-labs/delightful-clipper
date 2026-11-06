@@ -18,7 +18,12 @@ import type {
 	ReadingFullscreen
 } from '../../contracts/reader.js'
 import type { ReaderChange, ReaderOperation, ReadingPosition } from '../../reader/schema.js'
-import { canQueueReaderChange, projectReaderState, readerChangeKey } from '../../reader/schema.js'
+import {
+	canQueueReaderChange,
+	mergeReadingProgress,
+	projectReaderState,
+	readerChangeKey
+} from '../../reader/schema.js'
 import { viewportObservation, viewportRestoration } from '../../reader/viewport-actors.js'
 import { positionSchema } from '../../reader/schema.js'
 import { sameReadingLocation } from '../../reader/anchors.js'
@@ -60,6 +65,7 @@ type Context = Input & {
 	issued: ReaderChange | undefined
 	attachment: OwnedAttachment | undefined
 	currentPosition: ReadingPosition | undefined
+	progress: Record<string, number>
 	display: ReadingFullscreen | undefined
 	sync: Record<string, 'pending' | 'accepted' | 'rejected'>
 }
@@ -147,7 +153,14 @@ const model = setup<
 	actions: {
 		updateRows: assign(({ context, event }) =>
 			event.type === 'ROWS'
-				? { rows: event.rows, drafts: remainingDrafts(context.drafts, event.rows) }
+				? {
+						rows: event.rows,
+						drafts: remainingDrafts(context.drafts, event.rows),
+						progress: mergeReadingProgress(
+							context.progress,
+							projectReaderState(event.rows).progress
+						)
+					}
 				: {}
 		),
 		enqueue: assign(({ context, event }) =>
@@ -178,6 +191,7 @@ export const readerExperienceMachine = model.createMachine({
 		issued: undefined,
 		attachment: undefined,
 		currentPosition: undefined,
+		progress: {},
 		display: undefined,
 		sync: {}
 	}),
@@ -407,13 +421,23 @@ export const readerExperienceMachine = model.createMachine({
 													!sameReadingLocation(context.currentPosition, event.position)
 											]),
 											actions: [
-												assign({ currentPosition: ({ event }) => event.position }),
+												assign(({ context, event }) => ({
+													currentPosition: event.position,
+													progress: mergeReadingProgress(context.progress, {
+														[required(context.attachment).documentId]: event.position.progress
+													})
+												})),
 												raise(({ context, event }) => ({
 													type: 'CHANGE',
 													change: {
 														field: 'position',
 														documentId: required(context.attachment).documentId,
-														value: event.position
+														value: {
+															...event.position,
+															progress: required(
+																context.progress[required(context.attachment).documentId]
+															)
+														}
 													}
 												}))
 											]
@@ -448,12 +472,18 @@ export const readerExperienceMachine = model.createMachine({
 									]),
 									target: 'detached',
 									actions: assign(({ context }) => {
+										const documentId = required(context.attachment).documentId
+										const position = required(context.currentPosition)
+										const progress = mergeReadingProgress(context.progress, {
+											[documentId]: position.progress
+										})
 										const change: ReaderChange = {
-											documentId: required(context.attachment).documentId,
+											documentId,
 											field: 'position',
-											value: required(context.currentPosition)
+											value: { ...position, progress: required(progress[documentId]) }
 										}
 										return {
+											progress,
 											queue: replaceDesired(context.queue, change),
 											drafts: replaceDesired(context.drafts, change),
 											attachment: undefined
@@ -619,6 +649,7 @@ export const readerExperienceMachine = model.createMachine({
 				capability: undefined,
 				issued: undefined,
 				currentPosition: undefined,
+				progress: {},
 				display: undefined,
 				operationId: '',
 				sync: {}
@@ -636,6 +667,7 @@ export function selectReaderExperience(
 		if (change.field !== 'position') Object.assign(preferences, { [change.field]: change.value })
 	return {
 		...state,
+		progress: current ? snapshot.context.progress : state.progress,
 		preferences,
 		focused: current && snapshot.matches({ active: { focus: 'focused' } }),
 		ready: current && snapshot.matches({ active: { data: { observing: 'ready' } } }),

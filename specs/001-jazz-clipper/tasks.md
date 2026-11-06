@@ -10,6 +10,7 @@
 - [x] Qualify all 52 web cases, five final production offline cases, eleven rebuilt extension cases, two sample-data cases and 544 unit/native tests (one platform skip); pass formatting, lint, vendor and root/service-worker typing checks.
 - [x] Complete web/extension strict catalog typing and pnpm verify after adding the approved copy; all source checks, 544 unit/native tests (one platform skip) and production build pass.
 - [x] Finish handoff, push feat/reader-experience and create [PR #17](https://github.com/delightful-labs/delightful-clipper/pull/17), feat(reader): add synchronized reading preferences and progress, targeting main. Leave it unmerged.
+- [x] Fix live percentage updates independently of the save debounce; preserve the furthest unsaved point while scrolling back and keep the current text anchor. Verify scope expiry, native persistence after debounce, actual network fullscreen, all 53 web cases, five production offline cases and pnpm verify with 545 unit/native tests (one skip).
 
 # Implementation tasks and acceptance status
 

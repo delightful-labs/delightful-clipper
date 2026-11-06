@@ -212,6 +212,10 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.toBeGreaterThan(0.05)
 		const readingParagraph = await visibleReadingParagraph(page)
 		expect(readingParagraph).toBeTruthy()
+		// Leaving flushes the debounced position; live progress is not a persistence receipt.
+		await page.getByRole('link', { name: 'Open library', exact: true }).click()
+		await page.getByRole('link', { name: 'Completely offline article', exact: true }).click()
+		await expect.poll(() => visibleReadingParagraph(page)).toBe(readingParagraph)
 		await page.reload()
 		await expect.poll(() => visibleReadingParagraph(page)).toBe(readingParagraph)
 		await context.close()

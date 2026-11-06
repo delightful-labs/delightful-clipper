@@ -85,6 +85,15 @@ export function readerChangeKey(change: Pick<ReaderChange, 'documentId' | 'field
 export function sameReaderField(a: ReaderChange, b: ReaderChange) {
 	return a.documentId === b.documentId && a.field === b.field
 }
+export function mergeReadingProgress(
+	current: Record<string, number>,
+	observed: Record<string, number>
+) {
+	const progress = { ...current }
+	for (const [id, value] of Object.entries(observed))
+		progress[id] = Math.max(progress[id] ?? 0, value)
+	return progress
+}
 export function projectReaderState(operations: readonly ReaderOperation[]) {
 	const preferences = { ...defaultPreferences }
 	for (const field of [
