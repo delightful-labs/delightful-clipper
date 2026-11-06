@@ -1,65 +1,64 @@
 import { z } from 'zod'
 import { lowercaseUuidSchema, utf8StringSchema } from '../validation/values.js'
-import { causalHeads } from '../capture/causal.js'
-import { causalParentsSchema } from '../capture/causal.js'
+import { causalHeads, causalParentsSchema, hasSingleParent } from '../capture/causal.js'
 
-// A bounded plain-text payload; do not trim, normalize or interpret authored text.
 export const noteTextSchema = z.string().max(262144).pipe(utf8StringSchema(262144))
 const revisionIdsSchema = z
 	.array(lowercaseUuidSchema)
 	.max(4096)
 	.refine((ids) => new Set(ids).size === ids.length)
-export const articleNoteRevisionSchema = z.object({
+
+/** Independent identity and an explicit article association. Highlight attachment
+ * can extend this entity when highlight records are implemented. */
+export const noteSchema = z
+	.object({
+		id: lowercaseUuidSchema,
+		libraryId: lowercaseUuidSchema,
+		articleId: lowercaseUuidSchema.nullable(),
+		documentId: lowercaseUuidSchema.nullable()
+	})
+	.refine(hasSingleParent)
+export type Note = z.infer<typeof noteSchema>
+export const noteCreateSchema = z.object({
 	id: lowercaseUuidSchema,
 	libraryId: lowercaseUuidSchema,
-	articleId: lowercaseUuidSchema,
+	articleId: lowercaseUuidSchema
+})
+export type NoteCreate = z.infer<typeof noteCreateSchema>
+export const noteRevisionSchema = z.object({
+	id: lowercaseUuidSchema,
+	libraryId: lowercaseUuidSchema,
+	noteId: lowercaseUuidSchema,
 	text: noteTextSchema,
 	parents: revisionIdsSchema,
 	editedAt: z.iso.datetime()
 })
-export type ArticleNoteRevision = z.infer<typeof articleNoteRevisionSchema>
-export const storedArticleNoteRevisionSchema = articleNoteRevisionSchema
-	.extend({
-		parents: causalParentsSchema.pipe(revisionIdsSchema),
-		articleParentId: lowercaseUuidSchema.nullable().optional(),
-		documentParentId: lowercaseUuidSchema.nullable().optional()
-	})
-	.refine((row) => {
-		const article = row.articleParentId ?? null,
-			document = row.documentParentId ?? null
-		// Historical rows retain their original logical parent through the additive migration.
-		if (article === null && document === null) return true
-		if (article !== null && document !== null) return false
-		return (article ?? document) === row.articleId
-	})
-	.transform(({ articleParentId: _article, documentParentId: _document, ...revision }) => revision)
-export const storedArticleNoteHistorySchema = z.array(storedArticleNoteRevisionSchema)
-
-// The parent tuple is the logical note identity. Two offline clients do not
-// independently allocate editable note identities for the same article.
-export const articleNoteDraftSchema = z.object({
+export type NoteRevision = z.infer<typeof noteRevisionSchema>
+export const storedNoteRevisionSchema = noteRevisionSchema.extend({
+	parents: causalParentsSchema.pipe(revisionIdsSchema)
+})
+export const storedNoteHistorySchema = z.array(storedNoteRevisionSchema)
+export const noteHistorySchema = z.array(noteSchema)
+export const noteDraftSchema = z.object({
 	libraryId: lowercaseUuidSchema,
-	articleId: lowercaseUuidSchema,
+	noteId: lowercaseUuidSchema,
 	sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
 	text: noteTextSchema,
 	baseRevisionIds: revisionIdsSchema
 })
-export type ArticleNoteDraft = z.infer<typeof articleNoteDraftSchema>
-export const articleNoteDraftRecordSchema = z.object({
+export type NoteDraft = z.infer<typeof noteDraftSchema>
+export const noteDraftRecordSchema = z.object({
 	writerId: lowercaseUuidSchema,
-	draft: articleNoteDraftSchema
+	draft: noteDraftSchema
 })
-export type ArticleNoteDraftRecord = z.infer<typeof articleNoteDraftRecordSchema>
-export type ArticleNoteTarget = Pick<ArticleNoteRevision, 'libraryId' | 'articleId'>
-
-export function sameArticleNote(a: ArticleNoteTarget, b: ArticleNoteTarget) {
-	return a.libraryId === b.libraryId && a.articleId === b.articleId
+export type NoteDraftRecord = z.infer<typeof noteDraftRecordSchema>
+export type NoteTarget = Pick<NoteRevision, 'libraryId' | 'noteId'>
+export function sameNote(a: NoteTarget, b: NoteTarget) {
+	return a.libraryId === b.libraryId && a.noteId === b.noteId
 }
-
-/** An operation ID alone cannot prove that an uncertain intended write was observed. */
-export function sameArticleNoteRevision(a: ArticleNoteRevision, b: ArticleNoteRevision) {
+export function sameNoteRevision(a: NoteRevision, b: NoteRevision) {
 	return (
-		sameArticleNote(a, b) &&
+		sameNote(a, b) &&
 		a.id === b.id &&
 		a.text === b.text &&
 		a.editedAt === b.editedAt &&
@@ -67,19 +66,9 @@ export function sameArticleNoteRevision(a: ArticleNoteRevision, b: ArticleNoteRe
 		a.parents.every((id) => b.parents.includes(id))
 	)
 }
-
-/** Keep every divergent head. Timestamps and UUID ordering never choose user text. */
-export function projectArticleNote(
-	target: ArticleNoteTarget,
-	revisions: readonly ArticleNoteRevision[],
-	aliases: ReadonlySet<string> = new Set([target.articleId])
-) {
-	const heads = causalHeads(
-		revisions.filter(
-			(revision) => revision.libraryId === target.libraryId && aliases.has(revision.articleId)
-		)
-	)
-	const versions = new Map<string, ArticleNoteRevision[]>()
+export function projectNote(target: NoteTarget, revisions: readonly NoteRevision[]) {
+	const heads = causalHeads(revisions.filter((revision) => sameNote(target, revision)))
+	const versions = new Map<string, NoteRevision[]>()
 	for (const head of heads) {
 		const identical = versions.get(head.text) ?? []
 		identical.push(head)
@@ -91,14 +80,9 @@ export function projectArticleNote(
 		conflicted: versions.size > 1
 	}
 }
-
-/** A completion can acknowledge only the exact local edit it persisted. */
-export function acknowledgesArticleNoteDraft(
-	draft: ArticleNoteDraft,
-	acknowledgment: ArticleNoteDraft
-) {
+export function acknowledgesNoteDraft(draft: NoteDraft, acknowledgment: NoteDraft) {
 	return (
-		sameArticleNote(draft, acknowledgment) &&
+		sameNote(draft, acknowledgment) &&
 		draft.sequence === acknowledgment.sequence &&
 		draft.text === acknowledgment.text &&
 		draft.baseRevisionIds.length === acknowledgment.baseRevisionIds.length &&

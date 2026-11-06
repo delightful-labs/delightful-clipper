@@ -7,6 +7,7 @@ import { createJazzSession } from 'jazz-tools/backend'
 import { ReadTier } from 'jazz-tools'
 import { app } from './schema.js'
 import permissions from './permissions.js'
+import { noteAttempt } from './note-attempt.test-support.js'
 import { createLibraryRecords } from './records.js'
 
 it('compiles the actual native policies and reopens locally durable notes without a sync server', async () => {
@@ -43,11 +44,18 @@ it('compiles the actual native policies and reopens locally durable notes withou
 			}).start()
 		)
 		if (article.kind !== 'saved') throw new Error('Expected local article')
+		const noteId = crypto.randomUUID()
+		const entity = { id: noteId, libraryId: owner, articleId: article.operationId }
+		const created = await toPromise(
+			createActor(records.notes.create, { input: noteAttempt(entity) }).start()
+		)
+		expect(created.settlement.kind).toBe('locallyPersisted')
+		expect(noteId).not.toBe(article.operationId)
 		const id = crypto.randomUUID()
 		const draft = {
 			id,
 			libraryId: owner,
-			articleId: article.operationId,
+			noteId,
 			text: 'Offline note 😀',
 			parents: [],
 			editedAt: new Date().toISOString()
@@ -59,10 +67,9 @@ it('compiles the actual native policies and reopens locally durable notes withou
 		)
 		expect(note.settlement.kind).toBe('locallyPersisted')
 		expect(
-			await db.one(app.articleNoteRevisions.where({ id }), { tier: ReadTier.LocalFirst })
+			await db.one(app.noteRevisions.where({ id }), { tier: ReadTier.LocalFirst })
 		).toMatchObject({
-			articleParentId: article.operationId,
-			documentParentId: null
+			noteId
 		})
 		const documentId = crypto.randomUUID()
 		const document = await toPromise(
@@ -77,8 +84,19 @@ it('compiles the actual native policies and reopens locally durable notes withou
 			}).start()
 		)
 		expect(document.kind).toBe('saved')
+		const documentNoteId = crypto.randomUUID()
+		const documentEntity = { id: documentNoteId, libraryId: owner, articleId: documentId }
+		const createdDocumentNote = await toPromise(
+			createActor(records.notes.create, { input: noteAttempt(documentEntity) }).start()
+		)
+		expect(createdDocumentNote.settlement.kind).toBe('locallyPersisted')
+		expect(await records.notes.read(documentNoteId)).toMatchObject({
+			id: documentNoteId,
+			articleId: null,
+			documentId
+		})
 		const legacyId = crypto.randomUUID()
-		const legacy = { ...draft, id: legacyId, articleId: documentId, text: 'Legacy note' }
+		const legacy = { ...draft, id: legacyId, noteId: documentNoteId, text: 'Legacy note' }
 		const legacyNote = await toPromise(
 			createActor(records.notes.stage, {
 				input: {
@@ -93,16 +111,20 @@ it('compiles the actual native policies and reopens locally durable notes withou
 		)
 		expect(legacyNote.settlement.kind).toBe('locallyPersisted')
 		expect(
-			await db.one(app.articleNoteRevisions.where({ id: legacyId }), { tier: ReadTier.LocalFirst })
+			await db.one(app.noteRevisions.where({ id: legacyId }), { tier: ReadTier.LocalFirst })
 		).toMatchObject({
-			articleParentId: null,
-			documentParentId: documentId
+			noteId: documentNoteId
 		})
 		await session.close()
 		session = await createJazzSession(config)
 		await session.getSnapshot().client!.db.disconnect()
 		expect(session.getSnapshot().account!.id).toBe(owner)
 		const reopened = createLibraryRecords(session.getSnapshot().client!.db, owner, () => true)
+		expect(await reopened.notes.read(noteId)).toMatchObject({
+			id: noteId,
+			articleId: article.operationId,
+			documentId: null
+		})
 		expect(await reopened.notes.readRevision(draft)).toEqual(draft)
 		expect(await reopened.notes.readRevision(legacy)).toEqual(legacy)
 	} finally {

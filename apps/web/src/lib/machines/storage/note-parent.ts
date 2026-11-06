@@ -2,6 +2,7 @@ import { createActor, setup, toPromise } from 'xstate'
 import type { SyncReceipt } from '../../contracts/storage.js'
 
 type Input = {
+	note?: unknown
 	article: unknown
 	document: unknown
 	insertArticle: () => void
@@ -29,6 +30,7 @@ const noteParentMachine = setup<
 	states: {
 		selectingParent: {
 			always: [
+				{ guard: ({ context }) => !!context.note, target: 'done' },
 				{ guard: ({ context }) => !!context.article, target: 'article' },
 				{ guard: ({ context }) => !!context.document, target: 'document' },
 				{ target: 'unavailable' }

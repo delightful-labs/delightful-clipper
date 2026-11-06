@@ -1,26 +1,26 @@
 import { and, assign, fromPromise, setup, stateIn } from 'xstate'
-import type { ArticleNoteDraftRecord } from './schema.js'
-import { articleNoteDraftRecordSchema, sameArticleNote } from './schema.js'
+import type { NoteDraftRecord } from './schema.js'
+import { noteDraftRecordSchema, sameNote } from './schema.js'
 import type { NoteDraftStore } from './drafts.js'
 
 type Input = { store: NoteDraftStore; libraryId: string; isCurrent: () => boolean }
 type Context = Input & {
-	queue: ArticleNoteDraftRecord[]
-	issued: ArticleNoteDraftRecord | undefined
-	durable: ArticleNoteDraftRecord[]
+	queue: NoteDraftRecord[]
+	issued: NoteDraftRecord | undefined
+	durable: NoteDraftRecord[]
 }
-type Event = { type: 'EDIT'; record: ArticleNoteDraftRecord } | { type: 'RETRY' | 'SHUTDOWN' }
-function sameWriter(a: ArticleNoteDraftRecord, b: ArticleNoteDraftRecord) {
-	return a.writerId === b.writerId && sameArticleNote(a.draft, b.draft)
+type Event = { type: 'EDIT'; record: NoteDraftRecord } | { type: 'RETRY' | 'SHUTDOWN' }
+function sameWriter(a: NoteDraftRecord, b: NoteDraftRecord) {
+	return a.writerId === b.writerId && sameNote(a.draft, b.draft)
 }
-function replace(records: ArticleNoteDraftRecord[], next: ArticleNoteDraftRecord) {
+function replace(records: NoteDraftRecord[], next: NoteDraftRecord) {
 	return [...records.filter((record) => !sameWriter(record, next)), next]
 }
 /** Serial local-draft ownership is independent of source writes and connectivity.
  * Shutdown drains edits already admitted under the original account binding. */
 const actors = {
 	persist: fromPromise(
-		async ({ input }: { input: { store: NoteDraftStore; record: ArticleNoteDraftRecord } }) => {
+		async ({ input }: { input: { store: NoteDraftStore; record: NoteDraftRecord } }) => {
 			await input.store.write(input.record)
 			return input.record
 		}
@@ -36,7 +36,7 @@ export const noteDraftMachine = setup<
 	never,
 	string,
 	Input,
-	{ unsaved: ArticleNoteDraftRecord[] }
+	{ unsaved: NoteDraftRecord[] }
 >({
 	actors,
 	guards: {
@@ -46,7 +46,7 @@ export const noteDraftMachine = setup<
 			stateIn({ running: { control: 'accepting' } }),
 			({ context, event }) => {
 				if (!context.isCurrent() || event.type !== 'EDIT') return false
-				const parsed = articleNoteDraftRecordSchema.safeParse(event.record)
+				const parsed = noteDraftRecordSchema.safeParse(event.record)
 				if (!parsed.success || parsed.data.draft.libraryId !== context.libraryId) return false
 				const previous = [
 					...context.queue,
@@ -63,7 +63,7 @@ export const noteDraftMachine = setup<
 		enqueue: assign({
 			queue: ({ context, event }) =>
 				event.type === 'EDIT'
-					? replace(context.queue, articleNoteDraftRecordSchema.parse(event.record))
+					? replace(context.queue, noteDraftRecordSchema.parse(event.record))
 					: context.queue
 		})
 	}
