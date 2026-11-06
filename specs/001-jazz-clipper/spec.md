@@ -8,6 +8,12 @@
 
 ## Product direction
 
+### AT Protocol integration — recovered requirement (2026-11-06)
+
+The user confirmed that AT Protocol integration for notes and highlights was part of the original planning intent and was omitted from the recorded specification. Treat it as a data-architecture requirement now: notes and highlights must be independently addressable entities with their own stable identities and explicit links to their associated article. Article containment and revision history must not substitute for those entities. Notes attached to highlights retain an explicit highlight relationship as well.
+
+The user clarified that Delightful Local First owns the broader shared AT Protocol scope across apps, beginning with identity. Clipper owns its note/highlight entities and article relationships and must avoid decisions that make later AT Protocol interoperability difficult. Keep domain IDs independent of account-provider IDs and leave external identity/address mapping to the shared integration boundary. Publication versus source-of-truth behavior, Lexicons and transport are not decisions required for this phase; do not introduce a Clipper-specific AT identity or publishing implementation. Existing private-library behavior remains intact. See [data-model.md](data-model.md#at-protocol-identity-boundary) for the identity boundary and current implementation gap.
+
 Clipper helps a person collect web articles, PDFs, and EPUBs; read and annotate them in one library; and access saved material offline. The first release prioritizes web clipping and reading, saved article images, cross-browser extension clipping/highlighting, same-account synchronized notes/highlights, and mobile PWA share intake. PDF/EPUB and RSS are valuable product features but are outside this initial MVP. Future directions are recorded below to inform current data and interface choices without expanding MVP scope.
 
 The previous prototype is archived on `archive/pre-jazz-rewrite-2026-11-02`; it is not the implementation baseline. No legacy-data migration was required for the rewrite; this does not authorize deleting current stored identities or articles. Use Delightful Local First for identity and account recovery rather than implementing a second identity system.

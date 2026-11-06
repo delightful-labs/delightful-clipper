@@ -1,5 +1,11 @@
 # Article notes — implementation started
 
+## Recovered AT Protocol requirement and DLF boundary
+
+The user confirmed that "@Proto" means AT Protocol and that this was stated during original specification planning but omitted from the recorded spec. Notes and highlights must be separate, independently addressable entities with their own stable IDs and explicit article links. A highlight-attached note also links to its highlight. The initial choice to use the library/article pair as the only note identity was an unnecessary coupling; the existing Note record in the logical model should not have been replaced solely by revision rows.
+
+This requirement is now recorded in spec.md, data-model.md and design-decisions.md. The user clarified that DLF will handle the broader shared AT Protocol scope across apps, starting with identity. The current requirement is to avoid making later AT interoperability difficult, not to select publication versus source-of-truth behavior now. Preserve independent domain IDs and explicit article/highlight relationships; consume shared DLF identity capabilities, and do not create a Clipper-specific AT account-linking or publishing system. No new role decision is needed before designing independent notes and a preserving revision/draft migration. Lexicons, external record keys and publication/transport remain future shared-integration design. No native schema, migration, application behavior, catalog wording or dependency changed in this documentation pass. Prior CI success applies to the existing groundwork and does not validate the forthcoming entity redesign.
+
 ## PR #19 CI correction — native parent relations
 
 The reported GitHub run `42232245433` fails both tooling/native and browser/schema-upgrade jobs because the native compiler rejects the original note insert policy: `JoinNotRefCompatible` on the undeclared polymorphic `articleId` join. The previous TypeScript/schema-loader validation did not exercise this native compilation boundary. Netlify deploy `6aede0e7e2d838ae16268036` also failed during the preview build; its connector exposes only the build-stage exit, not the detailed log, so its exact error has not been independently read.
