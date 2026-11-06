@@ -18,7 +18,6 @@
 		"@faker-js/faker": "10.6.0",
 		"@kingironman2011/better-auth-bsky": "0.3.2",
 		"@mozilla/readability": "0.6.0",
-		"@netlify/database": "2.0.3",
 		"better-auth": "1.7.18",
 		"delightful-local-first": "file:../../vendor/delightful-local-first-aaf718d-logger.tgz",
 		"delightful-ui": "file:../../vendor/delightful-ui-20ef7be-tag-normalization.tgz",

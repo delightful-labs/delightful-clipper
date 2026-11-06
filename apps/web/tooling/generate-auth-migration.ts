@@ -30,7 +30,7 @@ try {
 		throw new Error('Initial auth migration generation requires a clean local database')
 	}
 	const sql = await migration.compileMigrations()
-	const directory = resolve(import.meta.dirname, '../../../netlify/database/migrations')
+	const directory = resolve(import.meta.dirname, 'auth-migrations')
 	await mkdir(directory, { recursive: true })
 	await writeFile(resolve(directory, '20261106000100_auth.sql'), sql, { flag: 'wx' })
 	console.info('Generated initial Better Auth / AT Protocol / JWT migration; no SQL applied.')

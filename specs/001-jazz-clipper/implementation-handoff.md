@@ -604,3 +604,15 @@ and exact auth/linking workflow decisions remain outstanding.
 The hosted database status check found no database branch for this proof branch.
 No hosted migration or deployment was attempted. See
 `docs/atproto-proof-deployment.md` for exact evidence, limitations and setup.
+
+### Direct Neon preparation — 2026-11-06
+
+PR #20 triggered Netlify preview deployment, which failed at `createSiteDatabase`
+with HTTP 403: `database feature not available for this account`. The user approved
+preparing direct Neon Postgres instead of changing the Netlify account plan.
+`@netlify/database` is removed; the existing `pg` factory now reads server-only
+`AUTH_DATABASE_URL`. The generated SQL moved unchanged to
+`apps/web/tooling/auth-migrations/20261106000100_auth.sql`, outside Netlify's
+automatic database provisioning/migration path. No new dependency or custom auth
+schema was introduced. The initial SQL application process awaits the user's
+choice; no automatic migration runner or hosted schema changes were made.
