@@ -7,7 +7,7 @@
 - [x] Add small DUI image presentation; hydrate images without replacing text/selection, release resources on navigation, and retain positions across image reflow.
 - [x] Review implementation and fix worker partial setup cleanup, Retry-After handling, stale scope/results and image error URLs, read-only viewer capabilities and uncertainty feedback across navigation.
 - [x] Complete qualification: pnpm verify (583 unit/native tests, one platform skip), all 57 web, five production offline, eleven rebuilt Chromium extension and two sample-data cases; retain the shared network servers. Include real worker codecs, image-bearing cold restart and live network PNG evidence.
-- [ ] Push and create a Conventional Commits PR targeting main; leave it unmerged.
+- [x] Push and create Conventional Commits [PR #18](https://github.com/delightful-labs/delightful-clipper/pull/18) targeting main; leave it unmerged.
 
 # Reader experience — merged PR #17
 
