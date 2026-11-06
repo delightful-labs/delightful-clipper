@@ -16,13 +16,26 @@ const noteParentMachine = setup<
 	{ type: 'UNUSED' },
 	{},
 	{},
-	{},
-	{},
+	{ insertArticle: undefined; insertDocument: undefined; failUnavailable: undefined },
+	{ hasNote: undefined; hasArticle: undefined; hasDocument: undefined },
 	never,
 	string,
 	Input,
 	SyncReceipt
->({}).createMachine({
+>({
+	guards: {
+		hasNote: ({ context }) => !!context.note,
+		hasArticle: ({ context }) => !!context.article,
+		hasDocument: ({ context }) => !!context.document
+	},
+	actions: {
+		insertArticle: ({ context }) => context.insertArticle(),
+		insertDocument: ({ context }) => context.insertDocument(),
+		failUnavailable: () => {
+			throw new Error('Note parent unavailable')
+		}
+	}
+}).createMachine({
 	id: 'note-parent-mutation',
 	context: ({ input }) => input,
 	initial: 'selectingParent',
@@ -30,19 +43,15 @@ const noteParentMachine = setup<
 	states: {
 		selectingParent: {
 			always: [
-				{ guard: ({ context }) => !!context.note, target: 'done' },
-				{ guard: ({ context }) => !!context.article, target: 'article' },
-				{ guard: ({ context }) => !!context.document, target: 'document' },
+				{ guard: 'hasNote', target: 'done' },
+				{ guard: 'hasArticle', target: 'article' },
+				{ guard: 'hasDocument', target: 'document' },
 				{ target: 'unavailable' }
 			]
 		},
-		article: { entry: ({ context }) => context.insertArticle(), always: 'done' },
-		document: { entry: ({ context }) => context.insertDocument(), always: 'done' },
-		unavailable: {
-			entry: () => {
-				throw new Error('Note parent unavailable')
-			}
-		},
+		article: { entry: 'insertArticle', always: 'done' },
+		document: { entry: 'insertDocument', always: 'done' },
+		unavailable: { entry: 'failUnavailable' },
 		done: { type: 'final' }
 	}
 })

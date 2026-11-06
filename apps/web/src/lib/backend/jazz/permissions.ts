@@ -15,22 +15,21 @@ export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 	policy.libraries.allowInsert.where(canonical)
 	policy.libraries.allowUpdate.whereOld(canonical).whereNew(canonical)
 	policy.libraries.allowDelete.never()
-	policy.notes.allowRead.where((row) => owns(row.libraryId))
-	policy.notes.allowInsert.where((row) =>
+	type NoteParent = { libraryId: RowRefValue; articleId: RowRefValue; documentId: RowRefValue }
+	const articleNoteParent = (row: NoteParent) =>
 		allOf([
-			owns(row.libraryId),
-			anyOf([
-				allOf([
-					{ documentId: null },
-					policy.articles.exists.where({ id: row.articleId, libraryId: row.libraryId })
-				]),
-				allOf([
-					{ articleId: null },
-					policy.documents.exists.where({ id: row.documentId, libraryId: row.libraryId })
-				])
-			])
+			{ documentId: null },
+			policy.articles.exists.where({ id: row.articleId, libraryId: row.libraryId })
 		])
-	)
+	const documentNoteParent = (row: NoteParent) =>
+		allOf([
+			{ articleId: null },
+			policy.documents.exists.where({ id: row.documentId, libraryId: row.libraryId })
+		])
+	const ownedNoteParent = (row: NoteParent) =>
+		allOf([owns(row.libraryId), anyOf([articleNoteParent(row), documentNoteParent(row)])])
+	policy.notes.allowRead.where((row) => owns(row.libraryId))
+	policy.notes.allowInsert.where(ownedNoteParent)
 	policy.notes.allowUpdate.never()
 	policy.notes.allowDelete.never()
 	policy.noteRevisions.allowRead.where((row) => owns(row.libraryId))

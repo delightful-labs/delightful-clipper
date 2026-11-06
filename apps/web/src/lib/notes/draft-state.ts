@@ -42,3 +42,8 @@ export function retainFailedDraft(history: Pick<DraftHistory, 'queue' | 'issued'
 	if (!history.issued || hasQueuedWriterDraft(history, history.issued)) return [...history.queue]
 	return [history.issued, ...history.queue]
 }
+
+export function requireIssuedDraft(history: Pick<DraftHistory, 'issued'>) {
+	if (!history.issued) throw new Error('Missing issued draft')
+	return history.issued
+}

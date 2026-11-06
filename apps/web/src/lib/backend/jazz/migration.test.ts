@@ -1,3 +1,4 @@
+import { permissionsForSchema } from './schema-permissions.test-support.js'
 import preEntityPermissions from './prenote-entities-permissions.test-support.js'
 import entityMigration from './migrations/20261106T161431-independent-notes-b7805d9b30d2-92a26a023aa5.js'
 import { app as preEntitiesApp } from './prenote-entities-schema.test-support.js'
@@ -33,16 +34,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			'utf8'
 		)
 	)
-	const legacyPermissions = Object.fromEntries(
-		Object.entries(permissions)
-			.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-			.filter(([table]) => table !== 'articleNoteRevisions')
-			.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-			.filter(
-				([table]) =>
-					table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
-			)
-	)
+	const legacyPermissions = permissionsForSchema(legacyApp)
 	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-upgrade-'))
 	const serverOptions = {
 		appId: crypto.randomUUID(),
@@ -135,66 +127,36 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		await deploy({
 			...upgrade,
 			schema: preOrganizationApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-					.filter(([table]) => table !== 'organizationOperations' && table !== 'tagOperations')
-			)
+			permissions: permissionsForSchema(preOrganizationApp)
 		})
 		await deploy({
 			...upgrade,
 			schema: preDiscoveryApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-					.filter(([table]) => table !== 'tagOperations')
-			),
+			permissions: permissionsForSchema(preDiscoveryApp),
 			migration: organizationMigration
 		})
 		await deploy({
 			...upgrade,
 			schema: preReaderApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-			),
+			permissions: permissionsForSchema(preReaderApp),
 			migration: discoveryMigration
 		})
 		await deploy({
 			...upgrade,
 			schema: preImageApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-					.filter(([table]) => table !== 'articleImages')
-			),
+			permissions: permissionsForSchema(preImageApp),
 			migration: readerMigration
 		})
 		await deploy({
 			...upgrade,
 			schema: preNotesApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-			),
+			permissions: permissionsForSchema(preNotesApp),
 			migration: imageMigration
 		})
 		await deploy({
 			...upgrade,
 			schema: preEntitiesApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(
-					([table]) => table !== 'notes' && table !== 'noteRevisions'
-				)
-			),
+			permissions: permissionsForSchema(preEntitiesApp),
 			migration: noteMigration
 		})
 		await deploy({ ...upgrade, migration: entityMigration })
@@ -296,13 +258,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 it('adds tags to a populated organization-era replica without resetting identity, favorites or status', async () => {
 	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-discovery-upgrade-'))
 	const server = await startLocalJazzServer({ dataDir: join(dataDir, 'authority') })
-	const oldPermissions = Object.fromEntries(
-		Object.entries(permissions)
-			.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-			.filter(([table]) => table !== 'articleNoteRevisions')
-			.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-			.filter(([table]) => table !== 'tagOperations')
-	)
+	const oldPermissions = permissionsForSchema(preDiscoveryApp)
 	const config = {
 		appId: server.appId,
 		serverUrl: server.url,
@@ -373,23 +329,13 @@ it('adds tags to a populated organization-era replica without resetting identity
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
 			schema: preReaderApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-			),
+			permissions: permissionsForSchema(preReaderApp),
 			migration: discoveryMigration
 		})
 		context = await createJazzSession({
 			...config,
 			app: preReaderApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-			),
+			permissions: permissionsForSchema(preReaderApp),
 			store,
 			initial: 'local-first'
 		})
@@ -415,23 +361,13 @@ it('adds tags to a populated organization-era replica without resetting identity
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
 			schema: preImageApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-					.filter(([table]) => table !== 'articleImages')
-			),
+			permissions: permissionsForSchema(preImageApp),
 			migration: readerMigration
 		})
 		context = await createJazzSession({
 			...config,
 			app: preImageApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-					.filter(([table]) => table !== 'articleImages')
-			),
+			permissions: permissionsForSchema(preImageApp),
 			store,
 			initial: 'local-first'
 		})
@@ -455,11 +391,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
 			schema: preNotesApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'notes' && table !== 'noteRevisions')
-					.filter(([table]) => table !== 'articleNoteRevisions')
-			),
+			permissions: permissionsForSchema(preNotesApp),
 			migration: imageMigration
 		})
 		await deploy({
@@ -467,11 +399,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
 			schema: preEntitiesApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(
-					([table]) => table !== 'notes' && table !== 'noteRevisions'
-				)
-			),
+			permissions: permissionsForSchema(preEntitiesApp),
 			migration: noteMigration
 		})
 		await deploy({

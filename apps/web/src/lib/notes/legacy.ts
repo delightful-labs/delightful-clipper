@@ -19,25 +19,30 @@ export const articleNoteRevisionSchema = z.object({
 	editedAt: z.iso.datetime()
 })
 export type ArticleNoteRevision = z.infer<typeof articleNoteRevisionSchema>
+function hasPreservedLegacyParent(row: {
+	articleId: string
+	articleParentId?: string | null | undefined
+	documentParentId?: string | null | undefined
+}) {
+	const article = row.articleParentId ?? null
+	const document = row.documentParentId ?? null
+	// Historical rows may predate explicit parent references.
+	if (article === null && document === null) return true
+	if (article !== null && document !== null) return false
+	return (article ?? document) === row.articleId
+}
 export const storedArticleNoteRevisionSchema = articleNoteRevisionSchema
 	.extend({
 		parents: causalParentsSchema.pipe(revisionIdsSchema),
 		articleParentId: lowercaseUuidSchema.nullable().optional(),
 		documentParentId: lowercaseUuidSchema.nullable().optional()
 	})
-	.refine((row) => {
-		const article = row.articleParentId ?? null,
-			document = row.documentParentId ?? null
-		// Historical rows retain their original logical parent through the additive migration.
-		if (article === null && document === null) return true
-		if (article !== null && document !== null) return false
-		return (article ?? document) === row.articleId
-	})
+	.refine(hasPreservedLegacyParent)
 	.transform(({ articleParentId: _article, documentParentId: _document, ...revision }) => revision)
 export const storedArticleNoteHistorySchema = z.array(storedArticleNoteRevisionSchema)
 
-// The parent tuple is the logical note identity. Two offline clients do not
-// independently allocate editable note identities for the same article.
+// Historical drafts used the parent tuple as identity. Recovery assigns an
+// explicit independent note ID without changing the original authored payload.
 export const articleNoteDraftSchema = z.object({
 	libraryId: lowercaseUuidSchema,
 	articleId: lowercaseUuidSchema,

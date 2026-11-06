@@ -1,3 +1,4 @@
+import type { z } from 'zod'
 import { ReadTier } from 'jazz-tools'
 import type { Db, WriteHandle } from 'jazz-tools'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
@@ -22,7 +23,6 @@ import {
 	canCreateNote,
 	canWriteNoteRevision,
 	canImportLegacy,
-	hasUnusedNoteId,
 	hasUnusedRevisionId,
 	matchesNoteOperation
 } from '../../notes/eligibility.js'
@@ -34,6 +34,19 @@ type Resource = TransactionResource & {
 	noteDocument?: unknown
 	note?: Note | null
 	imported?: NoteRevision[]
+}
+function noteObserver<T>(schema: z.ZodType<T>, next: (rows: T) => void, error: () => void) {
+	return {
+		onUpdate: (rows: unknown) => {
+			const parsed = schema.safeParse(rows)
+			if (!parsed.success) {
+				error()
+				return
+			}
+			next(parsed.data)
+		},
+		onError: error
+	}
 }
 /** Entity creation, source writes and legacy import each have one DLF transaction
  * owner. IDs are supplied by the caller's operation owner and never derived from
@@ -80,6 +93,19 @@ export function createNoteRecords(
 			throw new Error('Invalid note scope')
 		return request
 	}
+	function validateRevision(input: unknown, operationId: string) {
+		const revision = noteRevisionSchema.parse(input)
+		if (!matchesNoteOperation(revision, libraryId, operationId))
+			throw new Error('Invalid note scope')
+		return revision
+	}
+	function insertRevision(resource: Resource, { id, ...revision }: NoteRevision) {
+		resource.tx.insert(
+			app.noteRevisions,
+			{ ...revision, parents: JSON.stringify(revision.parents) },
+			{ id }
+		)
+	}
 	function insertNote(resource: Resource, request: NoteCreate) {
 		return stageNoteParent({
 			note: resource.note,
@@ -103,18 +129,17 @@ export function createNoteRecords(
 	const create = createWorkspaceCreationTransaction<
 		NoteCreate,
 		Resource,
-		NoteAssociation & { unused: boolean },
+		NoteAssociation,
 		SyncReceipt,
 		WriteHandle
 	>({
 		...lifecycle,
 		readLocal: async (resource, attempt) => {
 			const request = validateCreate(attempt.draft, attempt.operationId)
-			const rows = await readAssociation(resource, request.articleId)
-			return { ...rows, unused: hasUnusedNoteId(rows.notes, request.id) }
+			return readAssociation(resource, request.articleId)
 		},
-		assess: (rows) =>
-			canCreateNote(rows)
+		assess: (rows, attempt) =>
+			canCreateNote(rows, attempt.draft.id)
 				? { outcome: 'eligible' }
 				: { outcome: 'blocked', reason: 'Note parent or identity unavailable' },
 		stage: (resource, attempt) =>
@@ -129,9 +154,7 @@ export function createNoteRecords(
 	>({
 		...lifecycle,
 		readLocal: async (resource, attempt) => {
-			const revision = noteRevisionSchema.parse(attempt.draft)
-			if (!matchesNoteOperation(revision, libraryId, attempt.operationId))
-				throw new Error('Invalid note scope')
+			const revision = validateRevision(attempt.draft, attempt.operationId)
 			const row = await resource.tx.one(app.notes.where({ id: revision.noteId, libraryId }), {
 				tier: ReadTier.LocalFirst
 			})
@@ -146,12 +169,7 @@ export function createNoteRecords(
 				: { outcome: 'blocked', reason: 'Note or revision unavailable' }
 		},
 		stage: (resource, attempt) => {
-			const { id, ...revision } = noteRevisionSchema.parse(attempt.draft)
-			resource.tx.insert(
-				app.noteRevisions,
-				{ ...revision, parents: JSON.stringify(revision.parents) },
-				{ id }
-			)
+			insertRevision(resource, validateRevision(attempt.draft, attempt.operationId))
 			return transactionReceipt(resource)
 		}
 	})
@@ -194,12 +212,7 @@ export function createNoteRecords(
 		stage: async (resource, attempt) => {
 			await insertNote(resource, validateCreate(attempt.draft, attempt.operationId))
 			if (!resource.imported) throw new Error('Missing checked note import')
-			for (const { id, ...revision } of resource.imported)
-				resource.tx.insert(
-					app.noteRevisions,
-					{ ...revision, parents: JSON.stringify(revision.parents) },
-					{ id }
-				)
+			for (const revision of resource.imported) insertRevision(resource, revision)
 			return transactionReceipt(resource)
 		}
 	})
@@ -265,34 +278,12 @@ export function createNoteRecords(
 		subscribe: (next: (rows: NoteRevision[]) => void, error: () => void) =>
 			db.subscribe(
 				app.noteRevisions.where({ libraryId }),
-				{
-					onUpdate: (rows) => {
-						const parsed = storedNoteHistorySchema.safeParse(rows)
-						if (!parsed.success) {
-							error()
-							return
-						}
-						next(parsed.data)
-					},
-					onError: error
-				},
+				noteObserver(storedNoteHistorySchema, next, error),
 				{ tier: ReadTier.LocalFirst }
 			),
 		subscribeNotes: (next: (rows: Note[]) => void, error: () => void) =>
-			db.subscribe(
-				app.notes.where({ libraryId }),
-				{
-					onUpdate: (rows) => {
-						const parsed = noteHistorySchema.safeParse(rows)
-						if (!parsed.success) {
-							error()
-							return
-						}
-						next(parsed.data)
-					},
-					onError: error
-				},
-				{ tier: ReadTier.LocalFirst }
-			)
+			db.subscribe(app.notes.where({ libraryId }), noteObserver(noteHistorySchema, next, error), {
+				tier: ReadTier.LocalFirst
+			})
 	}
 }

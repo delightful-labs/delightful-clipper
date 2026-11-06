@@ -44,8 +44,8 @@ export function hasKnownRevisionParents(revision: NoteRevision, knownIds: Readon
 function revisionIdsForNote(history: readonly NoteRevision[], noteId: string) {
 	return history.filter((revision) => revision.noteId === noteId).map((revision) => revision.id)
 }
-export function canCreateNote(rows: NoteAssociation & { unused: boolean }) {
-	return hasNoteParent(rows) && !hasNoteForArticle(rows) && rows.unused
+export function canCreateNote(rows: NoteAssociation, noteId: string) {
+	return hasNoteParent(rows) && !hasNoteForArticle(rows) && hasUnusedNoteId(rows.notes, noteId)
 }
 export function canWriteNoteRevision(rows: NoteRevisionRows, revision: NoteRevision) {
 	if (!rows.note) return false

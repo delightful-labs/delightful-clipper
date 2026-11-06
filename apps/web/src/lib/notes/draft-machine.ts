@@ -1,7 +1,12 @@
 import { and, assign, fromPromise, setup, stateIn } from 'xstate'
 import type { NoteDraftRecord } from './schema.js'
 import { noteDraftRecordSchema } from './schema.js'
-import { canAdmitDraftEdit, replaceWriterDraft, retainFailedDraft } from './draft-state.js'
+import {
+	canAdmitDraftEdit,
+	replaceWriterDraft,
+	retainFailedDraft,
+	requireIssuedDraft
+} from './draft-state.js'
 import type { NoteDraftStore } from './drafts.js'
 
 type Input = { store: NoteDraftStore; libraryId: string; isCurrent: () => boolean }
@@ -110,10 +115,10 @@ export const noteDraftMachine = setup<
 							entry: 'issue',
 							invoke: {
 								src: 'persist',
-								input: ({ context }) => {
-									if (!context.issued) throw new Error('Missing issued draft')
-									return { store: context.store, record: context.issued }
-								},
+								input: ({ context }) => ({
+									store: context.store,
+									record: requireIssuedDraft(context)
+								}),
 								onDone: {
 									target: 'routing',
 									actions: {
