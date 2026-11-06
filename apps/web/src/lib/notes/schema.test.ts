@@ -4,7 +4,8 @@ import {
 	articleNoteDraftSchema,
 	articleNoteRevisionSchema,
 	noteTextSchema,
-	projectArticleNote
+	projectArticleNote,
+	storedArticleNoteRevisionSchema
 } from './schema.js'
 const target = { libraryId: crypto.randomUUID(), articleId: crypto.randomUUID() }
 function revision(text: string, parents: string[] = []) {
@@ -16,6 +17,40 @@ function revision(text: string, parents: string[] = []) {
 		editedAt: '2026-11-06T12:00:00.000Z'
 	})
 }
+
+it('validates declared native parent references while retaining historical rows', () => {
+	const original = revision('retained'),
+		row = { ...original, parents: '[]' }
+	expect(storedArticleNoteRevisionSchema.parse(row)).toEqual(original)
+	expect(
+		storedArticleNoteRevisionSchema.parse({
+			...row,
+			articleParentId: target.articleId,
+			documentParentId: null
+		})
+	).toEqual(original)
+	expect(
+		storedArticleNoteRevisionSchema.parse({
+			...row,
+			articleParentId: null,
+			documentParentId: target.articleId
+		})
+	).toEqual(original)
+	expect(
+		storedArticleNoteRevisionSchema.safeParse({
+			...row,
+			articleParentId: target.articleId,
+			documentParentId: target.articleId
+		}).success
+	).toBe(false)
+	expect(
+		storedArticleNoteRevisionSchema.safeParse({
+			...row,
+			articleParentId: crypto.randomUUID(),
+			documentParentId: null
+		}).success
+	).toBe(false)
+})
 
 it('preserves literal Unicode, whitespace, links and empty text with a UTF-8 byte bound', () => {
 	for (const text of ['', '  \n', '<b>literal</b> https://example.com 😀 e\u0301'])

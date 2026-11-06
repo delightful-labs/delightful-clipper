@@ -13,6 +13,7 @@ import {
 } from '../../notes/schema.js'
 import type { ArticleNoteRevision } from '../../notes/schema.js'
 import { articleTargets } from '../../capture/causal.js'
+import { stageNoteParent } from '../../machines/storage/note-parent.js'
 
 type NoteAdmission = {
 	library: unknown
@@ -31,9 +32,10 @@ export function createNoteRecords(
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
+	type Resource = TransactionResource & { noteDocument?: unknown }
 	const stage = createWorkspaceCreationTransaction<
 		ArticleNoteRevision,
-		TransactionResource,
+		Resource,
 		NoteAdmission,
 		SyncReceipt,
 		WriteHandle
@@ -53,6 +55,8 @@ export function createNoteRecords(
 			const document = await tx.one(app.documents.where({ id: revision.articleId, libraryId }), {
 				tier: ReadTier.LocalFirst
 			})
+			resource.article = article
+			resource.noteDocument = document
 			const aliases = await tx.all(
 				app.articles.where({ libraryId, contentId: article?.contentId ?? revision.articleId }),
 				{ tier: ReadTier.LocalFirst }
@@ -84,15 +88,32 @@ export function createNoteRecords(
 				: { outcome: 'blocked', reason: 'Note parent or operation unavailable' },
 		stage: (resource, attempt) => {
 			const { id, ...revision } = articleNoteRevisionSchema.parse(attempt.draft)
-			resource.tx.insert(
-				app.articleNoteRevisions,
-				{
-					...revision,
-					parents: JSON.stringify(revision.parents)
-				},
-				{ id }
-			)
-			return transactionReceipt(resource)
+			const values = { ...revision, parents: JSON.stringify(revision.parents) }
+			return stageNoteParent({
+				article: resource.article,
+				document: resource.noteDocument,
+				insertArticle: () =>
+					resource.tx.insert(
+						app.articleNoteRevisions,
+						{
+							...values,
+							articleParentId: revision.articleId,
+							documentParentId: null
+						},
+						{ id }
+					),
+				insertDocument: () =>
+					resource.tx.insert(
+						app.articleNoteRevisions,
+						{
+							...values,
+							articleParentId: null,
+							documentParentId: revision.articleId
+						},
+						{ id }
+					),
+				receipt: () => transactionReceipt(resource)
+			})
 		}
 	})
 	return {

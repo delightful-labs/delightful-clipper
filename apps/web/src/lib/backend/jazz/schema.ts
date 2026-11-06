@@ -5,11 +5,17 @@ export const app = s.defineApp({
 		{
 			libraryId: s.uuid(),
 			articleId: s.uuid(),
+			articleParentId: s.uuid().optional(),
+			documentParentId: s.uuid().optional(),
 			text: s.string(),
 			parents: s.string(),
 			editedAt: s.string()
 		},
-		{ library: s.rel('libraries', 'libraryId') }
+		{
+			library: s.rel('libraries', 'libraryId'),
+			articleParent: s.rel('articles', 'articleParentId'),
+			documentParent: s.rel('documents', 'documentParentId')
+		}
 	),
 	articleImages: s.table(
 		{

@@ -93,6 +93,8 @@ it('preserves concurrent versions, empty edits and explicit reconciliation in pr
 			.insert(app.articleNoteRevisions, {
 				libraryId: b.libraryId,
 				articleId: a.articleId,
+				articleParentId: a.articleId,
+				documentParentId: null,
 				text: 'foreign',
 				parents: '[]',
 				editedAt: new Date().toISOString()
@@ -104,6 +106,8 @@ it('preserves concurrent versions, empty edits and explicit reconciliation in pr
 			.insert(app.articleNoteRevisions, {
 				libraryId: a.libraryId,
 				articleId: a.articleId,
+				articleParentId: a.articleId,
+				documentParentId: null,
 				text: 'foreign owner',
 				parents: '[]',
 				editedAt: new Date().toISOString()
@@ -178,6 +182,8 @@ it('fails the whole subscription batch on invalid stored note text or parents', 
 		.insert(app.articleNoteRevisions, {
 			libraryId: a.libraryId,
 			articleId: a.articleId,
+			articleParentId: a.articleId,
+			documentParentId: null,
 			text: 'private',
 			parents: 'invalid',
 			editedAt: new Date().toISOString()
@@ -186,4 +192,27 @@ it('fails the whole subscription batch on invalid stored note text or parents', 
 	await expect.poll(() => error.mock.calls.length).toBeGreaterThan(0)
 	expect(next.mock.calls.length).toBe(count)
 	stop()
+})
+
+it('rejects native note inserts without exactly one same-library parent reference', async () => {
+	const a = await owner('notes-parent-references')
+	for (const refs of [
+		{ articleParentId: null, documentParentId: null },
+		{ articleParentId: a.articleId, documentParentId: a.articleId },
+		{ articleParentId: crypto.randomUUID(), documentParentId: null },
+		{ articleParentId: null, documentParentId: a.articleId }
+	]) {
+		await expect(
+			a.db
+				.insert(app.articleNoteRevisions, {
+					libraryId: a.libraryId,
+					articleId: a.articleId,
+					text: 'invalid reference',
+					parents: '[]',
+					editedAt: new Date().toISOString(),
+					...refs
+				})
+				.wait({ tier: 'global' })
+		).rejects.toThrow(/denied|rejected/i)
+	}
 })

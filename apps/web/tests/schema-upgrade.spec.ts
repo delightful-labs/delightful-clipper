@@ -1,4 +1,4 @@
-import noteMigration from '../src/lib/backend/jazz/migrations/20261106T132300-article-notes-dc1365b4b2ec-d7f861eae955.js'
+import noteMigration from '../src/lib/backend/jazz/migrations/20261106T144240-article-notes-with-parent-references-dc1365b4b2ec-b7805d9b30d2.js'
 import { app as preNotesApp } from '../src/lib/backend/jazz/prenotes-schema.test-support.js'
 import { app as preImageApp } from '../src/lib/backend/jazz/preimages-schema.test-support.js'
 import imageMigration from '../src/lib/backend/jazz/migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'

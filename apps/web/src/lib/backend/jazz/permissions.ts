@@ -20,8 +20,14 @@ export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 		allOf([
 			owns(row.libraryId),
 			anyOf([
-				policy.articles.exists.where({ id: row.articleId, libraryId: row.libraryId }),
-				policy.documents.exists.where({ id: row.articleId, libraryId: row.libraryId })
+				allOf([
+					{ documentParentId: null },
+					policy.articles.exists.where({ id: row.articleParentId, libraryId: row.libraryId })
+				]),
+				allOf([
+					{ articleParentId: null },
+					policy.documents.exists.where({ id: row.documentParentId, libraryId: row.libraryId })
+				])
 			])
 		])
 	)
