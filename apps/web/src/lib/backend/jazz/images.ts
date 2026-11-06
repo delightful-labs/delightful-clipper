@@ -2,7 +2,12 @@ import { ReadTier } from 'jazz-tools'
 import type { Db, WriteHandle } from 'jazz-tools'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import type { ImageCapability, ImageSpawner } from '../../contracts/images.js'
-import type { ImageWrite, ArticleImage } from '../../images/schema.js'
+import type {
+	ImageWrite,
+	ArticleImage,
+	ReadyImageWrite,
+	FailedImageWrite
+} from '../../images/schema.js'
 import { imageRowSchema, canWriteImage, processedImageSchema } from '../../images/schema.js'
 import { z } from 'zod'
 import type { SyncReceipt } from '../../contracts/storage.js'
@@ -36,7 +41,7 @@ export function createImageRecords(
 			? { outcome: 'eligible' as const }
 			: { outcome: 'blocked' as const, reason: 'Image publication unavailable' }
 	const ready = createWorkspaceCreationTransaction<
-		ImageWrite,
+		ReadyImageWrite,
 		Resource,
 		Rows,
 		SyncReceipt,
@@ -44,7 +49,6 @@ export function createImageRecords(
 	>({
 		...transactionLifecycle(db, isCurrent),
 		readLocal: async (resource, attempt) => {
-			if (attempt.draft.kind !== 'ready') throw new Error('Invalid image publication')
 			const result = processedImageSchema.parse(attempt.draft.result)
 			const digest = new Uint8Array(
 				await crypto.subtle.digest('SHA-256', new Uint8Array(result.bytes))
@@ -54,7 +58,6 @@ export function createImageRecords(
 		},
 		assess,
 		stage: (resource, attempt) => {
-			if (attempt.draft.kind !== 'ready') throw new Error('Invalid image publication')
 			const { image, result } = attempt.draft
 			resource.tx.insert(
 				app.storageOperations,
@@ -74,8 +77,8 @@ export function createImageRecords(
 			return transactionReceipt(resource)
 		}
 	})
-	const failure = createWorkspaceCreationTransaction<
-		ImageWrite,
+	const recordImageFailure = createWorkspaceCreationTransaction<
+		FailedImageWrite,
 		TransactionResource,
 		Rows,
 		SyncReceipt,
@@ -85,7 +88,6 @@ export function createImageRecords(
 		readLocal,
 		assess,
 		stage: (resource, { draft }) => {
-			if (draft.kind !== 'failed') throw new Error('Invalid image failure')
 			resource.tx.update(app.articleImages, draft.image.id, {
 				status: 'failed',
 				assetId: null,
@@ -111,7 +113,7 @@ export function createImageRecords(
 			},
 			{ tier: ReadTier.LocalFirst }
 		)
-	const spawnReady = (spawn: ImageSpawner, draft: ImageWrite) =>
+	const spawnReady = (spawn: ImageSpawner, draft: ReadyImageWrite) =>
 		spawn(ready, {
 			input: {
 				attempt: {
@@ -122,9 +124,9 @@ export function createImageRecords(
 				}
 			}
 		})
-	const spawnFailure = (spawn: ImageSpawner, draft: ImageWrite) => {
+	const spawnFailure = (spawn: ImageSpawner, draft: FailedImageWrite) => {
 		const operationId = crypto.randomUUID()
-		return spawn(failure, {
+		return spawn(recordImageFailure, {
 			input: {
 				attempt: { operationId, workspaceId: operationId, membershipId: operationId, draft }
 			}
@@ -132,7 +134,7 @@ export function createImageRecords(
 	}
 	return {
 		ready,
-		failure,
+		recordImageFailure,
 		capability: {
 			isCurrent,
 			hasIntent: async (id: string, _signal: AbortSignal) =>

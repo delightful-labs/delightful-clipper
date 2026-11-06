@@ -43,6 +43,8 @@ export type ImageWrite = { image: ArticleImage } & (
 	| { kind: 'ready'; result: ProcessedImage }
 	| { kind: 'failed'; retryable: boolean }
 )
+export type ReadyImageWrite = Extract<ImageWrite, { kind: 'ready' }>
+export type FailedImageWrite = Extract<ImageWrite, { kind: 'failed' }>
 /** Source URLs are inert encoded metadata, never a browser image source. */
 export function imageSources(html: string) {
 	const urls = new Set<string>()

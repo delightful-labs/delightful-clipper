@@ -1,20 +1,25 @@
 import type { ActorLogic, ActorRef, Snapshot } from 'xstate'
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { SyncReceipt, StoredAsset } from './storage.js'
-import type { ArticleImage, ImageWrite } from '../images/schema.js'
+import type {
+	ArticleImage,
+	ImageWrite,
+	ReadyImageWrite,
+	FailedImageWrite
+} from '../images/schema.js'
 export type ImageStageResult = WorkspaceCreationResult<ImageWrite, SyncReceipt>
 export type ImageStageRef = ActorRef<Snapshot<ImageStageResult>, { type: 'SHUTDOWN' | 'CANCEL' }>
-export type ImageSpawner = <S extends Snapshot<ImageStageResult>>(
+export type ImageSpawner = <D extends ImageWrite, S extends Snapshot<ImageStageResult>>(
 	logic: ActorLogic<
 		S,
 		{ type: 'SHUTDOWN' | 'CANCEL' },
 		{
-			attempt: { operationId: string; workspaceId: string; membershipId: string; draft: ImageWrite }
+			attempt: { operationId: string; workspaceId: string; membershipId: string; draft: D }
 		}
 	>,
 	options: {
 		input: {
-			attempt: { operationId: string; workspaceId: string; membershipId: string; draft: ImageWrite }
+			attempt: { operationId: string; workspaceId: string; membershipId: string; draft: D }
 		}
 	}
 ) => ActorRef<S, { type: 'SHUTDOWN' | 'CANCEL' }>
@@ -34,6 +39,6 @@ export type ImageCapability = {
 		id: string,
 		signal: AbortSignal
 	) => Promise<{ bytes: Uint8Array; mediaType: string }>
-	spawnReady: (spawn: ImageSpawner, draft: ImageWrite) => ImageStageRef
-	spawnFailure: (spawn: ImageSpawner, draft: ImageWrite) => ImageStageRef
+	spawnReady: (spawn: ImageSpawner, draft: ReadyImageWrite) => ImageStageRef
+	spawnFailure: (spawn: ImageSpawner, draft: FailedImageWrite) => ImageStageRef
 }

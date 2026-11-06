@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createActor, toPromise, waitFor } from 'xstate'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import { imageQueueMachine } from './queue-machine.js'
-import type { ImageCapability } from '../contracts/images.js'
+import type { ImageCapability, ImageSpawner } from '../contracts/images.js'
 import type { ImageWrite, ArticleImage } from './schema.js'
 import type { SyncReceipt } from '../contracts/storage.js'
 const image: ArticleImage = {
@@ -57,7 +57,7 @@ function fixture(
 		persistLocal: local,
 		rollback: () => true
 	})
-	const spawnWrite: ImageCapability['spawnReady'] = (spawn, draft) =>
+	const spawnWrite = (spawn: ImageSpawner, draft: ImageWrite) =>
 		spawn(stage, {
 			input: {
 				attempt: {
