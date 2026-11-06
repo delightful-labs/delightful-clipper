@@ -1,3 +1,4 @@
+import { readerExperienceMachine, selectReaderExperience } from '../reader/experience.js'
 import type { FakeDataOutcome } from '../../samples/machine.js'
 import {
 	assign,
@@ -109,6 +110,7 @@ function organizationStatuses(context: Context, articleId: string) {
 		.map(([operationId]) => context.sync[operationId])
 }
 const actors = {
+	readerExperience: readerExperienceMachine,
 	search: createSearchMachine(),
 	collection: fromCallback<LibraryEvent, LibraryCapability | undefined>(({ input, sendBack }) => {
 		try {
@@ -155,7 +157,7 @@ export const libraryMachine = setup<
 	  }
 	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown },
 	typeof actors,
-	{ search: 'search' },
+	{ search: 'search'; readerExperience: 'readerExperience' },
 	{
 		close: undefined
 		watch: undefined
@@ -211,6 +213,10 @@ export const libraryMachine = setup<
 		drained: and([
 			'closing',
 			stateIn({ running: { fakeDataLifecycle: 'closed' } }),
+			or([
+				stateIn({ running: { readerLifecycle: 'closed' } }),
+				stateIn({ running: { readerLifecycle: 'failed' } })
+			]),
 			not('writing'),
 			not('organizing'),
 			or([
@@ -316,6 +322,10 @@ export const libraryMachine = setup<
 				target: 'closed'
 			},
 			on: {
+				READER_EVENT: {
+					guard: and(['canUseLibrary', stateIn({ running: { readerLifecycle: 'active' } })]),
+					actions: sendTo('readerExperience', ({ event }) => event.event)
+				},
 				QUERY: {
 					guard: and([
 						'canUseLibrary',
@@ -436,6 +446,29 @@ export const libraryMachine = setup<
 				}
 			},
 			states: {
+				readerLifecycle: {
+					initial: 'active',
+					states: {
+						active: {
+							invoke: {
+								id: 'readerExperience',
+								src: 'readerExperience',
+								input: ({ context }) => ({ capability: context.capability?.reader }),
+								onSnapshot: {},
+								onDone: 'closed',
+								onError: 'failed'
+							},
+							on: {
+								CLOSE_READER: { actions: sendTo('readerExperience', { type: 'SHOW_CONTROLS' }) },
+								SHUTDOWN: { actions: sendTo('readerExperience', { type: 'SHUTDOWN' }) }
+							}
+						},
+						closed: {},
+						failed: {
+							meta: { channel: 'reader', name: t('reader.data_unavailable'), variant: 'error' }
+						}
+					}
+				},
 				fakeDataLifecycle: {
 					initial: 'checking',
 					states: {
@@ -961,8 +994,15 @@ export function selectLibraryView(
 		? c.rows.find((row) => row.id === c.captureId || row.contentId === c.captureId)
 		: undefined
 
+	const readerExperience = selectReaderExperience(
+		visible ? snapshot?.children.readerExperience?.getSnapshot() : undefined
+	)
 	return {
-		rows,
+		readerExperience,
+		rows: rows.map((row) => ({
+			...row,
+			readingProgress: row.contentId ? readerExperience.progress[row.contentId] : undefined
+		})),
 		search,
 		restoreCaptureId: captured?.trashed ? captured.id : undefined,
 		tags: visible ? (c.rows[0]?.tagVocabulary ?? []) : [],

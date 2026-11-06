@@ -1,3 +1,5 @@
+import readerMigration from './migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
+import { app as preReaderApp } from './prereader-schema.test-support.js'
 import discoveryMigration from './migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
 import { app as preDiscoveryApp } from './prediscovery-schema.test-support.js'
 import { it, expect } from 'vitest'
@@ -24,10 +26,12 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		)
 	)
 	const legacyPermissions = Object.fromEntries(
-		Object.entries(permissions).filter(
-			([table]) =>
-				table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
-		)
+		Object.entries(permissions)
+			.filter(([table]) => table !== 'readerOperations')
+			.filter(
+				([table]) =>
+					table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
+			)
 	)
 	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-upgrade-'))
 	const serverOptions = {
@@ -122,21 +126,31 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			...upgrade,
 			schema: preOrganizationApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(
-					([table]) => table !== 'organizationOperations' && table !== 'tagOperations'
-				)
+				Object.entries(permissions)
+					.filter(([table]) => table !== 'readerOperations')
+					.filter(([table]) => table !== 'organizationOperations' && table !== 'tagOperations')
 			)
 		})
 		await deploy({
 			...upgrade,
 			schema: preDiscoveryApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'tagOperations')
+				Object.entries(permissions)
+					.filter(([table]) => table !== 'readerOperations')
+					.filter(([table]) => table !== 'tagOperations')
 			),
 			migration: organizationMigration
 		})
-		await deploy({ ...upgrade, migration: discoveryMigration })
-		await deploy({ ...upgrade, migration: discoveryMigration })
+		await deploy({
+			...upgrade,
+			schema: preReaderApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'readerOperations')
+			),
+			migration: discoveryMigration
+		})
+		await deploy({ ...upgrade, migration: readerMigration })
+		await deploy({ ...upgrade, migration: readerMigration })
 		context = await createJazzSession({
 			...config,
 			serverUrl: server.url,
@@ -195,7 +209,9 @@ it('adds tags to a populated organization-era replica without resetting identity
 	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-discovery-upgrade-'))
 	const server = await startLocalJazzServer({ dataDir: join(dataDir, 'authority') })
 	const oldPermissions = Object.fromEntries(
-		Object.entries(permissions).filter(([table]) => table !== 'tagOperations')
+		Object.entries(permissions)
+			.filter(([table]) => table !== 'readerOperations')
+			.filter(([table]) => table !== 'tagOperations')
 	)
 	const config = {
 		appId: server.appId,
@@ -266,9 +282,45 @@ it('adds tags to a populated organization-era replica without resetting identity
 			appId: server.appId,
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
+			schema: preReaderApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'readerOperations')
+			),
+			migration: discoveryMigration
+		})
+		context = await createJazzSession({
+			...config,
+			app: preReaderApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'readerOperations')
+			),
+			store,
+			initial: 'local-first'
+		})
+		await context
+			.getSnapshot()
+			.client!.db.one(preReaderApp.libraries.where({ id: owner }), { tier: 'remote' })
+		await context
+			.getSnapshot()
+			.client!.db.insert(preReaderApp.tagOperations, {
+				libraryId: owner,
+				articleId,
+				documentId: null,
+				key: 'cf-1.1.2:existing',
+				name: 'Existing',
+				assigned: true,
+				parents: '[]'
+			})
+			.wait({ tier: 'global' })
+		await context.close()
+		context = undefined
+		await deploy({
+			appId: server.appId,
+			serverUrl: server.url,
+			adminSecret: server.adminSecret,
 			schema: app,
 			permissions,
-			migration: discoveryMigration
+			migration: readerMigration
 		})
 		context = await createJazzSession({
 			...config,
@@ -317,7 +369,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 			status: 'later',
 			favorite: true,
 			trashed: false,
-			tags: [{ name: 'Migrated' }],
+			tags: [{ name: 'Existing' }, { name: 'Migrated' }],
 			originalSavedAt: '2026-01-01'
 		})
 	} finally {

@@ -1,0 +1,346 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { createActor, toPromise, waitFor } from 'xstate'
+import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
+import { readerExperienceMachine, selectReaderExperience } from '../machines/reader/experience.js'
+import type { ReaderChange, ReaderOperation, ReadingPosition } from './schema.js'
+import { readerOperationSchema } from './schema.js'
+import type { SyncReceipt } from '../contracts/storage.js'
+import type { ReadingViewport, ReaderCapability } from '../contracts/reader.js'
+const documentId = crypto.randomUUID(),
+	libraryId = crypto.randomUUID()
+const position = (offset = 10): ReadingPosition => ({
+	version: 1,
+	offset,
+	quote: 'read',
+	prefix: '',
+	suffix: '',
+	progress: offset / 100,
+	interactedAt: new Date().toISOString()
+})
+function fixture(local = async () => {}, global = async () => {}) {
+	let current = true
+	const writes: ReaderChange[] = [],
+		dispose = vi.fn()
+	const stage = createWorkspaceCreationTransaction<ReaderChange, object, null, SyncReceipt, object>(
+		{
+			open: () => ({}),
+			readLocal: async () => null,
+			assess: () => ({ outcome: 'eligible' }),
+			stage: (_resource, attempt) => {
+				writes.push(attempt.draft)
+				return { global }
+			},
+			commit: () => ({}),
+			persistLocal: local,
+			rollback: () => true
+		}
+	)
+	const capability: ReaderCapability = {
+		isCurrent: () => current,
+		subscribe: (next) => {
+			next([])
+			return dispose
+		},
+		spawnWrite: (spawn, draft, operationId) =>
+			spawn(stage, {
+				input: {
+					attempt: { operationId, workspaceId: operationId, membershipId: operationId, draft }
+				}
+			})
+	}
+	const actor = createActor(readerExperienceMachine, { input: { capability } }).start()
+	return { actor, writes, dispose, expire: () => (current = false) }
+}
+afterEach(() => {
+	vi.useRealTimers()
+	vi.unstubAllGlobals()
+})
+it('saves independent desired fields and rejects invalid commands while retaining native-authoritative projection', async () => {
+	const { actor, writes } = fixture()
+	actor.send({ type: 'CHANGE', change: { field: 'size', documentId: null, value: 24 } })
+	await waitFor(actor, (snapshot) => snapshot.matches({ active: { writer: 'idle' } }))
+	expect(writes).toEqual([{ field: 'size', documentId: null, value: 24 }])
+	actor.send({
+		type: 'ROWS',
+		rows: [
+			readerOperationSchema.parse({
+				id: crypto.randomUUID(),
+				libraryId,
+				documentId: null,
+				field: 'size',
+				value: '24',
+				parents: '[]'
+			})
+		]
+	})
+	expect(selectReaderExperience(actor.getSnapshot()).preferences.size).toBe(24)
+	actor.send({ type: 'CHANGE', change: { field: 'size', documentId: null, value: 99 } })
+	expect(writes).toHaveLength(1)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+it('coalesces unissued positions and flushes the latest accepted position on departure', async () => {
+	vi.useFakeTimers()
+	const { actor, writes } = fixture()
+	actor.send({ type: 'CHANGE', change: { field: 'position', documentId, value: position(10) } })
+	await vi.advanceTimersByTimeAsync(700)
+	actor.send({ type: 'CHANGE', change: { field: 'position', documentId, value: position(30) } })
+	await vi.advanceTimersByTimeAsync(700)
+	expect(writes).toEqual([])
+	actor.send({ type: 'DETACH' })
+	await vi.advanceTimersByTimeAsync(0)
+	expect(writes).toEqual(
+		[{ field: 'position', documentId, value: position(30) }].map((change) => ({
+			...change,
+			value: expect.objectContaining({ offset: 30 })
+		}))
+	)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+it('drains an issued native write, flushes accepted queued work and immediately disposes observations on shutdown', async () => {
+	const entered = Promise.withResolvers<void>(),
+		held = Promise.withResolvers<void>()
+	const { actor, writes, dispose } = fixture(async () => {
+		entered.resolve()
+		await held.promise
+	})
+	actor.send({ type: 'CHANGE', change: { field: 'theme', documentId: null, value: 'dark' } })
+	await entered.promise
+	actor.send({ type: 'CHANGE', change: { field: 'size', documentId: null, value: 26 } })
+	actor.send({ type: 'SHUTDOWN' })
+	expect(dispose).toHaveBeenCalledOnce()
+	expect(actor.getSnapshot().status).toBe('active')
+	held.resolve()
+	await toPromise(actor)
+	expect(writes.map((write) => write.field)).toEqual(['theme', 'size'])
+	expect(actor.getSnapshot().context.rows).toEqual([])
+	expect(actor.getSnapshot().context.capability).toBeUndefined()
+})
+it('does not replay an uncertain write or admit automatic position writes until the reader is reopened', async () => {
+	const { actor, writes } = fixture(async () => {
+		throw new Error('Unknown local settlement')
+	})
+	actor.send({ type: 'CHANGE', change: { field: 'theme', documentId: null, value: 'dark' } })
+	await waitFor(actor, (snapshot) => snapshot.matches({ active: { writer: 'uncertain' } }))
+	actor.send({ type: 'CHANGE', change: { field: 'theme', documentId: null, value: 'dark' } })
+	expect(writes).toHaveLength(1)
+	expect(selectReaderExperience(actor.getSnapshot()).enabled).toBe(false)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+it('discards unissued scoped work and hides old preferences when the native binding expires during drain', async () => {
+	const entered = Promise.withResolvers<void>(),
+		held = Promise.withResolvers<void>()
+	const { actor, writes, expire } = fixture(async () => {
+		entered.resolve()
+		await held.promise
+	})
+	actor.send({ type: 'CHANGE', change: { field: 'theme', documentId: null, value: 'dark' } })
+	await entered.promise
+	actor.send({ type: 'CHANGE', change: { field: 'size', documentId: null, value: 26 } })
+	expire()
+	expect(selectReaderExperience(actor.getSnapshot()).preferences.theme).toBe('system')
+	actor.send({ type: 'SHUTDOWN' })
+	held.resolve()
+	await toPromise(actor)
+	expect(writes).toHaveLength(1)
+})
+it('restores once, ignores late remote positions, preserves the current anchor on resize and rejects disposed viewport reports', async () => {
+	vi.useFakeTimers()
+	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+		setTimeout(() => callback(0), 1)
+	)
+	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+	const { actor, writes } = fixture()
+	const first = position(10),
+		remote = position(70)
+	const row = (value: ReadingPosition): ReaderOperation =>
+		readerOperationSchema.parse({
+			id: crypto.randomUUID(),
+			libraryId,
+			documentId,
+			field: 'position',
+			value: JSON.stringify(value),
+			parents: '[]'
+		})
+	actor.send({ type: 'ROWS', rows: [row(first)] })
+	let report!: Parameters<ReadingViewport['observe']>[0]
+	const dispose = vi.fn(),
+		restore = vi.fn()
+	actor.send({
+		type: 'ATTACH',
+		documentId,
+		viewport: {
+			measure: () => position(30),
+			restore,
+			observe: (next) => {
+				report = next
+				return dispose
+			}
+		}
+	})
+	await vi.advanceTimersByTimeAsync(3)
+	expect(restore).toHaveBeenCalledExactlyOnceWith(first)
+	report({ type: 'MEASURE', position: position(0) })
+	expect(writes).toEqual([])
+	actor.send({ type: 'ROWS', rows: [row(remote)] })
+	expect(restore).toHaveBeenCalledTimes(1)
+	report({ type: 'INTERACT' })
+	report({ type: 'MEASURE', position: position(30) })
+	report({ type: 'RESIZE' })
+	await vi.advanceTimersByTimeAsync(3)
+	expect(restore).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 30 }))
+	report({ type: 'INTERACT' })
+	actor.send({ type: 'DETACH' })
+	await vi.advanceTimersByTimeAsync(0)
+	expect(dispose).toHaveBeenCalledOnce()
+	const before = writes.length
+	report({ type: 'MEASURE', position: position(80) })
+	await vi.advanceTimersByTimeAsync(1500)
+	expect(writes.length).toBe(before)
+	expect(writes.at(-1)).toMatchObject({ value: { offset: 30 } })
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+it('does not flush a new automatic position on departure after an uncertain write', async () => {
+	vi.useFakeTimers()
+	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+		setTimeout(() => callback(0), 1)
+	)
+	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+	const { actor, writes } = fixture(async () => {
+		throw new Error('Unknown settlement')
+	})
+	let report!: Parameters<ReadingViewport['observe']>[0]
+	actor.send({
+		type: 'ATTACH',
+		documentId,
+		viewport: {
+			measure: () => position(60),
+			restore: () => {},
+			observe: (next) => {
+				report = next
+				return () => {}
+			}
+		}
+	})
+	await vi.advanceTimersByTimeAsync(3)
+	report({ type: 'INTERACT' })
+	report({ type: 'MEASURE', position: position(30) })
+	await vi.advanceTimersByTimeAsync(1000)
+	expect(selectReaderExperience(actor.getSnapshot()).enabled).toBe(false)
+	actor.send({ type: 'DETACH' })
+	await vi.advanceTimersByTimeAsync(1000)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+	expect(writes).toHaveLength(1)
+})
+it('models subscription failure without allowing writes and disposes the failed observation', async () => {
+	const { actor, dispose, writes } = fixture()
+	actor.send({ type: 'OBSERVATION_FAILED' })
+	actor.send({ type: 'CHANGE', change: { documentId: null, field: 'theme', value: 'dark' } })
+	expect(selectReaderExperience(actor.getSnapshot()).enabled).toBe(false)
+	expect(dispose).toHaveBeenCalledOnce()
+	expect(writes).toEqual([])
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+it('retains remote rejection after a later independent field succeeds', async () => {
+	const rejected = Promise.withResolvers<void>(),
+		accepted = Promise.withResolvers<void>()
+	let index = 0
+	const { actor } = fixture(
+		async () => {},
+		() => (++index === 1 ? rejected.promise : accepted.promise)
+	)
+	actor.send({ type: 'CHANGE', change: { documentId: null, field: 'theme', value: 'dark' } })
+	await waitFor(actor, (snapshot) => snapshot.matches({ active: { writer: 'idle' } }))
+	actor.send({ type: 'CHANGE', change: { documentId: null, field: 'size', value: 28 } })
+	await waitFor(actor, (snapshot) => snapshot.matches({ active: { writer: 'idle' } }))
+	rejected.reject(new Error('Remote rejection'))
+	accepted.resolve()
+	await waitFor(actor, (snapshot) => snapshot.matches({ active: { synchronization: 'failed' } }))
+	expect(selectReaderExperience(actor.getSnapshot()).message?.variant).toBe('error')
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+it('drains a pending fullscreen request and exit before shutdown completes', async () => {
+	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+		setTimeout(() => callback(0), 1)
+	)
+	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+	const entered = Promise.withResolvers<void>(),
+		exited = Promise.withResolvers<void>()
+	const { actor } = fixture()
+	const enter = vi.fn(() => entered.promise),
+		exit = vi.fn(() => exited.promise),
+		dispose = vi.fn()
+	actor.send({
+		type: 'ATTACH',
+		documentId,
+		viewport: {
+			measure: () => undefined,
+			restore: () => {},
+			observe: () => () => {},
+			fullscreen: { enter, exit, observe: () => dispose }
+		}
+	})
+	actor.send({ type: 'FOCUS' })
+	expect(enter).toHaveBeenCalledOnce()
+	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(true)
+	actor.send({ type: 'SHUTDOWN' })
+	expect(actor.getSnapshot().status).toBe('active')
+	entered.resolve()
+	await waitFor(actor, (snapshot) =>
+		snapshot.matches({ active: { focus: { focused: 'exiting' } } })
+	)
+	expect(exit).toHaveBeenCalledOnce()
+	exited.resolve()
+	await toPromise(actor)
+	expect(dispose).toHaveBeenCalledOnce()
+})
+it('uses distraction-free fallback when fullscreen is declined and responds to a native fullscreen exit', async () => {
+	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+		setTimeout(() => callback(0), 1)
+	)
+	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+	const { actor } = fixture()
+	let nativeExit!: () => void
+	const enter = vi.fn<() => Promise<void>>(async () => {
+		throw new Error('Browser declined fullscreen')
+	})
+	actor.send({
+		type: 'ATTACH',
+		documentId,
+		viewport: {
+			measure: () => undefined,
+			restore: () => {},
+			observe: () => () => {},
+			fullscreen: {
+				enter,
+				exit: async () => {},
+				observe: (next) => {
+					nativeExit = next
+					return () => {}
+				}
+			}
+		}
+	})
+	actor.send({ type: 'FOCUS' })
+	await waitFor(actor, (snapshot) =>
+		snapshot.matches({ active: { focus: { focused: 'fallback' } } })
+	)
+	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(true)
+	actor.send({ type: 'SHOW_CONTROLS' })
+	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(false)
+	enter.mockImplementation(async () => {})
+	actor.send({ type: 'FOCUS' })
+	await waitFor(actor, (snapshot) =>
+		snapshot.matches({ active: { focus: { focused: 'fullscreen' } } })
+	)
+	nativeExit()
+	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(false)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})

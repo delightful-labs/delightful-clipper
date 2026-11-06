@@ -2,10 +2,34 @@ import { afterAll, beforeAll, expect, it } from 'vitest'
 import { createServer } from 'node:http'
 import { gzipSync } from 'node:zlib'
 import { fetchHop } from './transport.js'
+import { extractInWorker } from './parser.js'
 let port = 0
 let observedHost: string | undefined
 const server = createServer((request, response) => {
 	observedHost = request.headers.host
+	if (request.url === '/negotiated') {
+		// Equal HTML/plain-text preference can select a publisher's Markdown response.
+		const accepted = (request.headers.accept ?? '').split(',').map((entry) => {
+			const [mediaType, ...parameters] = entry.trim().split(';')
+			const quality = parameters.find((parameter) => parameter.trim().startsWith('q='))
+			return { mediaType, quality: quality ? Number(quality.trim().slice(2)) : 1 }
+		})
+		const preference = (mediaType: string) =>
+			accepted.find((entry) => entry.mediaType === mediaType)?.quality ?? 0
+		const html = preference('text/html') > preference('text/plain')
+		response.writeHead(200, { 'content-type': html ? 'text/html; charset=utf-8' : 'text/markdown' })
+		response.end(
+			html
+				? '<html><head><title>Negotiated article</title></head><body><article><h1>Negotiated article</h1><p>Readable content selected by the requested representation.</p></article></body></html>'
+				: '# Negotiated article\nReadable Markdown content.'
+		)
+		return
+	}
+	if (request.url === '/plain') {
+		response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
+		response.end('Plain source content remains readable when HTML is unavailable.')
+		return
+	}
 	if (request.url === '/redirect') {
 		response.writeHead(302, { location: 'http://127.0.0.1/' })
 		response.end()
@@ -84,4 +108,24 @@ it('aborts a stalled response at the request deadline', async () => {
 			AbortSignal.timeout(50)
 		)
 	).rejects.toThrow()
+})
+it('prefers a publisher’s HTML representation over plain-text negotiation and parses it through the real worker', async () => {
+	const url = new URL(`http://unresolvable.example:${port}/negotiated`)
+	const signal = new AbortController().signal
+	const result = await fetchHop(url, destination, signal)
+	expect(result.mediaType).toBe('text/html; charset=utf-8')
+	const parsed = await extractInWorker(result.body, result.mediaType, url.href, signal)
+	expect(parsed.candidate.title).toBe('Negotiated article')
+	expect(parsed.candidate.text).toContain(
+		'Readable content selected by the requested representation.'
+	)
+})
+it('retains readable plain-text sources when a publisher does not offer HTML', async () => {
+	const url = new URL(`http://unresolvable.example:${port}/plain`)
+	const signal = new AbortController().signal
+	const result = await fetchHop(url, destination, signal)
+	const parsed = await extractInWorker(result.body, result.mediaType, url.href, signal)
+	expect(parsed.candidate.text).toBe(
+		'Plain source content remains readable when HTML is unavailable.'
+	)
 })

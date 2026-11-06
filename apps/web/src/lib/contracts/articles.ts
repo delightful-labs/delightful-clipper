@@ -38,6 +38,7 @@ export type ArticleSaveCapability<
 	content: ActorLogic<C, { type: 'SHUTDOWN' }, SaveRequest>
 }
 export type LibraryArticle = {
+	readingProgress?: number | undefined
 	trashed?: boolean
 	tags?: import('../capture/tags.js').Tag[]
 	tagVocabulary?: import('../capture/tags.js').Tag[]

@@ -25,8 +25,10 @@ void i18n.init({
 	interpolation: { escapeValue: false },
 	resources: { en: { translation: english } }
 })
-export const t = (key: MessageKey, options: { subject?: string; name?: string } = {}) =>
-	i18n.t(key, options)
+export const t = (
+	key: MessageKey,
+	options: { subject?: string; name?: string; percent?: string | undefined } = {}
+) => i18n.t(key, options)
 /** i18next selects plural forms by count; mass nouns resolve their unsuffixed catalog key. */
 export const noun = (subject: Noun, count = 1) => i18n.t(`nouns.${subject}`, { count })
 export const action = (verb: Action, subject: Noun, count = 1) =>

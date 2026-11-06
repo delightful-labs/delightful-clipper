@@ -3,6 +3,7 @@
 		"title": "Delightful Clipper"
 	},
 	"actions": {
+		"sync": "Sync",
 		"add_subject": "Add {{subject}}",
 		"get_subject": "Get {{subject}}",
 		"save_subject": "Save {{subject}}",
@@ -124,7 +125,24 @@
 	"reader": {
 		"heading": "Saved article",
 		"loading": "Opening saved article…",
-		"unavailable": "This article is not available on this device. Reconnect and open it again."
+		"unavailable": "This article is not available on this device. Reconnect and open it again.",
+		"controls": "Reading controls",
+		"theme": "Theme",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System",
+		"font_family": "Font family",
+		"serif": "Serif",
+		"sans_serif": "Sans serif",
+		"font_size": "Font size",
+		"line_spacing": "Line spacing",
+		"reading_width": "Reading width",
+		"contents": "Table of contents",
+		"focus_mode": "Distraction-free reading",
+		"show_controls": "Show controls",
+		"progress": "{{percent}}% read",
+		"data_unavailable": "Reading data is unavailable.",
+		"save_failed": "Reading changes could not be saved."
 	},
 	"connection": {
 		"online": "online",
@@ -140,6 +158,8 @@
 		"enter_subject": "Enter {{subject}}"
 	},
 	"status": {
+		"failed_subject": "{{subject}} failed.",
+		"save_unknown": "We couldn’t confirm whether your changes were saved. Check them before trying again.",
 		"selected_subject_name": "{{subject}} {{name}} selected.",
 		"removed_subject_name": "{{subject}} {{name}} removed."
 	},

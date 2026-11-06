@@ -4,6 +4,7 @@
 	import type { OrganizationRequest } from '../../capture/organization.js'
 	import { articleHref } from '../../reader/routes.js'
 	import { t } from '../../localization/index.js'
+	import ReadingProgress from '../reader/ReadingProgress.svelte'
 	import ArticleActions from './ArticleActions.svelte'
 	let {
 		row,
@@ -35,6 +36,7 @@
 		</div>
 		<ArticleActions {row} {enabled} {onorganize} {ontrash} {ontags} />
 	</div>
+	<ReadingProgress value={row.readingProgress} />
 	{#if !readable && row.failure}
 		<Button type="button" onclick={onretry}>{t('actions.retry')}</Button>
 	{/if}

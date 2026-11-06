@@ -30,7 +30,7 @@ export async function fetchHop(
 				signal,
 				maxHeaderSize: 16 * 1024,
 				headers: {
-					Accept: 'text/html,application/xhtml+xml,text/plain',
+					Accept: 'text/html,application/xhtml+xml;q=0.9,text/plain;q=0.5',
 					'Accept-Encoding': 'gzip, deflate, br',
 					'User-Agent': 'Delightful-Clipper/1'
 				},

@@ -47,7 +47,15 @@ export function savedContent(
 				} catch {
 					/* Invalid fragment. */
 				}
-				if (target) link.setAttribute('href', `#${target}`)
+				if (target) {
+					link.setAttribute('href', `#${target}`)
+					const original = decodeURIComponent(href.slice(1))
+					if (
+						/^(?:footnote|endnote|fn(?:\W|\d)|note(?:\W|\d))/i.test(original) ||
+						link.closest('sup')
+					)
+						link.setAttribute('data-reader-footnote', '')
+				}
 			} else {
 				try {
 					const url = new URL(href, sourceUrl)

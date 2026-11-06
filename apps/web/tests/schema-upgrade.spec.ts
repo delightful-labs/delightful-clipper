@@ -1,3 +1,5 @@
+import readerMigration from '../src/lib/backend/jazz/migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
+import { app as preReaderApp } from '../src/lib/backend/jazz/prereader-schema.test-support.js'
 import discoveryMigration from '../src/lib/backend/jazz/migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
 import { app as preDiscoveryApp } from '../src/lib/backend/jazz/prediscovery-schema.test-support.js'
 import { openAddLink } from './add-link.js'
@@ -16,10 +18,12 @@ import migration from '../src/lib/backend/jazz/migrations/20261103T231346-url-fi
 const appId = '2db98ae3-fcf1-41e8-b7d3-9818496bde60'
 const baseURL = 'http://127.0.0.1:5180'
 const legacyPermissions = Object.fromEntries(
-	Object.entries(permissions).filter(
-		([table]) =>
-			table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
-	)
+	Object.entries(permissions)
+		.filter(([table]) => table !== 'readerOperations')
+		.filter(
+			([table]) =>
+				table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
+		)
 )
 async function savedArticle(page: Page, url: string) {
 	return page.evaluate(async (url) => {
@@ -147,9 +151,11 @@ for (const browser of [chromium, firefox]) {
 						...upgrade,
 						schema: preOrganizationApp,
 						permissions: Object.fromEntries(
-							Object.entries(permissions).filter(
-								([table]) => table !== 'organizationOperations' && table !== 'tagOperations'
-							)
+							Object.entries(permissions)
+								.filter(([table]) => table !== 'readerOperations')
+								.filter(
+									([table]) => table !== 'organizationOperations' && table !== 'tagOperations'
+								)
 						),
 						migration
 					})
@@ -157,11 +163,21 @@ for (const browser of [chromium, firefox]) {
 						...upgrade,
 						schema: preDiscoveryApp,
 						permissions: Object.fromEntries(
-							Object.entries(permissions).filter(([table]) => table !== 'tagOperations')
+							Object.entries(permissions)
+								.filter(([table]) => table !== 'readerOperations')
+								.filter(([table]) => table !== 'tagOperations')
 						),
 						migration: organizationMigration
 					})
-					await deploy({ ...upgrade, migration: discoveryMigration })
+					await deploy({
+						...upgrade,
+						schema: preReaderApp,
+						permissions: Object.fromEntries(
+							Object.entries(permissions).filter(([table]) => table !== 'readerOperations')
+						),
+						migration: discoveryMigration
+					})
+					await deploy({ ...upgrade, migration: readerMigration })
 					if (!keepOpen)
 						context = await browser.launchPersistentContext(join(directory, 'profile'), {
 							headless: true

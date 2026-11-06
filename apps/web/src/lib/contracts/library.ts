@@ -21,6 +21,7 @@ export type FakeDataSpawner = <S extends Snapshot<import('../samples/machine.js'
 	options: { input: undefined }
 ) => FakeDataRef
 export type LibraryCapability = {
+	reader?: import('./reader.js').ReaderCapability
 	spawnFakeData?: (spawn: FakeDataSpawner) => FakeDataRef
 	search?: import('./search.js').SearchCapability
 	spawnOrganization?: (spawn: OrganizationSpawner, request: OrganizationRequest) => SaveRef
@@ -32,6 +33,10 @@ export type LibraryCapability = {
 	worker: QueueOpen
 }
 export type LibraryEvent =
+	| {
+			type: 'READER_EVENT'
+			event: import('../machines/reader/experience.js').ReaderExperienceEvent
+	  }
 	| { type: 'ORGANIZE'; request: OrganizationRequest }
 	| { type: 'FILTER'; view: LibraryView; favorites: boolean }
 	| { type: 'TAG_FILTER'; keys: string[] }

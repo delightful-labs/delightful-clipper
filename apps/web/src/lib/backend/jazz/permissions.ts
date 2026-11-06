@@ -15,6 +15,24 @@ export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 	policy.libraries.allowInsert.where(canonical)
 	policy.libraries.allowUpdate.whereOld(canonical).whereNew(canonical)
 	policy.libraries.allowDelete.never()
+	policy.readerOperations.allowRead.where((row) => owns(row.libraryId))
+	policy.readerOperations.allowInsert.where((row) =>
+		allOf([
+			owns(row.libraryId),
+			anyOf([
+				allOf([
+					{ documentId: null },
+					anyOf(['theme', 'font', 'size', 'spacing', 'width'].map((field) => ({ field })))
+				]),
+				allOf([
+					{ field: 'position' },
+					policy.documents.exists.where({ id: row.documentId, libraryId: row.libraryId })
+				])
+			])
+		])
+	)
+	policy.readerOperations.allowUpdate.never()
+	policy.readerOperations.allowDelete.never()
 	policy.tagOperations.allowRead.where((row) => owns(row.libraryId))
 	policy.tagOperations.allowInsert.where((row) =>
 		allOf([
