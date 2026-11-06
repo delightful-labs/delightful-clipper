@@ -1,6 +1,7 @@
 import { and, assign, fromPromise, setup, stateIn } from 'xstate'
 import type { NoteDraftRecord } from './schema.js'
-import { noteDraftRecordSchema, sameNote } from './schema.js'
+import { noteDraftRecordSchema } from './schema.js'
+import { canAdmitDraftEdit, replaceWriterDraft, retainFailedDraft } from './draft-state.js'
 import type { NoteDraftStore } from './drafts.js'
 
 type Input = { store: NoteDraftStore; libraryId: string; isCurrent: () => boolean }
@@ -10,12 +11,6 @@ type Context = Input & {
 	durable: NoteDraftRecord[]
 }
 type Event = { type: 'EDIT'; record: NoteDraftRecord } | { type: 'RETRY' | 'SHUTDOWN' }
-function sameWriter(a: NoteDraftRecord, b: NoteDraftRecord) {
-	return a.writerId === b.writerId && sameNote(a.draft, b.draft)
-}
-function replace(records: NoteDraftRecord[], next: NoteDraftRecord) {
-	return [...records.filter((record) => !sameWriter(record, next)), next]
-}
 /** Serial local-draft ownership is independent of source writes and connectivity.
  * Shutdown drains edits already admitted under the original account binding. */
 const actors = {
@@ -31,8 +26,20 @@ export const noteDraftMachine = setup<
 	Event,
 	typeof actors,
 	{},
-	{ enqueue: undefined },
-	{ queued: undefined; stopping: undefined; canEdit: undefined },
+	{
+		enqueue: undefined
+		issue: undefined
+		acknowledge: { record: NoteDraftRecord }
+		retainFailed: undefined
+	},
+	{
+		queued: undefined
+		stopping: undefined
+		accepting: undefined
+		currentBinding: undefined
+		admissibleEdit: undefined
+		canEdit: undefined
+	},
 	never,
 	string,
 	Input,
@@ -42,29 +49,31 @@ export const noteDraftMachine = setup<
 	guards: {
 		queued: ({ context }) => context.queue.length > 0,
 		stopping: stateIn({ running: { control: 'stopping' } }),
-		canEdit: and([
-			stateIn({ running: { control: 'accepting' } }),
-			({ context, event }) => {
-				if (!context.isCurrent() || event.type !== 'EDIT') return false
-				const parsed = noteDraftRecordSchema.safeParse(event.record)
-				if (!parsed.success || parsed.data.draft.libraryId !== context.libraryId) return false
-				const previous = [
-					...context.queue,
-					...context.durable,
-					...(context.issued ? [context.issued] : [])
-				]
-				return previous
-					.filter((record) => sameWriter(record, parsed.data))
-					.every((record) => record.draft.sequence < parsed.data.draft.sequence)
-			}
-		])
+		accepting: stateIn({ running: { control: 'accepting' } }),
+		currentBinding: ({ context }) => context.isCurrent(),
+		admissibleEdit: ({ context, event }) =>
+			event.type === 'EDIT' && canAdmitDraftEdit(event.record, context.libraryId, context),
+		canEdit: and(['accepting', 'currentBinding', 'admissibleEdit'])
 	},
 	actions: {
 		enqueue: assign({
 			queue: ({ context, event }) =>
 				event.type === 'EDIT'
-					? replace(context.queue, noteDraftRecordSchema.parse(event.record))
+					? replaceWriterDraft(context.queue, noteDraftRecordSchema.parse(event.record))
 					: context.queue
+		}),
+		issue: assign({
+			issued: ({ context }) => context.queue[0],
+			queue: ({ context }) => context.queue.slice(1)
+		}),
+		acknowledge: assign({
+			durable: ({ context }, params: { record: NoteDraftRecord }) =>
+				replaceWriterDraft(context.durable, params.record),
+			issued: undefined
+		}),
+		retainFailed: assign({
+			queue: ({ context }) => retainFailedDraft(context),
+			issued: undefined
 		})
 	}
 }).createMachine({
@@ -98,10 +107,7 @@ export const noteDraftMachine = setup<
 							]
 						},
 						writing: {
-							entry: assign({
-								issued: ({ context }) => context.queue[0],
-								queue: ({ context }) => context.queue.slice(1)
-							}),
+							entry: 'issue',
 							invoke: {
 								src: 'persist',
 								input: ({ context }) => {
@@ -110,22 +116,14 @@ export const noteDraftMachine = setup<
 								},
 								onDone: {
 									target: 'routing',
-									actions: assign({
-										durable: ({ context, event }) => replace(context.durable, event.output),
-										issued: undefined
-									})
+									actions: {
+										type: 'acknowledge',
+										params: ({ event }) => ({ record: event.output })
+									}
 								},
 								onError: {
 									target: 'failed',
-									actions: assign({
-										queue: ({ context }) => {
-											const issued = context.issued
-											if (!issued || context.queue.some((record) => sameWriter(record, issued)))
-												return context.queue
-											return [issued, ...context.queue]
-										},
-										issued: undefined
-									})
+									actions: 'retainFailed'
 								}
 							}
 						},
