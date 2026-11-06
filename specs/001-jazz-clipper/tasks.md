@@ -9,7 +9,7 @@
 - [x] Complete reader UI/browser qualification: native controls, typography/resize reanchoring, contents, footnotes, focus mode with native fullscreen/fallback, Archive, concurrent clients and full offline restart. Include short articles that cannot scroll.
 - [x] Qualify all 52 web cases, five final production offline cases, eleven rebuilt extension cases, two sample-data cases and 544 unit/native tests (one platform skip); pass formatting, lint, vendor and root/service-worker typing checks.
 - [x] Complete web/extension strict catalog typing and pnpm verify after adding the approved copy; all source checks, 544 unit/native tests (one platform skip) and production build pass.
-- [ ] Finish handoff and create an unmerged Conventional Commits PR targeting main.
+- [x] Finish handoff, push feat/reader-experience and create [PR #17](https://github.com/delightful-labs/delightful-clipper/pull/17), feat(reader): add synchronized reading preferences and progress, targeting main. Leave it unmerged.
 
 # Implementation tasks and acceptance status
 
