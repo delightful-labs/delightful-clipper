@@ -34,8 +34,8 @@ build. No credentials belong in this document or Git.
 4. Qualify real sign-in, local-account linking and clean-browser access before
    claiming this deployment works.
 
-The Better Auth server, JWKS endpoint and AT Protocol callbacks are not implemented
-yet. Exact endpoint URLs will be supplied after those are implemented.
+The Better Auth HTTP endpoints are implemented under `/api/auth`; the settings UI
+and Jazz linking integration remain pending. Real AT Protocol sign-in is unqualified.
 
 ## Postgres storage qualification — 2026-11-06
 
@@ -120,3 +120,51 @@ as configured; the auth HTTP endpoints and OAuth/linking workflow remain pending
 Research: [Neon connection pooling](https://neon.com/docs/connect/connection-pooling),
 [SQL Editor](https://neon.com/docs/get-started/query-with-neon-sql-editor) and
 [Better Auth Postgres support](https://better-auth.com/docs/adapters/postgresql).
+
+## Auth endpoints and applied Neon schema — 2026-11-06
+
+Neon project `delightful-clipper-atproto-proof` (`shiny-term-17248587`) is in
+`aws-us-east-1`. Its isolated test branch is `atproto-jwt-proof`
+(`br-round-king-bbjo3wwz`). The pooled URL was transferred directly to the
+branch-scoped Netlify `AUTH_DATABASE_URL` secret with Functions scope. A read-only
+connection test passed. After explicit user approval, the unchanged generated SQL
+was applied over the direct connection in one transaction. All seven expected
+tables were verified. There is no automated migration runner.
+
+The user approved the simplest public OAuth client mode, identity-only `atproto`
+scope, and a minimal Jazz token identifying the existing Better Auth user. Tokens
+contain only `sub`, `iss`, `aud`, `iat` and `exp`; profile fields are excluded.
+The library owns signing keys and the default 15-minute token expiry. No auth
+schema changes were needed. The three proposed AT Protocol settings labels were
+also approved; controls are not wired yet.
+
+Server-only Netlify settings for this proof branch, **Functions** scope:
+
+- `AUTH_BASE_URL`: `https://deploy-preview-20--delightful-clipper.netlify.app`
+- `AUTH_SECRET`: generated stable secret (do not rotate casually; do not commit)
+- `AUTH_DATABASE_URL`: pooled Neon test-branch connection (secret)
+
+The server creates one auth instance and pool per server process on first auth
+request. Missing settings return HTTP 503 without preventing local library use.
+No endpoint is initialized at build time. The library serves session and OAuth
+requests; email/password login is not enabled in the application.
+
+Jazz Cloud test app configuration, once the preview endpoints are reachable:
+
+- JWT source: JWKS URL
+- JWKS URL: `https://deploy-preview-20--delightful-clipper.netlify.app/api/auth/jwks`
+- JWT issuer: `https://deploy-preview-20--delightful-clipper.netlify.app`
+- JWT audience: `https://deploy-preview-20--delightful-clipper.netlify.app`
+- Local-first authentication: enabled
+
+The AT Protocol client metadata endpoint is `/api/auth/oauth-client-metadata.json`.
+Its callback is `/api/auth/atproto/callback`. The provider's optional OAuth client
+JWKS endpoint (`/api/auth/.well-known/jwks.json`) is separate from Jazz's signing-key
+source (`/api/auth/jwks`); do not interchange them.
+
+An isolated HTTP test against the local database engine passed identity-only OAuth
+metadata, anonymous token rejection, real session-cookie JWT issuance, exact minimal
+claims and public-only JWKS. Email signup was enabled only in that temporary test
+harness to obtain a real session cookie; it is disabled in application configuration.
+Real AT Protocol callback handling, Jazz acceptance/linking, offline restart and
+cross-device access remain unverified.
