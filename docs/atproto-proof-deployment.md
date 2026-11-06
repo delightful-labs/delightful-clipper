@@ -168,3 +168,40 @@ claims and public-only JWKS. Email signup was enabled only in that temporary tes
 harness to obtain a real session cookie; it is disabled in application configuration.
 Real AT Protocol callback handling, Jazz acceptance/linking, offline restart and
 cross-device access remain unverified.
+
+## Clipper browser wiring — implementation qualification
+
+The user approved the shared DLF adapter, implementation tests, and a temporary
+browser-tab intent containing only the chosen operation and current library ID.
+The three approved labels are now in the account panel. No token is stored in the
+intent. The OAuth coordinator is not attached to the diagnostic machine inspector.
+
+Connect and sign-in explicitly persist the intent before authorizing. On return,
+the coordinator checks the saved library ID against the selected local library,
+reads the Better Auth session, and dispatches the selected command to the existing
+application actor. The token source checks the exact user ID, issuer and audience
+on every token fetch; it does not persist the JWT.
+
+The application actor drains its existing library child before admitting the DLF
+operation. An issued SDK operation remains owned until it settles, including on
+shutdown. Its result is then reported to the coordinator and the intent is removed.
+Rejected/stale commands report failure rather than leaving the coordinator waiting.
+No provider watcher or parallel Jazz session owner is mounted.
+
+Existing-library sign-in refuses to switch when local native content/operation
+rows or any note drafts exist. The draft check is deliberately conservative across
+this browser's draft database. This does not implement transfer, deletion or merge.
+Local use remains independent of auth service availability. Failures reuse existing
+approved generic account feedback; there is no automatic mutation retry.
+
+The Clipper vendor archive retains the existing `aaf718d-logger` DLF baseline and
+adds only the token contract and Jazz adapter outputs plus their public exports.
+It does not upgrade Clipper to the DLF development worktree wholesale. Shared
+source and tests are in the isolated `feat/atproto-token-identity` DLF worktree;
+they are not committed or published upstream yet.
+
+Shared adapter tests pass (six cases). Focused OAuth coordinator and application
+lifetime tests cover explicit resume, wrong-library rejection, token-subject
+changes, intent settlement, drain-before-link, shutdown settlement, and refusal
+to sign in over local work. Real OAuth sign-in and second-device access remain
+manual qualification steps, not established by these tests.

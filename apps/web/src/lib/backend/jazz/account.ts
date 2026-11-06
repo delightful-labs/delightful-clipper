@@ -1,3 +1,5 @@
+import { draftTransaction, readDraftRequest } from '../../notes/draft-database.js'
+import { createJazzTokenIdentityAdapter } from 'delightful-local-first/backend/jazz/token-identity'
 import { JAZZ_RUNTIME_VERSION } from '../../offline/runtime-version.js'
 import { createLibraryCapability } from './library.js'
 import { createLibraryRecords } from './records.js'
@@ -21,6 +23,7 @@ function bindHost(
 	cacheNamespace: string
 ): AccountHost {
 	const readiness = createJazzSessionReadinessAdapter(session)
+	const tokenIdentity = createJazzTokenIdentityAdapter(session, () => session)
 	const recovery = createJazzRecoveryAdapter(() => session.getSnapshot().account)
 	let current: AccountObservation = { status: 'signed-out' }
 	let client: JazzClient | undefined
@@ -98,10 +101,45 @@ function bindHost(
 	const restored = createJazzRestorationAdapter(session, () => session)
 	return {
 		read,
+		tokenIdentity: {
+			...tokenIdentity,
+			canSignInExisting: async () => {
+				const snapshot = session.getSnapshot()
+				if (snapshot.status !== 'ready' || !snapshot.account || !snapshot.client) return false
+				const id = snapshot.account.id
+				const db = snapshot.client.db
+				const rows = await Promise.all([
+					db.all(app.articles.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.notes.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.noteRevisions.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.articleNoteRevisions.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.documents.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.storageOperations.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.articleImages.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.readerOperations.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.tagOperations.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.organizationOperations.where({ libraryId: id }), {
+						tier: ReadTier.LocalFirst
+					}),
+					db.all(app.articleSources.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.assets.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
+					db.all(app.snapshots.where({ libraryId: id }), { tier: ReadTier.LocalFirst })
+				])
+				const draftCount = await draftTransaction<number>('readonly', (stores, complete) => {
+					readDraftRequest(stores.notes.count(), stores.notes, (notes) => {
+						readDraftRequest(stores.legacy.count(), stores.legacy, (legacy) =>
+							complete(notes + legacy)
+						)
+					})
+				})
+				return rows.every((items) => items.length === 0) && draftCount === 0
+			}
+		},
 		readiness,
 		create: () => session.createLocalFirst(),
 		logout: () => session.logout(),
 		release: () => {
+			tokenIdentity.invalidate()
 			recovery.invalidate()
 			restored.invalidate()
 		},

@@ -81,6 +81,11 @@
 			"pending": "Loading recovery phrase…",
 			"failed": "The recovery phrase could not be shown. Try again.",
 			"unavailable": "Account recovery is unavailable."
+		},
+		"atproto": {
+			"handle_label": "AT Protocol handle",
+			"connect": "Connect AT Protocol",
+			"sign_in": "Sign in with AT Protocol"
 		}
 	},
 	"capture": {

@@ -616,3 +616,16 @@ preparing direct Neon Postgres instead of changing the Netlify account plan.
 automatic database provisioning/migration path. No new dependency or custom auth
 schema was introduced. The initial SQL application process awaits the user's
 choice; no automatic migration runner or hosted schema changes were made.
+
+### Shared token integration implementation
+
+User approved the shared DLF connect/current-library and sign-in/existing-library
+API direction, then its implementation/testing and the temporary tab-local OAuth
+intent (operation and library ID only). Clipper uses a bounded vendor patch over
+its existing DLF baseline, not a wholesale DLF development upgrade. The account
+panel uses the three explicitly approved AT Protocol labels. Its coordinator
+resumes only explicit intents and holds no stored JWT. The existing application
+actor drains library work before either shared operation and waits for issued
+calls to settle through shutdown. Existing-library sign-in rejects local saved
+work and note drafts; transfers/merging remain deferred. See deployment notes for
+qualification evidence and the uncommitted shared-source worktree.

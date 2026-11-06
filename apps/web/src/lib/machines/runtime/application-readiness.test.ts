@@ -629,3 +629,89 @@ describe('application-owned browser connectivity', () => {
 		}
 	})
 })
+
+it('drains active capture before connecting and retains an issued connection through shutdown', async () => {
+	const saveResult = Promise.withResolvers<import('../../contracts/storage.js').SaveResult>()
+	const connection = Promise.withResolvers<void>()
+	const shutdown = vi.fn()
+	const save = controlledSave(() => saveResult.promise, shutdown)
+	const base = ready('owner', root(Promise.resolve(), Promise.resolve()))
+	if (base.status !== 'ready') throw new Error('Expected ready')
+	const id = crypto.randomUUID()
+	const library = testLibraryCapability(
+		{
+			id,
+			title: 'Private',
+			text: '',
+			html: '',
+			finalUrl: 'https://example.com/',
+			submittedUrl: 'https://example.com/',
+			provenance: '{}',
+			imagesMissing: false
+		},
+		{ spawnSave: (spawn, input) => spawn(save, { input }) }
+	)
+	const f = fixture({ ...base, library })
+	const connect = vi.fn(() => connection.promise)
+	const bound: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: async () => true,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: connect,
+				signInExistingLibrary: vi.fn(async () => {})
+			}
+		}
+	}
+	const actor = createActor(applicationReadinessMachine, { input: input(bound) }).start()
+	await waitFor(actor, (s) => s.matches({ active: { flow: { running: { library: 'ready' } } } }))
+	const { selectLibraryActor } = await import('./application-readiness.js')
+	const product = selectLibraryActor(actor.getSnapshot())!
+	product.send({ type: 'ADD', url: 'https://example.com/' })
+	await waitFor(product, (s) => s.matches({ running: { capture: 'saving' } }))
+	actor.send({
+		type: 'CONNECT_TOKEN',
+		accountId: 'owner',
+		source: { getToken: async () => 'private-token' }
+	})
+	await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce())
+	expect(connect).not.toHaveBeenCalled()
+	saveResult.resolve({ kind: 'unknown', operationId: id })
+	await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce())
+	actor.send({ type: 'SHUTDOWN' })
+	expect(actor.getSnapshot().status).toBe('active')
+	expect(bound.release).not.toHaveBeenCalled()
+	connection.resolve()
+	await waitFor(actor, (s) => s.status === 'done')
+	expect(bound.release).toHaveBeenCalledOnce()
+})
+it('refuses existing-library sign-in when local work is present', async () => {
+	const base = ready('owner', root(Promise.resolve(), Promise.resolve()))
+	const f = fixture(base)
+	const signIn = vi.fn(async () => {})
+	const bound: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: async () => false,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: vi.fn(async () => {}),
+				signInExistingLibrary: signIn
+			}
+		}
+	}
+	const actor = createActor(applicationReadinessMachine, { input: input(bound) }).start()
+	await waitFor(actor, (s) => s.matches({ active: { flow: { running: { library: 'ready' } } } }))
+	actor.send({
+		type: 'SIGN_IN_TOKEN',
+		accountId: 'owner',
+		source: { getToken: async () => 'private-token' }
+	})
+	await waitFor(actor, (s) => selectApplicationView(s, true).feedback === 'identityFailed')
+	expect(signIn).not.toHaveBeenCalled()
+	actor.send({ type: 'SHUTDOWN' })
+	await waitFor(actor, (s) => s.status === 'done')
+})

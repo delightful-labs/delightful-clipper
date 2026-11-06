@@ -9,7 +9,7 @@
 	import type { ApplicationSnapshot } from '../machines/runtime/application-readiness.js'
 	import type { SnapshotFrom } from 'xstate'
 	import RecoveryPhrase from 'delightful-local-first/recovery/svelte'
-	import { Button, StatusMessage, Textarea } from 'delightful-ui'
+	import { Button, StatusMessage, Textarea, InputText } from 'delightful-ui'
 	import {
 		createApplicationReadinessMachine,
 		selectApplicationView,
@@ -17,6 +17,7 @@
 		selectLibraryActor
 	} from '../machines/runtime/application-readiness.js'
 	import { accountInput, type Session, type LibraryFactory } from '../backend/jazz/account.js'
+	import { atprotoMachine } from '../machines/runtime/atproto.js'
 	import { t, action } from '../localization/index.js'
 
 	const applicationReadinessMachine =
@@ -40,6 +41,18 @@
 	} = $props()
 	let snapshot = $state<SnapshotFrom<typeof applicationReadinessMachine>>()
 	let phrase = $state('')
+	let handle = $state('')
+	let oauthSnapshot = $state<SnapshotFrom<typeof atprotoMachine>>()
+	let beginAtproto = $state<(operation: 'connect' | 'sign-in') => void>(() => {})
+	const oauthMeta = $derived(
+		oauthSnapshot ? Object.values(oauthSnapshot.getMeta()).find((meta) => meta?.name) : undefined
+	)
+	const oauthBusy = $derived(
+		oauthSnapshot &&
+			!oauthSnapshot.matches('idle') &&
+			!oauthSnapshot.matches('failed') &&
+			!oauthSnapshot.matches('succeeded')
+	)
 	let send = $state<
 		(event: { type: 'CREATE' | 'LOGOUT' | 'RETRY' } | { type: 'RESTORE'; phrase: string }) => void
 	>(() => {})
@@ -62,14 +75,46 @@
 			input: accountInput({ appId, serverUrl, env: 'clipper' }, libraryFactory),
 			inspect: inspectMachines
 		})
+		let resumeRequested = false
+		const oauth = createActor(atprotoMachine, {
+			input: {
+				storage: {
+					getItem: (key) => window.sessionStorage.getItem(key),
+					setItem: (key, value) => window.sessionStorage.setItem(key, value),
+					removeItem: (key) => window.sessionStorage.removeItem(key)
+				},
+				origin: window.location.origin,
+				navigate: (url) => window.location.assign(url),
+				dispatch: (command) => actor.send(command)
+			}
+		})
+		const oauthSubscription = oauth.subscribe((next) => {
+			oauthSnapshot = next
+		})
+		beginAtproto = (operation) => {
+			const current = actor.getSnapshot().context.observation
+			if (current.status !== 'ready') return
+			oauth.send({ type: 'BEGIN', intent: { operation, accountId: current.accountId }, handle })
+		}
+		oauth.start()
 		send = (event) => actor.send(event)
 		const subscription = actor.subscribe((next) => {
 			snapshot = next
+			if (
+				!resumeRequested &&
+				selectApplicationView(next, true).canTokenIdentity &&
+				next.context.observation.status === 'ready'
+			) {
+				resumeRequested = true
+				oauth.send({ type: 'RESUME', accountId: next.context.observation.accountId })
+			}
 			onSnapshot?.(next)
 		})
 		actor.start()
 		return () => {
 			subscription.unsubscribe()
+			oauthSubscription.unsubscribe()
+			stopAfterShutdown(oauth)
 			phrase = ''
 			stopAfterShutdown(actor)
 		}
@@ -87,6 +132,29 @@
 				>{action('create', 'account')}</Button
 			>
 		{/if}
+		{#if view.canTokenIdentity}
+			<form
+				onsubmit={(event) => {
+					event.preventDefault()
+					beginAtproto('connect')
+				}}
+			>
+				<InputText
+					label={t('account.atproto.handle_label')}
+					bind:value={handle}
+					autocomplete="username"
+					required
+					disabled={!!oauthBusy}
+				/>
+				<Button type="submit" disabled={!!oauthBusy}>{t('account.atproto.connect')}</Button>
+				<Button
+					type="button"
+					disabled={!!oauthBusy || handle.trim().length < 3}
+					onclick={() => beginAtproto('sign-in')}>{t('account.atproto.sign_in')}</Button
+				>
+			</form>
+		{/if}
+		{#if oauthMeta}<StatusMessage text={oauthMeta.name} variant={oauthMeta.variant} />{/if}
 		{#if view.canRestore}
 			<form
 				onsubmit={(event) => {
