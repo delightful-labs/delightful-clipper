@@ -205,3 +205,17 @@ lifetime tests cover explicit resume, wrong-library rejection, token-subject
 changes, intent settlement, drain-before-link, shutdown settlement, and refusal
 to sign in over local work. Real OAuth sign-in and second-device access remain
 manual qualification steps, not established by these tests.
+
+## AT Protocol callback compatibility patch
+
+The installed plugin 0.3.2 called the removed Better Auth internal method
+`findAccountByProviderId(did, providerId)`. Better Auth 1.7.18 exposes
+`findAccountByKey({ accountId, providerId })` instead. A pnpm package patch changes
+only that lookup, preserving provider/subject matching and the library's duplicate
+account protection. No auth tables or workflow choices change.
+
+The regression test runs the actual plugin callback with the installed Better
+Auth adapter, mocking only the upstream OAuth exchange/profile request. New-user
+and returning-user callbacks both redirect successfully and produce session cookies;
+returning login does not create a duplicate user/account. Real provider exchange
+and Jazz linking still require retrying the live login after deployment.

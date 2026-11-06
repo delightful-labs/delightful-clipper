@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@kingironman2011/better-auth-bsky@0.3.2':
+    hash: fad22512896339d2cc85475f27f19eaee7e846deb9d830b30e9f014062c97ed7
+    path: patches/better-auth-bsky-0.3.2-better-auth-1.7.patch
+
 importers:
 
   .:
@@ -86,7 +91,7 @@ importers:
         version: 10.6.0
       '@kingironman2011/better-auth-bsky':
         specifier: 0.3.2
-        version: 0.3.2(@atcute/identity@2.0.2(@atcute/lexicons@2.1.1)(typescript@6.0.3))(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(pg@8.23.1)(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(typescript@6.0.3)
+        version: 0.3.2(patch_hash=fad22512896339d2cc85475f27f19eaee7e846deb9d830b30e9f014062c97ed7)(@atcute/identity@2.0.2(@atcute/lexicons@2.1.1)(typescript@6.0.3))(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(pg@8.23.1)(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(typescript@6.0.3)
       '@mozilla/readability':
         specifier: 0.6.0
         version: 0.6.0
@@ -2387,7 +2392,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@kingironman2011/better-auth-bsky@0.3.2(@atcute/identity@2.0.2(@atcute/lexicons@2.1.1)(typescript@6.0.3))(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(pg@8.23.1)(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(typescript@6.0.3)':
+  '@kingironman2011/better-auth-bsky@0.3.2(patch_hash=fad22512896339d2cc85475f27f19eaee7e846deb9d830b30e9f014062c97ed7)(@atcute/identity@2.0.2(@atcute/lexicons@2.1.1)(typescript@6.0.3))(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(pg@8.23.1)(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(typescript@6.0.3)':
     dependencies:
       '@atcute/identity-resolver': 2.0.3(@atcute/identity@2.0.2(@atcute/lexicons@2.1.1)(typescript@6.0.3))(@atcute/lexicons@2.1.1)(typescript@6.0.3)
       '@atcute/lexicons': 2.1.1
