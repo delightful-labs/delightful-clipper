@@ -30,6 +30,8 @@ Native policy tests and both updated native migration tests were attempted; thei
 
 An exact seven-entry copy proposal was sent for `notes.saved`, `notes.synced`, `notes.conflict`, `notes.keep_text`, `notes.leave_warning`, `notes.unavailable` and `notes.too_large`. Approval remains pending; no entries, hardcoded copy or dependency were added. Keep that gate under `docs/memory/localization.md` when integrating the editor, and qualify native operations before presenting the feature as ready.
 
+Draft [PR #19](https://github.com/delightful-labs/delightful-clipper/pull/19) targets main. The Git CLI still cannot resolve github.com; publication used GitHub connector tree/commit APIs and verified exact local/remote tree equality. Local commits are retained, so the histories differ despite identical checked source: when CLI connectivity returns, fetch, verify trees and align the tracking branch before pushing. Hosted [CI run 42226678791](https://github.com/delightful-labs/delightful-clipper/actions/runs/42226678791) is pending; the PR title check passes. Leave the PR draft and unmerged while editor integration, copy approval and native/application qualification remain open.
+
 # Offline article images — current work
 
 The user merged reader PR #17 at `89ad4e7` and authorized bounded offline article images, full testing in this session and a final code review. Work is on `feat/offline-article-images` from updated main. See [offline-images.md](offline-images.md) for the state/resource model and scope. The implementation adds one private articleImages table and additive migration `3d99c179e109 → dc1365b4b2ec`; existing text/assets, identity, reader history and organization remain intact.
