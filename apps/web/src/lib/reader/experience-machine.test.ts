@@ -310,7 +310,7 @@ it('drains a pending fullscreen request and exit before shutdown completes', asy
 	expect(actor.getSnapshot().status).toBe('active')
 	entered.resolve()
 	await waitFor(actor, (snapshot) =>
-		snapshot.matches({ active: { focus: { focused: 'exiting' } } })
+		snapshot.matches({ active: { focus: { focused: { native: 'exiting' } } } })
 	)
 	expect(dom.exit).toHaveBeenCalledOnce()
 	exited.resolve()
@@ -338,10 +338,76 @@ it('uses distraction-free fallback when fullscreen is declined and responds to a
 	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(false)
 	actor.send({ type: 'FOCUS' })
 	await waitFor(actor, (snapshot) =>
-		snapshot.matches({ active: { focus: { focused: 'fullscreen' } } })
+		snapshot.matches({ active: { focus: { focused: { native: 'fullscreen' } } } })
 	)
 	dom.setFullscreen(false)
 	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(false)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+
+it('uses a guarded fallback for unsupported or unconfirmed fullscreen without issuing exit', async () => {
+	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+		setTimeout(() => callback(0), 1)
+	)
+	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+	const { actor } = fixture(),
+		dom = viewportDOM()
+	Object.defineProperty(dom.document, 'fullscreenEnabled', { value: false, configurable: true })
+	actor.send({ type: 'ATTACH', documentId, root: dom.root, scroller: dom.scroller })
+	actor.send({ type: 'FOCUS' })
+	expect(actor.getSnapshot().matches({ active: { focus: { focused: 'fallback' } } })).toBe(true)
+	expect(dom.enter).not.toHaveBeenCalled()
+	actor.send({ type: 'SHOW_CONTROLS' })
+	Object.defineProperty(dom.document, 'fullscreenEnabled', { value: true, configurable: true })
+	dom.enter.mockImplementationOnce(async () => {})
+	actor.send({ type: 'FOCUS' })
+	await waitFor(actor, (snapshot) =>
+		snapshot.matches({ active: { focus: { focused: 'fallback' } } })
+	)
+	actor.send({ type: 'SHOW_CONTROLS' })
+	expect(dom.exit).not.toHaveBeenCalled()
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+it('ignores active native change events and checks actual fullscreen before requesting exit', async () => {
+	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+		setTimeout(() => callback(0), 1)
+	)
+	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+	const { actor } = fixture(),
+		dom = viewportDOM()
+	actor.send({ type: 'ATTACH', documentId, root: dom.root, scroller: dom.scroller })
+	actor.send({ type: 'FOCUS' })
+	await waitFor(actor, (snapshot) =>
+		snapshot.matches({ active: { focus: { focused: { native: 'fullscreen' } } } })
+	)
+	dom.setFullscreen(true)
+	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(true)
+	Object.defineProperty(dom.document, 'fullscreenElement', { value: null, configurable: true })
+	actor.send({ type: 'SHOW_CONTROLS' })
+	expect(selectReaderExperience(actor.getSnapshot()).focused).toBe(false)
+	expect(dom.exit).not.toHaveBeenCalled()
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+
+it('does not issue fullscreen entry when native observation setup fails', async () => {
+	vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+		setTimeout(() => callback(0), 1)
+	)
+	vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+	const { actor } = fixture(),
+		dom = viewportDOM()
+	const add = dom.document.addEventListener.bind(dom.document)
+	vi.spyOn(dom.document, 'addEventListener').mockImplementation((name, listener, options) => {
+		if (name === 'fullscreenchange') throw new Error('Listener unavailable')
+		add(name, listener, options)
+	})
+	actor.send({ type: 'ATTACH', documentId, root: dom.root, scroller: dom.scroller })
+	actor.send({ type: 'FOCUS' })
+	expect(actor.getSnapshot().matches({ active: { focus: { focused: 'fallback' } } })).toBe(true)
+	expect(dom.enter).not.toHaveBeenCalled()
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })

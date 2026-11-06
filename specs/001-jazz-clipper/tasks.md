@@ -15,6 +15,8 @@
 
 - [x] Replace the function-based viewport contract and observation/restoration wrappers with one DOM-owning viewport machine; pass nodes directly, keep decisions in states/guards, join final sampling during shutdown, and cover native failures/disposal with real DOM fixtures. Nine direct DOM tests and twelve parent tests pass; pnpm verify passes 554 tests plus one skip, all 53 web cases and five production offline cases pass, and actual network progress/fullscreen retain location.
 
+- [x] Replace combined viewport setup/disposal with explicit resource acquisition/registration/active/disposal states and independently owned native leases. Move resize geometry into a measurement state and fullscreen support/change/exit decisions into named guards; await native change-listener registration before requesting fullscreen. Twelve viewport and fifteen parent tests pass; pnpm verify passes 560 tests plus one skip, all 53 web cases and five production offline cases pass, and actual network progress/fullscreen retain location.
+
 # Implementation tasks and acceptance status
 
 Updated 2026-11-05. This is the current implementation checklist; the product requirements remain in spec.md. An implemented capability is not a completed product workflow.

@@ -226,3 +226,54 @@ it('handles frame acquisition and observer startup failures through the owner', 
 	expect(TestResizeObserver.instances.at(-1)?.disconnect).toHaveBeenCalledOnce()
 	second.actor.stop()
 })
+
+it('releases the controller if observer construction fails before registration', () => {
+	const dom = viewportDOM(),
+		abort = vi.spyOn(dom.document.defaultView!.AbortController.prototype, 'abort')
+	vi.stubGlobal(
+		'ResizeObserver',
+		class {
+			constructor() {
+				throw new Error('Observer unavailable')
+			}
+		}
+	)
+	const { actor, reports } = owner(dom)
+	expect(reports).toEqual([{ type: 'VIEWPORT_FAILED', attachmentId: 'current' }])
+	expect(abort).toHaveBeenCalledOnce()
+	expect(requestAnimationFrame).not.toHaveBeenCalled()
+	actor.stop()
+})
+it('releases partial observations and registered listeners when listener registration fails', () => {
+	const dom = viewportDOM(),
+		abort = vi.spyOn(dom.document.defaultView!.AbortController.prototype, 'abort')
+	const add = dom.scroller.addEventListener.bind(dom.scroller)
+	vi.spyOn(dom.scroller, 'addEventListener').mockImplementation((name, listener, options) => {
+		if (name === 'touchstart') throw new Error('Listener unavailable')
+		add(name, listener, options)
+	})
+	const { actor, reports } = owner(dom)
+	expect(reports).toEqual([{ type: 'VIEWPORT_FAILED', attachmentId: 'current' }])
+	expect(abort).toHaveBeenCalledOnce()
+	expect(TestResizeObserver.instances[0]?.disconnect).toHaveBeenCalledOnce()
+	dom.rootBounds.mockClear()
+	dom.interact()
+	dom.scroll(50)
+	expect(dom.rootBounds).not.toHaveBeenCalled()
+	expect(requestAnimationFrame).not.toHaveBeenCalled()
+	actor.stop()
+})
+it('handles resize measurement failure through state transitions and releases both resources', async () => {
+	const dom = viewportDOM(),
+		abort = vi.spyOn(dom.document.defaultView!.AbortController.prototype, 'abort')
+	const { actor, reports } = owner(dom)
+	await vi.advanceTimersByTimeAsync(3)
+	dom.rootBounds.mockImplementation(() => {
+		throw new Error('Geometry unavailable')
+	})
+	dom.resize(700)
+	expect(reports).toEqual([{ type: 'VIEWPORT_FAILED', attachmentId: 'current' }])
+	expect(abort).toHaveBeenCalledOnce()
+	expect(TestResizeObserver.instances[0]?.disconnect).toHaveBeenCalledOnce()
+	actor.stop()
+})

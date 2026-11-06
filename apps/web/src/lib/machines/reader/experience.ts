@@ -10,12 +10,7 @@ import {
 	and,
 	not
 } from 'xstate'
-import type {
-	ReaderCapability,
-	ReaderStageRef,
-	ReaderStageResult,
-	ReadingFullscreen
-} from '../../contracts/reader.js'
+import type { ReaderCapability, ReaderStageRef, ReaderStageResult } from '../../contracts/reader.js'
 import type { ReaderChange, ReaderOperation, ReadingPosition } from '../../reader/schema.js'
 import {
 	canQueueReaderChange,
@@ -25,7 +20,7 @@ import {
 } from '../../reader/schema.js'
 import { positionSchema } from '../../reader/schema.js'
 import { viewportMachine, type ViewportElements } from '../../reader/viewport.js'
-import { readingFullscreen } from '../../reader/fullscreen.js'
+import { supportsReaderFullscreen, isReaderFullscreen } from '../../reader/fullscreen.js'
 import { syncOwnerMachine } from '../storage/sync-owner.js'
 import type { SyncReport } from '../../contracts/storage.js'
 import { t } from '../../localization/index.js'
@@ -50,7 +45,8 @@ export type ReaderExperienceEvent =
 				| 'SHUTDOWN'
 				| 'OBSERVATION_FAILED'
 				| 'REFRESH_SYNC'
-				| 'FULLSCREEN_EXITED'
+				| 'FULLSCREEN_CHANGED'
+				| 'FULLSCREEN_OBSERVED'
 	  }
 	| SyncReport
 	| { type: `xstate.done.actor.${string}`; actorId: string; output: ReaderStageResult }
@@ -64,7 +60,7 @@ type Context = Input & {
 	issued: ReaderChange | undefined
 	attachment: OwnedAttachment | undefined
 	progress: Record<string, number>
-	display: ReadingFullscreen | undefined
+	display: Document | undefined
 	sync: Record<string, 'pending' | 'accepted' | 'rejected'>
 }
 const observation = fromCallback<ReaderExperienceEvent, ReaderCapability | undefined>(
@@ -74,11 +70,19 @@ const observation = fromCallback<ReaderExperienceEvent, ReaderCapability | undef
 			() => sendBack({ type: 'OBSERVATION_FAILED' })
 		)
 )
-const fullscreenEntry = fromPromise<void, ReadingFullscreen>(({ input }) => input.enter())
-const fullscreenExit = fromPromise<void, ReadingFullscreen>(({ input }) => input.exit())
-const fullscreenObservation = fromCallback<ReaderExperienceEvent, ReadingFullscreen | undefined>(
-	({ input, sendBack }) => input?.observe(() => sendBack({ type: 'FULLSCREEN_EXITED' }))
+const fullscreenEntry = fromPromise<void, Document>(({ input }) =>
+	input.documentElement.requestFullscreen()
 )
+const fullscreenExit = fromPromise<void, Document>(({ input }) => input.exitFullscreen())
+const fullscreenObservation = fromCallback<ReaderExperienceEvent, Document>(
+	({ input, sendBack }) => {
+		const change = () => sendBack({ type: 'FULLSCREEN_CHANGED' })
+		input.addEventListener('fullscreenchange', change)
+		sendBack({ type: 'FULLSCREEN_OBSERVED' })
+		return () => input.removeEventListener('fullscreenchange', change)
+	}
+)
+
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Reading resource unavailable')
 	return value
@@ -119,6 +123,9 @@ const model = setup<
 		queued: undefined
 		ownCompletion: undefined
 		currentViewport: undefined
+		fullscreenSupported: undefined
+		fullscreenActive: undefined
+		fullscreenInactive: undefined
 	},
 	never,
 	string,
@@ -133,6 +140,9 @@ const model = setup<
 		fullscreenObservation
 	},
 	guards: {
+		fullscreenSupported: ({ context }) => supportsReaderFullscreen(context.display),
+		fullscreenActive: ({ context }) => isReaderFullscreen(context.display),
+		fullscreenInactive: ({ context }) => !isReaderFullscreen(context.display),
 		currentViewport: ({ context, event }) =>
 			'attachmentId' in event && event.attachmentId === context.attachment?.id,
 		current: ({ context }) => !!context.capability?.isCurrent(),
@@ -262,77 +272,114 @@ export const readerExperienceMachine = model.createMachine({
 									guard: and(['accepting', 'current']),
 									target: 'focused',
 									actions: assign({
-										display: ({ context }) =>
-											context.attachment
-												? readingFullscreen(context.attachment.root.ownerDocument)
-												: undefined
+										display: ({ context }) => context.attachment?.root.ownerDocument
 									})
 								}
 							}
 						},
 						focused: {
 							initial: 'admitting',
-							invoke: { src: 'fullscreenObservation', input: ({ context }) => context.display },
 							states: {
 								admitting: {
 									always: [
-										{ guard: ({ context }) => context.display !== undefined, target: 'opening' },
+										{ guard: 'fullscreenSupported', target: 'native' },
 										{ target: 'fallback' }
 									]
 								},
-								opening: {
-									initial: 'requested',
+								native: {
+									initial: 'registering',
 									invoke: {
-										src: 'fullscreenEntry',
+										src: 'fullscreenObservation',
 										input: ({ context }) => required(context.display),
-										onDone: [
-											{
-												guard: stateIn({
-													active: { focus: { focused: { opening: 'cancelling' } } }
-												}),
-												target: 'exiting'
-											},
-											{ target: 'fullscreen' }
-										],
-										onError: [
-											{
-												guard: stateIn({
-													active: { focus: { focused: { opening: 'cancelling' } } }
-												}),
-												target: '#reader-experience.active.focus.normal'
-											},
-											{ target: 'fallback' }
-										]
+										onError: '#reader-fallback'
 									},
-									on: {
-										SHOW_CONTROLS: '.cancelling',
-										SHUTDOWN: '.cancelling',
-										DETACH: '.cancelling',
-										FULLSCREEN_EXITED: '.cancelling'
-									},
-									states: { requested: {}, cancelling: {} }
-								},
-								fullscreen: {
-									on: {
-										SHOW_CONTROLS: 'exiting',
-										SHUTDOWN: 'exiting',
-										DETACH: 'exiting',
-										FULLSCREEN_EXITED: '#reader-experience.active.focus.normal'
+									states: {
+										registering: {
+											on: {
+												FULLSCREEN_OBSERVED: 'opening',
+												SHOW_CONTROLS: '#reader-experience.active.focus.normal',
+												SHUTDOWN: '#reader-experience.active.focus.normal',
+												DETACH: '#reader-experience.active.focus.normal'
+											}
+										},
+
+										opening: {
+											initial: 'requested',
+											invoke: {
+												src: 'fullscreenEntry',
+												input: ({ context }) => required(context.display),
+												onDone: [
+													{
+														guard: stateIn({
+															active: { focus: { focused: { native: { opening: 'cancelling' } } } }
+														}),
+														target: 'exiting'
+													},
+													{ target: 'confirming' }
+												],
+												onError: [
+													{
+														guard: stateIn({
+															active: { focus: { focused: { native: { opening: 'cancelling' } } } }
+														}),
+														target: '#reader-experience.active.focus.normal'
+													},
+													{ target: '#reader-fallback' }
+												]
+											},
+											on: {
+												SHOW_CONTROLS: '.cancelling',
+												SHUTDOWN: '.cancelling',
+												DETACH: '.cancelling',
+												FULLSCREEN_CHANGED: { guard: 'fullscreenInactive', target: '.cancelling' }
+											},
+											states: { requested: {}, cancelling: {} }
+										},
+										fullscreen: {
+											on: {
+												SHOW_CONTROLS: 'exiting',
+												SHUTDOWN: 'exiting',
+												DETACH: 'exiting',
+												FULLSCREEN_CHANGED: {
+													guard: 'fullscreenInactive',
+													target: '#reader-experience.active.focus.normal'
+												}
+											}
+										},
+										confirming: {
+											always: [
+												{ guard: 'fullscreenActive', target: 'fullscreen' },
+												{ target: '#reader-fallback' }
+											]
+										},
+										exiting: {
+											initial: 'checking',
+											states: {
+												checking: {
+													always: [
+														{ guard: 'fullscreenActive', target: 'requesting' },
+														{ target: '#reader-experience.active.focus.normal' }
+													]
+												},
+												requesting: {
+													invoke: {
+														src: 'fullscreenExit',
+														input: ({ context }) => required(context.display),
+														onDone: '#reader-experience.active.focus.normal',
+														onError: '#reader-experience.active.focus.normal'
+													}
+												}
+											}
+										}
 									}
 								},
+
 								fallback: {
+									id: 'reader-fallback',
 									on: {
 										SHOW_CONTROLS: '#reader-experience.active.focus.normal',
 										SHUTDOWN: '#reader-experience.active.focus.normal',
 										DETACH: '#reader-experience.active.focus.normal'
-									}
-								},
-								exiting: {
-									invoke: {
-										src: 'fullscreenExit',
-										input: ({ context }) => required(context.display),
-										onDone: '#reader-experience.active.focus.normal',
-										onError: '#reader-experience.active.focus.normal'
 									}
 								}
 							}
@@ -413,7 +460,7 @@ export const readerExperienceMachine = model.createMachine({
 								REFLOW: { actions: sendTo('viewport', { type: 'REFLOW' }) },
 								FOCUS: { actions: sendTo('viewport', { type: 'REFLOW' }) },
 								SHOW_CONTROLS: { actions: sendTo('viewport', { type: 'REFLOW' }) },
-								FULLSCREEN_EXITED: { actions: sendTo('viewport', { type: 'REFLOW' }) },
+								FULLSCREEN_CHANGED: { actions: sendTo('viewport', { type: 'REFLOW' }) },
 								VIEWPORT_FAILED: { guard: 'currentViewport', target: 'failed' }
 							},
 							states: {

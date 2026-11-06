@@ -18,6 +18,32 @@ The viewport region owns listeners, ResizeObserver and scheduled restoration. It
 
 The user clarified that the viewport machine should work directly with the DOM. Reader passes root/scroller elements to the library-owned reader experience, which invokes one viewport machine. That machine owns the nodes, text index, size snapshots, listeners, ResizeObserver, animation frames, DOM reads and scroll writes. The ReadingViewport method object and separate observation/restoration wrappers are removed.
 
+The resource lifecycle models controller acquisition → observer acquisition → observation registration → listener registration → active explicitly. Nested ownership scopes retain the controller and observer independently; leaving either scope releases its single resource, including forced actor stop and partial setup failure. Normal and failed disposal have explicit transitions before closed/failed. Native creation callbacks only acquire/report one resource and return its disposal operation. These small leases remain necessary because stopping an actor does not execute its machine's ordinary exit transitions; invoking scopes ensure native cleanup on stop as well as normal transitions. Registration leaves perform one registration step. There is no combined setup/disposal try/catch block.
+
+Resize callbacks emit raw RESIZE. A separate measuringSizes → comparingSizes region reads geometry, and a named guard decides whether to update the baseline and reflow. Fullscreen callbacks also report every native change; support, confirmation of actual fullscreen, inactive events and exit admission belong to named guards/states in the reader experience. The reader owns the Document directly instead of a method object containing those decisions. Native observation must register successfully before requesting fullscreen; registration failure falls back without starting an unowned request. Existing pending-entry/exit drain behavior remains. The related reader subscription, frame and single DOM-operation leaves were inspected; pure anchor/interaction validation and calculations remain functions. No package, schema or copy change is required.
+
+```mermaid
+stateDiagram-v2
+    [*] --> creatingController
+    creatingController --> creatingObserver: controller acquired
+    creatingObserver --> registeringObservation: observer acquired
+    registeringObservation --> registeringListeners: targets observed
+    registeringListeners --> active: listeners registered
+    active --> disposing: passive detach
+    active --> departing: reading detach
+    creatingController --> disposingFailure: acquisition error
+    creatingObserver --> disposingFailure: acquisition error
+    registeringObservation --> disposingFailure: partial registration error
+    registeringListeners --> disposingFailure: partial registration error
+    active --> disposingFailure: DOM error
+    disposing --> closed
+    departing --> closed: final sample or last reliable location
+    disposingFailure --> failed
+```
+
+Ownership-scope exit disconnects the observer and aborts listeners before departure sampling or failure feedback. Twelve direct DOM regressions cover the lifecycle, including observer-construction failure, partial listener registration and resize-measurement failure. Fifteen parent tests cover persistence/scope behavior plus guarded unsupported/unconfirmed fullscreen, raw native changes, missing fullscreen at exit and listener-startup failure. All 53 web cases pass in one full run, all five production offline cases pass, and actual network Stately testing retains 39% progress/location through native fullscreen. Shared servers were preserved and temporary harnesses removed.
+
+
 The state/resource plan is implemented directly in viewport.ts. Parallel flow and measurement regions coordinate restoration and reading. Named guards decide interaction eligibility, actual size changes, anchor validity and changed positions. Invoked leaves perform individual native operations; their errors enter the failed state and release active resources. They do not choose the next workflow. Restoration waits for layout, locates the anchor, explicitly selects an anchor or beginning scroll, and waits for paint before admitting ordinary scroll measurements. User interaction cancels restoration. Reflow restarts it with the current location. Remote positions never scroll the open reader.
 
 ```mermaid
@@ -52,7 +78,7 @@ Departure releases event resources and cancels pending frames before sampling th
 
 ContentsNavigation uses DUI Details' default caret. The explicitly approved @poppanator/sveltekit-svg 7.0.1 development dependency and DUI prebundle exclusion follow Finance's Vite configuration, including the network frontend. The alternative was precompiling SVG imports in DUI, a broader package change. No additional package, copy or schema change is needed for direct DOM ownership.
 
-Current direct-DOM validation passes pnpm verify (554 unit/native tests, one platform skip, 81 files, strict types, formatting/lint/vendor checks and production build), all 53 web cases in one run and all five production offline cases. Real network testing also confirms Stately progress and fullscreen location retention. Earlier rebuilt extension/sample-data evidence is recorded below; these suites were not rerun for this internal viewport contract refactor. Shared servers were preserved and temporary harnesses removed.
+Current lifecycle validation passes pnpm verify (560 unit/native tests, one platform skip, 81 files, strict types, formatting/lint/vendor checks and production build), all 53 web cases in one run and all five production offline cases. Real network testing also confirms Stately progress and fullscreen location retention. Earlier rebuilt extension/sample-data evidence is recorded below; these suites were not rerun for this internal viewport contract refactor. Shared servers were preserved and temporary harnesses removed.
 
 ## Native schema
 
@@ -72,7 +98,7 @@ Follow-up validation passes pnpm verify (545 unit/native tests plus one platform
 
 ### Reading progress and fullscreen follow-up
 
-The user requested working reading status and native browser fullscreen. The reader's focus region now explicitly models fullscreen admission, pending entry, cancellation, active fullscreen, denied/unavailable fallback and exit. The native display port handles only browser API calls and fullscreenchange observation. Show controls exits fullscreen; a native exit (including Escape) restores app controls. Shutdown waits for pending entry and exit rather than leaving an unowned request. Unsupported or declined fullscreen retains the ordinary distraction-free view. No new dependency or copy is needed.
+The user requested working reading status and native browser fullscreen. The reader's focus region now explicitly models fullscreen admission, pending entry, cancellation, active fullscreen, denied/unavailable fallback and exit. The reader owns the native Document; its invocation handles single browser API calls and raw fullscreenchange observation, while named guards decide support and exit. Show controls exits fullscreen; a native exit (including Escape) restores app controls. Shutdown waits for pending entry and exit rather than leaving an unowned request. Unsupported or declined fullscreen retains the ordinary distraction-free view. No new dependency or copy is needed.
 
 Browser qualification found that controls/modal interactions could overwrite reading location, removed DOM could measure as the end of the article, and a post-restart transactional history query could remain pending. Reading interaction now excludes form/dialog/popover controls, measures reading gestures even when a short article cannot scroll, and ignores detached/hidden content during final measurement. Resize observation compares actual dimensions so its initial notification does not reanchor the reader. Native history now follows the existing organization convention of passing observed causal heads to the write; parent existence and staging stay under the transaction owner. This removes the problematic transactional history query without adding a cache or replacing Jazz. Open library/original remain in the sticky toolbar so normal navigation does not require scrolling to the top.
 

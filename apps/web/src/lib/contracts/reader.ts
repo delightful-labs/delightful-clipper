@@ -40,8 +40,3 @@ export type ReaderCapability = {
 		observed: ReaderOperation[]
 	) => ReaderStageRef
 }
-export type ReadingFullscreen = {
-	enter: () => Promise<void>
-	exit: () => Promise<void>
-	observe: (exited: () => void) => () => void
-}
