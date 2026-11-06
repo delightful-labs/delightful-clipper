@@ -1,3 +1,5 @@
+import noteMigration from './migrations/20261106T132300-article-notes-dc1365b4b2ec-d7f861eae955.js'
+import { app as preNotesApp } from './prenotes-schema.test-support.js'
 import { app as preImageApp } from './preimages-schema.test-support.js'
 import imageMigration from './migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
 import { ReadTier } from 'jazz-tools'
@@ -30,6 +32,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 	)
 	const legacyPermissions = Object.fromEntries(
 		Object.entries(permissions)
+			.filter(([table]) => table !== 'articleNoteRevisions')
 			.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 			.filter(
 				([table]) =>
@@ -130,6 +133,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			schema: preOrganizationApp,
 			permissions: Object.fromEntries(
 				Object.entries(permissions)
+					.filter(([table]) => table !== 'articleNoteRevisions')
 					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 					.filter(([table]) => table !== 'organizationOperations' && table !== 'tagOperations')
 			)
@@ -139,6 +143,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			schema: preDiscoveryApp,
 			permissions: Object.fromEntries(
 				Object.entries(permissions)
+					.filter(([table]) => table !== 'articleNoteRevisions')
 					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 					.filter(([table]) => table !== 'tagOperations')
 			),
@@ -148,9 +153,9 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			...upgrade,
 			schema: preReaderApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(
-					([table]) => table !== 'readerOperations' && table !== 'articleImages'
-				)
+				Object.entries(permissions)
+					.filter(([table]) => table !== 'articleNoteRevisions')
+					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 			),
 			migration: discoveryMigration
 		})
@@ -158,12 +163,22 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			...upgrade,
 			schema: preImageApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'articleImages')
+				Object.entries(permissions)
+					.filter(([table]) => table !== 'articleNoteRevisions')
+					.filter(([table]) => table !== 'articleImages')
 			),
 			migration: readerMigration
 		})
-		await deploy({ ...upgrade, migration: imageMigration })
-		await deploy({ ...upgrade, migration: imageMigration })
+		await deploy({
+			...upgrade,
+			schema: preNotesApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'articleNoteRevisions')
+			),
+			migration: imageMigration
+		})
+		await deploy({ ...upgrade, migration: noteMigration })
+		await deploy({ ...upgrade, migration: noteMigration })
 		context = await createJazzSession({
 			...config,
 			serverUrl: server.url,
@@ -193,6 +208,28 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		await Promise.all(result.receipts.map((r) => r.global()))
 		const before = await records.articles.read(result.operationId)
 		expect(before).toMatchObject({ url, contentId: null })
+		const noteId = crypto.randomUUID()
+		const note = await toPromise(
+			createActor(records.notes.stage, {
+				input: {
+					attempt: {
+						operationId: noteId,
+						workspaceId: noteId,
+						membershipId: noteId,
+						draft: {
+							id: noteId,
+							libraryId: owner,
+							articleId: result.operationId,
+							text: 'A note after migration 😀',
+							parents: [],
+							editedAt: new Date().toISOString()
+						}
+					}
+				}
+			}).start()
+		)
+		if (note.settlement.kind !== 'locallyPersisted') throw new Error('Expected note after upgrade')
+		await note.settlement.workspace.global()
 		await context.close()
 		context = await createJazzSession({
 			...config,
@@ -207,6 +244,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		if (!reopenedDb) throw new Error('Expected reopened local-first library')
 		const reopened = createLibraryRecords(reopenedDb, owner, () => true)
 		expect(await reopened.articles.read(result.operationId)).toEqual(before)
+		expect(await reopened.notes.readRevision(note.attempt.draft)).toEqual(note.attempt.draft)
 		expect(await readRecord(reopened.readCapabilities, documentId)).toMatchObject({
 			kind: 'available',
 			text: 'Legacy text'
@@ -223,6 +261,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 	const server = await startLocalJazzServer({ dataDir: join(dataDir, 'authority') })
 	const oldPermissions = Object.fromEntries(
 		Object.entries(permissions)
+			.filter(([table]) => table !== 'articleNoteRevisions')
 			.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 			.filter(([table]) => table !== 'tagOperations')
 	)
@@ -297,9 +336,9 @@ it('adds tags to a populated organization-era replica without resetting identity
 			adminSecret: server.adminSecret,
 			schema: preReaderApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(
-					([table]) => table !== 'readerOperations' && table !== 'articleImages'
-				)
+				Object.entries(permissions)
+					.filter(([table]) => table !== 'articleNoteRevisions')
+					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 			),
 			migration: discoveryMigration
 		})
@@ -307,9 +346,9 @@ it('adds tags to a populated organization-era replica without resetting identity
 			...config,
 			app: preReaderApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(
-					([table]) => table !== 'readerOperations' && table !== 'articleImages'
-				)
+				Object.entries(permissions)
+					.filter(([table]) => table !== 'articleNoteRevisions')
+					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 			),
 			store,
 			initial: 'local-first'
@@ -337,7 +376,9 @@ it('adds tags to a populated organization-era replica without resetting identity
 			adminSecret: server.adminSecret,
 			schema: preImageApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'articleImages')
+				Object.entries(permissions)
+					.filter(([table]) => table !== 'articleNoteRevisions')
+					.filter(([table]) => table !== 'articleImages')
 			),
 			migration: readerMigration
 		})
@@ -345,7 +386,9 @@ it('adds tags to a populated organization-era replica without resetting identity
 			...config,
 			app: preImageApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'articleImages')
+				Object.entries(permissions)
+					.filter(([table]) => table !== 'articleNoteRevisions')
+					.filter(([table]) => table !== 'articleImages')
 			),
 			store,
 			initial: 'local-first'
@@ -369,9 +412,19 @@ it('adds tags to a populated organization-era replica without resetting identity
 			appId: server.appId,
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
+			schema: preNotesApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'articleNoteRevisions')
+			),
+			migration: imageMigration
+		})
+		await deploy({
+			appId: server.appId,
+			serverUrl: server.url,
+			adminSecret: server.adminSecret,
 			schema: app,
 			permissions,
-			migration: imageMigration
+			migration: noteMigration
 		})
 		context = await createJazzSession({
 			...config,

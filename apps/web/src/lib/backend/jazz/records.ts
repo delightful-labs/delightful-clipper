@@ -1,4 +1,5 @@
 import { createImageRecords } from './images.js'
+import { createNoteRecords } from './notes.js'
 import { canBindArticleIntent, canPublishArticleContent } from '../../capture/article-policy.js'
 import { stageIntent, stagePublication } from '../../machines/storage/mutations.js'
 import { transactionLifecycle, transactionReceipt } from './transaction.js'
@@ -191,6 +192,7 @@ export function createLibraryRecords(
 	return {
 		...records,
 		reader: createReaderRecords(db, libraryId, isCurrent),
+		notes: createNoteRecords(db, libraryId, isCurrent),
 		images: createImageRecords(db, libraryId, isCurrent),
 		fakeData: createFakeDataRecords(db, libraryId, isCurrent),
 		searchDocuments: async (

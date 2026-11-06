@@ -1,3 +1,5 @@
+import noteMigration from '../src/lib/backend/jazz/migrations/20261106T132300-article-notes-dc1365b4b2ec-d7f861eae955.js'
+import { app as preNotesApp } from '../src/lib/backend/jazz/prenotes-schema.test-support.js'
 import { app as preImageApp } from '../src/lib/backend/jazz/preimages-schema.test-support.js'
 import imageMigration from '../src/lib/backend/jazz/migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
 import readerMigration from '../src/lib/backend/jazz/migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
@@ -21,6 +23,7 @@ const appId = '2db98ae3-fcf1-41e8-b7d3-9818496bde60'
 const baseURL = 'http://127.0.0.1:5180'
 const legacyPermissions = Object.fromEntries(
 	Object.entries(permissions)
+		.filter(([table]) => table !== 'articleNoteRevisions')
 		.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 		.filter(
 			([table]) =>
@@ -154,6 +157,7 @@ for (const browser of [chromium, firefox]) {
 						schema: preOrganizationApp,
 						permissions: Object.fromEntries(
 							Object.entries(permissions)
+								.filter(([table]) => table !== 'articleNoteRevisions')
 								.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 								.filter(
 									([table]) => table !== 'organizationOperations' && table !== 'tagOperations'
@@ -166,6 +170,7 @@ for (const browser of [chromium, firefox]) {
 						schema: preDiscoveryApp,
 						permissions: Object.fromEntries(
 							Object.entries(permissions)
+								.filter(([table]) => table !== 'articleNoteRevisions')
 								.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 								.filter(([table]) => table !== 'tagOperations')
 						),
@@ -175,9 +180,9 @@ for (const browser of [chromium, firefox]) {
 						...upgrade,
 						schema: preReaderApp,
 						permissions: Object.fromEntries(
-							Object.entries(permissions).filter(
-								([table]) => table !== 'readerOperations' && table !== 'articleImages'
-							)
+							Object.entries(permissions)
+								.filter(([table]) => table !== 'articleNoteRevisions')
+								.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 						),
 						migration: discoveryMigration
 					})
@@ -185,11 +190,21 @@ for (const browser of [chromium, firefox]) {
 						...upgrade,
 						schema: preImageApp,
 						permissions: Object.fromEntries(
-							Object.entries(permissions).filter(([table]) => table !== 'articleImages')
+							Object.entries(permissions)
+								.filter(([table]) => table !== 'articleNoteRevisions')
+								.filter(([table]) => table !== 'articleImages')
 						),
 						migration: readerMigration
 					})
-					await deploy({ ...upgrade, migration: imageMigration })
+					await deploy({
+						...upgrade,
+						schema: preNotesApp,
+						permissions: Object.fromEntries(
+							Object.entries(permissions).filter(([table]) => table !== 'articleNoteRevisions')
+						),
+						migration: imageMigration
+					})
+					await deploy({ ...upgrade, migration: noteMigration })
 					if (!keepOpen)
 						context = await browser.launchPersistentContext(join(directory, 'profile'), {
 							headless: true
