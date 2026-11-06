@@ -111,3 +111,17 @@ it('retains disclosures and static SVG while stripping active and referenced SVG
 		fragment.querySelector('use,image,foreignObject,animate,set,style,[onload],svg [href]')
 	).toBeNull()
 })
+
+it('retains only inert image metadata and alt text, with no browser network attributes', () => {
+	const fragment = savedContent(
+		asset(
+			'<p>Before</p><img data-clipper-image="https%3A%2F%2Fexample.com%2Fimage.png" alt="A diagram" src="https://tracker.example/" srcset="https://tracker.example/2 2x" onerror="alert(1)"><img data-clipper-image="javascript%3Aalert(1)"><p>After</p>'
+		),
+		document()
+	)!
+	const image = fragment.querySelector('img')!
+	expect(fragment.querySelectorAll('img')).toHaveLength(1)
+	expect(image.getAttribute('alt')).toBe('A diagram')
+	expect(image.getAttribute('data-clipper-image')).toBe('https%3A%2F%2Fexample.com%2Fimage.png')
+	expect(fragment.querySelector('[src],[srcset],[onerror]')).toBeNull()
+})

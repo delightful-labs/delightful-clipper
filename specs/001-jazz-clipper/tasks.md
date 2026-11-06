@@ -1,4 +1,15 @@
-# Reader experience — current batch
+# Offline article images — current batch
+
+- [x] Start `feat/offline-article-images` from merged main `89ad4e7`; inspect native storage, gateway, extraction and DUI before implementation.
+- [x] Model serial acquisition/processing, operation reconciliation, native write drain, private image declarations, retry/connectivity and reader object-URL ownership before async workflows.
+- [x] Preserve inert source markers/alt text in new gateway/extension captures and declare images atomically with immutable text publication.
+- [x] Reuse the authenticated, destination-pinned gateway for bounded public image bytes; process/resize/re-encode in worker states and publish native private bytes through DLF transactions.
+- [x] Add small DUI image presentation; hydrate images without replacing text/selection, release resources on navigation, and retain positions across image reflow.
+- [x] Review implementation and fix worker partial setup cleanup, Retry-After handling, stale scope/results and image error URLs, read-only viewer capabilities and uncertainty feedback across navigation.
+- [x] Complete qualification: pnpm verify (583 unit/native tests, one platform skip), all 57 web, five production offline, eleven rebuilt Chromium extension and two sample-data cases; retain the shared network servers. Include real worker codecs, image-bearing cold restart and live network PNG evidence.
+- [ ] Push and create a Conventional Commits PR targeting main; leave it unmerged.
+
+# Reader experience — merged PR #17
 
 - [x] Start from merged main `b21691f` on `feat/reader-experience`; inspect DUI before selecting components.
 - [x] Model library-owned positions/preferences, native transactions, scoped viewport observation/restoration, receipt handling and shutdown drain before async implementation.
@@ -179,10 +190,10 @@ Historical clipper baseline: URL-first saving and serial missing-content process
 
 - [x] Build authenticated Add Link → automatic local save → saved reader, with final-destination duplicate checks, provenance and honest remote status.
 - [x] Render saved HTML structure with a shared sanitizer allowlist, isolated internal anchors, normal same-tab article links and literal-text fallback; qualify offline restart and restored-profile rendering.
-- [ ] Complete image acquisition and richer saved reader requirements. URL articles now persist before fetching; full retry scheduling remains open.
+- [x] Implement bounded public raster-image acquisition and inline offline reading in the current batch. Wider image-format/device qualification and full capture retry scheduling remain open.
 - [x] Implement Chromium direct capture with sender/document validation, packaged runtime assets, native save ownership and restart non-replay.
 - [ ] Add Firefox packaging/lifecycle evidence and source/reader annotation anchoring; neither follows from the Chromium capture proof.
-- [ ] Implement retained reader, note/highlight, image, organization, search and deletion requirements.
+- [ ] Complete notes/highlights, global tag management, annotation search and permanent deletion. Reader/organization/article search and bounded inline images have separate implemented batches above.
 - [x] Qualify the production service-worker shell in Chromium with web and Jazz stopped, HTTP cache cleared and a complete browser-process restart. Keep broader platform qualification open.
 - [x] Emit one browser WASM binary, verify one initial network transfer and immutable reuse across updates; record local startup measurements in offline-shell-implementation.md.
 - [x] Qualify the current web deploy preview and Linux source/web/offline/extension suites at `dfc675c`; see the handoff for immutable run/deploy links.

@@ -73,3 +73,11 @@ it('bounds total instance admission and releases slots after body cancellation',
 	expect(results.every((response) => response.status === 408)).toBe(true)
 	expect((await capture(request(input()), crypto.randomUUID(), 'extract', true)).status).toBe(400)
 })
+
+it('requires verified identity and blocks private image destinations on the asset endpoint', async () => {
+	expect((await capture(request(input()), undefined, 'asset', true)).status).toBe(401)
+	const response = await capture(request(input()), crypto.randomUUID(), 'asset', true)
+	expect(response.status).toBe(400)
+	expect(await response.json()).toEqual({ code: 'redirectBlocked', retryable: false })
+	expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+})

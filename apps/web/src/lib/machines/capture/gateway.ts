@@ -12,9 +12,14 @@ export type GatewayResult =
 			finalUrl: string
 			provenance: { submittedUrl: string; redirects: Redirect[]; resolvedAt: string }
 			extraction: Extraction | undefined
+			asset?: { bytes: Uint8Array; mediaType: string }
 	  }
 	| { kind: 'failed'; error: unknown }
-export type GatewayInput = { url: string; signal: AbortSignal; mode: 'resolve' | 'extract' }
+export type GatewayInput = {
+	url: string
+	signal: AbortSignal
+	mode: 'resolve' | 'extract' | 'asset'
+}
 type Input = GatewayInput
 type Context = Input & {
 	controller: AbortController
@@ -25,9 +30,18 @@ type Context = Input & {
 	hop: Hop | undefined
 	output: GatewayResult | undefined
 }
+function isSupportedImageResponse(hop: Hop | undefined) {
+	if (!hop || hop.body.byteLength > 4 * 1024 * 1024) return false
+	return /^image\/(png|jpeg|webp|gif)(;|$)/i.test(hop.mediaType)
+}
 export function createGatewayMachine(capability: {
 	resolve: (url: URL, signal: AbortSignal) => Promise<Destination>
-	fetch: (url: URL, destination: Destination, signal: AbortSignal) => Promise<Hop>
+	fetch: (
+		url: URL,
+		destination: Destination,
+		signal: AbortSignal,
+		mode?: 'resolve' | 'extract' | 'asset'
+	) => Promise<Hop>
 	extract: (
 		body: Uint8Array,
 		mediaType: string,
@@ -46,7 +60,7 @@ export function createGatewayMachine(capability: {
 		),
 		fetch: fromPromise(({ input }: { input: Context }) => {
 			if (!input.destination) throw new Error('Missing destination')
-			return capability.fetch(sourceUrl(input.current), input.destination, input.signal)
+			return capability.fetch(sourceUrl(input.current), input.destination, input.signal, input.mode)
 		}),
 		extract: fromPromise(async ({ input }: { input: Context }) => {
 			input.signal.throwIfAborted()
@@ -142,6 +156,10 @@ export function createGatewayMachine(capability: {
 						guard: ({ context }) => context.hop?.status === 200 && context.mode === 'resolve',
 						target: 'resolved'
 					},
+					{
+						guard: ({ context }) => context.hop?.status === 200 && context.mode === 'asset',
+						target: 'checkingAsset'
+					},
 					{ guard: ({ context }) => context.hop?.status === 200, target: 'extracting' },
 					{
 						target: 'failed',
@@ -200,6 +218,36 @@ export function createGatewayMachine(capability: {
 						actions: assign({ output: ({ event }) => ({ kind: 'failed', error: event.error }) })
 					}
 				}
+			},
+			checkingAsset: {
+				always: [
+					{
+						guard: ({ context }) => isSupportedImageResponse(context.hop),
+						target: 'assetReady'
+					},
+					{
+						target: 'failed',
+						actions: assign({
+							output: { kind: 'failed', error: new CaptureError('unsupportedMedia', 415) }
+						})
+					}
+				]
+			},
+			assetReady: {
+				entry: assign(({ context }) => ({
+					output: {
+						kind: 'success',
+						finalUrl: context.current,
+						provenance: {
+							submittedUrl: context.url,
+							redirects: context.redirects,
+							resolvedAt: new Date().toISOString()
+						},
+						extraction: undefined,
+						asset: { bytes: context.hop!.body, mediaType: context.hop!.mediaType.split(';')[0]! }
+					}
+				})),
+				always: 'done'
 			},
 			resolved: {
 				entry: assign(({ context }) => ({

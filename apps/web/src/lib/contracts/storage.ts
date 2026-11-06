@@ -44,6 +44,7 @@ export type StorageIntent = {
 	createdAt: string
 }
 export type PreparedSave = {
+	images?: import('../images/schema.js').ArticleImage[]
 	articleId?: string
 	source?: ArticleSource
 	intent: StorageIntent

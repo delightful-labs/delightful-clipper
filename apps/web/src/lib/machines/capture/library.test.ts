@@ -274,7 +274,7 @@ it('keeps an issued reader read when unrelated organization rows arrive', async 
 		gate.resolve(document)
 		await waitFor(actor, (s) => s.context.reader?.kind === 'available')
 		expect(actor.getSnapshot().matches({ running: { reading: { shown: 'available' } } })).toBe(true)
-		expect(selectLibraryView(actor.getSnapshot()).readerMessage?.variant).toBe('info')
+		expect(selectLibraryView(actor.getSnapshot()).readerMessage).toBeUndefined()
 	} finally {
 		gate.resolve(document)
 		actor.send({ type: 'SHUTDOWN' })

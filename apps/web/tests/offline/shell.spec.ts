@@ -54,12 +54,27 @@ async function ready(page: Page) {
 		.toBe(true)
 }
 async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
+	const imageData = await page.evaluate(() => {
+		const canvas = document.createElement('canvas')
+		canvas.width = 16
+		canvas.height = 8
+		canvas.getContext('2d')!.fillRect(0, 0, 16, 8)
+		return canvas.toDataURL('image/png').split(',')[1]!
+	})
 	const readingParagraphs = Array.from(
 		{ length: 60 },
 		(_, index) =>
 			`<p>Paragraph ${index + 1}. ${'Saved offline reading context café 🦊. '.repeat(14)}</p>`
 	).join('')
 	await page.route('**/api/capture/*', async (route) => {
+		if (route.request().url().endsWith('/asset')) {
+			await route.fulfill({
+				status: 200,
+				contentType: 'image/png',
+				body: Buffer.from(imageData, 'base64')
+			})
+			return
+		}
 		const input: { operationId: string; url: string } = route.request().postDataJSON()
 		const base = { operationId: input.operationId, finalUrl: 'https://example.com/offline' }
 		if (route.request().url().endsWith('/extract')) await beforeExtract?.()
@@ -78,7 +93,7 @@ async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 							text:
 								'Exact offline shell text café 🦊 ' + readingParagraphs.replace(/<[^>]*>/g, ' '),
 							html:
-								'<h3>Offline structure</h3><details><summary>Offline diagram</summary><svg viewBox="0 0 100 100"><title>Chart</title><path d="M0 0 L10 10" stroke="red"/></svg></details><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p>' +
+								'<img alt="Offline image fixture" data-clipper-image="https%3A%2F%2Fexample.com%2Foffline.png"><h3>Offline structure</h3><details><summary>Offline diagram</summary><svg viewBox="0 0 100 100"><title>Chart</title><path d="M0 0 L10 10" stroke="red"/></svg></details><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p>' +
 								readingParagraphs +
 								'<ol><li id="fn1">Offline footnote</li></ol>',
 							assetCandidates: [],
@@ -201,6 +216,17 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			})
 		})
 		await page.getByRole('link', { name: 'Completely offline article', exact: true }).click()
+		await expect
+			.poll(() =>
+				page
+					.locator('img[alt="Offline image fixture"]')
+					.evaluateAll((images) =>
+						images
+							.filter((image): image is HTMLImageElement => image instanceof HTMLImageElement)
+							.map((image) => image.naturalWidth)
+					)
+			)
+			.toContain(16)
 		const settings = await readingControls(page)
 		await settings.getByRole('radio', { name: 'Dark', exact: true }).check()
 		await settings.getByLabel('Font family', { exact: true }).selectOption('sans')
@@ -233,6 +259,17 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			reopened.getByText('Offline startup prepared on this browser.', { exact: true })
 		).toHaveCount(0)
 		await expect(reopened.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		await expect
+			.poll(() =>
+				reopened
+					.locator('img[alt="Offline image fixture"]')
+					.evaluateAll((images) =>
+						images
+							.filter((image): image is HTMLImageElement => image instanceof HTMLImageElement)
+							.map((image) => image.naturalWidth)
+					)
+			)
+			.toContain(16)
 		await expect.poll(() => visibleReadingParagraph(reopened)).toBe(readingParagraph)
 		const savedSettings = await readingControls(reopened)
 		await expect(savedSettings.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked()

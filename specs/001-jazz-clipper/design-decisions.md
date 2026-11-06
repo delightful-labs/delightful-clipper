@@ -97,3 +97,8 @@ PR #13 is merged and the user verified extension sign-in and saving into the web
 ## Readable state names for workflow feedback
 
 Use localized `meta.name` and severity on owning states. Explicit states, guards and transitions select reader, capture, organization, offline and account outcomes. Parallel regions use message channels so account feedback or reader feedback cannot displace another workflow's status. Selectors project metadata; they do not reconstruct workflow outcomes from flags or translate status codes. A worker may forward an already-localized message from its owning machine. Persisted error/receipt codes remain domain data and retain their existing storage representation.
+
+
+## Offline image implementation boundary
+
+The current batch implements a serial library-owned image queue, private native byte assets and inline DUI-based placeholders/Retry. Worker processing accepts PNG/JPEG/WebP/GIF headers within 4 MiB gateway input and 40 MP, scales without upsampling to a 2048 px long edge, and caps outputs at 2 MiB using PNG for PNG sources and WebP 0.82 otherwise. Size failures trigger bounded dimension reduction; GIF becomes a static frame. HTTP Retry-After is respected up to five minutes. Unknown writes remain blocked in the active owner; restart acquisition first checks the persisted native operation identity, and publication checks it again within the transaction. Existing marker-free snapshots are unchanged; authenticated/data/SVG/AVIF sources and the viewer remain outside this batch. See offline-images.md for validation and limitations. No additional package or catalog wording is required; current placeholders reuse DUI LoadingSpinner and approved Get-image, Retry and generic failure/unknown-save templates.

@@ -1,3 +1,4 @@
+import { imageUrlSchema } from '../images/schema.js'
 import { usesHttpProtocol, hasCredentials } from '../validation/values.js'
 import type { AssetResult } from '../contracts/storage.js'
 import { BYTE_LIMIT } from '../storage/prepare.js'
@@ -25,6 +26,16 @@ export function savedContent(
 		const fragment = purify.sanitize(html, { ...articlePolicy, RETURN_DOM_FRAGMENT: true })
 		if (!fragment.textContent?.trim() || fragment.querySelectorAll('*').length > 5000)
 			return undefined
+		for (const image of fragment.querySelectorAll('img')) {
+			try {
+				const source = imageUrlSchema.parse(
+					decodeURIComponent(image.getAttribute('data-clipper-image') ?? '')
+				)
+				image.setAttribute('data-clipper-image', encodeURIComponent(source))
+			} catch {
+				image.remove()
+			}
+		}
 		// IDs are display-only. Never let saved IDs collide with account controls or named globals.
 		const namespace = `clipper-reader-${crypto.randomUUID()}-`
 		const targets = new Map<string, string>()

@@ -1,3 +1,6 @@
+import { app as preImageApp } from './preimages-schema.test-support.js'
+import imageMigration from './migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
+import { ReadTier } from 'jazz-tools'
 import readerMigration from './migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
 import { app as preReaderApp } from './prereader-schema.test-support.js'
 import discoveryMigration from './migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
@@ -27,7 +30,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 	)
 	const legacyPermissions = Object.fromEntries(
 		Object.entries(permissions)
-			.filter(([table]) => table !== 'readerOperations')
+			.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 			.filter(
 				([table]) =>
 					table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
@@ -127,7 +130,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			schema: preOrganizationApp,
 			permissions: Object.fromEntries(
 				Object.entries(permissions)
-					.filter(([table]) => table !== 'readerOperations')
+					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 					.filter(([table]) => table !== 'organizationOperations' && table !== 'tagOperations')
 			)
 		})
@@ -136,7 +139,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			schema: preDiscoveryApp,
 			permissions: Object.fromEntries(
 				Object.entries(permissions)
-					.filter(([table]) => table !== 'readerOperations')
+					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 					.filter(([table]) => table !== 'tagOperations')
 			),
 			migration: organizationMigration
@@ -145,12 +148,22 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			...upgrade,
 			schema: preReaderApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'readerOperations')
+				Object.entries(permissions).filter(
+					([table]) => table !== 'readerOperations' && table !== 'articleImages'
+				)
 			),
 			migration: discoveryMigration
 		})
-		await deploy({ ...upgrade, migration: readerMigration })
-		await deploy({ ...upgrade, migration: readerMigration })
+		await deploy({
+			...upgrade,
+			schema: preImageApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'articleImages')
+			),
+			migration: readerMigration
+		})
+		await deploy({ ...upgrade, migration: imageMigration })
+		await deploy({ ...upgrade, migration: imageMigration })
 		context = await createJazzSession({
 			...config,
 			serverUrl: server.url,
@@ -210,7 +223,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 	const server = await startLocalJazzServer({ dataDir: join(dataDir, 'authority') })
 	const oldPermissions = Object.fromEntries(
 		Object.entries(permissions)
-			.filter(([table]) => table !== 'readerOperations')
+			.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
 			.filter(([table]) => table !== 'tagOperations')
 	)
 	const config = {
@@ -284,7 +297,9 @@ it('adds tags to a populated organization-era replica without resetting identity
 			adminSecret: server.adminSecret,
 			schema: preReaderApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'readerOperations')
+				Object.entries(permissions).filter(
+					([table]) => table !== 'readerOperations' && table !== 'articleImages'
+				)
 			),
 			migration: discoveryMigration
 		})
@@ -292,7 +307,9 @@ it('adds tags to a populated organization-era replica without resetting identity
 			...config,
 			app: preReaderApp,
 			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'readerOperations')
+				Object.entries(permissions).filter(
+					([table]) => table !== 'readerOperations' && table !== 'articleImages'
+				)
 			),
 			store,
 			initial: 'local-first'
@@ -318,9 +335,43 @@ it('adds tags to a populated organization-era replica without resetting identity
 			appId: server.appId,
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
+			schema: preImageApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'articleImages')
+			),
+			migration: readerMigration
+		})
+		context = await createJazzSession({
+			...config,
+			app: preImageApp,
+			permissions: Object.fromEntries(
+				Object.entries(permissions).filter(([table]) => table !== 'articleImages')
+			),
+			store,
+			initial: 'local-first'
+		})
+		await context
+			.getSnapshot()
+			.client!.db.one(preImageApp.libraries.where({ id: owner }), { tier: ReadTier.Remote })
+		await context
+			.getSnapshot()
+			.client!.db.insert(preImageApp.readerOperations, {
+				libraryId: owner,
+				documentId: null,
+				field: 'theme',
+				value: '"dark"',
+				parents: '[]'
+			})
+			.wait({ tier: 'global' })
+		await context.close()
+		context = undefined
+		await deploy({
+			appId: server.appId,
+			serverUrl: server.url,
+			adminSecret: server.adminSecret,
 			schema: app,
 			permissions,
-			migration: readerMigration
+			migration: imageMigration
 		})
 		context = await createJazzSession({
 			...config,
@@ -331,6 +382,12 @@ it('adds tags to a populated organization-era replica without resetting identity
 		})
 		expect(context.getSnapshot().account?.id).toBe(owner)
 		const current = context.getSnapshot().client!.db
+		await expect
+			.poll(() => current.all(app.readerOperations.where({ libraryId: owner })))
+			.toEqual(
+				expect.arrayContaining([expect.objectContaining({ field: 'theme', value: '"dark"' })])
+			)
+		expect(await current.all(app.articleImages.where({ libraryId: owner }))).toEqual([])
 		const records = createLibraryRecords(current, owner, () => true)
 		await expect
 			.poll(() => current.one(app.articles.where({ id: articleId })))

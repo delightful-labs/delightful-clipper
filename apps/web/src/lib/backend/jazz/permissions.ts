@@ -15,6 +15,32 @@ export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 	policy.libraries.allowInsert.where(canonical)
 	policy.libraries.allowUpdate.whereOld(canonical).whereNew(canonical)
 	policy.libraries.allowDelete.never()
+	const imageParent = (row: { libraryId: RowRefValue; documentId: RowRefValue }) =>
+		allOf([
+			owns(row.libraryId),
+			policy.documents.exists.where({ id: row.documentId, libraryId: row.libraryId })
+		])
+	policy.articleImages.allowRead.where((row) => owns(row.libraryId))
+	policy.articleImages.allowInsert.where((row) =>
+		allOf([imageParent(row), { status: 'pending' }, { assetId: null }])
+	)
+	policy.articleImages.allowUpdate
+		.whereOld((row) =>
+			allOf([owns(row.libraryId), anyOf([{ status: 'pending' }, { status: 'failed' }])])
+		)
+		.whereNew((row) =>
+			allOf([
+				imageParent(row),
+				anyOf([
+					allOf([{ status: 'failed' }, { assetId: null }]),
+					allOf([
+						{ status: 'ready' },
+						policy.assets.exists.where({ id: row.assetId, libraryId: row.libraryId })
+					])
+				])
+			])
+		)
+	policy.articleImages.allowDelete.never()
 	policy.readerOperations.allowRead.where((row) => owns(row.libraryId))
 	policy.readerOperations.allowInsert.where((row) =>
 		allOf([

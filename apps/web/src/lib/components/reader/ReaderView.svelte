@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button, Heading, StatusMessage } from 'delightful-ui'
+	import type { ImageView } from '../../images/view-machine.js'
 	import type { AssetResult } from '../../contracts/storage.js'
 	import type { WorkflowMessage } from '../../contracts/feedback.js'
 	import type { ReaderPreferences, ReaderChange } from '../../reader/schema.js'
@@ -13,6 +14,9 @@
 	let {
 		title,
 		asset,
+		imageViews = {},
+		onretryimage,
+		onimageerror,
 		text,
 		sourceUrl,
 		preferences,
@@ -41,6 +45,9 @@
 	}: {
 		title: string
 		asset: AssetResult
+		imageViews?: Record<string, ImageView>
+		onretryimage?: (url: string) => void
+		onimageerror?: ((id: string, url: string) => void) | undefined
 		text: string
 		sourceUrl: string | undefined
 		preferences: ReaderPreferences
@@ -117,7 +124,17 @@
 			style:--reader-spacing={preferences.spacing}
 			style:--reader-width={preferences.width + 'ch'}
 		>
-			<SavedContent {asset} {text} {sourceUrl} {onready} {onrelease} {onlink} />
+			<SavedContent
+				{imageViews}
+				{onretryimage}
+				{onimageerror}
+				{asset}
+				{text}
+				{sourceUrl}
+				{onready}
+				{onrelease}
+				{onlink}
+			/>
 		</div>
 		{#if !trashed}<footer>
 				<ReaderActions {trashed} {archived} enabled={canOrganize} {onarchive} {onrestore} />

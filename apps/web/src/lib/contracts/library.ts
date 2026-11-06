@@ -21,6 +21,7 @@ export type FakeDataSpawner = <S extends Snapshot<import('../samples/machine.js'
 	options: { input: undefined }
 ) => FakeDataRef
 export type LibraryCapability = {
+	images?: import('./images.js').ImageCapability
 	reader?: import('./reader.js').ReaderCapability
 	spawnFakeData?: (spawn: FakeDataSpawner) => FakeDataRef
 	search?: import('./search.js').SearchCapability
@@ -33,6 +34,8 @@ export type LibraryCapability = {
 	worker: QueueOpen
 }
 export type LibraryEvent =
+	| { type: 'RETRY_IMAGE'; id: string }
+	| { type: 'IMAGE_ERROR'; id: string; url: string }
 	| {
 			type: 'READER_EVENT'
 			event: import('../machines/reader/experience.js').ReaderExperienceEvent

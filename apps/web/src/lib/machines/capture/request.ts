@@ -7,7 +7,7 @@ import type { CaptureInput } from '../../contracts/capture-input.js'
 export type RequestInput = {
 	request: Request
 	accountId: string | undefined
-	mode: 'resolve' | 'extract'
+	mode: 'resolve' | 'extract' | 'asset'
 	enabled: boolean
 }
 type RequestCapability<G extends Snapshot<GatewayResult>> = {
@@ -232,8 +232,23 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 						guard: ({ context }) => required(context.input).mode === 'resolve',
 						target: 'encodingResolution'
 					},
+					{
+						guard: ({ context }) => required(context.input).mode === 'asset',
+						target: 'encodingAsset'
+					},
 					{ target: 'encodingExtraction' }
 				]
+			},
+			encodingAsset: {
+				entry: assign({
+					response: ({ context }) => {
+						const asset = required(gatewaySuccess(context.result).asset)
+						return new Response(new Uint8Array(asset.bytes), {
+							headers: { ...headers, 'Content-Type': asset.mediaType }
+						})
+					}
+				}),
+				always: 'releasing'
 			},
 			encodingResolution: encoding(({ context }) => {
 				const result = gatewaySuccess(context.result),

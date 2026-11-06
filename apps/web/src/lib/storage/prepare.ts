@@ -1,3 +1,4 @@
+import { prepareImages } from '../images/schema.js'
 import type { PreparedSave, SaveRequest } from '../contracts/storage.js'
 export { TEXT_LIMIT, BYTE_LIMIT } from './policy.js'
 import { saveRequestSchema } from './policy.js'
@@ -25,6 +26,10 @@ export async function prepareSave(libraryId: string, request: SaveRequest): Prom
 		)
 	)
 	return {
+		images:
+			mediaType === 'text/html'
+				? await prepareImages(libraryId, operationId, new TextDecoder().decode(payload))
+				: [],
 		...(input.articleId ? { articleId: input.articleId } : {}),
 		...(input.source
 			? { source: { id: operationId, documentId: operationId, libraryId, ...input.source } }
