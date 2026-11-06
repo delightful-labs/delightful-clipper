@@ -1,8 +1,8 @@
 import { Pool } from 'pg'
 import { z } from 'zod'
 
-const postgresConnection = z.url().refine((value) => {
-	return ['postgres:', 'postgresql:'].includes(new URL(value).protocol)
+export const postgresConnection = z.url().refine((value) => {
+	return URL.canParse(value) && ['postgres:', 'postgresql:'].includes(new URL(value).protocol)
 })
 
 /** The auth server owns this pool and must close it when its lifetime ends. */
