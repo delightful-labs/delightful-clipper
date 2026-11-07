@@ -51,7 +51,7 @@ it.each([
 	})
 	actor.start()
 	if (mode === 'shutdown') {
-		await waitFor(actor, (s) => s.matches('asset'))
+		await waitFor(actor, (s) => s.matches({ resources: { asset: 'reading' } }))
 		actor.send({ type: 'SHUTDOWN' })
 	}
 	await toPromise(actor)
@@ -125,16 +125,13 @@ it.each(['document', 'snapshot', 'asset', 'source'] as const)(
 			result = event.result
 		})
 		actor.start()
-		await waitFor(actor, (s) => s.matches(boundary))
+		await waitFor(actor, () => called.includes(boundary))
 		current = false
 		pending.resolve()
 		await toPromise(actor)
 		expect(result).toEqual({ kind: 'unavailable' })
 		expect(called).toEqual(
-			['document', 'snapshot', 'asset', 'source'].slice(
-				0,
-				['document', 'snapshot', 'asset', 'source'].indexOf(boundary) + 1
-			)
+			boundary === 'document' ? ['document'] : ['document', 'snapshot', 'asset', 'source']
 		)
 		expect(actor.getSnapshot().context).toMatchObject({
 			document: undefined,
@@ -229,7 +226,7 @@ it('aborts optional metadata on shutdown and ignores its late content', async ()
 	const results: ReadResult[] = []
 	actor.on('record', (event) => results.push(event.result))
 	actor.start()
-	await waitFor(actor, (s) => s.matches('source'))
+	await waitFor(actor, (s) => s.matches({ resources: { source: 'reading' } }))
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 	expect(signal?.aborted).toBe(true)
@@ -240,5 +237,57 @@ it('aborts optional metadata on shutdown and ignores its late content', async ()
 		snapshot: undefined,
 		source: undefined,
 		capability: undefined
+	})
+})
+
+it('starts every independent resource read after header validation and waits for all results', async () => {
+	const draft = await prepareSave(crypto.randomUUID(), {
+		operationId: crypto.randomUUID(),
+		title: 'Parallel',
+		text: 'Readable',
+		bytes: new Uint8Array([1]),
+		mediaType: 'text/plain'
+	})
+	const snapshot = Promise.withResolvers<typeof draft.snapshot>()
+	const asset = Promise.withResolvers<typeof draft.asset>()
+	const source = Promise.withResolvers<null>()
+	const called: string[] = []
+	const results: ReadResult[] = []
+	const actor = createActor(readRecordMachine, {
+		input: {
+			id: draft.document.id,
+			capability: {
+				isCurrent: () => true,
+				document: async () => draft.document,
+				snapshot: () => {
+					called.push('snapshot')
+					return snapshot.promise
+				},
+				asset: () => {
+					called.push('asset')
+					return asset.promise
+				},
+				source: () => {
+					called.push('source')
+					return source.promise
+				}
+			}
+		}
+	})
+	actor.on('record', (e) => results.push(e.result))
+	actor.start()
+	await waitFor(actor, () => called.length === 3)
+	expect(called).toEqual(['snapshot', 'asset', 'source'])
+	asset.resolve(draft.asset)
+	source.resolve(null)
+	await Promise.resolve()
+	expect(results).toEqual([])
+	snapshot.resolve(draft.snapshot)
+	await toPromise(actor)
+	expect(results).toHaveLength(1)
+	expect(results[0]).toMatchObject({
+		kind: 'available',
+		text: 'Readable',
+		asset: { kind: 'available' }
 	})
 })

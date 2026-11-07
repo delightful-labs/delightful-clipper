@@ -6,12 +6,14 @@
 		search,
 		filters,
 		searchLabel,
-		filtersLabel
+		filtersLabel,
+		onsearch
 	}: {
 		search: Snippet
 		filters: Snippet
 		searchLabel: string
 		filtersLabel: string
+		onsearch?: () => void
 	} = $props()
 	const id = $props.id()
 
@@ -43,7 +45,10 @@
 		id={`${id}-search`}
 		aria-label={searchLabel}
 		onkeydown={dismissPopover}
-		ontoggle={focusControl}
+		ontoggle={(event) => {
+			if (event.newState === 'open') onsearch?.()
+			focusControl(event)
+		}}
 	>
 		<div class="fields">{@render search()}</div>
 	</Popover>

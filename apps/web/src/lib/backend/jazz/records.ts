@@ -155,14 +155,18 @@ export function createLibraryRecords(
 		fakeData: createFakeDataRecords(db, libraryId, isCurrent),
 		searchDocuments: async (
 			rows: LibraryArticle[],
-			_signal: AbortSignal
+			signal: AbortSignal
 		): Promise<SearchDocument[]> => {
-			const [documents, snapshots] = await Promise.all([
+			signal.throwIfAborted()
+			const [documents, snapshots] = await Promise.allSettled([
 				db.all(app.documents.where({ libraryId }), { tier: ReadTier.LocalFirst }),
 				db.all(app.snapshots.where({ libraryId }), { tier: ReadTier.LocalFirst })
 			])
-			const docs = new Map(documents.map((document) => [document.id, document]))
-			const texts = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot.text]))
+			signal.throwIfAborted()
+			if (documents.status === 'rejected') throw documents.reason
+			if (snapshots.status === 'rejected') throw snapshots.reason
+			const docs = new Map(documents.value.map((document) => [document.id, document]))
+			const texts = new Map(snapshots.value.map((snapshot) => [snapshot.id, snapshot.text]))
 			return rows.map((row) => ({
 				id: row.id,
 				title: row.title,

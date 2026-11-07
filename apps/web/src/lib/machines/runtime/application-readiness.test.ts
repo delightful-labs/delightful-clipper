@@ -96,7 +96,7 @@ function ready(accountId: string, root: RootAccess): AccountObservation {
 function root(local: Promise<void>, global: Promise<void>) {
 	const localWait = vi.fn(() => local)
 	return {
-		read: async () => 'compatible',
+		read: async () => 'missing',
 		ensure: () => ({ local: localWait, global: () => global }),
 		localWait
 	} satisfies RootAccess & { localWait: typeof localWait }
@@ -628,4 +628,22 @@ describe('application-owned browser connectivity', () => {
 			vi.unstubAllGlobals()
 		}
 	})
+})
+
+it('opens an existing library without reporting a new write or remote acceptance', async () => {
+	const ensure = vi.fn(() => {
+		throw new Error('Unexpected write')
+	})
+	const { host } = fixture(ready('existing', { read: async () => 'compatible', ensure }))
+	const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
+	await waitFor(actor, (s) =>
+		s.matches({ active: { flow: { running: { library: { ready: 'existing' } } } } })
+	)
+	expect(selectApplicationView(actor.getSnapshot(), true)).toMatchObject({
+		status: 'ready',
+		message: { text: '' }
+	})
+	expect(ensure).not.toHaveBeenCalled()
+	actor.send({ type: 'SHUTDOWN' })
+	await waitFor(actor, (s) => s.status === 'done')
 })

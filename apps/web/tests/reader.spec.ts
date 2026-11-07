@@ -205,7 +205,9 @@ test('retains offline reading settings and location through a complete browser r
 		await again.getByRole('button', { name: 'Close', exact: true }).click()
 		authority = await startLocalJazzServer(options())
 		stopped = false
-		await expect(reopened.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect(
+			reopened.getByRole('button', { name: 'Show recovery phrase', exact: true })
+		).toBeVisible()
 	} finally {
 		await context.close()
 		if (stopped) authority = await startLocalJazzServer(options())

@@ -37,6 +37,7 @@
 			<h2 bind:this={heading} tabindex="-1">{t('library.heading')}</h2>
 			<LibraryFilterPopovers
 				searchLabel={action('search', 'article', 2)}
+				onsearch={() => actor.send({ type: 'SEARCH_OPEN' })}
 				filtersLabel={action('filter', 'article', 2)}
 			>
 				{#snippet search()}
@@ -68,6 +69,12 @@
 		{#if view.emptyMessage}<p>{view.emptyMessage.text}</p>{/if}
 		<ArticleList
 			rows={view.rows}
+			resetKey={JSON.stringify([
+				capture.query,
+				capture.view,
+				capture.favorites,
+				capture.selectedTags
+			])}
 			readable={view.readable}
 			enabled={view.canOrganize}
 			onorganize={(request) => actor.send({ type: 'ORGANIZE', request })}

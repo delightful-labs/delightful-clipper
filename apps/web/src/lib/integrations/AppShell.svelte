@@ -3,7 +3,7 @@
 	import { onMount, type Snippet } from 'svelte'
 	import { page } from '$app/state'
 	import { Button, Drawer, Heading, Navigation, TopNavigation } from 'delightful-ui'
-	import { selectLibraryView } from '../machines/capture/library.js'
+	import { selectLibraryReaderExperience } from '../machines/capture/library.js'
 	import type { ReaderPreferences } from '../reader/schema.js'
 	import AddLink from './AddLink.svelte'
 	import ConnectionStatus from './ConnectionStatus.svelte'
@@ -31,7 +31,7 @@
 			return
 		}
 		const subscription = actor.subscribe((snapshot) => {
-			const view = selectLibraryView(snapshot).readerExperience
+			const view = selectLibraryReaderExperience(snapshot)
 			readerFocused = view.focused
 			theme = view.preferences.theme
 		})

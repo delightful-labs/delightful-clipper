@@ -44,7 +44,7 @@ export type LibraryEvent =
 	| { type: 'FILTER'; view: LibraryView; favorites: boolean }
 	| { type: 'TAG_FILTER'; keys: string[] }
 	| { type: 'QUERY'; query: string }
-	| { type: 'RETRY_SEARCH' }
+	| { type: 'RETRY_SEARCH' | 'SEARCH_OPEN' }
 	| ReadReport
 	| SyncReport
 	| QueueReport

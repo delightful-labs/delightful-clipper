@@ -1,7 +1,9 @@
 import { assign, fromPromise, setup, stateIn } from 'xstate'
 import type { RootAccess, RootWrite } from '../../contracts/account.js'
 
-type Result = { outcome: 'ready'; write: RootWrite } | { outcome: 'failed' | 'conflict' | 'closed' }
+type Result =
+	| { outcome: 'ready'; write?: RootWrite }
+	| { outcome: 'failed' | 'conflict' | 'closed' }
 type Context = { root: RootAccess; write: RootWrite | undefined; result: Result }
 function receipt(context: Context) {
 	if (!context.write) throw new Error('Missing library write receipt')
@@ -19,14 +21,18 @@ export const rootBootstrapMachine = setup<
 	typeof actors,
 	{},
 	{},
-	{ stopping: undefined },
+	{ stopping: undefined; existingRoot: { result: string }; incompatibleRoot: { result: string } },
 	never,
 	string,
 	RootAccess,
 	Result
 >({
 	actors,
-	guards: { stopping: stateIn({ writing: { lifetime: 'stopping' } }) }
+	guards: {
+		stopping: stateIn({ writing: { lifetime: 'stopping' } }),
+		existingRoot: (_args, { result }) => result === 'compatible',
+		incompatibleRoot: (_args, { result }) => result === 'incompatible'
+	}
 }).createMachine({
 	id: 'root-bootstrap',
 	initial: 'reading',
@@ -39,7 +45,14 @@ export const rootBootstrapMachine = setup<
 				src: 'read',
 				input: ({ context }) => context.root,
 				onDone: [
-					{ guard: ({ event }) => event.output === 'incompatible', target: 'conflict' },
+					{
+						guard: { type: 'incompatibleRoot', params: ({ event }) => ({ result: event.output }) },
+						target: 'conflict'
+					},
+					{
+						guard: { type: 'existingRoot', params: ({ event }) => ({ result: event.output }) },
+						target: 'existing'
+					},
 					{ target: 'writing' }
 				],
 				onError: 'failed'
@@ -91,6 +104,7 @@ export const rootBootstrapMachine = setup<
 			type: 'final',
 			entry: assign({ result: ({ context }) => ({ outcome: 'ready', write: receipt(context) }) })
 		},
+		existing: { type: 'final', entry: assign({ result: { outcome: 'ready' } }) },
 		failed: { type: 'final' },
 		conflict: { type: 'final', entry: assign({ result: { outcome: 'conflict' } }) },
 		closed: { type: 'final', entry: assign({ result: { outcome: 'closed' } }) }

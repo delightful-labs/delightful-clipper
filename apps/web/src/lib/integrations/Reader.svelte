@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte'
 	import type { ActorRefFrom, SnapshotFrom } from 'xstate'
 	import { StatusMessage } from 'delightful-ui'
-	import { libraryMachine, selectLibraryView } from '../machines/capture/library.js'
+	import { libraryMachine, selectLibraryReaderView } from '../machines/capture/library.js'
 	import { normalizedSource } from '../capture/source.js'
 	import { t } from '../localization/index.js'
 	import ReaderView from '../components/reader/ReaderView.svelte'
@@ -18,7 +18,7 @@
 	let headings = $state<ReaderHeading[]>([])
 	let footnote = $state<ReaderFootnote>()
 	const footnoteId = $props.id()
-	const view = $derived(selectLibraryView(snapshot))
+	const view = $derived(selectLibraryReaderView(snapshot))
 	const reading = $derived(view.readerExperience)
 	const reader = $derived(snapshot?.context.reader)
 	const article = $derived(

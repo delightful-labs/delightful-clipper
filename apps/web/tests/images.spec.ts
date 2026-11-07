@@ -48,7 +48,7 @@ async function png(page: Page, width = 3000, height = 1000, mediaType = 'image/p
 }
 async function seed(page: Page, urls: string[]) {
 	await page.goto('/')
-	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
 	return page.evaluate(async (urls) => {
 		const path = '/tests/images-driver.ts'
 		return (await import(/* @vite-ignore */ path)).seedImages(urls)
