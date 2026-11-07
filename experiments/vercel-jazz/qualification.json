@@ -1,0 +1,34 @@
+{
+	"status": "local-protocol-qualified",
+	"observedOn": "2026-11-07",
+	"scope": "Disposable Vercel deployment proof; no Finance or Clipper production data",
+	"jazz": "2.0.0-alpha.60",
+	"functionMaxDurationSeconds": 300,
+	"core": {
+		"vcpus": 1,
+		"driveLimitBytes": 1073741824,
+		"idleMilliseconds": 60000
+	},
+	"checks": {
+		"sourceLint": "passed",
+		"typecheck": "passed",
+		"build": "passed locally; Vercel Linux build pending",
+		"deployedWebSocket": "pending deployment authentication",
+		"localAndRemoteReceipts": "passed with isolated local backend",
+		"recoveryReplica": "passed with isolated local backend",
+		"crossIdentityDenial": "passed with isolated local backend",
+		"functionExpiryReconnect": "harness prepared; deployed run pending",
+		"sandboxExpiryReconnect": "50-minute harness prepared; deployed run pending",
+		"idleWakeAndPersistence": "quiet-interval harness prepared; deployed run and Sandbox status verification pending",
+		"workerOfflineStartup": "pending browser harness",
+		"sharedHobbyBudget": "pending deployed usage measurements"
+	},
+	"finance": {
+		"baseline": "699e6d9",
+		"backupImplementation": "Merged workspace backup and restore from PRs 54 and 57; qualification notes in PR 59",
+		"migrationGate": "Restore an existing-format Finance backup into the alpha.60 consumer and verify the resulting graph before production cutover"
+	},
+	"clipper": {
+		"dataMigration": "Not required by user; fresh disposable alpha.60 data is permitted"
+	}
+}
