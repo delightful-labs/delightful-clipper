@@ -11,13 +11,15 @@
 	import RecoveryPhrase from 'delightful-local-first/recovery/svelte'
 	import { Button, StatusMessage, Textarea, InputText } from 'delightful-ui'
 	import {
-		selectApplicationView,
 		selectRecoveryBinding,
 		selectLibraryActor
 	} from '../machines/runtime/application-readiness.js'
 	import { accountInput, type Session, type LibraryFactory } from '../backend/jazz/account.js'
-	import { createAccountLifecycleMachine } from '../machines/runtime/account-lifecycle.js'
-	import { atprotoMachine } from '../machines/runtime/atproto.js'
+	import {
+		createAccountLifecycleMachine,
+		selectAccountLifecycleView
+	} from '../machines/runtime/account-lifecycle.js'
+	import { atprotoSelectionStore, atprotoMachine } from '../machines/runtime/atproto.js'
 	import { t, action } from '../localization/index.js'
 
 	const applicationReadinessMachine =
@@ -40,6 +42,7 @@
 		onSnapshot?: (snapshot: ApplicationSnapshot<Session>) => void
 	} = $props()
 	let snapshot = $state<ApplicationSnapshot<Session>>()
+	let ownerSnapshot = $state<SnapshotFrom<typeof applicationReadinessMachine>>()
 	let phrase = $state('')
 	let handle = $state('')
 	let oauthSnapshot = $state<SnapshotFrom<typeof atprotoMachine>>()
@@ -57,7 +60,7 @@
 		(event: { type: 'CREATE' | 'LOGOUT' | 'RETRY' } | { type: 'RESTORE'; phrase: string }) => void
 	>(() => {})
 	const configured = $derived(appId.length > 0 && serverUrl.length > 0)
-	const view = $derived(selectApplicationView(snapshot, configured))
+	const view = $derived(selectAccountLifecycleView(ownerSnapshot, configured))
 	const recovery = $derived(selectRecoveryBinding(snapshot))
 	const library = $derived(selectLibraryActor(snapshot))
 	setContext<LibraryContext>(libraryContextKey, {
@@ -71,9 +74,20 @@
 
 	onMount(() => {
 		if (!appId || !serverUrl) return
+		const selection = atprotoSelectionStore(
+			{ appId, serverUrl, env: 'clipper' },
+			{
+				getItem: (key) => window.localStorage.getItem(key),
+				setItem: (key, value) => window.localStorage.setItem(key, value),
+				removeItem: (key) => window.localStorage.removeItem(key)
+			}
+		)
 		const actor = createActor(applicationReadinessMachine, {
 			input: {
-				account: accountInput({ appId, serverUrl, env: 'clipper' }, libraryFactory),
+				account: {
+					...accountInput({ appId, serverUrl, env: 'clipper' }, libraryFactory),
+					forgetTokenSelection: selection.clear
+				},
 				oauth: {
 					storage: {
 						getItem: (key) => window.sessionStorage.getItem(key),
@@ -81,6 +95,7 @@
 						removeItem: (key) => window.sessionStorage.removeItem(key)
 					},
 					origin: window.location.origin,
+					selection,
 					navigate: (url) => window.location.assign(url)
 				}
 			},
@@ -89,6 +104,7 @@
 		beginAtproto = (operation) => actor.send({ type: 'BEGIN', operation, handle })
 		send = (event) => actor.send(event)
 		const subscription = actor.subscribe((next) => {
+			ownerSnapshot = next
 			snapshot = next.context.application
 			oauthSnapshot = next.children.oauth?.getSnapshot()
 			if (snapshot) onSnapshot?.(snapshot)

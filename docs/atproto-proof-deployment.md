@@ -260,3 +260,57 @@ contract outputs are added to Clipper's existing vendor baseline. Live OAuth wit
 the new receipt protocol still requires qualification after preview deployment;
 the earlier live-login result applies to the prior callback flow. See
 [the ownership note](reviews/atproto-attempt-refactor.md).
+
+## Chrome qualification — 2026-11-07
+
+Verified Netlify deploy `6aef051092e7484edbbe8958` is ready at commit
+`1f021ba30a5cecb25ddfb2a7447cd0c7c3b364ac`. Tests used separate isolated Chrome
+contexts, preserving the user's original signed-in tab and library.
+
+Passed:
+
+- Fresh local library reaches synced state without an auth-service request.
+- A completion request without a receipt returns 409 and leaves local use available.
+- Public-article capture resolve/extract return 200; the reader contains nonempty
+  parsed content and survives reload without a Retry error.
+- User-completed real OAuth returns callback 302, attempt completion 200, token
+  200 and Jazz existing-account login 200. The existing library appears synced,
+  Sign out is available, Connect is hidden, and the tab intent is removed.
+
+Failed: reloading after existing-account sign-in opens an empty local library.
+Sign out disappears and Connect reappears. The Better Auth session remains valid
+(get-session 200 with a user), but startup performs no Jazz external-account login.
+The consumed OAuth intent is not replayed, as intended.
+
+Cause confirmed in the pinned SDK's accounts/persistence.js: external credentials
+belong to the provider and external account selection is not serialized as a
+local-first signing root. Clipper starts with initial local-first and has no
+provider-backed startup restoration. The callback fix succeeds; durable external
+identity restoration is an outstanding integration gap. No remote data deletion
+was observed or performed. The preview is not qualified for durable sign-in until
+startup restoration is implemented and tested. A proposed machine-owned restore
+of a previously completed identity requires user approval before implementation.
+
+## Startup restoration fix — 2026-11-07
+
+The user approved the non-secret `{ issuer, userId, accountId }` selection and
+restoration process, then approved implementation testing. The shared DLF
+coordinator now remembers only confirmed identity operations and restores the
+same provider/account through `loginJWT`. A pending explicit OAuth attempt takes
+precedence over any remembered account. First use without a selection performs
+no auth-service request. The storage key includes Jazz app/server/environment.
+
+Clipper drains the local library, revalidates its exact binding and empty-library
+policy, and checks the restored account ID before exposing or bootstrapping its
+library. SDK uncertainty or target mismatch is unresolved. Persistence failure
+does not replay a successful identity change. Logout waits for any pending
+selection write, removes the remembered selection before Jazz logout, and resets
+the coordinator for a later explicit sign-in. A remaining provider cookie alone
+cannot cause startup restoration after sign-out.
+
+The complete suite passes 665 tests with one skip; type/Svelte, lint, formatting,
+vendor integrity and production build pass. Qualification covers two actor
+lifetimes and explicit sign-out, including adverse binding, storage, provider,
+shutdown and local-work cases. The original Chrome failure above remains the
+baseline; live qualification of the fix follows preview deployment. See
+[the restoration design and review](reviews/atproto-startup-restoration.md).

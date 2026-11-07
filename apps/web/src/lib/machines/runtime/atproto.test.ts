@@ -1,3 +1,7 @@
+import {
+	createBrowserTokenSelection,
+	type TokenSelectionStore
+} from 'delightful-local-first/identity/token/selection'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createActor, waitFor } from 'xstate'
 import { atprotoMachine, atprotoInput } from './atproto.js'
@@ -5,7 +9,21 @@ import type { TokenIdentityCommand } from './application-readiness.js'
 
 const attemptId = '88888888-8888-4888-8888-888888888888'
 const accountId = '77777777-7777-4777-8777-777777777777'
-function fixture(record?: unknown) {
+function fixture(record?: unknown, remembered?: unknown, override?: TokenSelectionStore) {
+	const selections = new Map<string, string>()
+	if (remembered) selections.set('test-selection', JSON.stringify(remembered))
+	const selection = createBrowserTokenSelection(
+		{
+			getItem: (key) => selections.get(key) ?? null,
+			setItem: (key, value) => {
+				selections.set(key, value)
+			},
+			removeItem: (key) => {
+				selections.delete(key)
+			}
+		},
+		'test-selection'
+	)
 	const values = new Map<string, string>()
 	if (record) values.set('clipper.atproto.pending.v1', JSON.stringify(record))
 	const storage: Storage = {
@@ -25,9 +43,15 @@ function fixture(record?: unknown) {
 	const dispatch = vi.fn<(command: TokenIdentityCommand) => void>()
 	const navigate = vi.fn()
 	const actor = createActor(atprotoMachine, {
-		input: atprotoInput({ storage, dispatch, navigate, origin: 'https://example.invalid' })
+		input: atprotoInput({
+			storage,
+			dispatch,
+			navigate,
+			origin: 'https://example.invalid',
+			selection: override ?? selection
+		})
 	}).start()
-	return { actor, storage, dispatch, navigate }
+	return { actor, storage, dispatch, navigate, selection, selections }
 }
 afterEach(() => vi.unstubAllGlobals())
 
@@ -65,7 +89,7 @@ it('consumes the intent before issue and waits for the owner to settle', async (
 	expect(f.storage.length).toBe(0)
 	f.actor.send({ type: 'SHUTDOWN' })
 	expect(f.actor.getSnapshot().status).toBe('active')
-	command.reportTo?.send({ type: 'TOKEN_SUCCEEDED', attemptId })
+	command.reportTo?.send({ type: 'TOKEN_SUCCEEDED', attemptId, accountId })
 	await waitFor(f.actor, (s) => s.status === 'done')
 	// A shutdown return is not retried; no credential was stored in the intent.
 	expect(f.storage.length).toBe(0)
@@ -80,7 +104,7 @@ it('clears a successful sign-in intent and uses only the sign-in command', async
 	await waitFor(f.actor, (s) => s.matches('settling'))
 	const command = f.dispatch.mock.calls[0]![0]
 	expect(command.type).toBe('SIGN_IN_TOKEN')
-	command.reportTo?.send({ type: 'TOKEN_SUCCEEDED', attemptId })
+	command.reportTo?.send({ type: 'TOKEN_SUCCEEDED', attemptId, accountId })
 	await waitFor(f.actor, (s) => s.matches('succeeded'))
 	expect(f.storage.length).toBe(0)
 	f.actor.send({ type: 'SHUTDOWN' })
@@ -198,7 +222,7 @@ it('rejects stale settlement and does not replay a consumed operation on reload'
 		'TOKEN_CANCELLED',
 		'TOKEN_UNRESOLVED'
 	] as const) {
-		f.actor.send({ type, attemptId: crypto.randomUUID() })
+		f.actor.send({ type, attemptId: crypto.randomUUID(), accountId })
 		expect(f.actor.getSnapshot().matches('settling')).toBe(true)
 	}
 	f.actor.send({ type: 'RESUME', accountId })
@@ -249,9 +273,9 @@ it.each(['TOKEN_CANCELLED', 'TOKEN_UNRESOLVED', 'TOKEN_FAILED', 'TOKEN_SUCCEEDED
 		f.actor.send({ type: 'RESUME', accountId })
 		await waitFor(f.actor, (s) => s.matches('settling'))
 		f.actor.send({ type: 'SHUTDOWN' })
-		f.actor.send({ type, attemptId: crypto.randomUUID() })
+		f.actor.send({ type, attemptId: crypto.randomUUID(), accountId })
 		expect(f.actor.getSnapshot().status).toBe('active')
-		f.actor.send({ type, attemptId })
+		f.actor.send({ type, attemptId, accountId })
 		await waitFor(f.actor, (s) => s.status === 'done')
 		expect(f.dispatch).toHaveBeenCalledOnce()
 	}
@@ -269,4 +293,235 @@ it('terminates an issued operation as unresolved if its account owner fails', as
 	expect(f.actor.getSnapshot().matches('unresolvedClosed')).toBe(true)
 	expect(f.actor.getSnapshot().status).toBe('done')
 	expect(f.storage.length).toBe(0)
+})
+
+const remembered = { issuer: 'https://example.invalid', userId: 'provider-user', accountId }
+it('remembers a completed sign-in and restores that account in a new owner', async () => {
+	const fetch = vi.fn(async (path: string) =>
+		Response.json(
+			path.endsWith('/completion')
+				? { attemptId, userId: remembered.userId }
+				: { user: { id: remembered.userId } }
+		)
+	)
+	vi.stubGlobal('fetch', fetch)
+	const originalLocalId = crypto.randomUUID()
+	const first = fixture({ operation: 'sign-in', accountId: originalLocalId, attemptId })
+	first.actor.send({ type: 'RESUME', accountId: originalLocalId })
+	await waitFor(first.actor, (s) => s.matches('settling'))
+	expect(await first.selection.read()).toBeUndefined()
+	first.dispatch.mock.calls[0]![0].reportTo?.send({ type: 'TOKEN_SUCCEEDED', attemptId, accountId })
+	await waitFor(first.actor, (s) => s.matches('succeeded'))
+	expect(await first.selection.read()).toEqual(remembered)
+	first.actor.send({ type: 'SHUTDOWN' })
+	const restored = fixture(undefined, await first.selection.read())
+	const localId = crypto.randomUUID()
+	restored.actor.send({ type: 'RESUME', accountId: localId })
+	await waitFor(restored.actor, (s) => s.matches('restoringSelection'))
+	const command = restored.dispatch.mock.calls[0]![0]
+	expect(command).toMatchObject({
+		type: 'RESTORE_TOKEN',
+		accountId: localId,
+		expectedAccountId: accountId
+	})
+	expect(fetch.mock.calls.map(([path]) => path)).toEqual([
+		'/api/auth/atproto/completion',
+		'/api/auth/get-session'
+	])
+	command.reportTo?.send({ type: 'TOKEN_SUCCEEDED', attemptId: command.attemptId, accountId })
+	await waitFor(restored.actor, (s) => s.matches('succeeded'))
+	expect(await restored.selection.read()).toEqual(remembered)
+	restored.actor.send({ type: 'SHUTDOWN' })
+})
+
+it.each(['absent', 'changed', 'offline', 'wrong-issuer', 'malformed'] as const)(
+	'does not restore with %s provider evidence',
+	async (kind) => {
+		const fetch = vi.fn(async () => {
+			if (kind === 'offline') throw new Error('Unavailable')
+			return Response.json(kind === 'absent' ? null : { user: { id: 'other-user' } })
+		})
+		vi.stubGlobal('fetch', fetch)
+		const selection =
+			kind === 'wrong-issuer'
+				? { ...remembered, issuer: 'https://other.invalid' }
+				: kind === 'malformed'
+					? { ...remembered, token: 'must-never-be-accepted' }
+					: remembered
+		const f = fixture(undefined, selection)
+		f.actor.send({ type: 'RESUME', accountId: crypto.randomUUID() })
+		await waitFor(f.actor, (s) => s.matches('failed'))
+		expect(f.dispatch).not.toHaveBeenCalled()
+		expect(fetch).toHaveBeenCalledTimes(kind === 'wrong-issuer' || kind === 'malformed' ? 0 : 1)
+		f.actor.send({ type: 'SHUTDOWN' })
+	}
+)
+
+it('does not fall back to a remembered account while an OAuth attempt is incomplete', async () => {
+	const fetch = vi.fn<(path: string) => Promise<Response>>(async () =>
+		Response.json({ user: { id: remembered.userId } })
+	)
+	vi.stubGlobal('fetch', fetch)
+	const f = fixture({ operation: 'connect', accountId, attemptId }, remembered)
+	f.actor.send({ type: 'RESUME', accountId })
+	await waitFor(f.actor, (s) => s.matches('failed'))
+	expect(f.dispatch).not.toHaveBeenCalled()
+	expect(fetch.mock.calls.map(([path]) => path)).toEqual(['/api/auth/atproto/completion'])
+	f.actor.send({ type: 'SHUTDOWN' })
+})
+
+it('blocks new identity issue when invalidating an old selection fails', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Response.json({ attemptId, userId: remembered.userId }))
+	)
+	const clear = vi.fn(async () => {
+		throw new Error('Storage unavailable')
+	})
+	const f = fixture({ operation: 'connect', accountId, attemptId }, remembered, {
+		read: async () => remembered,
+		clear,
+		save: vi.fn()
+	})
+	f.actor.send({ type: 'RESUME', accountId })
+	await waitFor(f.actor, (s) => s.matches('cleanupFailed'))
+	expect(clear).toHaveBeenCalledOnce()
+	expect(f.dispatch).not.toHaveBeenCalled()
+	expect(f.storage.length).toBe(1)
+	f.actor.send({ type: 'SHUTDOWN' })
+})
+
+it('reports selection persistence failure without replaying a successful identity mutation', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Response.json({ attemptId, userId: remembered.userId }))
+	)
+	const save = vi.fn(async () => {
+		throw new Error('Storage unavailable')
+	})
+	const f = fixture({ operation: 'connect', accountId, attemptId }, undefined, {
+		read: async () => undefined,
+		clear: async () => {},
+		save
+	})
+	f.actor.send({ type: 'RESUME', accountId })
+	await waitFor(f.actor, (s) => s.matches('settling'))
+	f.actor.send({ type: 'TOKEN_SUCCEEDED', attemptId, accountId })
+	await waitFor(f.actor, (s) => s.matches('cleanupFailed'))
+	expect(save).toHaveBeenCalledExactlyOnceWith(remembered)
+	expect(f.dispatch).toHaveBeenCalledOnce()
+	expect(f.storage.length).toBe(0)
+	f.actor.send({ type: 'RESUME', accountId })
+	expect(f.dispatch).toHaveBeenCalledOnce()
+	f.actor.send({ type: 'SHUTDOWN' })
+})
+
+it.each(['SHUTDOWN', 'OWNER_FAILED'] as const)(
+	'owns selection persistence through %s',
+	async (type) => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => Response.json({ attemptId, userId: remembered.userId }))
+		)
+		const saving = Promise.withResolvers<void>()
+		const f = fixture({ operation: 'connect', accountId, attemptId }, undefined, {
+			read: async () => undefined,
+			clear: async () => {},
+			save: () => saving.promise
+		})
+		f.actor.send({ type: 'RESUME', accountId })
+		await waitFor(f.actor, (s) => s.matches('settling'))
+		f.actor.send({ type: 'TOKEN_SUCCEEDED', attemptId, accountId })
+		await waitFor(f.actor, (s) => s.matches('remembering'))
+		f.actor.send({ type })
+		expect(f.actor.getSnapshot().status).toBe('active')
+		saving.resolve()
+		await waitFor(f.actor, (s) => s.status === 'done')
+		expect(f.dispatch).toHaveBeenCalledOnce()
+	}
+)
+
+it('rejects stale restoration results and owns the actual result through shutdown', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Response.json({ user: { id: remembered.userId } }))
+	)
+	const f = fixture(undefined, remembered)
+	f.actor.send({ type: 'RESUME', accountId: crypto.randomUUID() })
+	await waitFor(f.actor, (s) => s.matches('restoringSelection'))
+	const command = f.dispatch.mock.calls[0]![0]
+	f.actor.send({ type: 'TOKEN_SUCCEEDED', attemptId: crypto.randomUUID(), accountId })
+	expect(f.actor.getSnapshot().matches('restoringSelection')).toBe(true)
+	f.actor.send({ type: 'SHUTDOWN' })
+	expect(f.actor.getSnapshot().status).toBe('active')
+	f.actor.send({ type: 'TOKEN_SUCCEEDED', attemptId: command.attemptId, accountId })
+	await waitFor(f.actor, (s) => s.status === 'done')
+	expect(f.dispatch).toHaveBeenCalledOnce()
+})
+
+it('rejects an unexpected account and does not replace the remembered target', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Response.json({ user: { id: remembered.userId } }))
+	)
+	const f = fixture(undefined, remembered)
+	f.actor.send({ type: 'RESUME', accountId: crypto.randomUUID() })
+	await waitFor(f.actor, (s) => s.matches('restoringSelection'))
+	const command = f.dispatch.mock.calls[0]![0]
+	f.actor.send({
+		type: 'TOKEN_SUCCEEDED',
+		attemptId: command.attemptId,
+		accountId: crypto.randomUUID()
+	})
+	expect(f.actor.getSnapshot().matches('unresolved')).toBe(true)
+	expect(await f.selection.read()).toEqual(remembered)
+	f.actor.send({ type: 'SHUTDOWN' })
+})
+
+it('does not restore after explicit selection removal even if the provider remains signed in', async () => {
+	const fetch = vi.fn<(path: string) => Promise<Response>>(async () =>
+		Response.json({ user: { id: remembered.userId } })
+	)
+	vi.stubGlobal('fetch', fetch)
+	const f = fixture(undefined, remembered)
+	await f.selection.clear()
+	const next = fixture(undefined, await f.selection.read())
+	next.actor.send({ type: 'RESUME', accountId: crypto.randomUUID() })
+	await waitFor(next.actor, (s) => s.matches('idle'))
+	expect(fetch).not.toHaveBeenCalled()
+	expect(next.dispatch).not.toHaveBeenCalled()
+	f.actor.send({ type: 'SHUTDOWN' })
+	next.actor.send({ type: 'SHUTDOWN' })
+})
+
+it('scopes remembered selection by Jazz app, server and environment', async () => {
+	const { atprotoSelectionStore } = await import('./atproto.js')
+	const values = new Map<string, string>()
+	const storage = {
+		getItem: (key: string) => values.get(key) ?? null,
+		setItem: (key: string, value: string) => {
+			values.set(key, value)
+		},
+		removeItem: (key: string) => {
+			values.delete(key)
+		}
+	}
+	const config = {
+		appId: crypto.randomUUID(),
+		serverUrl: 'https://sync.example.invalid/',
+		env: 'clipper'
+	}
+	const selected = atprotoSelectionStore(config, storage)
+	await selected.save(remembered)
+	expect(await atprotoSelectionStore({ ...config }, storage).read()).toEqual(remembered)
+	for (const other of [
+		{ ...config, appId: crypto.randomUUID() },
+		{ ...config, serverUrl: 'https://other.invalid/' },
+		{ ...config, env: 'other' }
+	]) {
+		expect(await atprotoSelectionStore(other, storage).read()).toBeUndefined()
+	}
+	expect([...values.values()].map((value) => Object.keys(JSON.parse(value)))).toEqual([
+		['issuer', 'userId', 'accountId']
+	])
 })

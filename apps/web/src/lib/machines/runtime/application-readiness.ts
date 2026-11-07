@@ -59,6 +59,7 @@ type Context<Session extends object> = {
 	write: RootWrite | undefined
 	phrase: string
 	tokenCommand: TokenIdentityCommand | undefined
+	tokenBinding: object | undefined
 	attempt: number
 }
 function localTokenEligible<Session extends object>(context: Context<Session>) {
@@ -113,6 +114,9 @@ export function createApplicationReadinessMachine<Session extends object>(
 		startup: createSessionStartupMachine<Session>(),
 		readiness: createSessionReadinessMachine(),
 		create: fromPromise(({ input }: { input: AccountHost }) => input.create()),
+		forgetSelection: fromPromise(({ input }: { input: AccountInput<Session> }) =>
+			required(input.forgetTokenSelection)()
+		),
 		logout: fromPromise(({ input }: { input: AccountHost }) => input.logout()),
 		bootstrap: rootBootstrapMachine,
 		global: fromPromise(({ input }: { input: RootWrite }) => input.global()),
@@ -163,6 +167,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 			failedIdentity: undefined
 			clearFeedback: undefined
 			clearResources: undefined
+			reportTokenSuccess: undefined
 		},
 		{
 			stoppingCreate: undefined
@@ -171,6 +176,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 			stoppingBootstrap: undefined
 			replacingBootstrap: undefined
 			sameBinding: undefined
+			tokenTargetMatches: undefined
 			currentStartup: undefined
 			currentReadiness: undefined
 			currentReadinessScope: undefined
@@ -188,6 +194,11 @@ export function createApplicationReadinessMachine<Session extends object>(
 	>({
 		actors: accountActors,
 		guards: {
+			tokenTargetMatches: ({ context }) =>
+				context.observation.status === 'ready' &&
+				!!context.tokenCommand &&
+				(context.tokenCommand.type !== 'RESTORE_TOKEN' ||
+					context.observation.accountId === context.tokenCommand.expectedAccountId),
 			observationBroken: stateIn({ active: { observationHealth: 'failed' } }),
 			ownerBroken: stateIn({ active: { ownerHealth: 'failed' } }),
 			cleanupBroken: stateIn({ active: { cleanupHealth: 'failed' } }),
@@ -227,6 +238,15 @@ export function createApplicationReadinessMachine<Session extends object>(
 				event.observation.binding === context.observation.binding
 		},
 		actions: {
+			reportTokenSuccess: ({ context }) => {
+				if (context.observation.status !== 'ready' || !context.tokenCommand)
+					throw new Error('Token operation result unavailable')
+				context.tokenCommand.reportTo?.send({
+					type: 'TOKEN_SUCCEEDED',
+					attemptId: context.tokenCommand.attemptId,
+					accountId: context.observation.accountId
+				})
+			},
 			refresh: assign(({ context }) => ({
 				observation: observe(required(context.host))
 			})),
@@ -236,6 +256,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 				write: undefined,
 				observation: { status: 'closed' },
 				tokenCommand: undefined,
+				tokenBinding: undefined,
 				phrase: ''
 			}),
 			rememberObservation: assign(({ event }) =>
@@ -450,28 +471,10 @@ export function createApplicationReadinessMachine<Session extends object>(
 							onDone: [
 								{
 									guard: stateIn('#application-flow.running.tokenConnecting.stopping'),
-									target: 'draining',
-									actions: [
-										({ context }) =>
-											context.tokenCommand?.reportTo?.send({
-												type: 'TOKEN_SUCCEEDED',
-												attemptId: context.tokenCommand.attemptId
-											}),
-										assign({ tokenCommand: undefined })
-									]
+									target: 'tokenSettled.stopping',
+									actions: 'refresh'
 								},
-								{
-									target: 'route',
-									actions: [
-										({ context }) =>
-											context.tokenCommand?.reportTo?.send({
-												type: 'TOKEN_SUCCEEDED',
-												attemptId: context.tokenCommand.attemptId
-											}),
-										assign({ tokenCommand: undefined }),
-										'refresh'
-									]
-								}
+								{ target: 'tokenSettled.active', actions: 'refresh' }
 							],
 							onError: [
 								{
@@ -487,7 +490,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									]
 								},
 								{
-									target: 'route',
+									target: 'tokenUnresolved',
 									actions: [
 										({ context }) =>
 											context.tokenCommand?.reportTo?.send({
@@ -517,28 +520,10 @@ export function createApplicationReadinessMachine<Session extends object>(
 							onDone: [
 								{
 									guard: stateIn('#application-flow.running.tokenSigningIn.stopping'),
-									target: 'draining',
-									actions: [
-										({ context }) =>
-											context.tokenCommand?.reportTo?.send({
-												type: 'TOKEN_SUCCEEDED',
-												attemptId: context.tokenCommand.attemptId
-											}),
-										assign({ tokenCommand: undefined })
-									]
+									target: 'tokenSettled.stopping',
+									actions: 'refresh'
 								},
-								{
-									target: 'route',
-									actions: [
-										({ context }) =>
-											context.tokenCommand?.reportTo?.send({
-												type: 'TOKEN_SUCCEEDED',
-												attemptId: context.tokenCommand.attemptId
-											}),
-										assign({ tokenCommand: undefined }),
-										'refresh'
-									]
-								}
+								{ target: 'tokenSettled.active', actions: 'refresh' }
 							],
 							onError: [
 								{
@@ -554,7 +539,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									]
 								},
 								{
-									target: 'route',
+									target: 'tokenUnresolved',
 									actions: [
 										({ context }) =>
 											context.tokenCommand?.reportTo?.send({
@@ -569,6 +554,59 @@ export function createApplicationReadinessMachine<Session extends object>(
 							]
 						}
 					},
+					tokenSettled: {
+						initial: 'active',
+						states: {
+							active: {
+								always: [
+									{
+										guard: 'tokenTargetMatches',
+										target: '#application-flow.running.route',
+										actions: ['reportTokenSuccess', assign({ tokenCommand: undefined })]
+									},
+									{
+										target: '#application-flow.running.tokenUnresolved',
+										actions: [
+											({ context }) =>
+												context.tokenCommand?.reportTo?.send({
+													type: 'TOKEN_UNRESOLVED',
+													attemptId: context.tokenCommand.attemptId
+												}),
+											assign({ tokenCommand: undefined })
+										]
+									}
+								]
+							},
+							stopping: {
+								always: [
+									{
+										guard: 'tokenTargetMatches',
+										target: '#application-flow.running.draining',
+										actions: ['reportTokenSuccess', assign({ tokenCommand: undefined })]
+									},
+									{
+										target: '#application-flow.running.draining',
+										actions: [
+											({ context }) =>
+												context.tokenCommand?.reportTo?.send({
+													type: 'TOKEN_UNRESOLVED',
+													attemptId: context.tokenCommand.attemptId
+												}),
+											assign({ tokenCommand: undefined })
+										]
+									}
+								]
+							}
+						}
+					},
+					tokenUnresolved: {
+						meta: {
+							name: t('account.feedback.identityFailed'),
+							variant: 'error',
+							channel: 'account'
+						},
+						on: { SHUTDOWN: 'draining', OBSERVED: { actions: 'rememberObservation' } }
+					},
 					tokenAdmission: {
 						meta: working,
 						always: [
@@ -578,6 +616,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									!localTokenEligible(context) ||
 									context.observation.status !== 'ready' ||
 									context.observation.accountId !== context.tokenCommand.accountId ||
+									context.observation.binding !== context.tokenBinding ||
 									!context.host?.tokenIdentity?.capability.isCurrentBinding(
 										context.host.tokenIdentity.binding
 									),
@@ -623,7 +662,12 @@ export function createApplicationReadinessMachine<Session extends object>(
 									guard: ({ context, event }) =>
 										event.output &&
 										context.observation.status === 'ready' &&
-										context.observation.accountId === context.tokenCommand?.accountId,
+										context.observation.accountId === context.tokenCommand?.accountId &&
+										localTokenEligible(context) &&
+										context.observation.binding === context.tokenBinding &&
+										!!context.host?.tokenIdentity?.capability.isCurrentBinding(
+											context.host.tokenIdentity.binding
+										),
 									target: 'tokenSigningIn'
 								},
 								{
@@ -719,6 +763,38 @@ export function createApplicationReadinessMachine<Session extends object>(
 									target: 'route',
 									actions: [raise({ type: 'RESTORE_FAILED' }), 'clearPhrase', 'refresh']
 								}
+							]
+						}
+					},
+					logoutAdmission: {
+						always: [
+							{
+								guard: ({ context }) => !!context.input.forgetTokenSelection,
+								target: 'forgettingSelection'
+							},
+							{ target: 'loggingOut' }
+						]
+					},
+					forgettingSelection: {
+						initial: 'active',
+						states: { active: {}, stopping: {} },
+						on: { SHUTDOWN: '.stopping' },
+						invoke: {
+							src: 'forgetSelection',
+							input: ({ context }) => context.input,
+							onDone: [
+								{
+									guard: stateIn('#application-flow.running.forgettingSelection.stopping'),
+									target: 'draining'
+								},
+								{ target: 'loggingOut' }
+							],
+							onError: [
+								{
+									guard: stateIn('#application-flow.running.forgettingSelection.stopping'),
+									target: 'draining'
+								},
+								{ target: 'route', actions: ['failedIdentity', 'refresh'] }
 							]
 						}
 					},
@@ -835,7 +911,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 										},
 										{
 											guard: stateIn('#application-flow.running.library.ready.stopping.logout'),
-											target: '#application-flow.running.loggingOut'
+											target: '#application-flow.running.logoutAdmission'
 										},
 										{
 											guard: stateIn('#application-flow.running.library.ready.stopping.replace'),
@@ -854,6 +930,10 @@ export function createApplicationReadinessMachine<Session extends object>(
 										actions: [
 											assign(({ context, event }) => ({
 												tokenCommand: event,
+												tokenBinding:
+													context.observation.status === 'ready'
+														? context.observation.binding
+														: undefined,
 												attempt: context.attempt + 1
 											})),
 											'clearFeedback',
@@ -869,6 +949,29 @@ export function createApplicationReadinessMachine<Session extends object>(
 										actions: [
 											assign(({ context, event }) => ({
 												tokenCommand: event,
+												tokenBinding:
+													context.observation.status === 'ready'
+														? context.observation.binding
+														: undefined,
+												attempt: context.attempt + 1
+											})),
+											'clearFeedback',
+											sendTo('library', { type: 'SHUTDOWN' })
+										]
+									},
+									RESTORE_TOKEN: {
+										guard: ({ context, event }) =>
+											localTokenEligible(context) &&
+											context.observation.status === 'ready' &&
+											context.observation.accountId === event.accountId,
+										target: '.stopping.token',
+										actions: [
+											assign(({ context, event }) => ({
+												tokenCommand: event,
+												tokenBinding:
+													context.observation.status === 'ready'
+														? context.observation.binding
+														: undefined,
 												attempt: context.attempt + 1
 											})),
 											'clearFeedback',
@@ -909,6 +1012,10 @@ export function createApplicationReadinessMachine<Session extends object>(
 										meta: accountStatus('closing', t('account.status.closing')),
 										on: {
 											CONNECT_TOKEN: {
+												actions: ({ event }) =>
+													event.reportTo?.send({ type: 'TOKEN_FAILED', attemptId: event.attemptId })
+											},
+											RESTORE_TOKEN: {
 												actions: ({ event }) =>
 													event.reportTo?.send({ type: 'TOKEN_FAILED', attemptId: event.attemptId })
 											},
@@ -991,11 +1098,16 @@ export function createApplicationReadinessMachine<Session extends object>(
 			write: undefined,
 			phrase: '',
 			tokenCommand: undefined,
+			tokenBinding: undefined,
 			attempt: 0
 		}),
 
 		on: {
 			CONNECT_TOKEN: {
+				actions: ({ event }) =>
+					event.reportTo?.send({ type: 'TOKEN_FAILED', attemptId: event.attemptId })
+			},
+			RESTORE_TOKEN: {
 				actions: ({ event }) =>
 					event.reportTo?.send({ type: 'TOKEN_FAILED', attemptId: event.attemptId })
 			},
@@ -1187,7 +1299,11 @@ export function selectApplicationView<Session extends object>(
 			}),
 		canRestore: snapshot?.can({ type: 'RESTORE', phrase: '' }) ?? false,
 		canRetry: snapshot?.can({ type: 'RETRY' }) ?? false,
-		requiresReload: snapshot?.matches('ownerFailed') || snapshot?.matches('cleanupFailed') || false
+		requiresReload:
+			snapshot?.matches('ownerFailed') ||
+			snapshot?.matches('cleanupFailed') ||
+			snapshot?.matches({ active: { flow: { running: 'tokenUnresolved' } } }) ||
+			false
 	}
 }
 export function selectRecoveryBinding<Session extends object>(

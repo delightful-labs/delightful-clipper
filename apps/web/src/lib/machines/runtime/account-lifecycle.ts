@@ -1,5 +1,11 @@
 import { assign, raise, sendTo, setup, type SnapshotFrom } from 'xstate'
-import { atprotoMachine, atprotoInput, type AtprotoInput } from './atproto.js'
+import {
+	atprotoMachine,
+	atprotoInput,
+	oauthAccountChangeAllowed,
+	oauthRequiresReload,
+	type AtprotoInput
+} from './atproto.js'
 import {
 	type TokenIdentityCommand,
 	createApplicationReadinessMachine,
@@ -14,7 +20,10 @@ export function createAccountLifecycleMachine<Session extends object>(observe: C
 	const application = createApplicationReadinessMachine<Session>(observe)
 	type Application = SnapshotFrom<typeof application>
 	type Input = { account: AccountInput<Session>; oauth: Omit<AtprotoInput, 'dispatch'> }
-	type Context = Input & { application?: Application }
+	type Context = Input & {
+		application?: Application
+		oauthState?: SnapshotFrom<typeof atprotoMachine>
+	}
 	type Event =
 		| TokenIdentityCommand
 		| { type: 'BEGIN'; operation: 'connect' | 'sign-in'; handle: string }
@@ -43,7 +52,8 @@ export function createAccountLifecycleMachine<Session extends object>(observe: C
 				onDone: 'closed',
 				on: {
 					CONNECT_TOKEN: { actions: sendTo('application', ({ event }) => event) },
-					SIGN_IN_TOKEN: { actions: sendTo('application', ({ event }) => event) }
+					SIGN_IN_TOKEN: { actions: sendTo('application', ({ event }) => event) },
+					RESTORE_TOKEN: { actions: sendTo('application', ({ event }) => event) }
 				},
 				invoke: [
 					{
@@ -51,6 +61,13 @@ export function createAccountLifecycleMachine<Session extends object>(observe: C
 						src: 'application',
 						input: ({ context }) => context.account,
 						onSnapshot: [
+							{
+								guard: ({ event }) => event.snapshot.context.observation.status === 'signed-out',
+								actions: [
+									assign(({ event }) => ({ application: event.snapshot })),
+									sendTo('oauth', { type: 'SIGNED_OUT' })
+								]
+							},
 							{
 								guard: ({ event }) => selectApplicationView(event.snapshot, true).canTokenIdentity,
 								actions: [
@@ -77,6 +94,7 @@ export function createAccountLifecycleMachine<Session extends object>(observe: C
 					{
 						id: 'oauth',
 						src: 'oauth',
+						onSnapshot: { actions: assign(({ event }) => ({ oauthState: event.snapshot })) },
 						input: ({ context, self }) =>
 							atprotoInput({ ...context.oauth, dispatch: (command) => self.send(command) }),
 						onDone: { actions: raise({ type: 'OAUTH_CLOSED' }) },
@@ -118,7 +136,10 @@ export function createAccountLifecycleMachine<Session extends object>(observe: C
 										}))
 									},
 									CREATE: { actions: sendTo('application', ({ event }) => event) },
-									LOGOUT: { actions: sendTo('application', ({ event }) => event) },
+									LOGOUT: {
+										guard: ({ context }) => oauthAccountChangeAllowed(context.oauthState),
+										actions: sendTo('application', ({ event }) => event)
+									},
 									RETRY: { actions: sendTo('application', ({ event }) => event) },
 									RESTORE: { actions: sendTo('application', ({ event }) => event) },
 									SHUTDOWN: {
@@ -146,4 +167,16 @@ export function createAccountLifecycleMachine<Session extends object>(observe: C
 			closed: { type: 'final' }
 		}
 	})
+}
+
+export function selectAccountLifecycleView<Session extends object>(
+	snapshot: SnapshotFrom<ReturnType<typeof createAccountLifecycleMachine<Session>>> | undefined,
+	configured: boolean
+) {
+	const view = selectApplicationView(snapshot?.context.application, configured)
+	return {
+		...view,
+		canLogout: view.canLogout && oauthAccountChangeAllowed(snapshot?.context.oauthState),
+		requiresReload: view.requiresReload || oauthRequiresReload(snapshot?.context.oauthState)
+	}
 }

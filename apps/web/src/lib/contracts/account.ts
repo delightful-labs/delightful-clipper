@@ -49,5 +49,6 @@ export type AccountHost = Readonly<{
 }>
 export type AccountInput<Session extends object> = Readonly<{
 	startup: { owner: SessionOwnerRef<Session>; scope: SessionScope }
+	forgetTokenSelection?: () => Promise<void>
 	bind: (session: Session) => AccountHost
 }>
