@@ -32,6 +32,13 @@ test('starts locally without signup, reloads and restores the same account into 
 	page,
 	browser
 }) => {
+	let devServerReloads = 0
+	page.on('websocket', (socket) => {
+		socket.on('framereceived', ({ payload }) => {
+			if (typeof payload === 'string' && payload.includes('"type":"full-reload"'))
+				devServerReloads++
+		})
+	})
 	await page.goto('/')
 	// Cold module/WASM startup must reach the usable local library before the
 	// separate remote-acceptance assertion starts its timeout.
@@ -72,6 +79,7 @@ test('starts locally without signup, reloads and restores the same account into 
 		authority = await startAuthority()
 		await restored.reload()
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		expect(devServerReloads, 'Account navigation must not race a Vite full-page reload').toBe(0)
 	} finally {
 		await second.close()
 	}

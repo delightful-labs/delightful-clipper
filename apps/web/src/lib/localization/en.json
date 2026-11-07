@@ -20,6 +20,7 @@
 		"retry": "Retry",
 		"sign_out": "Sign out",
 		"search_subject": "Search {{subject}}",
+		"filter_subject": "Filter {{subject}}",
 		"move_to_subject": "Move to {{subject}}",
 		"remove_name": "Remove {{name}}"
 	},

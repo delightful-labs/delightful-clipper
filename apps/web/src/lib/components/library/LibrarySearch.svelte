@@ -1,21 +1,14 @@
 <script lang="ts">
-	import { Button, InputText, StatusMessage } from 'delightful-ui'
-	import type { WorkflowMessage } from '../../contracts/feedback.js'
-	import { action, t } from '../../localization/index.js'
+	import { InputText } from 'delightful-ui'
+	import { action } from '../../localization/index.js'
 	let {
 		query,
 		enabled,
-		message,
-		canRetry,
-		onquery,
-		onretry
+		onquery
 	}: {
 		query: string
 		enabled: boolean
-		message: WorkflowMessage | undefined
-		canRetry: boolean
 		onquery: (query: string) => void
-		onretry: () => void
 	} = $props()
 </script>
 
@@ -26,5 +19,3 @@
 	disabled={!enabled}
 	bind:value={() => query, onquery}
 />
-{#if message}<StatusMessage {...message} />{/if}
-{#if canRetry}<Button type="button" onclick={onretry}>{t('actions.retry')}</Button>{/if}

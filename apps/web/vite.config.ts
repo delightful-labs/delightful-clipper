@@ -25,7 +25,9 @@ export default defineConfig(({ command, mode }) => {
 		process.env.JAZZ_ACCOUNT_REGISTRY = `http://127.0.0.1:${mode === 'agent' ? 5181 : 5174}/apps/${appId}/accounts`
 	}
 	return {
-		optimizeDeps: { exclude: ['delightful-ui'] },
+		// The search worker starts after account readiness. Prebundle its dependency
+		// so a cold optimizer cannot trigger a late full-page reload.
+		optimizeDeps: { exclude: ['delightful-ui'], include: ['minisearch'] },
 		resolve: {
 			alias: [
 				{ find: /^#jazz-wasm-binary/, replacement: join(dirname(wasmEntry), 'jazz_wasm_bg.wasm') }
