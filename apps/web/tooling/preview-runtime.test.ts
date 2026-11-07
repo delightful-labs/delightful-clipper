@@ -39,6 +39,27 @@ it('accepts generated credentials and never sends an inherited bearer', async ()
 	expect(await provision(new AbortController().signal)).toEqual(app)
 	expect(fetcher.mock.calls[0]).toBeDefined()
 })
+it('accepts an empty schema catalog before the first permissions deployment', async () => {
+	const fetcher = vi.fn(async (_url: string, _options: RequestInit) =>
+		Response.json({ hashes: [], schemas: [] })
+	)
+	vi.stubGlobal('fetch', fetcher)
+	expect(await waitForApp(app, new AbortController().signal)).toBe('ready')
+	expect(fetcher).toHaveBeenCalledWith(
+		`https://v2.sync.jazz.tools/apps/${app.appId}/schemas`,
+		expect.objectContaining({
+			headers: { 'X-Jazz-Admin-Secret': app.adminSecret },
+			redirect: 'error'
+		})
+	)
+})
+it('rejects a successful response that is not a schema catalog', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Response.json({ head: null }))
+	)
+	await expect(waitForApp(app, new AbortController().signal)).rejects.toThrow()
+})
 it.each([404, 502, 503, 504])('waits for cold routing after HTTP %s', async (status) => {
 	vi.stubGlobal(
 		'fetch',

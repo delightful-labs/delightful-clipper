@@ -2,14 +2,26 @@ packages:
   - apps/*
   - packages/*
 
-useNodeVersion: 24.22.2
-nodeVersion: 24.22.2
 engineStrict: true
-packageManagerStrictVersion: true
-managePackageManagerVersions: true
-strictPeerDependencies: true
-savePrefix: ''
-onlyBuiltDependencies:
-  - esbuild
+
 ignoredBuiltDependencies:
   - protobufjs
+
+managePackageManagerVersions: true
+
+nodeVersion: 24.22.2
+
+onlyBuiltDependencies:
+  - esbuild
+
+packageManagerStrictVersion: true
+
+patchedDependencies:
+  delightful-local-first@0.0.0: patches/delightful-local-first@0.0.0.patch
+  jazz-tools@2.0.0-alpha.59: patches/jazz-tools@2.0.0-alpha.59.patch
+
+savePrefix: ''
+
+strictPeerDependencies: true
+
+useNodeVersion: 24.22.2

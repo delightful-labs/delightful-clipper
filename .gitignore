@@ -15,3 +15,5 @@ test-results/
 .offline-test-builds/
 
 apps/extension/.test-build/
+
+.patch-work/

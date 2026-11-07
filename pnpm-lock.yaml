@@ -4,6 +4,14 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  delightful-local-first@0.0.0:
+    hash: ab2814b96577d9467e333aa67551b89cb43287570e9450e4147cc148f4c3c251
+    path: patches/delightful-local-first@0.0.0.patch
+  jazz-tools@2.0.0-alpha.59:
+    hash: 2738986b409a6aa53f31a44ffb7958841441d72f505336549f2e54b221c5bf7f
+    path: patches/jazz-tools@2.0.0-alpha.59.patch
+
 importers:
 
   .:
@@ -34,7 +42,7 @@ importers:
         version: 0.6.0
       delightful-local-first:
         specifier: file:../../vendor/delightful-local-first-aaf718d-logger.tgz
-        version: file:vendor/delightful-local-first-aaf718d-logger.tgz(delightful-ui@file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2)
+        version: file:vendor/delightful-local-first-aaf718d-logger.tgz(patch_hash=ab2814b96577d9467e333aa67551b89cb43287570e9450e4147cc148f4c3c251)(delightful-ui@file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(patch_hash=2738986b409a6aa53f31a44ffb7958841441d72f505336549f2e54b221c5bf7f)(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2)
       delightful-ui:
         specifier: file:../../vendor/delightful-ui-20ef7be-tag-normalization.tgz
         version: file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2)
@@ -46,7 +54,7 @@ importers:
         version: 26.7.1(typescript@6.0.3)
       jazz-tools:
         specifier: 2.0.0-alpha.59
-        version: 2.0.0-alpha.59(svelte@5.57.2)
+        version: 2.0.0-alpha.59(patch_hash=2738986b409a6aa53f31a44ffb7958841441d72f505336549f2e54b221c5bf7f)(svelte@5.57.2)
       svelte:
         specifier: 5.57.2
         version: 5.57.2
@@ -89,7 +97,7 @@ importers:
         version: 0.6.0
       delightful-local-first:
         specifier: file:../../vendor/delightful-local-first-aaf718d-logger.tgz
-        version: file:vendor/delightful-local-first-aaf718d-logger.tgz(delightful-ui@file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2)
+        version: file:vendor/delightful-local-first-aaf718d-logger.tgz(patch_hash=ab2814b96577d9467e333aa67551b89cb43287570e9450e4147cc148f4c3c251)(delightful-ui@file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(patch_hash=2738986b409a6aa53f31a44ffb7958841441d72f505336549f2e54b221c5bf7f)(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2)
       delightful-ui:
         specifier: file:../../vendor/delightful-ui-20ef7be-tag-normalization.tgz
         version: file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2)
@@ -107,7 +115,7 @@ importers:
         version: 2.0.0-alpha.59
       jazz-tools:
         specifier: 2.0.0-alpha.59
-        version: 2.0.0-alpha.59(svelte@5.57.2)
+        version: 2.0.0-alpha.59(patch_hash=2738986b409a6aa53f31a44ffb7958841441d72f505336549f2e54b221c5bf7f)(svelte@5.57.2)
       jsdom:
         specifier: 29.1.1
         version: 29.1.1(@noble/hashes@2.4.0)
@@ -2436,12 +2444,12 @@ snapshots:
 
   deepmerge@4.3.1: {}
 
-  delightful-local-first@file:vendor/delightful-local-first-aaf718d-logger.tgz(delightful-ui@file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2):
+  delightful-local-first@file:vendor/delightful-local-first-aaf718d-logger.tgz(patch_hash=ab2814b96577d9467e333aa67551b89cb43287570e9450e4147cc148f4c3c251)(delightful-ui@file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.59(patch_hash=2738986b409a6aa53f31a44ffb7958841441d72f505336549f2e54b221c5bf7f)(svelte@5.57.2))(svelte@5.57.2)(xstate@5.33.2):
     dependencies:
       svelte: 5.57.2
     optionalDependencies:
       delightful-ui: file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2)
-      jazz-tools: 2.0.0-alpha.59(svelte@5.57.2)
+      jazz-tools: 2.0.0-alpha.59(patch_hash=2738986b409a6aa53f31a44ffb7958841441d72f505336549f2e54b221c5bf7f)(svelte@5.57.2)
       xstate: 5.33.2
 
   delightful-ui@file:vendor/delightful-ui-20ef7be-tag-normalization.tgz(svelte@5.57.2):
@@ -2566,7 +2574,7 @@ snapshots:
       '@garden-co/jazz-napi-linux-x64-gnu': 2.0.0-alpha.59
       '@garden-co/jazz-napi-win32-x64-msvc': 2.0.0-alpha.59
 
-  jazz-tools@2.0.0-alpha.59(svelte@5.57.2):
+  jazz-tools@2.0.0-alpha.59(patch_hash=2738986b409a6aa53f31a44ffb7958841441d72f505336549f2e54b221c5bf7f)(svelte@5.57.2):
     dependencies:
       '@noble/hashes': 2.0.1
       '@opentelemetry/api': 1.9.1

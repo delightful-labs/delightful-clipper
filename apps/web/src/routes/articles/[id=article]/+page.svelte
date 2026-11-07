@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state'
 	import Reader from '../../../lib/integrations/Reader.svelte'
-	import { useLibrary } from '../../../lib/runtime/library-context.js'
-	const runtime = useLibrary()
+	import { useWorkerLibrary } from '../../../lib/runtime/worker/context.js'
+	const runtime = useWorkerLibrary()
 </script>
 
 {#if runtime.actor}

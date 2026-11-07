@@ -118,7 +118,11 @@ export function accountInput(
 ): AccountInput<Session> {
 	// Match Finance: provision a local identity silently when no saved identity exists.
 	return {
-		startup: registry.getJazzStartupBinding({ ...config, initial: 'local-first', runtimeSources }),
+		startup: registry.getJazzStartupBinding({
+			...config,
+			initial: 'local-first',
+			runtimeSources: config.runtimeSources ?? runtimeSources
+		}),
 		bind: (session) =>
 			bindHost(
 				session,
@@ -134,7 +138,10 @@ export function existingAccountInput(
 	libraryFactory: LibraryFactory = createLibraryCapability
 ): AccountInput<Session> {
 	return {
-		startup: registry.getJazzStartupBinding({ ...config, runtimeSources }),
+		startup: registry.getJazzStartupBinding({
+			...config,
+			runtimeSources: config.runtimeSources ?? runtimeSources
+		}),
 		bind: (session) =>
 			bindHost(
 				session,

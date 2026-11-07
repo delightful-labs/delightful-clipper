@@ -1,3 +1,4 @@
+import { connectivityEvents, isOnline } from './connectivity.js'
 import type {
 	ShellEvent,
 	ShellRegistration,
@@ -47,12 +48,12 @@ export function observeShell(registration: ShellRegistration, report: (event: Sh
 export const observeBrowserConnection: import('../contracts/connection.js').ConnectionObserver = (
 	report
 ) => {
-	const update = () => report({ type: navigator.onLine ? 'ONLINE' : 'OFFLINE' })
-	window.addEventListener('online', update)
-	window.addEventListener('offline', update)
+	const update = () => report({ type: isOnline() ? 'ONLINE' : 'OFFLINE' })
+	connectivityEvents().addEventListener('online', update)
+	connectivityEvents().addEventListener('offline', update)
 	update()
 	return () => {
-		window.removeEventListener('online', update)
-		window.removeEventListener('offline', update)
+		connectivityEvents().removeEventListener('online', update)
+		connectivityEvents().removeEventListener('offline', update)
 	}
 }

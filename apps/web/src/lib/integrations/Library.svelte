@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte'
-	import type { ActorRefFrom, SnapshotFrom } from 'xstate'
+	import type { LibraryClient } from '../runtime/worker/client.js'
+	import type { LibraryRender } from '../runtime/worker/views.js'
 	import { Button, StatusMessage } from 'delightful-ui'
-	import { libraryMachine, selectLibraryView } from '../machines/capture/library.js'
 	import LibrarySearch from '../components/library/LibrarySearch.svelte'
 	import LibraryFilters from '../components/library/LibraryFilters.svelte'
 	import LibraryFilterPopovers from '../components/library/LibraryFilterPopovers.svelte'
@@ -13,19 +13,19 @@
 		actor,
 		gatewayEnabled
 	}: {
-		actor: ActorRefFrom<typeof libraryMachine>
-		gatewayEnabled: boolean
+		actor: LibraryClient
+		gatewayEnabled?: boolean
 	} = $props()
-	let snapshot = $state<SnapshotFrom<typeof libraryMachine>>()
+	let snapshot = $state<LibraryRender>()
 	let heading = $state<HTMLHeadingElement>()
 	let tagTrigger: HTMLElement | undefined
 	let tagArticleId = $state<string>()
 	let tagsOpen = $state(false)
-	const capture = $derived(snapshot?.context)
-	const view = $derived(selectLibraryView(snapshot, gatewayEnabled))
+	const capture = $derived(snapshot?.filters)
+	const view = $derived(snapshot?.view ?? actor.getView().view)
 
 	onMount(() => {
-		snapshot = actor.getSnapshot()
+		snapshot = actor.getView()
 		const subscription = actor.subscribe((next) => (snapshot = next))
 		return () => subscription.unsubscribe()
 	})
@@ -69,6 +69,8 @@
 		{#if view.emptyMessage}<p>{view.emptyMessage.text}</p>{/if}
 		<ArticleList
 			rows={view.rows}
+			hasMore={snapshot?.hasMore ?? false}
+			onmore={() => actor.more()}
 			resetKey={JSON.stringify([
 				capture.query,
 				capture.view,
@@ -82,6 +84,7 @@
 			ontags={(row, trigger) => {
 				tagTrigger = trigger
 				tagArticleId = row.id
+				actor.editTags(row.id)
 				tagsOpen = true
 			}}
 			onemptyfocus={() => heading?.focus()}
@@ -89,11 +92,14 @@
 	</section>
 	<ArticleTags
 		{actor}
-		row={capture.rows.find((row) => row.id === tagArticleId)}
+		row={snapshot?.tagArticle && snapshot.tagArticle.id === tagArticleId
+			? snapshot.tagArticle
+			: view.rows.find((row) => row.id === tagArticleId)}
 		tags={view.tags}
 		enabled={view.canOrganize}
 		bind:open={tagsOpen}
 		onclose={() => {
+			actor.editTags(undefined)
 			if (!tagTrigger?.isConnected) heading?.focus()
 		}}
 	/>

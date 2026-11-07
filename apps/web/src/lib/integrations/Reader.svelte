@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte'
-	import type { ActorRefFrom, SnapshotFrom } from 'xstate'
+	import type { LibraryClient } from '../runtime/worker/client.js'
+	import type { LibraryRender } from '../runtime/worker/views.js'
+	import type { LibraryIntent } from '../runtime/worker/protocol.js'
 	import { StatusMessage } from 'delightful-ui'
-	import { libraryMachine, selectLibraryReaderView } from '../machines/capture/library.js'
-	import { normalizedSource } from '../capture/source.js'
 	import { t } from '../localization/index.js'
 	import ReaderView from '../components/reader/ReaderView.svelte'
 	import {
@@ -12,42 +12,30 @@
 		type ReaderHeading,
 		type ReaderFootnote
 	} from '../reader/structure.js'
-	import type { ReaderExperienceEvent } from '../machines/reader/experience.js'
-	let { actor, id }: { actor: ActorRefFrom<typeof libraryMachine>; id: string } = $props()
-	let snapshot = $state<SnapshotFrom<typeof libraryMachine>>()
+	let { actor, id }: { actor: LibraryClient; id: string } = $props()
+	let snapshot = $state<LibraryRender>()
+	let detachSurface: (() => void) | undefined
 	let headings = $state<ReaderHeading[]>([])
 	let footnote = $state<ReaderFootnote>()
 	const footnoteId = $props.id()
-	const view = $derived(selectLibraryReaderView(snapshot))
+	const view = $derived(snapshot?.view ?? actor.getView().view)
 	const reading = $derived(view.readerExperience)
-	const reader = $derived(snapshot?.context.reader)
-	const article = $derived(
-		snapshot?.context.rows.find((row) => row.id === id || row.contentId === id)
-	)
-	const originalUrl = $derived.by(() => {
-		if (reader?.kind !== 'available' || !reader.source) return undefined
-		try {
-			return normalizedSource(reader.source.finalUrl)
-		} catch {
-			return undefined
-		}
-	})
-	function send(event: ReaderExperienceEvent) {
+	const reader = $derived(snapshot?.reader)
+	const article = $derived(snapshot?.article)
+	const originalUrl = $derived(snapshot?.sourceUrl)
+	function send(event: Extract<LibraryIntent, { type: 'READER_EVENT' }>['event']) {
 		actor.send({ type: 'READER_EVENT', event })
 	}
+
 	function ready(node: HTMLElement) {
 		if (reader?.kind !== 'available') return
 		headings = readerHeadings(node)
 		const scroller = node.closest('main')
-		if (scroller)
-			send({
-				type: 'ATTACH',
-				documentId: reader.document.snapshotId,
-				root: node,
-				scroller
-			})
+		if (scroller) detachSurface = actor.attach({ root: node, scroller }, reader.document.snapshotId)
 	}
 	function release() {
+		detachSurface?.()
+		detachSurface = undefined
 		send({ type: 'DETACH' })
 		headings = []
 		footnote = undefined
@@ -67,7 +55,7 @@
 	onMount(() => {
 		const subscription = actor.subscribe((value) => (snapshot = value))
 		actor.send({ type: 'OPEN', id })
-		snapshot = actor.getSnapshot()
+		snapshot = actor.getView()
 		return () => {
 			release()
 			subscription.unsubscribe()

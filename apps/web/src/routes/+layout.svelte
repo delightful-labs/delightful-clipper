@@ -8,7 +8,7 @@
 	} from '$app/env/public'
 	import 'delightful-ui/theme.css'
 	import AppShell from '../lib/integrations/AppShell.svelte'
-	import Account from '../lib/integrations/Account.svelte'
+	import Account from '../lib/integrations/Application.svelte'
 	import { t } from '../lib/localization/index.js'
 	let { children }: { children: Snippet } = $props()
 	let admitted = $state(false)
