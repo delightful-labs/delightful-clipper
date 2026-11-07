@@ -1,3 +1,4 @@
+import { openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { test, expect } from '@playwright/test'
 import { startLocalJazzServer } from 'jazz-tools/testing'
 import { app } from '../../src/lib/backend/jazz/schema.js'
@@ -56,12 +57,17 @@ test('flag-enabled startup populates a real library once and preserves edits, re
 		.poll(async () => (await page.getByRole('article').textContent())?.length ?? 0)
 		.toBeGreaterThan(200)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
+	await openLibrarySearch(page)
 	const search = page.getByRole('searchbox', { name: 'Search articles', exact: true })
+	await openLibrarySearch(page)
 	await search.fill('no-such-sample-word-394823')
 	await expect(rows).toHaveCount(0)
+	await openLibrarySearch(page)
 	await search.fill('')
+	await openLibraryFilters(page)
 	await page.getByRole('radio', { name: 'Trash', exact: true }).check()
 	await expect(rows).toHaveCount(2)
+	await openLibraryFilters(page)
 	await page.getByRole('radio', { name: 'All', exact: true }).check()
 	await page.reload()
 	await expect(rows).toHaveCount(22)

@@ -1,3 +1,4 @@
+import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { openAddLink } from '../add-link.js'
 import { readingControls, visibleReadingParagraph } from '../reader-ui.js'
 import { test, expect, chromium } from '@playwright/test'
@@ -204,6 +205,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			tagDialog.getByRole('button', { name: 'Remove RestartOnlyTag', exact: true })
 		).toBeVisible()
 		await tagDialog.getByRole('button', { name: 'Close', exact: true }).click()
+		await openLibrarySearch(page)
 		await page
 			.getByRole('searchbox', { name: 'Search articles', exact: true })
 			.fill('offline shell')
@@ -215,6 +217,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 				request.onerror = () => reject(new Error('Cache deletion failed'))
 			})
 		})
+		await closeLibraryPopovers(page)
 		await page.getByRole('link', { name: 'Completely offline article', exact: true }).click()
 		await expect
 			.poll(() =>
@@ -240,6 +243,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		expect(readingParagraph).toBeTruthy()
 		// Leaving flushes the debounced position; live progress is not a persistence receipt.
 		await page.getByRole('link', { name: 'Open library', exact: true }).click()
+		await closeLibraryPopovers(page)
 		await page.getByRole('link', { name: 'Completely offline article', exact: true }).click()
 		await expect.poll(() => visibleReadingParagraph(page)).toBe(readingParagraph)
 		await page.reload()
@@ -308,24 +312,34 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await expect(
 			offlineRow.getByRole('button', { name: 'Remove favorite', exact: true })
 		).toHaveAttribute('aria-pressed', 'true')
+		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Inbox', exact: true }).check()
 		await expect(reopened.getByText('No articles match this view.', { exact: true })).toBeVisible()
+		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
+		await openLibrarySearch(reopened)
 		const search = reopened.getByRole('searchbox', { name: 'Search articles', exact: true })
+		await openLibrarySearch(reopened)
 		await search.fill('RESTARTONLYTAGS shel')
 		await expect(offlineRow).toBeVisible()
+		await openLibrarySearch(reopened)
 		await search.fill('no-such-keyword')
 		await expect(offlineRow).toHaveCount(0)
+		await openLibrarySearch(reopened)
 		await search.fill('RESTARTONLYTAGS shel')
 		await expect(offlineRow).toBeVisible()
+		await closeLibraryPopovers(reopened)
 		await offlineRow.getByRole('button', { name: 'Move to Trash', exact: true }).click()
 		await expect(offlineRow).toHaveCount(0)
+		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Trash', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
 		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
+		await closeLibraryPopovers(reopened)
 		await offlineRow.getByRole('button', { name: 'Restore article', exact: true }).click()
 		await expect(offlineRow).toHaveCount(0)
+		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
 		await context.setOffline(false)
