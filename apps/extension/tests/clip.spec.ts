@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { app } from '../../web/src/lib/backend/jazz/schema.js'
 import permissions from '../../web/src/lib/backend/jazz/permissions.js'
+import { connectionSchema } from '../src/connection.js'
 let authority: Awaited<ReturnType<typeof startLocalJazzServer>>
 let directory: string
 const startAuthority = () =>
@@ -426,9 +427,10 @@ test('restoring an account in options moves subsequent automatic clips to that l
 			await clip(context, id, source)
 			await expect(source.getByRole('status')).toHaveText(saved)
 		})
-		const previous = await worker.evaluate(
-			async () =>
-				(await chrome.storage.local.get('clipper.connection'))['clipper.connection']?.confirmationId
+		const previous = connectionSchema.parse(
+			await worker.evaluate(
+				async () => (await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+			)
 		)
 		const reader = await web.newPage()
 		const phrase =
@@ -448,12 +450,17 @@ test('restoring an account in options moves subsequent automatic clips to that l
 			await options.getByRole('button', { name: 'Restore account', exact: true }).click()
 			await expect
 				.poll(async () => {
-					const confirmation = await worker.evaluate(
-						async () =>
-							(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
-								?.confirmationId
+					const connection = connectionSchema.safeParse(
+						await worker.evaluate(
+							async () =>
+								(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+						)
 					)
-					return typeof confirmation === 'string' && confirmation !== previous
+					return (
+						connection.success &&
+						connection.data.confirmationId !== previous.confirmationId &&
+						connection.data.accountId !== previous.accountId
+					)
 				})
 				.toBe(true)
 		})
