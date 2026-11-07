@@ -1,4 +1,4 @@
-import { assign, fromCallback, fromPromise, sendTo, setup, not } from 'xstate'
+import { assign, fromCallback, fromPromise, sendTo, setup, not, and, stateIn } from 'xstate'
 import type { SnapshotFrom } from 'xstate'
 import { stateFeedback } from '../contracts/feedback.js'
 import type { SearchResource } from '../contracts/search.js'
@@ -12,7 +12,7 @@ type Event =
 	| SearchWorkerOutput
 	| { type: 'ROWS'; rows: LibraryArticle[] }
 	| { type: 'QUERY'; query: string }
-	| { type: 'DIRTY' | 'RETRY' | 'STOP' }
+	| { type: 'DIRTY' | 'RETRY' | 'STOP' | 'ACTIVATE' }
 type Input = { capability: SearchCapability | undefined }
 type Context = Input & {
 	rows: LibraryArticle[]
@@ -76,6 +76,8 @@ export function createSearchMachine() {
 		{
 			supported: undefined
 			validQuery: undefined
+			hasQuery: undefined
+			loadStale: undefined
 			currentGeneration: undefined
 			currentResult: undefined
 			unchangedRows: undefined
@@ -89,7 +91,9 @@ export function createSearchMachine() {
 	>({
 		actors: { resource, load },
 		guards: {
+			loadStale: stateIn({ running: { loading: 'stale' } }),
 			supported: ({ context }) => context.capability?.isCurrent() === true,
+			hasQuery: ({ event }) => event.type === 'QUERY' && event.query.trim().length > 0,
 			validQuery: ({ context, event }) =>
 				event.type === 'QUERY' &&
 				context.capability?.isCurrent() === true &&
@@ -129,20 +133,33 @@ export function createSearchMachine() {
 		}),
 		on: { STOP: '.closed' },
 		states: {
-			admitting: { always: [{ guard: 'supported', target: 'running' }, { target: 'disabled' }] },
+			admitting: { always: [{ guard: 'supported', target: 'dormant' }, { target: 'disabled' }] },
+			dormant: {
+				on: {
+					ROWS: [
+						{ guard: not('supported'), target: '#library-search.closed' },
+						{ actions: assign({ rows: ({ event }) => event.rows }) }
+					],
+					ACTIVATE: { guard: 'supported', target: 'running' },
+					QUERY: [
+						{ guard: and(['validQuery', 'hasQuery']), target: 'running', actions: 'rememberQuery' },
+						{ guard: 'validQuery', actions: 'rememberQuery' }
+					]
+				}
+			},
 			running: {
 				invoke: {
 					id: 'resource',
 					src: 'resource',
 					input: ({ context }) => required(context.capability)
 				},
-				initial: 'loading',
+				initial: 'scheduling',
 				on: {
 					ROWS: [
 						{ guard: not('supported'), target: '#library-search.closed' },
 						{ guard: 'unchangedRows', actions: assign({ rows: ({ event }) => event.rows }) },
 						{
-							target: '.loading',
+							target: '.scheduling',
 							reenter: false,
 							actions: assign({
 								rows: ({ event }) => event.rows,
@@ -153,7 +170,7 @@ export function createSearchMachine() {
 					DIRTY: [
 						{
 							guard: 'supported',
-							target: '.loading',
+							target: '.scheduling',
 							actions: assign({ generation: ({ context }) => context.generation + 1 })
 						},
 						{ target: '#library-search.closed' }
@@ -162,12 +179,43 @@ export function createSearchMachine() {
 					WORKER_ERROR: '#library-search.failed'
 				},
 				states: {
+					scheduling: {
+						entry: assign({ ids: [] }),
+						after: { 16: 'loading' }
+					},
 					loading: {
+						initial: 'current',
+						states: { current: {}, stale: {} },
+						// Drain an issued native read before loading the newest dataset.
+						// Jazz's public read API has no AbortSignal; invalidation must not
+						// start overlapping whole-library reads.
+						on: {
+							ROWS: [
+								{ guard: not('supported'), target: '#library-search.closed' },
+								{ guard: 'unchangedRows', actions: assign({ rows: ({ event }) => event.rows }) },
+								{
+									target: '.stale',
+									actions: assign({
+										rows: ({ event }) => event.rows,
+										generation: ({ context }) => context.generation + 1
+									})
+								}
+							],
+							DIRTY: [
+								{
+									guard: 'supported',
+									target: '.stale',
+									actions: assign({ generation: ({ context }) => context.generation + 1 })
+								},
+								{ target: '#library-search.closed' }
+							]
+						},
 						entry: assign({ ids: [] }),
 						invoke: {
 							src: 'load',
 							input: ({ context }) => ({ cap: required(context.capability), rows: context.rows }),
 							onDone: [
+								{ guard: and(['supported', 'loadStale']), target: 'scheduling' },
 								{
 									guard: 'supported',
 									target: 'indexing',
@@ -180,7 +228,10 @@ export function createSearchMachine() {
 								},
 								{ target: '#library-search.closed' }
 							],
-							onError: '#library-search.failed'
+							onError: [
+								{ guard: and(['supported', 'loadStale']), target: 'scheduling' },
+								{ target: '#library-search.failed' }
+							]
 						}
 					},
 					indexing: {

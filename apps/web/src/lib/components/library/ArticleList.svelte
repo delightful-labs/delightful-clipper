@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { tick } from 'svelte'
+	import { Button } from 'delightful-ui'
+	import { action } from '../../localization/index.js'
 	import type { LibraryArticle } from '../../contracts/articles.js'
 	import type { OrganizationRequest } from '../../capture/organization.js'
 	import ArticleListItem from './ArticleListItem.svelte'
@@ -9,7 +12,8 @@
 		onorganize,
 		onretry,
 		ontags,
-		onemptyfocus
+		onemptyfocus,
+		resetKey
 	}: {
 		rows: LibraryArticle[]
 		readable: Record<string, boolean>
@@ -18,8 +22,16 @@
 		onretry: (id: string) => void
 		ontags: (row: LibraryArticle, trigger: HTMLElement) => void
 		onemptyfocus: () => void
+		resetKey: string
 	} = $props()
 	const listId = $props.id()
+	const batchSize = 50
+	let limit = $state(batchSize)
+	const renderedRows = $derived(rows.slice(0, limit))
+	$effect(() => {
+		void resetKey
+		limit = batchSize
+	})
 	let removedAction = $state<{ id: string; candidates: string[]; trigger: HTMLElement }>()
 
 	$effect(() => {
@@ -35,6 +47,13 @@
 		removedAction = undefined
 	})
 
+	async function showNext() {
+		const first = rows[limit]
+		limit += batchSize
+		await tick()
+		if (first) document.getElementById(listId + '-' + first.id)?.focus()
+	}
+
 	function changeTrash(row: LibraryArticle, trigger: HTMLElement) {
 		const index = rows.findIndex((item) => item.id === row.id)
 		removedAction = {
@@ -49,8 +68,8 @@
 </script>
 
 {#if rows.length}
-	<ul class="article-list">
-		{#each rows as row (row.id)}
+	<ul id={listId} class="article-list">
+		{#each renderedRows as row (row.id)}
 			<ArticleListItem
 				{row}
 				id={listId + '-' + row.id}
@@ -63,6 +82,11 @@
 			/>
 		{/each}
 	</ul>
+	{#if rows.length > limit}
+		<Button type="button" aria-controls={listId} onclick={showNext}
+			>{action('show', 'article', 2)}</Button
+		>
+	{/if}
 {/if}
 
 <style>

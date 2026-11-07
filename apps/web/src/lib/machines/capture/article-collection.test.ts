@@ -40,7 +40,10 @@ function fixture() {
 				update([article])
 				return releaseArticles
 			},
-			tags: () => releaseTags,
+			tags: (update) => {
+				update([])
+				return releaseTags
+			},
 			documents: (update) => {
 				documents = update
 				return releaseDocuments
@@ -63,11 +66,12 @@ function fixture() {
 		}
 	}
 }
-it('joins independent updates, deduplicates content, preserves legacy documents and deterministic ordering', () => {
+it('joins independent updates, deduplicates content, preserves legacy documents and deterministic ordering', async () => {
 	const f = fixture()
-	expect(f.next).toHaveBeenLastCalledWith([expect.objectContaining({ title: article.url })])
+	expect(f.next).not.toHaveBeenCalled()
 	f.documents([document, { ...document, id: 'legacy', title: 'Legacy' }])
 	f.articles([{ ...article, id: 'later', originalSavedAt: '2026-11-04' }, article])
+	await vi.waitFor(() => expect(f.next).toHaveBeenCalledOnce())
 	expect(f.next).toHaveBeenLastCalledWith([
 		expect.objectContaining({ id: 'article', title: 'Saved title' }),
 		expect.objectContaining({ id: 'legacy', contentId: 'legacy', url: null })

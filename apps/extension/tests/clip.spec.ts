@@ -98,8 +98,10 @@ async function clip(context: BrowserContext, id: string, source: Page) {
 async function recovery(context: BrowserContext, id: string) {
 	const page = await context.newPage()
 	await page.goto(`chrome-extension://${id}/index.html`)
-	// This helper is used online; wait for the account/root binding to settle before revealing.
-	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	// Wait for a usable binding; an existing root has no new write receipt.
+	await expect(
+		page.getByRole('button', { name: 'Show recovery phrase', exact: true })
+	).toBeVisible()
 	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
 	const dialog = page.getByRole('dialog')
 	try {
@@ -118,7 +120,7 @@ async function recovery(context: BrowserContext, id: string) {
 		throw error
 	}
 	const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	// The fixture owns this tab; closing it also disposes the revealed phrase.
 	await page.close()
 	return phrase
 }

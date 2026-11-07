@@ -30,10 +30,17 @@
 	let send: (event: TagFormEvent) => void = () => {}
 	const form = $derived(selectTagFormView(snapshot))
 	let inputHost = $state<HTMLDivElement>()
-	let pendingFocus = $state<HTMLElement>()
+	let pendingFocus = $state<{ target: HTMLElement; keys: string[] }>()
 	$effect(() => {
 		if (!enabled || !pendingFocus) return
-		const target = pendingFocus
+		const pending = pendingFocus
+		const selected = (row?.tags ?? []).map((tag) => tagComparisonKey(tag.name)).sort()
+		if (
+			selected.length !== pending.keys.length ||
+			selected.some((key, index) => key !== pending.keys[index])
+		)
+			return
+		const target = pending.target
 		pendingFocus = undefined
 		if (document.activeElement !== document.body) return
 		if (target.isConnected) target.focus()
@@ -86,7 +93,9 @@
 						},
 						(names) => {
 							pendingFocus =
-								document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+								document.activeElement instanceof HTMLElement
+									? { target: document.activeElement, keys: names.map(tagComparisonKey).sort() }
+									: undefined
 							send({ type: 'SELECT', id: article.id, names, previous: article.tags ?? [], enabled })
 						}
 					}

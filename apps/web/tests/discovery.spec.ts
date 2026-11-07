@@ -433,6 +433,9 @@ test('search failure is localized, leaves the library usable and retries with a 
 		}
 	})
 	await page.goto('/')
+	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
+	await expect(page.getByText('Search is unavailable.', { exact: true })).toHaveCount(0)
+	await openLibrarySearch(page)
 	await expect(page.getByText('Search is unavailable.', { exact: true })).toBeVisible()
 	const saved = await supplied(page, 'https://example.com/retry-search')
 	await openLibrarySearch(page)

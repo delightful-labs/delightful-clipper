@@ -7,7 +7,7 @@ it('drains a write when shutdown arrives between issue and its receipt handoff',
 	const local = vi.fn(() => pending.promise)
 	const ensure = vi.fn(() => ({ local, global: async () => {} }))
 	const actor = createActor(rootBootstrapMachine, {
-		input: { read: async () => 'compatible', ensure }
+		input: { read: async () => 'missing', ensure }
 	})
 	actor.subscribe((snapshot) => {
 		if (snapshot.matches({ writing: { operation: 'issuing', lifetime: 'active' } }))
@@ -33,4 +33,16 @@ it('does not issue a write when shutdown interrupts the initial read', async () 
 	await waitFor(actor, (snapshot) => snapshot.status === 'done')
 	expect(ensure).not.toHaveBeenCalled()
 	expect(actor.getSnapshot().output).toEqual({ outcome: 'closed' })
+})
+
+it('opens a compatible persisted library without issuing or waiting for a write', async () => {
+	const ensure = vi.fn(() => {
+		throw new Error('Unexpected startup write')
+	})
+	const actor = createActor(rootBootstrapMachine, {
+		input: { read: async () => 'compatible', ensure }
+	}).start()
+	await waitFor(actor, (s) => s.status === 'done')
+	expect(actor.getSnapshot().output).toEqual({ outcome: 'ready' })
+	expect(ensure).not.toHaveBeenCalled()
 })

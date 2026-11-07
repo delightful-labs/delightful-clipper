@@ -78,7 +78,7 @@
 
 {#snippet controls()}
 	<section class="account-controls" aria-label={t('app.title')}>
-		<StatusMessage {...view.message} />
+		{#if view.message.text}<StatusMessage {...view.message} />{/if}
 		{#if view.feedbackMessage}
 			<StatusMessage {...view.feedbackMessage} />
 		{/if}

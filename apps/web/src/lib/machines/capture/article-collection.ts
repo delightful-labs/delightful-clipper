@@ -3,11 +3,15 @@ import { projectTags } from '../../capture/tags.js'
 import type { TagOperation } from '../../capture/tags.js'
 import { projectOrganization } from '../../capture/organization.js'
 import type { OrganizationOperation } from '../../capture/organization.js'
-import { assign, enqueueActions, fromCallback, sendTo, setup } from 'xstate'
+import { assign, enqueueActions, fromCallback, sendTo, setup, raise, and, stateIn } from 'xstate'
 import type { Article, LibraryArticle } from '../../contracts/articles.js'
 import type { DocumentHeader } from '../../contracts/storage.js'
 import { projectLibraryArticles } from '../../capture/library-articles.js'
 type Subscribe<T> = (next: (rows: T[]) => void, error: () => void) => () => void
+function emptySubscription<T>(next: (rows: T[]) => void, _error: () => void) {
+	next([])
+	return () => {}
+}
 type Capability = {
 	isCurrent: () => boolean
 	articles: Subscribe<Article>
@@ -21,7 +25,7 @@ type Event =
 	| { type: 'TAGS'; rows: TagOperation[] }
 	| { type: 'ARTICLES'; rows: Article[] }
 	| { type: 'DOCUMENTS'; rows: DocumentHeader[] }
-	| { type: 'ERROR' | 'STOP' }
+	| { type: 'ERROR' | 'STOP' | 'UPDATED' }
 const subscription = fromCallback(() => {})
 type OutputEvent = { type: 'ROWS'; rows: LibraryArticle[] } | { type: 'ERROR' }
 const output = fromCallback<OutputEvent, Input>(({ input, receive }) => {
@@ -48,7 +52,7 @@ const model = setup<
 	},
 	{},
 	{ publish: undefined; clear: undefined; reportError: undefined },
-	{ current: undefined },
+	{ current: undefined; initialized: undefined },
 	never,
 	string,
 	Input
@@ -60,7 +64,15 @@ const model = setup<
 		documents: subscription,
 		output
 	},
-	guards: { current: () => false },
+	guards: {
+		current: () => false,
+		initialized: and([
+			stateIn({ observing: { articles: 'ready' } }),
+			stateIn({ observing: { documents: 'ready' } }),
+			stateIn({ observing: { tags: 'ready' } }),
+			stateIn({ observing: { organization: 'ready' } })
+		])
+	},
 	actions: {
 		reportError: enqueueActions(({ check, enqueue }) => {
 			if (check('current')) enqueue.sendTo('output', { type: 'ERROR' })
@@ -93,6 +105,71 @@ const model = setup<
 	},
 	states: {
 		observing: {
+			type: 'parallel',
+			states: {
+				articles: {
+					initial: 'pending',
+					states: {
+						pending: { on: { ARTICLES: { guard: 'current', target: 'ready' } } },
+						ready: {}
+					}
+				},
+				documents: {
+					initial: 'pending',
+					states: {
+						pending: { on: { DOCUMENTS: { guard: 'current', target: 'ready' } } },
+						ready: {}
+					}
+				},
+				tags: {
+					initial: 'pending',
+					states: { pending: { on: { TAGS: { guard: 'current', target: 'ready' } } }, ready: {} }
+				},
+				organization: {
+					initial: 'pending',
+					states: {
+						pending: { on: { ORGANIZATION: { guard: 'current', target: 'ready' } } },
+						ready: {}
+					}
+				},
+				data: {
+					on: {
+						TAGS: {
+							guard: 'current',
+							actions: [assign({ tags: ({ event }) => event.rows }), raise({ type: 'UPDATED' })]
+						},
+						ORGANIZATION: {
+							guard: 'current',
+							actions: [
+								assign({ organization: ({ event }) => event.rows }),
+								raise({ type: 'UPDATED' })
+							]
+						},
+						ARTICLES: {
+							guard: 'current',
+							actions: [assign({ articles: ({ event }) => event.rows }), raise({ type: 'UPDATED' })]
+						},
+						DOCUMENTS: {
+							guard: 'current',
+							actions: [
+								assign({ documents: ({ event }) => event.rows }),
+								raise({ type: 'UPDATED' })
+							]
+						}
+					}
+				},
+				publication: {
+					initial: 'idle',
+					states: {
+						idle: { on: { UPDATED: { guard: 'initialized', target: 'coalescing' } } },
+						coalescing: {
+							after: {
+								0: [{ guard: 'current', target: 'idle', actions: 'publish' }, { target: 'idle' }]
+							}
+						}
+					}
+				}
+			},
 			invoke: [
 				{ src: 'articles', onError: 'failed' },
 				{ src: 'tags', onError: 'failed' },
@@ -100,22 +177,6 @@ const model = setup<
 				{ src: 'documents', onError: 'failed' }
 			],
 			on: {
-				TAGS: {
-					guard: 'current',
-					actions: [assign({ tags: ({ event }) => event.rows }), 'publish']
-				},
-				ORGANIZATION: {
-					guard: 'current',
-					actions: [assign({ organization: ({ event }) => event.rows }), 'publish']
-				},
-				ARTICLES: {
-					guard: 'current',
-					actions: [assign({ articles: ({ event }) => event.rows }), 'publish']
-				},
-				DOCUMENTS: {
-					guard: 'current',
-					actions: [assign({ documents: ({ event }) => event.rows }), 'publish']
-				},
 				ERROR: 'failed',
 				STOP: 'closed'
 			}
@@ -144,7 +205,7 @@ export function createArticleCollectionMachine(cap: Capability) {
 	return model.provide({
 		actors: {
 			tags: fromCallback(({ sendBack }) =>
-				cap.tags?.(
+				(cap.tags ?? emptySubscription<TagOperation>)(
 					(rows) => sendBack({ type: 'TAGS', rows }),
 					() => sendBack({ type: 'ERROR' })
 				)
@@ -152,7 +213,7 @@ export function createArticleCollectionMachine(cap: Capability) {
 			articles,
 			documents,
 			organization: fromCallback(({ sendBack }) =>
-				cap.organization?.(
+				(cap.organization ?? emptySubscription<OrganizationOperation>)(
 					(rows) => sendBack({ type: 'ORGANIZATION', rows }),
 					() => sendBack({ type: 'ERROR' })
 				)

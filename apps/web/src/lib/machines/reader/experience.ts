@@ -658,7 +658,7 @@ export const readerExperienceMachine = model.createMachine({
 		}
 	}
 })
-export function selectReaderExperience(
+function projectReaderExperience(
 	snapshot: SnapshotFrom<typeof readerExperienceMachine> | undefined
 ) {
 	const current = snapshot?.context.capability?.isCurrent() === true
@@ -679,4 +679,22 @@ export function selectReaderExperience(
 			!snapshot.matches({ active: { writer: 'uncertain' } }),
 		message: stateFeedback(current ? Object.values(snapshot.getMeta()) : [])
 	}
+}
+
+// Immutable snapshots share one projection across the shell, reader and library.
+// Recheck the account boundary before consulting the cache.
+const readerViews = new WeakMap<
+	SnapshotFrom<typeof readerExperienceMachine>,
+	ReturnType<typeof projectReaderExperience>
+>()
+const emptyReaderView = projectReaderExperience(undefined)
+export function selectReaderExperience(
+	snapshot: SnapshotFrom<typeof readerExperienceMachine> | undefined
+) {
+	if (!snapshot?.context.capability?.isCurrent()) return emptyReaderView
+	const cached = readerViews.get(snapshot)
+	if (cached) return cached
+	const view = projectReaderExperience(snapshot)
+	readerViews.set(snapshot, view)
+	return view
 }

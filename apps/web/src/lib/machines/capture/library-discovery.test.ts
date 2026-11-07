@@ -1,6 +1,12 @@
 import { expect, it } from 'vitest'
 import { createActor, toPromise, waitFor } from 'xstate'
-import { libraryMachine, selectLibraryView } from './library.js'
+import {
+	libraryMachine,
+	selectLibraryView,
+	selectLibraryCaptureView,
+	selectLibraryReaderView,
+	selectLibraryReaderExperience
+} from './library.js'
 import { testLibraryCapability } from './library.test-support.js'
 import { createSearchWorkerMachine } from '../../search/worker-machine.js'
 import { tagKey } from '../../capture/tags.js'
@@ -104,6 +110,7 @@ it('combines real indexed text matches with status, Favorites, tag AND filters a
 	}).start()
 	actor.send({ type: 'ROWS', rows })
 	actor.send({ type: 'QUERY', query: 'needle' })
+	actor.send({ type: 'SEARCH_OPEN' })
 	await waitFor(actor, (s) => selectLibraryView(s).search.ids !== undefined)
 	expect(
 		selectLibraryView(actor.getSnapshot())
@@ -136,6 +143,32 @@ it('offers explicit restore for a trashed duplicate instead of implicitly restor
 	expect(selectLibraryView(actor.getSnapshot()).restoreCaptureId).toBe(a)
 	expect(selectLibraryView(actor.getSnapshot()).canOpenCapture).toBe(false)
 	expect(actor.getSnapshot().context.rows[0]?.trashed).toBe(true)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+})
+
+it('reuses list projections for unrelated updates and keeps narrow views scoped', async () => {
+	let current = true
+	const actor = createActor(libraryMachine, {
+		input: { ...testLibraryCapability(candidate), isCurrent: () => current }
+	}).start()
+	actor.send({ type: 'ROWS', rows })
+	const first = selectLibraryView(actor.getSnapshot())
+	actor.send({
+		type: 'BACKGROUND_STATUS',
+		id: 'other',
+		message: { text: 'Background work', variant: 'info' },
+		cancelable: false
+	})
+	const next = selectLibraryView(actor.getSnapshot())
+	expect(next.rows).toBe(first.rows)
+	expect(next.readable).toBe(first.readable)
+	expect(selectLibraryCaptureView(actor.getSnapshot())).not.toHaveProperty('rows')
+	expect(selectLibraryReaderView(actor.getSnapshot())).not.toHaveProperty('rows')
+	current = false
+	expect(selectLibraryView(actor.getSnapshot()).rows).toEqual([])
+	expect(selectLibraryReaderExperience(actor.getSnapshot()).enabled).toBe(false)
+	expect(selectLibraryCaptureView(actor.getSnapshot()).canOrganize).toBe(false)
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })

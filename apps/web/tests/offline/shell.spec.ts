@@ -160,7 +160,9 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await ready(restored)
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
-		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect(
+			restored.getByRole('region', { name: 'Saved articles', exact: true })
+		).toBeVisible()
 		await openAddLink(page)
 		await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/offline')
 		await page

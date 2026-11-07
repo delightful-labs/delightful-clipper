@@ -128,6 +128,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 			clearResources: undefined
 		},
 		{
+			existingRoot: { outcome: string; write?: RootWrite }
 			stoppingCreate: undefined
 			stoppingRestore: undefined
 			stoppingLogout: undefined
@@ -151,6 +152,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 	>({
 		actors: accountActors,
 		guards: {
+			existingRoot: (_args, result) => result.outcome === 'ready' && result.write === undefined,
 			observationBroken: stateIn({ active: { observationHealth: 'failed' } }),
 			ownerBroken: stateIn({ active: { ownerHealth: 'failed' } }),
 			cleanupBroken: stateIn({ active: { cleanupHealth: 'failed' } }),
@@ -498,8 +500,13 @@ export function createApplicationReadinessMachine<Session extends object>(
 								},
 								{ guard: 'replacingBootstrap', target: '#application-flow.running.route' },
 								{
+									guard: { type: 'existingRoot', params: ({ event }) => event.output },
+									target: '.ready.existing',
+									actions: assign({ write: undefined })
+								},
+								{
 									guard: ({ event }) => event.output.outcome === 'ready',
-									target: '.ready',
+									target: '.ready.syncPending',
 									actions: assign({
 										write: ({ event }) =>
 											event.output.outcome === 'ready' ? event.output.write : undefined
@@ -611,6 +618,8 @@ export function createApplicationReadinessMachine<Session extends object>(
 									]
 								},
 								states: {
+									// Existing local data is ready without claiming a new save or remote receipt.
+									existing: { meta: accountStatus('ready', '') },
 									stopping: {
 										initial: 'shutdown',
 										states: { shutdown: {}, restore: {}, logout: {}, replace: {} },
@@ -811,6 +820,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 }
 
 export type ApplicationStatus =
+	| 'ready'
 	| 'configuration'
 	| 'starting'
 	| 'signedOut'

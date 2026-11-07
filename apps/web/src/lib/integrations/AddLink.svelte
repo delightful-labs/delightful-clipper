@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte'
 	import type { ActorRefFrom, SnapshotFrom } from 'xstate'
 	import { Button, Dialog, FloatingActionButton, InputText, StatusMessage } from 'delightful-ui'
-	import { libraryMachine, selectLibraryView } from '../machines/capture/library.js'
+	import { libraryMachine, selectLibraryCaptureView } from '../machines/capture/library.js'
 	import { action, t } from '../localization/index.js'
 
 	let { actor }: { actor: ActorRefFrom<typeof libraryMachine> } = $props()
@@ -11,7 +11,7 @@
 	let open = $state(false)
 	let url = $state('')
 	const canAdd = $derived(snapshot?.can({ type: 'ADD', url }) ?? false)
-	const view = $derived(selectLibraryView(snapshot))
+	const view = $derived(selectLibraryCaptureView(snapshot))
 
 	onMount(() => {
 		const subscription = actor.subscribe((next) => (snapshot = next))

@@ -1,5 +1,14 @@
 # Article notes — implementation started
 
+## Startup performance
+
+Existing compatible libraries now take a read-only readiness path; only missing roots issue a write and track local/remote settlement. Search resources and full-text reads start on demand, while the collection coalesces initialized subscription results and search drains stale native loads before refreshing. Reader snapshot/asset/source reads run in parallel after header validation. Narrow selectors, immutable projection caching and 50-article rendering batches reduce main-thread work; keyboard focus is preserved through batching and coalesced tag updates. No catalogs, dependency pins, schema or service worker admission policy change.
+
+Production observations and ownership details are in [startup-performance.md](startup-performance.md). With 120 saved articles, a controlled 4× CPU comparison improved the median first list from 1,440 ms to 994 ms, rendering an initial batch of 50 rather than all 120. These localhost observations do not predict network/device performance. Search still reads full text once activated; capture worker coordination and automatic resumption remain intact.
+
+Validation: source verification passes 650 tests plus one platform skip, formatting, lint, strict types and production build. All five production offline, eleven packaged-extension and two sample-data cases pass. All 62 web cases are qualified across the complete run and targeted follow-ups: an obsolete repeated-root-write assertion was corrected, and one Firefox live-upgrade timeout passed in an isolated traced rerun without application changes. The initial full web run was 60/62, not green; see the detailed validation record in startup-performance.md.
+
+
 ## Explicit persistence and notification workflow ownership
 
 Create, revision and legacy-import decisions now live in invoked domain charts in `notes/domain-machines.ts`. Read actors return decoded facts; `assign` stores them in chart context. Named guards admit the operation and select an existing note, article parent or legacy document parent. States order the selected mutations. The obsolete manually started parent-selection actor is removed, and the native adapter no longer stores article/note/import facts on its transaction resource.
