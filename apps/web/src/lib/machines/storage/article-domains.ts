@@ -17,7 +17,9 @@ export function createArticleEnsureDomain(io: {
 	receipt: DomainReceipt
 }) {
 	const model = transactionDomainModel(io.read, 'Article already exists or is unavailable').extend({
-		guards: { articleMissing: ({ context }) => !hasExistingArticle(required(context.facts)) },
+		guards: {
+			articleMissing: (_, { facts }: { facts: ArticleEnsureFacts }) => !hasExistingArticle(facts)
+		},
 		actions: {
 			insertArticle: ({ context }) => io.insertArticle(context.resource, required(context.facts))
 		}
@@ -32,14 +34,15 @@ export function createArticleEnsureDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingArticle',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: { type: 'articleMissing', params: ({ event }) => ({ facts: event.output }) },
+							target: 'ready',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{ target: 'blocked' }
+					]
 				}
-			},
-			checkingArticle: {
-				always: [{ guard: 'articleMissing', target: 'ready' }, { target: 'blocked' }]
 			},
 			ready: { entry: 'allow', on: { STAGE: 'insertingArticle' } },
 			insertingArticle: { entry: 'insertArticle', always: 'done' },
@@ -56,10 +59,8 @@ export function createArticleAttachmentDomain(io: {
 }) {
 	const model = transactionDomainModel(io.read, 'Article already exists or is unavailable').extend({
 		guards: {
-			canAttachContent: ({ context }) => {
-				const facts = required(context.facts)
-				return canAttachArticleContent(facts.article, facts.available)
-			},
+			canAttachContent: (_, { facts }: { facts: ArticleAttachmentFacts }) =>
+				canAttachArticleContent(facts.article, facts.available),
 			articleExists: ({ context }) => hasExistingArticle(required(context.facts))
 		},
 		actions: {
@@ -77,21 +78,24 @@ export function createArticleAttachmentDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingAttachment',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: { type: 'canAttachContent', params: ({ event }) => ({ facts: event.output }) },
+							target: 'ready',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{ target: 'blocked' }
+					]
 				}
 			},
-			checkingAttachment: {
-				always: [{ guard: 'canAttachContent', target: 'ready' }, { target: 'blocked' }]
-			},
-			ready: { entry: 'allow', on: { STAGE: 'selectingArticle' } },
-			selectingArticle: {
-				always: [
-					{ guard: 'articleExists', target: 'attachingContent' },
-					{ target: 'creatingArticle' }
-				]
+			ready: {
+				entry: 'allow',
+				on: {
+					STAGE: [
+						{ guard: 'articleExists', target: 'attachingContent' },
+						{ target: 'creatingArticle' }
+					]
+				}
 			},
 			attachingContent: { entry: 'attachContent', always: 'done' },
 			creatingArticle: { entry: 'createArticle', always: 'done' },
@@ -106,7 +110,10 @@ export function createArticleFailureDomain(io: {
 	receipt: DomainReceipt
 }) {
 	const model = transactionDomainModel(io.read, 'Article is complete or unavailable').extend({
-		guards: { articlePending: ({ context }) => isPendingArticle(required(context.facts).article) },
+		guards: {
+			articlePending: (_, { facts }: { facts: ArticleFailureFacts }) =>
+				isPendingArticle(facts.article)
+		},
 		actions: {
 			recordFailure: ({ context }) => io.recordFailure(context.resource, required(context.facts))
 		}
@@ -121,14 +128,15 @@ export function createArticleFailureDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingPendingArticle',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: { type: 'articlePending', params: ({ event }) => ({ facts: event.output }) },
+							target: 'ready',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{ target: 'blocked' }
+					]
 				}
-			},
-			checkingPendingArticle: {
-				always: [{ guard: 'articlePending', target: 'ready' }, { target: 'blocked' }]
 			},
 			ready: { entry: 'allow', on: { STAGE: 'recordingFailure' } },
 			recordingFailure: { entry: 'recordFailure', always: 'done' },

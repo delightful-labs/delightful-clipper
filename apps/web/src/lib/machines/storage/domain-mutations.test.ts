@@ -150,6 +150,52 @@ it.each([
 		expect(f.receipt.global).not.toHaveBeenCalled()
 	}
 )
+it('blocks an existing intent on read completion before issuing any mutations', async () => {
+	const f = fixture(),
+		draft = content(true)
+	const result = await f.run(
+		createContentIntentDomain({
+			read: async () => ({
+				draft,
+				operationId: 'operation',
+				intent: draft.intent,
+				article: article()
+			}),
+			insertIntent: f.leaf('intent'),
+			createArticle: f.leaf('create'),
+			bindArticle: f.leaf('bind'),
+			receipt: () => f.receipt
+		}),
+		draft
+	)
+	expect(result.outcome).toBe('blocked')
+	expect(f.order).toEqual([])
+	expect(f.commit).not.toHaveBeenCalled()
+	expect(f.rollback).toHaveBeenCalledOnce()
+})
+it('blocks mismatched publication facts on read completion before issuing any mutations', async () => {
+	const f = fixture(),
+		draft = content(true)
+	const result = await f.run(
+		createContentPublicationDomain({
+			read: async () => ({
+				draft,
+				operationId: 'operation',
+				intent: { ...draft.intent, payloadHash: 'other' },
+				article: article('operation')
+			}),
+			publishContent: f.leaf('content'),
+			attachContent: f.leaf('attach'),
+			publishSource: f.leaf('source'),
+			receipt: () => f.receipt
+		}),
+		draft
+	)
+	expect(result.outcome).toBe('blocked')
+	expect(f.order).toEqual([])
+	expect(f.commit).not.toHaveBeenCalled()
+	expect(f.rollback).toHaveBeenCalledOnce()
+})
 it.each([true, false])(
 	'selects the attachment mutation from the retained article row (exists: %s)',
 	async (exists) => {

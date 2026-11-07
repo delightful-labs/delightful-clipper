@@ -55,7 +55,7 @@ export function createNotificationMachine(cap: {
 			trustedSender: undefined
 			admitted: undefined
 			waitingNotification: undefined
-			matchingCapture: undefined
+			matchingCapture: { value: unknown }
 		},
 		never,
 		string,
@@ -67,9 +67,9 @@ export function createNotificationMachine(cap: {
 			validMessage: ({ context }) => notificationSchema.safeParse(context.message).success,
 			trustedSender: ({ context }) => trustedSender(context.sender, cap.id, cap.page),
 			admitted: and(['validMessage', 'trustedSender']),
-			waitingNotification: ({ context }) => context.request?.type === 'WAITING',
-			matchingCapture: ({ context }) =>
-				captureFor(context.stored, waitingSchema.parse(context.request).id)
+			waitingNotification: ({ context }) => waitingSchema.safeParse(context.message).success,
+			matchingCapture: ({ context }, params) =>
+				captureFor(params.value, waitingSchema.parse(context.request).id)
 		},
 		actions: {
 			decode: assign({ request: ({ context }) => notificationSchema.parse(context.message) }),
@@ -111,32 +111,32 @@ export function createNotificationMachine(cap: {
 		states: {
 			admitting: {
 				always: [
-					{ guard: 'admitted', target: 'selectingNotification', actions: 'decode' },
+					{
+						guard: and(['admitted', 'waitingNotification']),
+						target: 'readingCapture',
+						actions: 'decode'
+					},
+					{ guard: 'admitted', target: 'showing', actions: ['decode', 'prepareProgress'] },
 					{ target: 'failed' }
-				]
-			},
-			selectingNotification: {
-				always: [
-					{ guard: 'waitingNotification', target: 'readingCapture' },
-					{ target: 'showing', actions: 'prepareProgress' }
 				]
 			},
 			readingCapture: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => waitingSchema.parse(context.request).id,
-					onDone: {
-						target: 'checkingCapture',
-						actions: { type: 'rememberStored', params: ({ event }) => ({ value: event.output }) }
-					},
+					onDone: [
+						{
+							guard: { type: 'matchingCapture', params: ({ event }) => ({ value: event.output }) },
+							target: 'showing',
+							actions: [
+								{ type: 'rememberStored', params: ({ event }) => ({ value: event.output }) },
+								'prepareWaiting'
+							]
+						},
+						{ target: 'failed' }
+					],
 					onError: 'failed'
 				}
-			},
-			checkingCapture: {
-				always: [
-					{ guard: 'matchingCapture', target: 'showing', actions: 'prepareWaiting' },
-					{ target: 'failed' }
-				]
 			},
 			showing: {
 				invoke: {

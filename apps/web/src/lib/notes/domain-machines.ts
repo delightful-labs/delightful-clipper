@@ -27,10 +27,10 @@ export function createNoteCreationMachine(io: {
 }) {
 	const model = transactionDomainModel(io.read, 'Note parent or identity unavailable').extend({
 		guards: {
-			canCreateNote: ({ context }) =>
-				canCreateNote(required(context.facts), required(context.facts).request.id),
-			hasArticleParent: ({ context }) => !!required(context.facts).article,
-			hasDocumentParent: ({ context }) => !!required(context.facts).document
+			canCreateArticleNote: (_, { facts }: { facts: NoteParentFacts }) =>
+				canCreateNote(facts, facts.request.id) && !!facts.article,
+			canCreateDocumentNote: (_, { facts }: { facts: NoteParentFacts }) =>
+				canCreateNote(facts, facts.request.id) && !facts.article && !!facts.document
 		},
 		actions: {
 			insertArticle: ({ context }) =>
@@ -49,21 +49,26 @@ export function createNoteCreationMachine(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingCreation',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: {
+								type: 'canCreateArticleNote',
+								params: ({ event }) => ({ facts: event.output })
+							},
+							target: 'readyArticle',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{
+							guard: {
+								type: 'canCreateDocumentNote',
+								params: ({ event }) => ({ facts: event.output })
+							},
+							target: 'readyDocument',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{ target: 'blocked' }
+					]
 				}
-			},
-			checkingCreation: {
-				always: [{ guard: 'canCreateNote', target: 'selectingParent' }, { target: 'blocked' }]
-			},
-			selectingParent: {
-				always: [
-					{ guard: 'hasArticleParent', target: 'readyArticle' },
-					{ guard: 'hasDocumentParent', target: 'readyDocument' },
-					{ target: 'blocked' }
-				]
 			},
 			readyArticle: { entry: 'allow', on: { STAGE: 'insertingArticle' } },
 			readyDocument: { entry: 'allow', on: { STAGE: 'insertingDocument' } },
@@ -81,8 +86,8 @@ export function createNoteRevisionMachine(io: {
 }) {
 	const model = transactionDomainModel(io.read, 'Note or revision unavailable').extend({
 		guards: {
-			canWriteRevision: ({ context }) =>
-				canWriteNoteRevision(required(context.facts), required(context.facts).revision)
+			canWriteRevision: (_, { facts }: { facts: NoteRevisionFacts }) =>
+				canWriteNoteRevision(facts, facts.revision)
 		},
 		actions: {
 			insertRevision: ({ context }) =>
@@ -99,14 +104,15 @@ export function createNoteRevisionMachine(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingRevision',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: { type: 'canWriteRevision', params: ({ event }) => ({ facts: event.output }) },
+							target: 'ready',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{ target: 'blocked' }
+					]
 				}
-			},
-			checkingRevision: {
-				always: [{ guard: 'canWriteRevision', target: 'ready' }, { target: 'blocked' }]
 			},
 			ready: { entry: 'allow', on: { STAGE: 'insertingRevision' } },
 			insertingRevision: { entry: 'insertRevision', always: 'done' },
@@ -127,10 +133,12 @@ export function createLegacyNoteImportMachine(io: {
 		'Legacy note import unavailable or already applied'
 	).extend({
 		guards: {
-			canImportLegacy: ({ context }) => canImportLegacy(required(context.facts)),
-			hasExistingNote: ({ context }) => !!required(context.facts).note,
-			hasArticleParent: ({ context }) => !!required(context.facts).article,
-			hasDocumentParent: ({ context }) => !!required(context.facts).document
+			canImportExistingNote: (_, { facts }: { facts: NoteImportFacts }) =>
+				canImportLegacy(facts) && !!facts.note,
+			canImportArticleNote: (_, { facts }: { facts: NoteImportFacts }) =>
+				canImportLegacy(facts) && !!facts.article,
+			canImportDocumentNote: (_, { facts }: { facts: NoteImportFacts }) =>
+				canImportLegacy(facts) && !!facts.document
 		},
 		actions: {
 			insertArticle: ({ context }) =>
@@ -151,22 +159,34 @@ export function createLegacyNoteImportMachine(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingImport',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: {
+								type: 'canImportExistingNote',
+								params: ({ event }) => ({ facts: event.output })
+							},
+							target: 'readyExisting',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{
+							guard: {
+								type: 'canImportArticleNote',
+								params: ({ event }) => ({ facts: event.output })
+							},
+							target: 'readyArticle',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{
+							guard: {
+								type: 'canImportDocumentNote',
+								params: ({ event }) => ({ facts: event.output })
+							},
+							target: 'readyDocument',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{ target: 'blocked' }
+					]
 				}
-			},
-			checkingImport: {
-				always: [{ guard: 'canImportLegacy', target: 'selectingParent' }, { target: 'blocked' }]
-			},
-			selectingParent: {
-				always: [
-					{ guard: 'hasExistingNote', target: 'readyExisting' },
-					{ guard: 'hasArticleParent', target: 'readyArticle' },
-					{ guard: 'hasDocumentParent', target: 'readyDocument' },
-					{ target: 'blocked' }
-				]
 			},
 			readyExisting: { entry: 'allow', on: { STAGE: 'importingRevisions' } },
 			readyArticle: { entry: 'allow', on: { STAGE: 'insertingArticle' } },

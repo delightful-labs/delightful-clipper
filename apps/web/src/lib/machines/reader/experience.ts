@@ -315,7 +315,8 @@ export const readerExperienceMachine = model.createMachine({
 														}),
 														target: 'exiting'
 													},
-													{ target: 'confirming' }
+													{ guard: 'fullscreenActive', target: 'fullscreen' },
+													{ target: '#reader-fallback' }
 												],
 												onError: [
 													{
@@ -345,12 +346,6 @@ export const readerExperienceMachine = model.createMachine({
 													target: '#reader-experience.active.focus.normal'
 												}
 											}
-										},
-										confirming: {
-											always: [
-												{ guard: 'fullscreenActive', target: 'fullscreen' },
-												{ target: '#reader-fallback' }
-											]
 										},
 										exiting: {
 											initial: 'checking',

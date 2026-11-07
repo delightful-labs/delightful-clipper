@@ -1,3 +1,4 @@
+import { and, not } from 'xstate'
 import type { OrganizationDraft } from './organize.js'
 import { canOrganizeArticle } from '../../capture/organization.js'
 import type { TransactionResource } from '../../backend/jazz/transaction.js'
@@ -23,10 +24,8 @@ export function createOrganizationDomain(io: {
 }) {
 	const model = transactionDomainModel(io.read, 'Article unavailable').extend({
 		guards: {
-			parentAvailable: ({ context }) => {
-				const facts = required(context.facts)
-				return canOrganizeArticle(facts.article, facts.document)
-			},
+			parentAvailable: (_, { facts }: { facts: OrganizationFacts }) =>
+				canOrganizeArticle(facts.article, facts.document),
 			tagAssignment: ({ context }) => required(context.facts).draft.field === 'tag',
 			hasArticleParent: ({ context }) => required(context.facts).article != null,
 			hasDocumentParent: ({ context }) => required(context.facts).document != null
@@ -53,35 +52,30 @@ export function createOrganizationDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingParent',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: { type: 'parentAvailable', params: ({ event }) => ({ facts: event.output }) },
+							target: 'ready',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{ target: 'blocked' }
+					]
 				}
 			},
-			checkingParent: {
-				always: [{ guard: 'parentAvailable', target: 'ready' }, { target: 'blocked' }]
-			},
-			ready: { entry: 'allow', on: { STAGE: 'selectingKind' } },
-			selectingKind: {
-				always: [
-					{ guard: 'tagAssignment', target: 'selectingTagParent' },
-					{ target: 'selectingParent' }
-				]
-			},
-			selectingParent: {
-				always: [
-					{ guard: 'hasArticleParent', target: 'insertingArticle' },
-					{ guard: 'hasDocumentParent', target: 'insertingDocument' },
-					{ target: 'invalidParent' }
-				]
-			},
-			selectingTagParent: {
-				always: [
-					{ guard: 'hasArticleParent', target: 'insertingTagArticle' },
-					{ guard: 'hasDocumentParent', target: 'insertingTagDocument' },
-					{ target: 'invalidParent' }
-				]
+			ready: {
+				entry: 'allow',
+				on: {
+					STAGE: [
+						{ guard: and(['tagAssignment', 'hasArticleParent']), target: 'insertingTagArticle' },
+						{ guard: and(['tagAssignment', 'hasDocumentParent']), target: 'insertingTagDocument' },
+						{ guard: and([not('tagAssignment'), 'hasArticleParent']), target: 'insertingArticle' },
+						{
+							guard: and([not('tagAssignment'), 'hasDocumentParent']),
+							target: 'insertingDocument'
+						},
+						{ target: 'invalidParent' }
+					]
+				}
 			},
 			insertingArticle: { entry: 'insertArticle', always: 'done' },
 			insertingDocument: { entry: 'insertDocument', always: 'done' },

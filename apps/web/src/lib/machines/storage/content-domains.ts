@@ -1,3 +1,4 @@
+import { and } from 'xstate'
 import type { PreparedSave } from '../../contracts/storage.js'
 import {
 	canBindStorageIntent,
@@ -22,7 +23,7 @@ export function createContentIntentDomain(io: {
 }) {
 	const model = transactionDomainModel(io.read, 'Operation identity is not eligible').extend({
 		guards: {
-			canBindIntent: ({ context }) => canBindStorageIntent(required(context.facts)),
+			canBindIntent: (_, params: { facts: ContentFacts }) => canBindStorageIntent(params.facts),
 			articleLinked: ({ context }) => hasLinkedArticle(required(context.facts)),
 			articleExists: ({ context }) => hasExistingArticle(required(context.facts))
 		},
@@ -42,24 +43,26 @@ export function createContentIntentDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingIntent',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: { type: 'canBindIntent', params: ({ event }) => ({ facts: event.output }) },
+							target: 'ready',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{
+							target: 'blocked',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						}
+					]
 				}
 			},
-			checkingIntent: {
-				always: [{ guard: 'canBindIntent', target: 'ready' }, { target: 'blocked' }]
-			},
 			ready: { entry: 'allow', on: { STAGE: 'insertingIntent' } },
-			insertingIntent: { entry: 'insertIntent', always: 'routingArticle' },
-			routingArticle: {
-				always: [{ guard: 'articleLinked', target: 'selectingArticle' }, { target: 'done' }]
-			},
-			selectingArticle: {
+			insertingIntent: {
+				entry: 'insertIntent',
 				always: [
-					{ guard: 'articleExists', target: 'bindingArticle' },
-					{ target: 'creatingArticle' }
+					{ guard: and(['articleLinked', 'articleExists']), target: 'bindingArticle' },
+					{ guard: 'articleLinked', target: 'creatingArticle' },
+					{ target: 'done' }
 				]
 			},
 			bindingArticle: { entry: 'bindArticle', always: 'done' },
@@ -78,7 +81,8 @@ export function createContentPublicationDomain(io: {
 }) {
 	const model = transactionDomainModel(io.read, 'Operation identity is not eligible').extend({
 		guards: {
-			canPublishContent: ({ context }) => canPublishStoredContent(required(context.facts)),
+			canPublishContent: (_, params: { facts: ContentFacts }) =>
+				canPublishStoredContent(params.facts),
 			articleLinked: ({ context }) => hasLinkedArticle(required(context.facts)),
 			hasSource: ({ context }) => hasContentSource(required(context.facts))
 		},
@@ -98,25 +102,33 @@ export function createContentPublicationDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingPublication',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: {
+								type: 'canPublishContent',
+								params: ({ event }) => ({ facts: event.output })
+							},
+							target: 'ready',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{
+							target: 'blocked',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						}
+					]
 				}
 			},
-			checkingPublication: {
-				always: [{ guard: 'canPublishContent', target: 'ready' }, { target: 'blocked' }]
-			},
 			ready: { entry: 'allow', on: { STAGE: 'publishingContent' } },
-			publishingContent: { entry: 'publishContent', always: 'routingArticle' },
-			routingArticle: {
+			publishingContent: {
+				entry: 'publishContent',
 				always: [
 					{ guard: 'articleLinked', target: 'attachingContent' },
-					{ target: 'routingSource' }
+					{ guard: 'hasSource', target: 'publishingSource' },
+					{ target: 'done' }
 				]
 			},
-			attachingContent: { entry: 'attachContent', always: 'routingSource' },
-			routingSource: {
+			attachingContent: {
+				entry: 'attachContent',
 				always: [{ guard: 'hasSource', target: 'publishingSource' }, { target: 'done' }]
 			},
 			publishingSource: { entry: 'publishSource', always: 'done' },

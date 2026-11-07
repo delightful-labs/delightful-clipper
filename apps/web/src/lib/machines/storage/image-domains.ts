@@ -22,10 +22,8 @@ export function createImagePublicationDomain(io: {
 }) {
 	const model = transactionDomainModel(io.read, 'Image publication unavailable').extend({
 		guards: {
-			canPublishImage: ({ context }) => {
-				const facts = required(context.facts)
-				return canWriteImage(facts.image, facts.draft, facts.intent)
-			}
+			canPublishImage: (_, { facts }: { facts: ImagePublicationFacts }) =>
+				canWriteImage(facts.image, facts.draft, facts.intent)
 		},
 		actions: {
 			insertIntent: ({ context }) => io.insertIntent(context.resource, required(context.facts)),
@@ -43,14 +41,15 @@ export function createImagePublicationDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingImage',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: { type: 'canPublishImage', params: ({ event }) => ({ facts: event.output }) },
+							target: 'ready',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{ target: 'blocked' }
+					]
 				}
-			},
-			checkingImage: {
-				always: [{ guard: 'canPublishImage', target: 'ready' }, { target: 'blocked' }]
 			},
 			ready: { entry: 'allow', on: { STAGE: 'insertingIntent' } },
 			insertingIntent: { entry: 'insertIntent', always: 'insertingAsset' },
@@ -68,10 +67,8 @@ export function createImageFailureDomain(io: {
 }) {
 	const model = transactionDomainModel(io.read, 'Image publication unavailable').extend({
 		guards: {
-			canRecordFailure: ({ context }) => {
-				const facts = required(context.facts)
-				return canWriteImage(facts.image, facts.draft, undefined)
-			}
+			canRecordFailure: (_, { facts }: { facts: ImageFailureFacts }) =>
+				canWriteImage(facts.image, facts.draft, undefined)
 		},
 		actions: {
 			recordFailure: ({ context }) => io.recordFailure(context.resource, required(context.facts))
@@ -87,14 +84,15 @@ export function createImageFailureDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: {
-						target: 'checkingImage',
-						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-					}
+					onDone: [
+						{
+							guard: { type: 'canRecordFailure', params: ({ event }) => ({ facts: event.output }) },
+							target: 'ready',
+							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+						},
+						{ target: 'blocked' }
+					]
 				}
-			},
-			checkingImage: {
-				always: [{ guard: 'canRecordFailure', target: 'ready' }, { target: 'blocked' }]
 			},
 			ready: { entry: 'allow', on: { STAGE: 'recordingFailure' } },
 			recordingFailure: { entry: 'recordFailure', always: 'done' },

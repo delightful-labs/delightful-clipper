@@ -65,7 +65,7 @@ export const imageProcessingMachine = setup<
 	},
 	{},
 	{},
-	{ decodable: undefined; outputFits: undefined; canShrink: undefined },
+	{ decodable: undefined; outputFits: { blob: Blob }; canShrink: undefined },
 	never,
 	string,
 	Input,
@@ -74,10 +74,10 @@ export const imageProcessingMachine = setup<
 	actors: { decode, bitmap, draw, encode, bytes },
 	guards: {
 		decodable: ({ context }) => canDecodeImage(context),
-		outputFits: ({ context }) =>
-			!!context.blob?.size &&
-			context.blob.size <= IMAGE_OUTPUT_LIMIT &&
-			['image/png', 'image/webp'].includes(context.blob.type),
+		outputFits: (_, { blob }) =>
+			!!blob.size &&
+			blob.size <= IMAGE_OUTPUT_LIMIT &&
+			['image/png', 'image/webp'].includes(blob.type),
 		canShrink: ({ context }) => context.attempts < 6 && context.edge > 64
 	}
 }).createMachine({
@@ -125,19 +125,17 @@ export const imageProcessingMachine = setup<
 					invoke: {
 						src: 'encode',
 						input: ({ context }) => context,
-						onDone: {
-							target: 'checkingSize',
-							actions: assign({ blob: ({ event }) => event.output })
-						},
+						onDone: [
+							{
+								guard: { type: 'outputFits', params: ({ event }) => ({ blob: event.output }) },
+								target: 'readingBytes',
+								actions: assign({ blob: ({ event }) => event.output })
+							},
+							{ guard: 'canShrink', target: 'shrinking' },
+							{ target: '#image-processing.failed' }
+						],
 						onError: '#image-processing.failed'
 					}
-				},
-				checkingSize: {
-					always: [
-						{ guard: 'outputFits', target: 'readingBytes' },
-						{ guard: 'canShrink', target: 'shrinking' },
-						{ target: '#image-processing.failed' }
-					]
 				},
 				shrinking: {
 					entry: assign({

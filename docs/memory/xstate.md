@@ -24,11 +24,13 @@ Guards must be pure, synchronous predicates. Give domain rules names such as `ca
 
 Ordinary functions remain appropriate for schema validation, protocol decoding, serialization, pure projection and bounded I/O. A coherent transaction-local snapshot read or an already-selected atomic batch can be one I/O operation. Do not create a state for every primitive calculation or database call. The distinction is whether the function implements a selected operation or decides the workflow itself.
 
+Do not add transient states solely to check facts and route immediately. Put guarded alternatives on the preceding completion or eventless transition when that expresses the same decision clearly. Keep states that own work, waiting or a meaningful lifecycle boundary. Retain a decision boundary when its guards must observe state changes made by the same event in parallel regions; transition guards run before those sibling transitions apply.
+
 Keep detailed implementations outside deeply nested state configuration. A readable chart should expose names and transitions, rather than hide blocks of application code inside `invoke.input`, `onDone.actions`, entry actions or guard callbacks.
 
 ## Make data flow explicit
 
-Return decoded facts from read actors. Retain them with `assign` on completion, evaluate guards against those facts, and pass the selected inputs to the next actor/action. Mutations must use the facts and payload that were actually validated for that operation.
+Return decoded facts from read actors. When those facts determine the next state, evaluate named guards against completion output in `onDone`, retain facts with `assign` on the selected transition, and pass the selected inputs to the next actor/action. Completion guards run before transition actions, so they must not depend on context assigned by that same transition. Mutations must use the facts and payload that were actually validated for that operation.
 
 Never mutate machine context directly. Do not pass domain facts between stages through mutable side channels on a transaction resource, closure or shared object. Fields such as `resource.article`, `resource.parents`, `resource.hash` and `resource.imported` hide workflow state and are prohibited. Native transaction and receipt handles are imperative resources; their existence does not justify attaching application decisions or observations to them.
 

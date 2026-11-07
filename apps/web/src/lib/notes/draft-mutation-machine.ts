@@ -1,4 +1,14 @@
-import { assign, createActor, fromCallback, fromPromise, sendTo, setup, toPromise } from 'xstate'
+import {
+	and,
+	not,
+	assign,
+	createActor,
+	fromCallback,
+	fromPromise,
+	sendTo,
+	setup,
+	toPromise
+} from 'xstate'
 import type { NoteDraftRecord } from './schema.js'
 import { openDraftDatabase } from './draft-database.js'
 import {
@@ -22,7 +32,7 @@ type Command = {
 type Event =
 	| { type: 'OPENED' | 'COMPLETED' | 'ABORTED' | 'STORAGE_ERROR' }
 	| { type: 'SOURCE_READ' | 'DESTINATION_READ' | 'CURRENT_READ'; value: unknown }
-type Context = { input: Input; db: IDBDatabase | undefined; stored: unknown }
+type Context = { input: Input; db: IDBDatabase | undefined }
 
 function recoveryInput(input: Input) {
 	if (input.kind !== 'recover') throw new Error('Missing draft recovery input')
@@ -90,7 +100,6 @@ export const draftMutationMachine = setup<
 	{},
 	{
 		rememberDatabase: { db: IDBDatabase }
-		rememberStored: { value: unknown }
 		readSource: undefined
 		readDestination: undefined
 		readCurrent: undefined
@@ -102,11 +111,11 @@ export const draftMutationMachine = setup<
 	{
 		recoveryRequested: undefined
 		recoveryAssociated: undefined
-		sourceUnchanged: undefined
-		destinationCompatible: undefined
-		currentMissing: undefined
-		currentValid: undefined
-		currentMatches: undefined
+		sourceUnchanged: { value: unknown }
+		destinationCompatible: { value: unknown }
+		currentMissing: { value: unknown }
+		currentValid: { value: unknown }
+		currentMatches: { value: unknown }
 	},
 	never,
 	string,
@@ -120,17 +129,17 @@ export const draftMutationMachine = setup<
 			const { recovery } = recoveryInput(context.input)
 			return canRecoverDraft(recovery.source, recovery.note, recovery.libraryId, recovery.aliases)
 		},
-		sourceUnchanged: ({ context }) =>
-			matchesStoredLegacyDraft(context.stored, recoveryInput(context.input).recovery.source),
-		destinationCompatible: ({ context }) =>
-			canReplaceRecoveredDraft(context.stored, context.input.entry.record),
-		currentMissing: ({ context }) => context.stored === undefined,
-		currentValid: ({ context }) => isStoredDraft(context.stored),
-		currentMatches: ({ context }) => matchesStoredDraft(context.stored, context.input.entry.record)
+		sourceUnchanged: ({ context }, params) =>
+			matchesStoredLegacyDraft(params.value, recoveryInput(context.input).recovery.source),
+		destinationCompatible: ({ context }, params) =>
+			canReplaceRecoveredDraft(params.value, context.input.entry.record),
+		currentMissing: (_, params) => params.value === undefined,
+		currentValid: (_, params) => isStoredDraft(params.value),
+		currentMatches: ({ context }, params) =>
+			matchesStoredDraft(params.value, context.input.entry.record)
 	},
 	actions: {
 		rememberDatabase: assign({ db: (_, params) => params.db }),
-		rememberStored: assign({ stored: (_, params) => params.value }),
 		readSource: sendTo('storage', { type: 'READ_SOURCE' }),
 		readDestination: sendTo('storage', { type: 'READ_DESTINATION' }),
 		readCurrent: sendTo('storage', { type: 'READ_CURRENT' }),
@@ -143,14 +152,14 @@ export const draftMutationMachine = setup<
 	}
 }).createMachine({
 	id: 'draft-mutation',
-	context: ({ input }) => ({ input, db: undefined, stored: undefined }),
+	context: ({ input }) => ({ input, db: undefined }),
 	initial: 'selectingOperation',
 	states: {
 		selectingOperation: {
-			always: [{ guard: 'recoveryRequested', target: 'checkingAssociation' }, { target: 'opening' }]
-		},
-		checkingAssociation: {
-			always: [{ guard: 'recoveryAssociated', target: 'opening' }, { target: 'failed' }]
+			always: [
+				{ guard: and(['recoveryRequested', not('recoveryAssociated')]), target: 'failed' },
+				{ target: 'opening' }
+			]
 		},
 		opening: {
 			invoke: {
@@ -187,49 +196,47 @@ export const draftMutationMachine = setup<
 				readingSource: {
 					entry: 'readSource',
 					on: {
-						SOURCE_READ: {
-							target: 'checkingSource',
-							actions: { type: 'rememberStored', params: ({ event }) => event }
-						}
+						SOURCE_READ: [
+							{
+								guard: { type: 'sourceUnchanged', params: ({ event }) => event },
+								target: 'readingDestination'
+							},
+							{ target: 'aborting' }
+						]
 					}
-				},
-				checkingSource: {
-					always: [
-						{ guard: 'sourceUnchanged', target: 'readingDestination' },
-						{ target: 'aborting' }
-					]
 				},
 				readingDestination: {
 					entry: 'readDestination',
 					on: {
-						DESTINATION_READ: {
-							target: 'checkingDestination',
-							actions: { type: 'rememberStored', params: ({ event }) => event }
-						}
+						DESTINATION_READ: [
+							{
+								guard: { type: 'destinationCompatible', params: ({ event }) => event },
+								target: 'moving'
+							},
+							{ target: 'aborting' }
+						]
 					}
-				},
-				checkingDestination: {
-					always: [{ guard: 'destinationCompatible', target: 'moving' }, { target: 'aborting' }]
 				},
 				moving: { entry: 'move', always: 'waitingCompletion' },
 				readingCurrent: {
 					entry: 'readCurrent',
 					on: {
-						CURRENT_READ: {
-							target: 'checkingCurrent',
-							actions: { type: 'rememberStored', params: ({ event }) => event }
-						}
+						CURRENT_READ: [
+							{
+								guard: { type: 'currentMissing', params: ({ event }) => event },
+								target: 'waitingCompletion'
+							},
+							{
+								guard: { type: 'currentMatches', params: ({ event }) => event },
+								target: 'deleting'
+							},
+							{
+								guard: { type: 'currentValid', params: ({ event }) => event },
+								target: 'waitingCompletion'
+							},
+							{ target: 'aborting' }
+						]
 					}
-				},
-				checkingCurrent: {
-					always: [
-						{ guard: 'currentMissing', target: 'waitingCompletion' },
-						{ guard: 'currentValid', target: 'checkingAcknowledgment' },
-						{ target: 'aborting' }
-					]
-				},
-				checkingAcknowledgment: {
-					always: [{ guard: 'currentMatches', target: 'deleting' }, { target: 'waitingCompletion' }]
 				},
 				deleting: { entry: 'remove', always: 'waitingCompletion' },
 				aborting: { entry: 'abort' },
