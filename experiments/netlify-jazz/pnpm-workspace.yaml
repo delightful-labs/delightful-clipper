@@ -1,0 +1,4 @@
+packages:
+  - .
+nodeVersion: 24.22.2
+useNodeVersion: 24.22.2

@@ -1,0 +1,13 @@
+{
+	"name": "clipper-netlify-jazz-probe",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@10.22.0",
+	"scripts": {
+		"probe": "node --experimental-strip-types probe.ts"
+	},
+	"dependencies": {
+		"jazz-tools": "2.0.0-alpha.60",
+		"jazz-napi": "2.0.0-alpha.60"
+	}
+}
