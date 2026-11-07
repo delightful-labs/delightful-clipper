@@ -9,7 +9,7 @@ import {
 	matchesStoredLegacyDraft
 } from './draft-recovery.js'
 import type { prepareDraftRecovery } from './draft-recovery.js'
-import { required } from './operation-machine.js'
+import { required } from '../machines/storage/domain-transaction.js'
 
 export type DraftEntry = { key: string; target: string; record: NoteDraftRecord }
 type Recovery = ReturnType<typeof prepareDraftRecovery>

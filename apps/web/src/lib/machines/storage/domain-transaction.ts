@@ -6,8 +6,8 @@ import type {
 	WorkspaceCreationAttempt,
 	WorkspaceCreationResult
 } from 'delightful-local-first/workspace/creation/contracts'
-import type { SyncReceipt } from '../contracts/storage.js'
-import type { TransactionResource } from '../backend/jazz/transaction.js'
+import type { SyncReceipt } from '../../contracts/storage.js'
+import type { TransactionResource } from '../../backend/jazz/transaction.js'
 import type { WriteHandle } from 'jazz-tools'
 
 type Reply<T> = { resolve: (value: T) => void; reject: (error: unknown) => void }
@@ -23,13 +23,13 @@ type Event<Resource> =
 	| StageRequest
 	| Prepared
 	| { type: 'CANCEL' | 'SHUTDOWN' }
-export type NoteDomainInput<Draft> = {
+export type TransactionDomainInput<Draft> = {
 	resource: TransactionResource
 	attempt: WorkspaceCreationAttempt<Draft>
 	owner: AnyActorRef
 }
 export function required<Value>(value: Value | undefined): Value {
-	if (value === undefined) throw new Error('Missing note operation resource')
+	if (value === undefined) throw new Error('Missing transaction domain resource')
 	return value
 }
 function requestRead<Resource>(owner: AnyActorRef, resource: Resource) {
@@ -50,7 +50,7 @@ function requestStage(owner: AnyActorRef) {
 /** DLF alone acquires, commits, drains and rolls back the transaction. The invoked
  * domain chart owns facts, guards and mutations; messages cross the callback API
  * without storing domain state on an imperative transaction handle. */
-export function createNoteOperation<Draft, Resource = TransactionResource, Write = WriteHandle>(
+function createDomainTransactionController<Draft, Resource, Write>(
 	domain: AnyStateMachine,
 	lifecycle: {
 		open: () => Resource | PromiseLike<Resource>
@@ -125,7 +125,7 @@ export function createNoteOperation<Draft, Resource = TransactionResource, Write
 			shutdown: sendTo('transaction', { type: 'SHUTDOWN' })
 		}
 	}).createMachine({
-		id: 'note-operation',
+		id: 'domain-transaction',
 		context: ({ input }) => ({
 			attempt: input.attempt,
 			resource: undefined,
@@ -151,7 +151,7 @@ export function createNoteOperation<Draft, Resource = TransactionResource, Write
 								}
 							}),
 							onDone: {
-								target: '#note-operation.completed',
+								target: '#domain-transaction.completed',
 								actions: { type: 'finish', params: ({ event }) => ({ result: event.output }) }
 							}
 						}
@@ -233,6 +233,67 @@ export function createNoteOperation<Draft, Resource = TransactionResource, Write
 				}
 			},
 			completed: { type: 'final' }
+		}
+	})
+}
+
+/** Expose only lifecycle commands to application actors. Read/stage protocol
+ * events remain private to the invoked controller and its domain child. */
+export function createDomainTransaction<Draft, Resource = TransactionResource, Write = WriteHandle>(
+	domain: AnyStateMachine,
+	lifecycle: {
+		open: () => Resource | PromiseLike<Resource>
+		commit: (resource: Resource) => Write | PromiseLike<Write>
+		persistLocal: (write: Write) => void | PromiseLike<void>
+		rollback: (resource: Resource) => boolean | PromiseLike<boolean>
+	}
+) {
+	type Input = { attempt: WorkspaceCreationAttempt<Draft> }
+	type Result = WorkspaceCreationResult<Draft, SyncReceipt>
+	type Context = Input & { result: Result | undefined }
+	const actors = {
+		workflow: createDomainTransactionController<Draft, Resource, Write>(domain, lifecycle)
+	}
+	return setup<
+		Context,
+		{ type: 'CANCEL' | 'SHUTDOWN' },
+		typeof actors,
+		{},
+		{
+			cancel: undefined
+			shutdown: undefined
+			finish: { result: Result }
+		},
+		{},
+		never,
+		string,
+		Input,
+		Result
+	>({
+		actors,
+		actions: {
+			cancel: sendTo('workflow', { type: 'CANCEL' }),
+			shutdown: sendTo('workflow', { type: 'SHUTDOWN' }),
+			finish: assign({ result: (_, params) => params.result })
+		}
+	}).createMachine({
+		context: ({ input }) => ({ ...input, result: undefined }),
+		initial: 'running',
+		output: ({ context }) => required(context.result),
+		states: {
+			running: {
+				invoke: {
+					id: 'workflow',
+					src: 'workflow',
+					input: ({ context }) => ({ attempt: context.attempt }),
+					onDone: {
+						target: 'done',
+						actions: { type: 'finish', params: ({ event }) => ({ result: event.output }) }
+					}
+				},
+				on: { CANCEL: { actions: 'cancel' }, SHUTDOWN: { actions: 'shutdown' } }
+			},
+			done: { type: 'final' }
 		}
 	})
 }

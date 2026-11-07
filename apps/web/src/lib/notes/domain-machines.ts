@@ -1,11 +1,15 @@
-import { assign, fromPromise, sendTo, setup } from 'xstate'
-import type { SyncReceipt } from '../contracts/storage.js'
 import type { TransactionResource } from '../backend/jazz/transaction.js'
 import type { NoteCreate, NoteRevision } from './schema.js'
 import { canCreateNote, canImportLegacy, canWriteNoteRevision } from './eligibility.js'
 import type { NoteAssociation, LegacyNoteImportRows, NoteRevisionRows } from './eligibility.js'
-import { required } from './operation-machine.js'
-import type { NoteDomainInput } from './operation-machine.js'
+import { required } from '../machines/storage/domain-transaction.js'
+
+import { transactionDomainModel, domainContext } from '../machines/storage/domain-model.js'
+import type {
+	DomainRead as Read,
+	DomainMutation as Mutation,
+	DomainReceipt as Receipt
+} from '../machines/storage/domain-model.js'
 
 export type NoteParentFacts = NoteAssociation & {
 	article: unknown
@@ -15,66 +19,13 @@ export type NoteParentFacts = NoteAssociation & {
 export type NoteRevisionFacts = NoteRevisionRows & { revision: NoteRevision }
 export type NoteImportFacts = LegacyNoteImportRows & NoteParentFacts
 
-type Context<Draft, Facts> = NoteDomainInput<Draft> & { facts: Facts | undefined }
-type Read<Draft, Facts> = (
-	resource: TransactionResource,
-	draft: Draft,
-	operationId: string
-) => Promise<Facts>
-type Mutation<Draft> = (resource: TransactionResource, draft: Draft) => void
-type Receipt = (resource: TransactionResource) => SyncReceipt
-
-function domainModel<Draft, Facts>(read: Read<Draft, Facts>, reason: string) {
-	const actors = {
-		read: fromPromise(({ input }: { input: NoteDomainInput<Draft> }) =>
-			read(input.resource, input.attempt.draft, input.attempt.operationId)
-		)
-	}
-	return setup<
-		Context<Draft, Facts>,
-		{ type: 'STAGE' },
-		typeof actors,
-		{},
-		{
-			rememberFacts: { facts: Facts }
-			allow: undefined
-			block: undefined
-		},
-		{},
-		never,
-		string,
-		NoteDomainInput<Draft>,
-		SyncReceipt
-	>({
-		actors,
-		actions: {
-			rememberFacts: assign({ facts: (_, params) => params.facts }),
-			allow: sendTo(({ context }) => context.owner, {
-				type: 'PREPARED',
-				assessment: { outcome: 'eligible' }
-			}),
-			block: sendTo(({ context }) => context.owner, {
-				type: 'PREPARED',
-				assessment: { outcome: 'blocked', reason }
-			})
-		}
-	})
-}
-function initialContext<Draft, Facts>({
-	input
-}: {
-	input: NoteDomainInput<Draft>
-}): Context<Draft, Facts> {
-	return { ...input, facts: undefined }
-}
-
 export function createNoteCreationMachine(io: {
 	read: Read<NoteCreate, NoteParentFacts>
 	insertArticle: Mutation<NoteCreate>
 	insertDocument: Mutation<NoteCreate>
 	receipt: Receipt
 }) {
-	const model = domainModel(io.read, 'Note parent or identity unavailable').extend({
+	const model = transactionDomainModel(io.read, 'Note parent or identity unavailable').extend({
 		guards: {
 			canCreateNote: ({ context }) =>
 				canCreateNote(required(context.facts), required(context.facts).request.id),
@@ -90,7 +41,7 @@ export function createNoteCreationMachine(io: {
 	})
 	return model.createMachine({
 		id: 'note-creation-domain',
-		context: initialContext<NoteCreate, NoteParentFacts>,
+		context: domainContext<NoteCreate, NoteParentFacts>,
 		initial: 'reading',
 		output: ({ context }) => io.receipt(context.resource),
 		states: {
@@ -128,7 +79,7 @@ export function createNoteRevisionMachine(io: {
 	insertRevision: Mutation<NoteRevision>
 	receipt: Receipt
 }) {
-	const model = domainModel(io.read, 'Note or revision unavailable').extend({
+	const model = transactionDomainModel(io.read, 'Note or revision unavailable').extend({
 		guards: {
 			canWriteRevision: ({ context }) =>
 				canWriteNoteRevision(required(context.facts), required(context.facts).revision)
@@ -140,7 +91,7 @@ export function createNoteRevisionMachine(io: {
 	})
 	return model.createMachine({
 		id: 'note-revision-domain',
-		context: initialContext<NoteRevision, NoteRevisionFacts>,
+		context: domainContext<NoteRevision, NoteRevisionFacts>,
 		initial: 'reading',
 		output: ({ context }) => io.receipt(context.resource),
 		states: {
@@ -171,7 +122,10 @@ export function createLegacyNoteImportMachine(io: {
 	insertRevisions: (resource: TransactionResource, revisions: readonly NoteRevision[]) => void
 	receipt: Receipt
 }) {
-	const model = domainModel(io.read, 'Legacy note import unavailable or already applied').extend({
+	const model = transactionDomainModel(
+		io.read,
+		'Legacy note import unavailable or already applied'
+	).extend({
 		guards: {
 			canImportLegacy: ({ context }) => canImportLegacy(required(context.facts)),
 			hasExistingNote: ({ context }) => !!required(context.facts).note,
@@ -189,7 +143,7 @@ export function createLegacyNoteImportMachine(io: {
 	})
 	return model.createMachine({
 		id: 'note-import-domain',
-		context: initialContext<NoteCreate, NoteImportFacts>,
+		context: domainContext<NoteCreate, NoteImportFacts>,
 		initial: 'reading',
 		output: ({ context }) => io.receipt(context.resource),
 		states: {

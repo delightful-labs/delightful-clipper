@@ -1,3 +1,4 @@
+import { createNotificationMachine } from './notification-machine.js'
 import { createConnectStoreMachine } from './connect-store-machine.js'
 import { authorizationSchema, connectionFor, connectionKey } from './connection.js'
 import { createLaunchMachine } from './launch-machine.js'
@@ -7,11 +8,8 @@ import {
 	captureKey,
 	captureSchema,
 	messageSchema,
-	progressSchema,
 	referenceMessageSchema,
-	trustedSender,
-	waitingSchema,
-	captureFor,
+	notificationSchema,
 	connectMessageSchema
 } from './protocol.js'
 import type { Capture } from './protocol.js'
@@ -77,6 +75,13 @@ function show(
 		]
 	})
 }
+const notifications = createNotificationMachine({
+	id: chrome.runtime.id,
+	page: runtimePage,
+	read,
+	show: (display) =>
+		show(display.capture, display.message, display.revision, false, display.articleId)
+})
 chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 	if (connectMessageSchema.safeParse(message).success) {
 		const actor = createActor(connections, { input: { message, sender } })
@@ -87,30 +92,15 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 		return true
 	}
 
-	const waiting = waitingSchema.safeParse(message)
-	if (waiting.success && trustedSender(sender, chrome.runtime.id, runtimePage)) {
-		const update = waiting.data
-		void read(update.id)
-			.then((value) => {
-				if (!captureFor(value, update.id)) throw new Error('invalidResponse')
-				return show(captureSchema.parse(value), update.message, update.revision, false)
-			})
-			.then(
-				() => reply({ accepted: true }),
-				() => reply({ accepted: false })
-			)
+	if (notificationSchema.safeParse(message).success) {
+		const actor = createActor(notifications, { input: { message, sender } })
+		void toPromise(actor)
+			.then(reply, () => reply({ accepted: false }))
+			.finally(() => actor.stop())
+		actor.start()
 		return true
 	}
 
-	const progress = progressSchema.safeParse(message)
-	if (progress.success && trustedSender(sender, chrome.runtime.id, runtimePage)) {
-		const { capture, message, revision, articleId } = progress.data
-		void show(capture, message, revision, false, articleId).then(
-			() => reply({ accepted: true }),
-			() => reply({ accepted: false })
-		)
-		return true
-	}
 	if (messageSchema.safeParse(message).success) {
 		const actor = createActor(reader, { input: { message, sender } })
 		void toPromise(actor)

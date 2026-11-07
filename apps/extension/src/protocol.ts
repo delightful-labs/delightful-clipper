@@ -98,6 +98,9 @@ export const waitingSchema = z.strictObject({
 	message: progressSchema.shape.message
 })
 
+export const notificationSchema = z.union([waitingSchema, progressSchema])
+export type NotificationMessage = z.infer<typeof notificationSchema>
+
 export const accountChangedSchema = z.strictObject({
 	type: z.literal('ACCOUNT_CHANGED'),
 	accountId: z.uuid()

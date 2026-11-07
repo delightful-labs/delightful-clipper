@@ -21,7 +21,7 @@ import {
 	hasUnusedRevisionId,
 	matchesNoteOperation
 } from '../../notes/eligibility.js'
-import { createNoteOperation } from '../../notes/operation-machine.js'
+import { createDomainTransaction } from '../../machines/storage/domain-transaction.js'
 import {
 	createNoteCreationMachine,
 	createNoteRevisionMachine,
@@ -160,7 +160,7 @@ export function createNoteRecords(
 		const missing = expected.filter((row) => hasUnusedRevisionId(knownIds, row.id))
 		return { ...rows, request, note, source, history, expected, missing }
 	}
-	const create = createNoteOperation<NoteCreate>(
+	const create = createDomainTransaction<NoteCreate>(
 		createNoteCreationMachine({
 			read: readCreation,
 			insertArticle,
@@ -169,7 +169,7 @@ export function createNoteRecords(
 		}),
 		lifecycle
 	)
-	const stage = createNoteOperation<NoteRevision>(
+	const stage = createDomainTransaction<NoteRevision>(
 		createNoteRevisionMachine({
 			read: readRevisionFacts,
 			insertRevision,
@@ -177,7 +177,7 @@ export function createNoteRecords(
 		}),
 		lifecycle
 	)
-	const importLegacy = createNoteOperation<NoteCreate>(
+	const importLegacy = createDomainTransaction<NoteCreate>(
 		createLegacyNoteImportMachine({
 			read: readImport,
 			insertArticle,

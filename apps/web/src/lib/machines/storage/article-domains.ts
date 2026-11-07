@@ -1,0 +1,139 @@
+import type { Article, ArticleDraft } from '../../contracts/articles.js'
+import { canAttachArticleContent, isPendingArticle } from '../../capture/article-policy.js'
+import { hasExistingArticle } from '../../capture/content-policy.js'
+import type { TransactionResource } from '../../backend/jazz/transaction.js'
+import { required } from './domain-transaction.js'
+import { transactionDomainModel, domainContext } from './domain-model.js'
+import type { DomainRead, DomainReceipt } from './domain-model.js'
+export type ArticleEnsureFacts = { draft: ArticleDraft; article: Article | null }
+export type ArticleAttachmentFacts = ArticleEnsureFacts & { available: boolean }
+export type ArticleFailure = { id: string; code: string | null }
+export type ArticleFailureFacts = { draft: ArticleFailure; article: Article | null }
+type Mutation<Facts> = (resource: TransactionResource, facts: Facts) => void
+
+export function createArticleEnsureDomain(io: {
+	read: DomainRead<ArticleDraft, ArticleEnsureFacts>
+	insertArticle: Mutation<ArticleEnsureFacts>
+	receipt: DomainReceipt
+}) {
+	const model = transactionDomainModel(io.read, 'Article already exists or is unavailable').extend({
+		guards: { articleMissing: ({ context }) => !hasExistingArticle(required(context.facts)) },
+		actions: {
+			insertArticle: ({ context }) => io.insertArticle(context.resource, required(context.facts))
+		}
+	})
+	return model.createMachine({
+		id: 'article-ensure-domain',
+		context: domainContext<ArticleDraft, ArticleEnsureFacts>,
+		initial: 'reading',
+		output: ({ context }) => io.receipt(context.resource),
+		states: {
+			reading: {
+				invoke: {
+					src: 'read',
+					input: ({ context }) => context,
+					onDone: {
+						target: 'checkingArticle',
+						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+					}
+				}
+			},
+			checkingArticle: {
+				always: [{ guard: 'articleMissing', target: 'ready' }, { target: 'blocked' }]
+			},
+			ready: { entry: 'allow', on: { STAGE: 'insertingArticle' } },
+			insertingArticle: { entry: 'insertArticle', always: 'done' },
+			blocked: { entry: 'block' },
+			done: { type: 'final' }
+		}
+	})
+}
+export function createArticleAttachmentDomain(io: {
+	read: DomainRead<ArticleDraft, ArticleAttachmentFacts>
+	attachContent: Mutation<ArticleAttachmentFacts>
+	createArticle: Mutation<ArticleAttachmentFacts>
+	receipt: DomainReceipt
+}) {
+	const model = transactionDomainModel(io.read, 'Article already exists or is unavailable').extend({
+		guards: {
+			canAttachContent: ({ context }) => {
+				const facts = required(context.facts)
+				return canAttachArticleContent(facts.article, facts.available)
+			},
+			articleExists: ({ context }) => hasExistingArticle(required(context.facts))
+		},
+		actions: {
+			attachContent: ({ context }) => io.attachContent(context.resource, required(context.facts)),
+			createArticle: ({ context }) => io.createArticle(context.resource, required(context.facts))
+		}
+	})
+	return model.createMachine({
+		id: 'article-attachment-domain',
+		context: domainContext<ArticleDraft, ArticleAttachmentFacts>,
+		initial: 'reading',
+		output: ({ context }) => io.receipt(context.resource),
+		states: {
+			reading: {
+				invoke: {
+					src: 'read',
+					input: ({ context }) => context,
+					onDone: {
+						target: 'checkingAttachment',
+						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+					}
+				}
+			},
+			checkingAttachment: {
+				always: [{ guard: 'canAttachContent', target: 'ready' }, { target: 'blocked' }]
+			},
+			ready: { entry: 'allow', on: { STAGE: 'selectingArticle' } },
+			selectingArticle: {
+				always: [
+					{ guard: 'articleExists', target: 'attachingContent' },
+					{ target: 'creatingArticle' }
+				]
+			},
+			attachingContent: { entry: 'attachContent', always: 'done' },
+			creatingArticle: { entry: 'createArticle', always: 'done' },
+			blocked: { entry: 'block' },
+			done: { type: 'final' }
+		}
+	})
+}
+export function createArticleFailureDomain(io: {
+	read: DomainRead<ArticleFailure, ArticleFailureFacts>
+	recordFailure: Mutation<ArticleFailureFacts>
+	receipt: DomainReceipt
+}) {
+	const model = transactionDomainModel(io.read, 'Article is complete or unavailable').extend({
+		guards: { articlePending: ({ context }) => isPendingArticle(required(context.facts).article) },
+		actions: {
+			recordFailure: ({ context }) => io.recordFailure(context.resource, required(context.facts))
+		}
+	})
+	return model.createMachine({
+		id: 'article-failure-domain',
+		context: domainContext<ArticleFailure, ArticleFailureFacts>,
+		initial: 'reading',
+		output: ({ context }) => io.receipt(context.resource),
+		states: {
+			reading: {
+				invoke: {
+					src: 'read',
+					input: ({ context }) => context,
+					onDone: {
+						target: 'checkingPendingArticle',
+						actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+					}
+				}
+			},
+			checkingPendingArticle: {
+				always: [{ guard: 'articlePending', target: 'ready' }, { target: 'blocked' }]
+			},
+			ready: { entry: 'allow', on: { STAGE: 'recordingFailure' } },
+			recordingFailure: { entry: 'recordFailure', always: 'done' },
+			blocked: { entry: 'block' },
+			done: { type: 'final' }
+		}
+	})
+}

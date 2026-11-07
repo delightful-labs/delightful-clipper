@@ -1,8 +1,8 @@
 import { expect, it, vi } from 'vitest'
 import { createActor, fromPromise, sendTo, setup, toPromise } from 'xstate'
 import type { AnyActorRef } from 'xstate'
-import { createNoteOperation } from './operation-machine.js'
-import type { SyncReceipt } from '../contracts/storage.js'
+import { createDomainTransaction } from './domain-transaction.js'
+import type { SyncReceipt } from '../../contracts/storage.js'
 
 type Phase = 'open' | 'read' | 'stage' | 'commit' | 'persist'
 function fixture(
@@ -73,7 +73,7 @@ function fixture(
 		trace.push('rollback')
 		return !options.rollbackFails
 	})
-	const logic = createNoteOperation<Draft, object, object>(domain, {
+	const logic = createDomainTransaction<Draft, object, object>(domain, {
 		open: async () => {
 			await step('open')
 			return resource
