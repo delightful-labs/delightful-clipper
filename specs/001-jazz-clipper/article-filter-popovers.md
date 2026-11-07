@@ -13,3 +13,5 @@ Validation: 643 unit/native tests pass (one Linux-only test skipped on macOS), a
 The final production restart fixture had one article-extraction timeout before the filter controls were used; its focused trace rerun passed. The remaining four offline cases passed in the full run.
 
 CI follow-up: the first account reload raced a Vite full-page reload on a cold dependency cache. Optimizer diagnostics identified late discovery of `minisearch` when the search worker starts after account readiness. Explicit prebundling prevents that reload, and the account test now rejects unexpected dev-server reload events. Three separate cold-cache starts pass with no reload events; no retries or timeout increases were added.
+
+Packaged-extension follow-up: hosted CI confirmed the account reload fix and passed all 61 application cases and five offline cases. Its extension suite exposed one remaining direct Trash-radio selector. That flow now opens the filter popover with the shared browser helper before selecting Trash. All eleven rebuilt packaged-extension cases pass locally on isolated services.

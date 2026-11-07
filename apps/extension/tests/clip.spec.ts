@@ -1,5 +1,6 @@
 /// <reference types="chrome" />
 import { test, expect, chromium } from '@playwright/test'
+import { openLibraryFilters } from '../../web/tests/library-popovers.js'
 import type { BrowserContext, Page } from '@playwright/test'
 import { startLocalJazzServer } from 'jazz-tools/testing'
 import { createServer } from 'node:http'
@@ -212,6 +213,7 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 						source.getByRole('link', { name: 'Open article', exact: true })
 					).toHaveAttribute('href', readerURL)
 					await expect(row).toHaveCount(0)
+					await openLibraryFilters(reader)
 					await reader.getByRole('radio', { name: 'Trash', exact: true }).check()
 					await expect(row).toHaveCount(1)
 					await reader.goto(readerURL)
