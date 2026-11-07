@@ -1104,6 +1104,8 @@ export function selectApplicationView<Session extends object>(
 			snapshot.can({ type: 'LOGOUT' }),
 		canTokenIdentity:
 			!!snapshot?.context.host?.tokenIdentity &&
+			snapshot.matches({ active: { flow: { running: { library: 'ready' } } } }) &&
+			!snapshot.matches({ active: { flow: { running: { library: { ready: 'stopping' } } } } }) &&
 			snapshot.context.observation.status === 'ready' &&
 			!snapshot.context.observation.signedIn &&
 			snapshot.can({

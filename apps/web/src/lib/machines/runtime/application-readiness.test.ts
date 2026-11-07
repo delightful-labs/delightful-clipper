@@ -715,3 +715,36 @@ it('refuses existing-library sign-in when local work is present', async () => {
 	actor.send({ type: 'SHUTDOWN' })
 	await waitFor(actor, (s) => s.status === 'done')
 })
+
+it('does not resume OAuth until the library actor can admit a token operation', async () => {
+	const reading = Promise.withResolvers<'compatible'>()
+	const access: RootAccess = {
+		read: () => reading.promise,
+		ensure: () => ({ local: async () => {}, global: async () => {} })
+	}
+	const f = fixture(ready('owner', access))
+	const bound: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: async () => true,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: vi.fn(async () => {}),
+				signInExistingLibrary: vi.fn(async () => {})
+			}
+		}
+	}
+	const actor = createActor(applicationReadinessMachine, { input: input(bound) }).start()
+	try {
+		await waitFor(actor, (s) => s.context.observation.status === 'ready')
+		expect(selectApplicationView(actor.getSnapshot(), true).canTokenIdentity).toBe(false)
+		reading.resolve('compatible')
+		await waitFor(actor, (s) => s.matches({ active: { flow: { running: { library: 'ready' } } } }))
+		expect(selectApplicationView(actor.getSnapshot(), true).canTokenIdentity).toBe(true)
+	} finally {
+		reading.resolve('compatible')
+		actor.send({ type: 'SHUTDOWN' })
+		await waitFor(actor, (s) => s.status === 'done')
+	}
+})
