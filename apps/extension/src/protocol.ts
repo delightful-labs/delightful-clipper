@@ -12,6 +12,11 @@ export const sourceUrlSchema = z
 			return false
 		}
 	})
+const accountIdentitySchema = z.strictObject({ accountId: z.uuid() })
+export const acknowledgmentSchema = z.object({ accepted: z.boolean() })
+export const acceptedAcknowledgmentSchema = acknowledgmentSchema.extend({
+	accepted: z.literal(true)
+})
 export const captureSchema = z.strictObject({
 	version: z.literal(1),
 	id: z.uuid(),
@@ -19,10 +24,10 @@ export const captureSchema = z.strictObject({
 	documentId: z.string().min(1).max(128),
 	url: sourceUrlSchema,
 	phase: z.enum(['ready', 'issued']),
-	accountId: z.uuid().optional()
+	accountId: accountIdentitySchema.shape.accountId.optional()
 })
 export type Capture = z.infer<typeof captureSchema>
-export const messageSchema = z.strictObject({ type: z.literal('CAPTURE'), id: z.uuid() })
+export const messageSchema = captureSchema.pick({ id: true }).extend({ type: z.literal('CAPTURE') })
 export const sourceSchema = z.strictObject({
 	url: sourceUrlSchema,
 	base: sourceUrlSchema,
@@ -70,15 +75,14 @@ export function matchingContent(value: unknown, capture: Capture) {
 	return parsed.success && sameSource(parsed.data.finalUrl, capture.url)
 }
 
-export const runSchema = z.strictObject({
+export const runSchema = captureSchema.pick({ id: true }).extend({
 	target: z.literal('runtime'),
 	type: z.literal('RUN'),
-	id: z.uuid(),
-	accountId: z.uuid()
+	accountId: accountIdentitySchema.shape.accountId
 })
 export const referenceMessageSchema = z.discriminatedUnion('type', [
-	z.strictObject({ type: z.literal('ISSUE'), id: z.uuid(), accountId: z.uuid() }),
-	z.strictObject({ type: z.literal('REMOVE'), id: z.uuid() })
+	runSchema.pick({ id: true, accountId: true }).extend({ type: z.literal('ISSUE') }),
+	captureSchema.pick({ id: true }).extend({ type: z.literal('REMOVE') })
 ])
 export const progressSchema = z.strictObject({
 	type: z.literal('PROGRESS'),
@@ -91,11 +95,9 @@ export function backgroundSender(sender: chrome.runtime.MessageSender, id: strin
 	return sender.id === id && !sender.tab && (!sender.url || sender.url === page)
 }
 
-export const waitingSchema = z.strictObject({
+export const waitingSchema = progressSchema.pick({ revision: true, message: true }).extend({
 	type: z.literal('WAITING'),
-	id: z.uuid(),
-	revision: z.number().int().nonnegative(),
-	message: progressSchema.shape.message
+	id: captureSchema.shape.id
 })
 
 export const notificationSchema = z.union([waitingSchema, progressSchema])
@@ -103,22 +105,20 @@ export type NotificationMessage = z.infer<typeof notificationSchema>
 
 export const accountChangedSchema = z.strictObject({
 	type: z.literal('ACCOUNT_CHANGED'),
-	accountId: z.uuid()
+	accountId: accountIdentitySchema.shape.accountId
 })
 export const runtimeMessageSchema = z.union([
 	runSchema,
-	accountChangedSchema.extend({ target: z.literal('runtime') })
+	accountChangedSchema.extend({ target: runSchema.shape.target })
 ])
 
 export const connectMessageSchema = z.strictObject({
 	type: z.literal('CONNECT'),
-	accountId: z.uuid(),
+	accountId: accountIdentitySchema.shape.accountId,
 	requestId: z.uuid().optional()
 })
-export const authorizationRequestSchema = z.strictObject({
-	target: z.literal('runtime'),
-	type: z.literal('AUTHORIZE'),
-	accountId: z.uuid()
+export const authorizationRequestSchema = runSchema.omit({ id: true }).extend({
+	type: z.literal('AUTHORIZE')
 })
 export function trustedAccountPage(
 	sender: chrome.runtime.MessageSender,

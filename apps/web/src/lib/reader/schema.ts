@@ -28,12 +28,13 @@ export const positionSchema = z.object({
 	interactedAt: z.iso.datetime()
 })
 export type ReadingPosition = z.infer<typeof positionSchema>
+const preferenceChangeSchema = z.object({ documentId: z.null() })
 export const readerChangeSchema = z.discriminatedUnion('field', [
-	z.object({ documentId: z.null(), field: z.literal('theme'), value: preferenceSchemas.theme }),
-	z.object({ documentId: z.null(), field: z.literal('font'), value: preferenceSchemas.font }),
-	z.object({ documentId: z.null(), field: z.literal('size'), value: preferenceSchemas.size }),
-	z.object({ documentId: z.null(), field: z.literal('spacing'), value: preferenceSchemas.spacing }),
-	z.object({ documentId: z.null(), field: z.literal('width'), value: preferenceSchemas.width }),
+	preferenceChangeSchema.extend({ field: z.literal('theme'), value: preferenceSchemas.theme }),
+	preferenceChangeSchema.extend({ field: z.literal('font'), value: preferenceSchemas.font }),
+	preferenceChangeSchema.extend({ field: z.literal('size'), value: preferenceSchemas.size }),
+	preferenceChangeSchema.extend({ field: z.literal('spacing'), value: preferenceSchemas.spacing }),
+	preferenceChangeSchema.extend({ field: z.literal('width'), value: preferenceSchemas.width }),
 	z.object({ documentId: lowercaseUuidSchema, field: z.literal('position'), value: positionSchema })
 ])
 export type ReaderChange = z.infer<typeof readerChangeSchema>

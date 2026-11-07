@@ -1,8 +1,7 @@
-import { z } from 'zod'
-const acknowledged = z.object({ accepted: z.literal(true) })
+import { acceptedAcknowledgmentSchema } from './protocol.js'
 export async function confirmConnection(accountId: string, requestId?: string) {
 	if (
-		!acknowledged.safeParse(
+		!acceptedAcknowledgmentSchema.safeParse(
 			await chrome.runtime.sendMessage({
 				type: 'CONNECT',
 				accountId,

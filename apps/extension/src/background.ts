@@ -5,6 +5,7 @@ import { createLaunchMachine } from './launch-machine.js'
 import { createActor, toPromise } from 'xstate'
 import { z } from 'zod'
 import {
+	acknowledgmentSchema,
 	captureKey,
 	captureSchema,
 	messageSchema,
@@ -118,7 +119,6 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 		return true
 	}
 })
-const accepted = z.object({ accepted: z.boolean() })
 const launcher = createActor(
 	createLaunchMachine({
 		connection: async () =>
@@ -184,7 +184,7 @@ const launcher = createActor(
 					'Save the requested article using the existing local account and packaged workers without opening a tab.'
 			}),
 		dispatch: async (id, accountId) =>
-			accepted.parse(
+			acknowledgmentSchema.parse(
 				await chrome.runtime.sendMessage({ target: 'runtime', type: 'RUN', id, accountId })
 			).accepted,
 

@@ -43,13 +43,12 @@ export const storedArticleNoteHistorySchema = z.array(storedArticleNoteRevisionS
 
 // Historical drafts used the parent tuple as identity. Recovery assigns an
 // explicit independent note ID without changing the original authored payload.
-export const articleNoteDraftSchema = z.object({
-	libraryId: lowercaseUuidSchema,
-	articleId: lowercaseUuidSchema,
-	sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-	text: noteTextSchema,
-	baseRevisionIds: revisionIdsSchema
-})
+export const articleNoteDraftSchema = articleNoteRevisionSchema
+	.pick({ libraryId: true, articleId: true, text: true })
+	.extend({
+		sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+		baseRevisionIds: articleNoteRevisionSchema.shape.parents
+	})
 export type ArticleNoteDraft = z.infer<typeof articleNoteDraftSchema>
 export const articleNoteDraftRecordSchema = z.object({
 	writerId: lowercaseUuidSchema,
