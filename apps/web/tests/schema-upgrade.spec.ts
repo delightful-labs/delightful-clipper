@@ -1,3 +1,8 @@
+import { permissionsForSchema } from '../src/lib/backend/jazz/schema-permissions.test-support.js'
+import entityMigration from '../src/lib/backend/jazz/migrations/20261106T161431-independent-notes-b7805d9b30d2-92a26a023aa5.js'
+import { app as preEntitiesApp } from '../src/lib/backend/jazz/prenote-entities-schema.test-support.js'
+import noteMigration from '../src/lib/backend/jazz/migrations/20261106T144240-article-notes-with-parent-references-dc1365b4b2ec-b7805d9b30d2.js'
+import { app as preNotesApp } from '../src/lib/backend/jazz/prenotes-schema.test-support.js'
 import { app as preImageApp } from '../src/lib/backend/jazz/preimages-schema.test-support.js'
 import imageMigration from '../src/lib/backend/jazz/migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
 import readerMigration from '../src/lib/backend/jazz/migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
@@ -19,14 +24,7 @@ import organizationMigration from '../src/lib/backend/jazz/migrations/20261105T0
 import migration from '../src/lib/backend/jazz/migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
 const appId = '2db98ae3-fcf1-41e8-b7d3-9818496bde60'
 const baseURL = 'http://127.0.0.1:5180'
-const legacyPermissions = Object.fromEntries(
-	Object.entries(permissions)
-		.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-		.filter(
-			([table]) =>
-				table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
-		)
-)
+const legacyPermissions = permissionsForSchema(legacyApp)
 async function savedArticle(page: Page, url: string) {
 	return page.evaluate(async (url) => {
 		const path = '/tests/article-driver.ts'
@@ -152,44 +150,40 @@ for (const browser of [chromium, firefox]) {
 					await deploy({
 						...upgrade,
 						schema: preOrganizationApp,
-						permissions: Object.fromEntries(
-							Object.entries(permissions)
-								.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-								.filter(
-									([table]) => table !== 'organizationOperations' && table !== 'tagOperations'
-								)
-						),
+						permissions: permissionsForSchema(preOrganizationApp),
 						migration
 					})
 					await deploy({
 						...upgrade,
 						schema: preDiscoveryApp,
-						permissions: Object.fromEntries(
-							Object.entries(permissions)
-								.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-								.filter(([table]) => table !== 'tagOperations')
-						),
+						permissions: permissionsForSchema(preDiscoveryApp),
 						migration: organizationMigration
 					})
 					await deploy({
 						...upgrade,
 						schema: preReaderApp,
-						permissions: Object.fromEntries(
-							Object.entries(permissions).filter(
-								([table]) => table !== 'readerOperations' && table !== 'articleImages'
-							)
-						),
+						permissions: permissionsForSchema(preReaderApp),
 						migration: discoveryMigration
 					})
 					await deploy({
 						...upgrade,
 						schema: preImageApp,
-						permissions: Object.fromEntries(
-							Object.entries(permissions).filter(([table]) => table !== 'articleImages')
-						),
+						permissions: permissionsForSchema(preImageApp),
 						migration: readerMigration
 					})
-					await deploy({ ...upgrade, migration: imageMigration })
+					await deploy({
+						...upgrade,
+						schema: preNotesApp,
+						permissions: permissionsForSchema(preNotesApp),
+						migration: imageMigration
+					})
+					await deploy({
+						...upgrade,
+						schema: preEntitiesApp,
+						permissions: permissionsForSchema(preEntitiesApp),
+						migration: noteMigration
+					})
+					await deploy({ ...upgrade, migration: entityMigration })
 					if (!keepOpen)
 						context = await browser.launchPersistentContext(join(directory, 'profile'), {
 							headless: true

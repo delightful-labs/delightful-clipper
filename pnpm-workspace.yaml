@@ -13,3 +13,12 @@ onlyBuiltDependencies:
   - esbuild
 ignoredBuiltDependencies:
   - protobufjs
+
+# Temporary proof: validate the JWT boundary with SvelteKit 3-compatible Better Auth.
+peerDependencyRules:
+  allowedVersions:
+    'jazz-tools@2.0.0-alpha.59>better-auth': '1.7.18'
+
+# The plugin's OAuth callback used an internal lookup removed in Better Auth 1.7.
+patchedDependencies:
+  '@kingironman2011/better-auth-bsky@0.3.2': patches/better-auth-bsky-0.3.2-better-auth-1.7.patch

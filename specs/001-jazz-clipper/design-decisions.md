@@ -18,6 +18,8 @@ Acceptance includes keyboard-only capture/reader/note/tag workflows, accessible 
 
 ## Notes, conflicts and persistence
 
+The user clarified on 2026-11-06 that notes and highlights are intended to work with AT Protocol, an omitted requirement from the original planning. Model both as independent entities with their own stable IDs and explicit article links. Notes attached to highlights also have an explicit highlight link. "One note per parent" controls cardinality; it does not eliminate the independent note record. Any retained revision history references the note's identity. DLF owns shared AT Protocol integration across apps and is starting with identity. Preserve independent domain IDs and explicit relationships now; do not require a publication/source-of-truth decision or implement a Clipper-specific AT identity system for this phase. See [data-model.md](data-model.md#at-protocol-identity-boundary). Current article-keyed revision/draft groundwork is not the final entity architecture.
+
 Persist a device-local draft on each edit through the draft owner; debounce source-of-truth note writes by 500 ms and flush when leaving the editor. Keep the current edit sequence so a delayed acknowledgment cannot label newer text saved. Navigation can proceed once the recoverable draft is durable. If neither draft nor note persistence succeeds, warn before navigation instead of reporting Saved.
 
 Display Saving locally, Saved on this device / Sync pending, Synced, or Save failed as applicable. Connectivity does not gate local editing. A locally durable note may still receive a later remote rejection; retain its text and expose recovery status. Clearing a note saves empty content; an empty note does not create another note or remove its highlight.

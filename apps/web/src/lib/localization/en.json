@@ -7,6 +7,8 @@
 		"add_subject": "Add {{subject}}",
 		"get_subject": "Get {{subject}}",
 		"save_subject": "Save {{subject}}",
+		"saved_subject": "{{subject}} saved",
+		"synced_subject": "{{subject}} synced",
 		"open_subject": "Open {{subject}}",
 		"close_subject": "Close {{subject}}",
 		"create_subject": "Create {{subject}}",
@@ -79,6 +81,11 @@
 			"pending": "Loading recovery phrase…",
 			"failed": "The recovery phrase could not be shown. Try again.",
 			"unavailable": "Account recovery is unavailable."
+		},
+		"atproto": {
+			"handle_label": "AT Protocol handle",
+			"connect": "Connect AT Protocol",
+			"sign_in": "Sign in with AT Protocol"
 		}
 	},
 	"capture": {
@@ -158,12 +165,19 @@
 		"enter_subject": "Enter {{subject}}"
 	},
 	"status": {
+		"leave_warning": "Changes have not been saved. Leave anyway?",
+		"unavailable_subject": "{{subject}} unavailable",
 		"failed_subject": "{{subject}} failed.",
 		"save_unknown": "We couldn’t confirm whether your changes were saved. Check them before trying again.",
 		"selected_subject_name": "{{subject}} {{name}} selected.",
 		"removed_subject_name": "{{subject}} {{name}} removed."
 	},
 	"errors": {
+		"too_large_subject": "{{subject}} exceeds the current save limit.",
 		"already_selected_subject_name": "{{subject}} {{name}} is already selected."
+	},
+	"notes": {
+		"conflict": "This note has conflicting versions. Your text has been kept.",
+		"keep_text": "Keep this text"
 	}
 }

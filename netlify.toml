@@ -17,6 +17,16 @@ command = "pnpm build:deploy-preview"
 # Qualify the gateway against disposable Jazz; production remains gated off.
 CAPTURE_GATEWAY_ENABLED = "true"
 
+# This proof needs a persistent, explicitly configured Jazz test app.
+# Branch-specific settings override the disposable deploy-preview command.
+[context."research/atproto-jwt-proof"]
+command = "bash tooling/netlify-atproto-proof.sh"
+
+[context."research/atproto-jwt-proof".environment]
+CAPTURE_GATEWAY_ENABLED = "true"
+# Public app origin is not a credential; retain scanning of all actual secrets.
+SECRETS_SCAN_OMIT_KEYS = "AUTH_BASE_URL"
+
 [functions]
 node_bundler = "esbuild"
 external_node_modules = ["jazz-napi", "jsdom", "@mozilla/readability", "dompurify"]

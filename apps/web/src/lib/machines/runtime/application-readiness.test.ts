@@ -5,7 +5,7 @@ import {
 	createSessionAcquisitionMachine,
 	selectAcquiredSession
 } from 'delightful-local-first/session/workflow'
-import { createActor, waitFor } from 'xstate'
+import { createActor, fromCallback, waitFor } from 'xstate'
 import { describe, expect, it, vi } from 'vitest'
 import {
 	createApplicationReadinessMachine,
@@ -76,7 +76,10 @@ function fixture(initial: AccountObservation) {
 		}
 	}
 }
-function ready(accountId: string, root: RootAccess): AccountObservation {
+function ready(
+	accountId: string,
+	root: RootAccess
+): Extract<AccountObservation, { status: 'ready' }> {
 	return {
 		status: 'ready',
 		binding: {},
@@ -628,4 +631,673 @@ describe('application-owned browser connectivity', () => {
 			vi.unstubAllGlobals()
 		}
 	})
+})
+
+it('drains active capture before connecting and retains an issued connection through shutdown', async () => {
+	const saveResult = Promise.withResolvers<import('../../contracts/storage.js').SaveResult>()
+	const connection = Promise.withResolvers<void>()
+	const shutdown = vi.fn()
+	const save = controlledSave(() => saveResult.promise, shutdown)
+	const base = ready('owner', root(Promise.resolve(), Promise.resolve()))
+	if (base.status !== 'ready') throw new Error('Expected ready')
+	const id = crypto.randomUUID()
+	const library = testLibraryCapability(
+		{
+			id,
+			title: 'Private',
+			text: '',
+			html: '',
+			finalUrl: 'https://example.com/',
+			submittedUrl: 'https://example.com/',
+			provenance: '{}',
+			imagesMissing: false
+		},
+		{ spawnSave: (spawn, input) => spawn(save, { input }) }
+	)
+	const f = fixture({ ...base, library })
+	const connect = vi.fn(() => connection.promise)
+	const bound: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: async () => true,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: connect,
+				signInExistingLibrary: vi.fn(async () => {})
+			}
+		}
+	}
+	const actor = createActor(applicationReadinessMachine, { input: input(bound) }).start()
+	await waitFor(actor, (s) => s.matches({ active: { flow: { running: { library: 'ready' } } } }))
+	const { selectLibraryActor } = await import('./application-readiness.js')
+	const product = selectLibraryActor(actor.getSnapshot())!
+	product.send({ type: 'ADD', url: 'https://example.com/' })
+	await waitFor(product, (s) => s.matches({ running: { capture: 'saving' } }))
+	actor.send({
+		type: 'CONNECT_TOKEN',
+		attemptId: crypto.randomUUID(),
+		accountId: 'owner',
+		source: { getToken: async () => 'private-token' }
+	})
+	await vi.waitFor(() => expect(shutdown).toHaveBeenCalledOnce())
+	expect(connect).not.toHaveBeenCalled()
+	saveResult.resolve({ kind: 'unknown', operationId: id })
+	await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce())
+	actor.send({ type: 'SHUTDOWN' })
+	expect(actor.getSnapshot().status).toBe('active')
+	expect(bound.release).not.toHaveBeenCalled()
+	connection.resolve()
+	await waitFor(actor, (s) => s.status === 'done')
+	expect(bound.release).toHaveBeenCalledOnce()
+})
+it('refuses existing-library sign-in when local work is present', async () => {
+	const base = ready('owner', root(Promise.resolve(), Promise.resolve()))
+	const f = fixture(base)
+	const signIn = vi.fn(async () => {})
+	const bound: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: async () => false,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: vi.fn(async () => {}),
+				signInExistingLibrary: signIn
+			}
+		}
+	}
+	const actor = createActor(applicationReadinessMachine, { input: input(bound) }).start()
+	await waitFor(actor, (s) => s.matches({ active: { flow: { running: { library: 'ready' } } } }))
+	actor.send({
+		type: 'SIGN_IN_TOKEN',
+		attemptId: crypto.randomUUID(),
+		accountId: 'owner',
+		source: { getToken: async () => 'private-token' }
+	})
+	await waitFor(actor, (s) => selectApplicationView(s, true).feedback === 'identityFailed')
+	expect(signIn).not.toHaveBeenCalled()
+	actor.send({ type: 'SHUTDOWN' })
+	await waitFor(actor, (s) => s.status === 'done')
+})
+
+it('does not resume OAuth until the library actor can admit a token operation', async () => {
+	const reading = Promise.withResolvers<'compatible'>()
+	const access: RootAccess = {
+		read: () => reading.promise,
+		ensure: () => ({ local: async () => {}, global: async () => {} })
+	}
+	const f = fixture(ready('owner', access))
+	const bound: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: async () => true,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: vi.fn(async () => {}),
+				signInExistingLibrary: vi.fn(async () => {})
+			}
+		}
+	}
+	const actor = createActor(applicationReadinessMachine, { input: input(bound) }).start()
+	try {
+		await waitFor(actor, (s) => s.context.observation.status === 'ready')
+		expect(selectApplicationView(actor.getSnapshot(), true).canTokenIdentity).toBe(false)
+		reading.resolve('compatible')
+		await waitFor(actor, (s) => s.matches({ active: { flow: { running: { library: 'ready' } } } }))
+		expect(selectApplicationView(actor.getSnapshot(), true).canTokenIdentity).toBe(true)
+	} finally {
+		reading.resolve('compatible')
+		actor.send({ type: 'SHUTDOWN' })
+		await waitFor(actor, (s) => s.status === 'done')
+	}
+})
+
+it('refuses connection when the current library is already signed in', async () => {
+	const observation = ready('owner', root(Promise.resolve(), Promise.resolve()))
+	if (observation.status !== 'ready') throw new Error('Expected ready')
+	const f = fixture({ ...observation, signedIn: true })
+	const connect = vi.fn(async () => {})
+	const host: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: async () => true,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: connect,
+				signInExistingLibrary: vi.fn(async () => {})
+			}
+		}
+	}
+	const rejected = vi.fn()
+	const reportTo = createActor(
+		fromCallback(({ receive }) => {
+			receive(rejected)
+		})
+	).start()
+	const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
+	await waitFor(actor, (s) => s.matches({ active: { flow: { running: { library: 'ready' } } } }))
+	actor.send({
+		type: 'CONNECT_TOKEN',
+		attemptId: crypto.randomUUID(),
+		accountId: 'owner',
+		source: { getToken: async () => 'synthetic' },
+		reportTo
+	})
+	await vi.waitFor(() => expect(rejected).toHaveBeenCalledOnce())
+	reportTo.stop()
+	actor.send({ type: 'SHUTDOWN' })
+	await waitFor(actor, (s) => s.status === 'done')
+	expect(connect).not.toHaveBeenCalled()
+})
+
+it('settles the token caller when shutdown cancels a pre-link library drain', async () => {
+	const saving = Promise.withResolvers<import('../../contracts/storage.js').SaveResult>()
+	const stop = vi.fn()
+	const save = controlledSave(() => saving.promise, stop)
+	const observation = ready('owner', root(Promise.resolve(), Promise.resolve()))
+	if (observation.status !== 'ready') throw new Error('Expected ready')
+	const id = crypto.randomUUID()
+	const library = testLibraryCapability(
+		{
+			id,
+			title: 'Synthetic',
+			text: '',
+			html: '',
+			finalUrl: 'https://example.invalid/',
+			submittedUrl: 'https://example.invalid/',
+			provenance: '{}',
+			imagesMissing: false
+		},
+		{ spawnSave: (spawn, input) => spawn(save, { input }) }
+	)
+	const f = fixture({ ...observation, library })
+	const connect = vi.fn(async () => {})
+	const host: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: async () => true,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: connect,
+				signInExistingLibrary: vi.fn(async () => {})
+			}
+		}
+	}
+	const replies = vi.fn()
+	const reportTo = createActor(
+		fromCallback(({ receive }) => {
+			receive(replies)
+		})
+	).start()
+	const attemptId = crypto.randomUUID()
+	const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
+	await waitFor(actor, (s) => s.matches({ active: { flow: { running: { library: 'ready' } } } }))
+	const { selectLibraryActor } = await import('./application-readiness.js')
+	const product = selectLibraryActor(actor.getSnapshot())!
+	product.send({ type: 'ADD', url: 'https://example.invalid/' })
+	await waitFor(product, (s) => s.matches({ running: { capture: 'saving' } }))
+	actor.send({
+		type: 'CONNECT_TOKEN',
+		attemptId,
+		accountId: 'owner',
+		source: { getToken: async () => 'synthetic' },
+		reportTo
+	})
+	await vi.waitFor(() => expect(stop).toHaveBeenCalledOnce())
+	actor.send({ type: 'SHUTDOWN' })
+	saving.resolve({ kind: 'unknown', operationId: id })
+	await waitFor(actor, (s) => s.status === 'done')
+	expect(connect).not.toHaveBeenCalled()
+	expect(replies).toHaveBeenCalledExactlyOnceWith({ type: 'TOKEN_CANCELLED', attemptId })
+	reportTo.stop()
+})
+
+it.each(['before-issue', 'after-issue'] as const)(
+	'joins both child lifetimes when shutdown occurs %s',
+	async (phase) => {
+		const { createAccountLifecycleMachine } = await import('./account-lifecycle.js')
+		const { selectLibraryActor } = await import('./application-readiness.js')
+		const accountId = crypto.randomUUID()
+		const attemptId = crypto.randomUUID()
+		const articleId = crypto.randomUUID()
+		const saving = Promise.withResolvers<import('../../contracts/storage.js').SaveResult>()
+		const issued = Promise.withResolvers<void>()
+		const provider = Promise.withResolvers<Response>()
+		const stopped = vi.fn()
+		const save = controlledSave(() => saving.promise, stopped)
+		const library = testLibraryCapability(
+			{
+				id: articleId,
+				title: 'Synthetic',
+				text: '',
+				html: '',
+				finalUrl: 'https://example.invalid/',
+				submittedUrl: 'https://example.invalid/',
+				provenance: '{}',
+				imagesMissing: false
+			},
+			{ spawnSave: (spawn, input) => spawn(save, { input }) }
+		)
+		const observation = ready(accountId, root(Promise.resolve(), Promise.resolve()))
+		if (observation.status !== 'ready') throw new Error('Expected ready')
+		const f = fixture({ ...observation, library })
+		const connect = vi.fn(() => issued.promise)
+		const host: AccountHost = {
+			...f.host,
+			tokenIdentity: {
+				binding: {},
+				canSignInExisting: async () => true,
+				capability: {
+					isCurrentBinding: () => true,
+					connectCurrentLibrary: connect,
+					signInExistingLibrary: vi.fn(async () => {})
+				}
+			}
+		}
+		const records = new Map([
+			['clipper.atproto.pending.v1', JSON.stringify({ operation: 'connect', accountId, attemptId })]
+		])
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(() => provider.promise)
+		)
+		const actor = createActor(
+			createAccountLifecycleMachine<AccountHost>(() => () => {}),
+			{
+				input: {
+					account: input(host),
+					oauth: {
+						selection: { read: async () => undefined, save: async () => {}, clear: async () => {} },
+						origin: 'https://example.invalid',
+						navigate: vi.fn(),
+						storage: {
+							getItem: (key) => records.get(key) ?? null,
+							setItem: (key, value) => {
+								records.set(key, value)
+							},
+							removeItem: (key) => {
+								records.delete(key)
+							}
+						}
+					}
+				}
+			}
+		).start()
+		try {
+			await waitFor(
+				actor,
+				(s) =>
+					!!s.context.application &&
+					selectApplicationView(s.context.application, true).canTokenIdentity
+			)
+			const product = selectLibraryActor(actor.getSnapshot().context.application)!
+			product.send({ type: 'ADD', url: 'https://example.invalid/' })
+			await waitFor(product, (s) => s.matches({ running: { capture: 'saving' } }))
+			provider.resolve(Response.json({ attemptId, userId: 'provider-user' }))
+			await vi.waitFor(() => expect(stopped).toHaveBeenCalledOnce())
+			expect(connect).not.toHaveBeenCalled()
+			if (phase === 'before-issue') actor.send({ type: 'SHUTDOWN' })
+			saving.resolve({ kind: 'unknown', operationId: articleId })
+			if (phase === 'after-issue') {
+				await vi.waitFor(() => expect(connect).toHaveBeenCalledOnce())
+				actor.send({ type: 'SHUTDOWN' })
+				expect(actor.getSnapshot().status).toBe('active')
+				expect(host.release).not.toHaveBeenCalled()
+				issued.resolve()
+			}
+			await waitFor(actor, (s) => s.status === 'done')
+			expect(connect).toHaveBeenCalledTimes(phase === 'before-issue' ? 0 : 1)
+			expect(host.release).toHaveBeenCalledOnce()
+			expect(records.size).toBe(0)
+		} finally {
+			vi.unstubAllGlobals()
+			actor.stop()
+		}
+	}
+)
+
+it.each(['matches', 'wrong-target'] as const)(
+	'exposes a restored library only when its account %s',
+	async (outcome) => {
+		const localId = crypto.randomUUID()
+		const expected = crypto.randomUUID()
+		const actual = outcome === 'matches' ? expected : crypto.randomUUID()
+		const localRoot = root(Promise.resolve(), Promise.resolve())
+		const remoteRoot = root(Promise.resolve(), Promise.resolve())
+		const remoteRead = vi.spyOn(remoteRoot, 'read')
+		const f = fixture(ready(localId, localRoot))
+		const signIn = vi.fn(async () => f.emit({ ...ready(actual, remoteRoot), signedIn: true }))
+		const connect = vi.fn(async () => {})
+		const host: AccountHost = {
+			...f.host,
+			tokenIdentity: {
+				binding: {},
+				canSignInExisting: async () => true,
+				capability: {
+					isCurrentBinding: () => true,
+					connectCurrentLibrary: connect,
+					signInExistingLibrary: signIn
+				}
+			}
+		}
+		const replies = vi.fn()
+		const reportTo = createActor(fromCallback(({ receive }) => receive(replies))).start()
+		const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
+		await waitFor(actor, (s) => selectApplicationView(s, true).canTokenIdentity)
+		const attemptId = crypto.randomUUID()
+		actor.send({
+			type: 'RESTORE_TOKEN',
+			accountId: localId,
+			expectedAccountId: expected,
+			attemptId,
+			source: { getToken: async () => 'synthetic' },
+			reportTo
+		})
+		await vi.waitFor(() => expect(replies).toHaveBeenCalledOnce())
+		expect(signIn).toHaveBeenCalledOnce()
+		expect(connect).not.toHaveBeenCalled()
+		if (outcome === 'matches') {
+			expect(replies).toHaveBeenCalledWith({
+				type: 'TOKEN_SUCCEEDED',
+				attemptId,
+				accountId: expected
+			})
+			await waitFor(actor, (s) =>
+				s.matches({ active: { flow: { running: { library: 'ready' } } } })
+			)
+			expect(remoteRead).toHaveBeenCalledOnce()
+		} else {
+			expect(replies).toHaveBeenCalledWith({ type: 'TOKEN_UNRESOLVED', attemptId })
+			expect(
+				actor.getSnapshot().matches({ active: { flow: { running: 'tokenUnresolved' } } })
+			).toBe(true)
+			expect(remoteRead).not.toHaveBeenCalled()
+			expect(selectApplicationView(actor.getSnapshot(), true).requiresReload).toBe(true)
+		}
+		actor.send({ type: 'SHUTDOWN' })
+		await waitFor(actor, (s) => s.status === 'done')
+		reportTo.stop()
+	}
+)
+
+it('refuses restoration when local work appears while provider verification is pending', async () => {
+	const { createAccountLifecycleMachine } = await import('./account-lifecycle.js')
+	const localId = crypto.randomUUID()
+	const target = crypto.randomUUID()
+	const provider = Promise.withResolvers<Response>()
+	const f = fixture(ready(localId, root(Promise.resolve(), Promise.resolve())))
+	let empty = true
+	const signIn = vi.fn(async () => {})
+	const host: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: async () => empty,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: vi.fn(),
+				signInExistingLibrary: signIn
+			}
+		}
+	}
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(() => provider.promise)
+	)
+	const owner = createActor(
+		createAccountLifecycleMachine<AccountHost>(() => () => {}),
+		{
+			input: {
+				account: input(host),
+				oauth: {
+					origin: 'https://example.invalid',
+					navigate: vi.fn(),
+					storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+					selection: {
+						read: async () => ({
+							issuer: 'https://example.invalid',
+							userId: 'provider-user',
+							accountId: target
+						}),
+						save: vi.fn(),
+						clear: vi.fn()
+					}
+				}
+			}
+		}
+	).start()
+	try {
+		const oauth = owner.getSnapshot().children.oauth!
+		await waitFor(oauth, (s) => s.matches('checkingProvider'))
+		empty = false
+		provider.resolve(Response.json({ user: { id: 'provider-user' } }))
+		await waitFor(oauth, (s) => s.matches('failed'))
+		expect(signIn).not.toHaveBeenCalled()
+		owner.send({ type: 'SHUTDOWN' })
+		await waitFor(owner, (s) => s.status === 'done')
+	} finally {
+		vi.unstubAllGlobals()
+		owner.stop()
+	}
+})
+
+it.each(['cleared', 'failed'] as const)(
+	'removes remembered selection before logout, with cleanup %s',
+	async (outcome) => {
+		const observation = ready(crypto.randomUUID(), root(Promise.resolve(), Promise.resolve()))
+		const f = fixture({ ...observation, signedIn: true })
+		const order: string[] = []
+		const forgotten = Promise.withResolvers<void>()
+		const forgetTokenSelection = vi.fn(() => {
+			order.push('clear')
+			return forgotten.promise
+		})
+		const logout = vi.fn(async () => {
+			order.push('logout')
+			f.emit({ status: 'signed-out' })
+		})
+		const actor = createActor(applicationReadinessMachine, {
+			input: { ...input({ ...f.host, logout }), forgetTokenSelection }
+		}).start()
+		await waitFor(actor, (s) => s.matches({ active: { flow: { running: { library: 'ready' } } } }))
+		actor.send({ type: 'LOGOUT' })
+		await vi.waitFor(() => expect(forgetTokenSelection).toHaveBeenCalledOnce())
+		expect(logout).not.toHaveBeenCalled()
+		if (outcome === 'cleared') {
+			forgotten.resolve()
+			await waitFor(actor, (s) => s.matches({ active: { flow: { running: 'signedOut' } } }))
+			expect(order).toEqual(['clear', 'logout'])
+		} else {
+			forgotten.reject(new Error('Storage unavailable'))
+			await waitFor(actor, (s) => selectApplicationView(s, true).feedback === 'identityFailed')
+			expect(logout).not.toHaveBeenCalled()
+		}
+		actor.send({ type: 'SHUTDOWN' })
+		await waitFor(actor, (s) => s.status === 'done')
+	}
+)
+
+it('rejects an A-to-B-to-A binding replacement during pre-issue eligibility checks', async () => {
+	const empty = Promise.withResolvers<boolean>()
+	const original = ready(crypto.randomUUID(), root(Promise.resolve(), Promise.resolve()))
+	if (original.status !== 'ready') throw new Error('Expected ready')
+	const f = fixture(original)
+	const signIn = vi.fn(async () => {})
+	const host: AccountHost = {
+		...f.host,
+		tokenIdentity: {
+			binding: {},
+			canSignInExisting: () => empty.promise,
+			capability: {
+				isCurrentBinding: () => true,
+				connectCurrentLibrary: vi.fn(),
+				signInExistingLibrary: signIn
+			}
+		}
+	}
+	const replies = vi.fn()
+	const reportTo = createActor(fromCallback(({ receive }) => receive(replies))).start()
+	const actor = createActor(applicationReadinessMachine, { input: input(host) }).start()
+	await waitFor(actor, (s) => selectApplicationView(s, true).canTokenIdentity)
+	actor.send({
+		type: 'RESTORE_TOKEN',
+		accountId: original.accountId,
+		expectedAccountId: crypto.randomUUID(),
+		attemptId: crypto.randomUUID(),
+		source: { getToken: async () => 'synthetic' },
+		reportTo
+	})
+	await waitFor(actor, (s) => s.matches({ active: { flow: { running: 'tokenCheckingEmpty' } } }))
+	f.emit({ ...original, accountId: crypto.randomUUID(), binding: {} })
+	f.emit({ ...original, binding: {} })
+	empty.resolve(true)
+	await vi.waitFor(() => expect(replies).toHaveBeenCalledOnce())
+	expect(signIn).not.toHaveBeenCalled()
+	actor.send({ type: 'SHUTDOWN' })
+	await waitFor(actor, (s) => s.status === 'done')
+	reportTo.stop()
+})
+
+it('restores a completed account choice across app lifetimes and keeps logout from racing its write', async () => {
+	const { createAccountLifecycleMachine, selectAccountLifecycleView } =
+		await import('./account-lifecycle.js')
+	const { createBrowserTokenSelection } =
+		await import('delightful-local-first/identity/token/selection')
+	const target = crypto.randomUUID()
+	const attemptId = crypto.randomUUID()
+	const data = new Map<string, string>()
+	const persisted = createBrowserTokenSelection(
+		{
+			getItem: (key) => data.get(key) ?? null,
+			setItem: (key, value) => {
+				data.set(key, value)
+			},
+			removeItem: (key) => {
+				data.delete(key)
+			}
+		},
+		'remembered'
+	)
+	const writing = Promise.withResolvers<void>()
+	const selection = {
+		...persisted,
+		save: async (value: Parameters<typeof persisted.save>[0]) => {
+			await writing.promise
+			await persisted.save(value)
+		}
+	}
+	const fetch = vi.fn(async (path: string) =>
+		Response.json(
+			path.endsWith('/completion')
+				? { attemptId, userId: 'provider-user' }
+				: { user: { id: 'provider-user' } }
+		)
+	)
+	vi.stubGlobal('fetch', fetch)
+	function open(withIntent: boolean) {
+		const localId = crypto.randomUUID()
+		const f = fixture(ready(localId, root(Promise.resolve(), Promise.resolve())))
+		const signIn = vi.fn(async () =>
+			f.emit({ ...ready(target, root(Promise.resolve(), Promise.resolve())), signedIn: true })
+		)
+		const connect = vi.fn(async () => {})
+		const logout = vi.fn(async () => f.emit({ status: 'signed-out' }))
+		const host: AccountHost = {
+			...f.host,
+			logout,
+			tokenIdentity: {
+				binding: {},
+				canSignInExisting: async () => true,
+				capability: {
+					isCurrentBinding: () => true,
+					connectCurrentLibrary: connect,
+					signInExistingLibrary: signIn
+				}
+			}
+		}
+		const intents = new Map<string, string>()
+		if (withIntent)
+			intents.set(
+				'clipper.atproto.pending.v1',
+				JSON.stringify({ operation: 'sign-in', accountId: localId, attemptId })
+			)
+		const owner = createActor(
+			createAccountLifecycleMachine<AccountHost>(() => () => {}),
+			{
+				input: {
+					account: { ...input(host), forgetTokenSelection: persisted.clear },
+					oauth: {
+						origin: 'https://example.invalid',
+						navigate: vi.fn(),
+						selection,
+						storage: {
+							getItem: (key) => intents.get(key) ?? null,
+							setItem: (key, value) => {
+								intents.set(key, value)
+							},
+							removeItem: (key) => {
+								intents.delete(key)
+							}
+						}
+					}
+				}
+			}
+		).start()
+		return { owner, signIn, connect, logout }
+	}
+	const first = open(true)
+	try {
+		await waitFor(first.owner, (s) => s.context.oauthState?.matches('remembering') === true)
+		expect(selectAccountLifecycleView(first.owner.getSnapshot(), true).canLogout).toBe(false)
+		first.owner.send({ type: 'LOGOUT' })
+		expect(first.logout).not.toHaveBeenCalled()
+		writing.resolve()
+		await waitFor(first.owner, (s) => s.context.oauthState?.matches('succeeded') === true)
+		expect(await persisted.read()).toEqual({
+			issuer: 'https://example.invalid',
+			userId: 'provider-user',
+			accountId: target
+		})
+		first.owner.send({ type: 'SHUTDOWN' })
+		await waitFor(first.owner, (s) => s.status === 'done')
+		const restored = open(false)
+		try {
+			await waitFor(restored.owner, (s) => s.context.oauthState?.matches('succeeded') === true)
+			const observation = restored.owner.getSnapshot().context.application?.context.observation
+			expect(observation?.status === 'ready' && observation.accountId).toBe(target)
+			expect(restored.signIn).toHaveBeenCalledOnce()
+			expect(restored.connect).not.toHaveBeenCalled()
+			expect(fetch.mock.calls.map(([path]) => path)).toEqual([
+				'/api/auth/atproto/completion',
+				'/api/auth/get-session'
+			])
+			await waitFor(restored.owner, (s) => selectAccountLifecycleView(s, true).canLogout)
+			restored.owner.send({ type: 'LOGOUT' })
+			await waitFor(restored.owner, (s) => s.context.oauthState?.matches('idle') === true)
+			expect(restored.logout).toHaveBeenCalledOnce()
+			expect(await persisted.read()).toBeUndefined()
+			restored.owner.send({ type: 'SHUTDOWN' })
+			await waitFor(restored.owner, (s) => s.status === 'done')
+		} finally {
+			restored.owner.stop()
+		}
+		fetch.mockClear()
+		const signedOut = open(false)
+		try {
+			await waitFor(signedOut.owner, (s) => s.context.oauthState?.matches('idle') === true)
+			expect(fetch).not.toHaveBeenCalled()
+			expect(signedOut.signIn).not.toHaveBeenCalled()
+			signedOut.owner.send({ type: 'SHUTDOWN' })
+			await waitFor(signedOut.owner, (s) => s.status === 'done')
+		} finally {
+			signedOut.owner.stop()
+		}
+	} finally {
+		first.owner.stop()
+		vi.unstubAllGlobals()
+	}
 })

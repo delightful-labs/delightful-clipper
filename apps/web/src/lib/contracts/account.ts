@@ -1,3 +1,4 @@
+import type { TokenIdentityCapability } from 'delightful-local-first/identity/token/contracts'
 import type { LibraryCapability } from './library.js'
 import type { SessionOwnerRef } from 'delightful-local-first/session/workflow'
 import type {
@@ -35,6 +36,11 @@ export type AccountObservation =
 	| Readonly<{ status: 'signed-out' | 'transitioning' | 'error' | 'closed' }>
 export type AccountHost = Readonly<{
 	read: () => AccountObservation
+	tokenIdentity?: Readonly<{
+		binding: object
+		capability: TokenIdentityCapability
+		canSignInExisting: () => Promise<boolean>
+	}>
 	readiness: SessionReadinessBinding
 	create: () => Promise<void>
 	logout: () => Promise<void>
@@ -43,5 +49,6 @@ export type AccountHost = Readonly<{
 }>
 export type AccountInput<Session extends object> = Readonly<{
 	startup: { owner: SessionOwnerRef<Session>; scope: SessionScope }
+	forgetTokenSelection?: () => Promise<void>
 	bind: (session: Session) => AccountHost
 }>
