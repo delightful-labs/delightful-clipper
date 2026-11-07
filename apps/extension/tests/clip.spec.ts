@@ -417,57 +417,65 @@ test('restoring an account in options moves subsequent automatic clips to that l
 }) => {
 	const { context, id, worker } = await extension(join(directory, 'restore-profile'))
 	const web = await browser.newContext()
+	web.setDefaultTimeout(15000)
+	let cleanup: PromiseSettledResult<void>[] = []
 	try {
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/before-restore')
-		await clip(context, id, source)
-		await expect(source.getByRole('status')).toHaveText(saved)
+		await test.step('save into the original extension account', async () => {
+			await source.goto('http://127.0.0.1:5230/before-restore')
+			await clip(context, id, source)
+			await expect(source.getByRole('status')).toHaveText(saved)
+		})
 		const previous = await worker.evaluate(
 			async () =>
-				(
-					await chrome.runtime.getContexts({
-						contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT]
-					})
-				)[0]?.contextId
+				(await chrome.storage.local.get('clipper.connection'))['clipper.connection']?.confirmationId
 		)
 		const reader = await web.newPage()
-		await reader.goto('/')
-		await reader.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const recoveryDialog = reader.getByRole('dialog')
-		const phrase = await recoveryDialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-		await recoveryDialog.getByRole('button', { name: 'Close', exact: true }).click()
-		const options = await context.newPage()
-		await options.goto(`chrome-extension://${id}/index.html`)
-		await options.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await options.getByRole('button', { name: 'Restore account', exact: true }).click()
-		await expect
-			.poll(
-				async () =>
-					(await worker.evaluate(
+		const phrase =
+			await test.step('reveal the independent web account recovery phrase', async () => {
+				await reader.goto('/')
+				await reader.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
+				const dialog = reader.getByRole('dialog')
+				await expect(dialog).toBeVisible()
+				const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
+				await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+				return phrase
+			})
+		await test.step('restore and confirm the new extension connection', async () => {
+			const options = await context.newPage()
+			await options.goto(`chrome-extension://${id}/index.html`)
+			await options.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+			await options.getByRole('button', { name: 'Restore account', exact: true }).click()
+			await expect
+				.poll(async () => {
+					const confirmation = await worker.evaluate(
 						async () =>
-							(
-								await chrome.runtime.getContexts({
-									contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT]
-								})
-							)[0]?.contextId
-					)) !== previous
-			)
-			.toBe(true)
-		await source.goto('http://127.0.0.1:5230/after-restore')
-		await clip(context, id, source)
-		await expect(source.getByRole('status')).toHaveText(saved)
-		await reader.reload()
-		await expect(
-			reader.getByRole('link', { name: 'Rendered browser article', exact: true })
-		).toHaveCount(1)
-		await reader.getByRole('link', { name: 'Rendered browser article', exact: true }).click()
-		await expect(
-			reader.getByText('Only present after JavaScript rendering.', { exact: false })
-		).toBeVisible()
+							(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+								?.confirmationId
+					)
+					return typeof confirmation === 'string' && confirmation !== previous
+				})
+				.toBe(true)
+		})
+		await test.step('save into the restored account and read it in the web replica', async () => {
+			await source.goto('http://127.0.0.1:5230/after-restore')
+			await clip(context, id, source)
+			await expect(source.getByRole('status')).toHaveText(saved)
+			await reader.reload()
+			await expect(
+				reader.getByRole('link', { name: 'Rendered browser article', exact: true })
+			).toHaveCount(1)
+			await reader.getByRole('link', { name: 'Rendered browser article', exact: true }).click()
+			await expect(
+				reader.getByText('Only present after JavaScript rendering.', { exact: false })
+			).toBeVisible()
+		})
 	} finally {
-		await web.close()
-		await context.close()
+		// A timeout can already have disposed the fixture browser context. Preserve
+		// the failed operation instead of replacing it with a protocol cleanup error.
+		cleanup = await Promise.allSettled([web.close(), context.close()])
 	}
+	for (const result of cleanup) if (result.status === 'rejected') throw result.reason
 })
 
 test('successive toolbar clicks save different tabs through one hidden runtime', async () => {
