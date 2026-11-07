@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { previewAppSchema } from './preview-schema.ts'
 import { createActor, toPromise } from 'xstate'
 import type { SnapshotFrom } from 'xstate'
@@ -6,6 +7,9 @@ import { openPreviewProcess } from './process-io.ts'
 import type { PreviewJazzApp } from './preview-machine.ts'
 
 const serverUrl = 'https://v2.sync.jazz.tools/'
+// An undeployed hosted app has no permissions head (404), but its schema
+// catalog is already readable and empty. Probe routing before publishing.
+const schemaCatalog = z.object({ hashes: z.array(z.string()) })
 const provisionUrl = 'https://v2.dashboard.jazz.tools/api/apps/generate'
 function credentials(value: unknown): PreviewJazzApp {
 	const parsed = previewAppSchema.safeParse(value)
@@ -30,7 +34,7 @@ export async function waitForApp(
 ): Promise<'ready' | 'pending'> {
 	const startedAt = performance.now()
 	try {
-		const response = await fetch(`${serverUrl}apps/${app.appId}/admin/permissions/head`, {
+		const response = await fetch(`${serverUrl}apps/${app.appId}/schemas`, {
 			headers: { 'X-Jazz-Admin-Secret': app.adminSecret },
 			redirect: 'error',
 			signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)])
@@ -38,18 +42,22 @@ export async function waitForApp(
 		console.info(
 			`[preview-build] Jazz readiness HTTP ${response.status} after ${Math.round(performance.now() - startedAt)}ms.`
 		)
-		await response.body?.cancel()
 		if (
 			response.status === 404 ||
 			response.status === 502 ||
 			response.status === 503 ||
 			response.status === 504
-		)
+		) {
+			await response.body?.cancel()
 			return 'pending'
+		}
 		if (!response.ok) {
+			await response.body?.cancel()
 			console.error(`[preview-build] Jazz readiness request failed with HTTP ${response.status}.`)
 			throw new Error('Jazz readiness request failed')
 		}
+		const catalog: unknown = await response.json()
+		schemaCatalog.parse(catalog)
 		return 'ready'
 	} catch (error) {
 		// A cold app can take longer than an individual request deadline to start.
