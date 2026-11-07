@@ -1,3 +1,9 @@
+import { permissionsForSchema } from './schema-permissions.test-support.js'
+import preEntityPermissions from './prenote-entities-permissions.test-support.js'
+import entityMigration from './migrations/20261106T161431-independent-notes-b7805d9b30d2-92a26a023aa5.js'
+import { app as preEntitiesApp } from './prenote-entities-schema.test-support.js'
+import noteMigration from './migrations/20261106T144240-article-notes-with-parent-references-dc1365b4b2ec-b7805d9b30d2.js'
+import { app as preNotesApp } from './prenotes-schema.test-support.js'
 import { app as preImageApp } from './preimages-schema.test-support.js'
 import imageMigration from './migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
 import { ReadTier } from 'jazz-tools'
@@ -28,14 +34,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			'utf8'
 		)
 	)
-	const legacyPermissions = Object.fromEntries(
-		Object.entries(permissions)
-			.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-			.filter(
-				([table]) =>
-					table !== 'articles' && table !== 'organizationOperations' && table !== 'tagOperations'
-			)
-	)
+	const legacyPermissions = permissionsForSchema(legacyApp)
 	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-upgrade-'))
 	const serverOptions = {
 		appId: crypto.randomUUID(),
@@ -128,42 +127,40 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		await deploy({
 			...upgrade,
 			schema: preOrganizationApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-					.filter(([table]) => table !== 'organizationOperations' && table !== 'tagOperations')
-			)
+			permissions: permissionsForSchema(preOrganizationApp)
 		})
 		await deploy({
 			...upgrade,
 			schema: preDiscoveryApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions)
-					.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-					.filter(([table]) => table !== 'tagOperations')
-			),
+			permissions: permissionsForSchema(preDiscoveryApp),
 			migration: organizationMigration
 		})
 		await deploy({
 			...upgrade,
 			schema: preReaderApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(
-					([table]) => table !== 'readerOperations' && table !== 'articleImages'
-				)
-			),
+			permissions: permissionsForSchema(preReaderApp),
 			migration: discoveryMigration
 		})
 		await deploy({
 			...upgrade,
 			schema: preImageApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'articleImages')
-			),
+			permissions: permissionsForSchema(preImageApp),
 			migration: readerMigration
 		})
-		await deploy({ ...upgrade, migration: imageMigration })
-		await deploy({ ...upgrade, migration: imageMigration })
+		await deploy({
+			...upgrade,
+			schema: preNotesApp,
+			permissions: permissionsForSchema(preNotesApp),
+			migration: imageMigration
+		})
+		await deploy({
+			...upgrade,
+			schema: preEntitiesApp,
+			permissions: permissionsForSchema(preEntitiesApp),
+			migration: noteMigration
+		})
+		await deploy({ ...upgrade, migration: entityMigration })
+		await deploy({ ...upgrade, migration: entityMigration })
 		context = await createJazzSession({
 			...config,
 			serverUrl: server.url,
@@ -193,6 +190,45 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		await Promise.all(result.receipts.map((r) => r.global()))
 		const before = await records.articles.read(result.operationId)
 		expect(before).toMatchObject({ url, contentId: null })
+		const noteId = crypto.randomUUID()
+		const created = await toPromise(
+			createActor(records.notes.create, {
+				input: {
+					attempt: {
+						operationId: noteId,
+						workspaceId: noteId,
+						membershipId: noteId,
+						draft: { id: noteId, libraryId: owner, articleId: result.operationId }
+					}
+				}
+			}).start()
+		)
+		if (created.settlement.kind !== 'locallyPersisted')
+			throw new Error('Expected note entity after upgrade')
+		await created.settlement.workspace.global()
+		const revisionId = crypto.randomUUID()
+		const note = await toPromise(
+			createActor(records.notes.stage, {
+				input: {
+					attempt: {
+						operationId: revisionId,
+						workspaceId: revisionId,
+						membershipId: revisionId,
+						draft: {
+							id: revisionId,
+							libraryId: owner,
+							noteId,
+							text: 'A note after migration 😀',
+							parents: [],
+							editedAt: new Date().toISOString()
+						}
+					}
+				}
+			}).start()
+		)
+		if (note.settlement.kind !== 'locallyPersisted')
+			throw new Error('Expected note revision after upgrade')
+		await note.settlement.workspace.global()
 		await context.close()
 		context = await createJazzSession({
 			...config,
@@ -207,6 +243,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		if (!reopenedDb) throw new Error('Expected reopened local-first library')
 		const reopened = createLibraryRecords(reopenedDb, owner, () => true)
 		expect(await reopened.articles.read(result.operationId)).toEqual(before)
+		expect(await reopened.notes.readRevision(note.attempt.draft)).toEqual(note.attempt.draft)
 		expect(await readRecord(reopened.readCapabilities, documentId)).toMatchObject({
 			kind: 'available',
 			text: 'Legacy text'
@@ -221,11 +258,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 it('adds tags to a populated organization-era replica without resetting identity, favorites or status', async () => {
 	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-discovery-upgrade-'))
 	const server = await startLocalJazzServer({ dataDir: join(dataDir, 'authority') })
-	const oldPermissions = Object.fromEntries(
-		Object.entries(permissions)
-			.filter(([table]) => table !== 'readerOperations' && table !== 'articleImages')
-			.filter(([table]) => table !== 'tagOperations')
-	)
+	const oldPermissions = permissionsForSchema(preDiscoveryApp)
 	const config = {
 		appId: server.appId,
 		serverUrl: server.url,
@@ -296,21 +329,13 @@ it('adds tags to a populated organization-era replica without resetting identity
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
 			schema: preReaderApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(
-					([table]) => table !== 'readerOperations' && table !== 'articleImages'
-				)
-			),
+			permissions: permissionsForSchema(preReaderApp),
 			migration: discoveryMigration
 		})
 		context = await createJazzSession({
 			...config,
 			app: preReaderApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(
-					([table]) => table !== 'readerOperations' && table !== 'articleImages'
-				)
-			),
+			permissions: permissionsForSchema(preReaderApp),
 			store,
 			initial: 'local-first'
 		})
@@ -336,17 +361,13 @@ it('adds tags to a populated organization-era replica without resetting identity
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
 			schema: preImageApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'articleImages')
-			),
+			permissions: permissionsForSchema(preImageApp),
 			migration: readerMigration
 		})
 		context = await createJazzSession({
 			...config,
 			app: preImageApp,
-			permissions: Object.fromEntries(
-				Object.entries(permissions).filter(([table]) => table !== 'articleImages')
-			),
+			permissions: permissionsForSchema(preImageApp),
 			store,
 			initial: 'local-first'
 		})
@@ -369,9 +390,25 @@ it('adds tags to a populated organization-era replica without resetting identity
 			appId: server.appId,
 			serverUrl: server.url,
 			adminSecret: server.adminSecret,
+			schema: preNotesApp,
+			permissions: permissionsForSchema(preNotesApp),
+			migration: imageMigration
+		})
+		await deploy({
+			appId: server.appId,
+			serverUrl: server.url,
+			adminSecret: server.adminSecret,
+			schema: preEntitiesApp,
+			permissions: permissionsForSchema(preEntitiesApp),
+			migration: noteMigration
+		})
+		await deploy({
+			appId: server.appId,
+			serverUrl: server.url,
+			adminSecret: server.adminSecret,
 			schema: app,
 			permissions,
-			migration: imageMigration
+			migration: entityMigration
 		})
 		context = await createJazzSession({
 			...config,
@@ -433,5 +470,149 @@ it('adds tags to a populated organization-era replica without resetting identity
 		await context?.close()
 		await server.stop()
 		await rm(dataDir, { recursive: true, force: true })
+	}
+}, 30000)
+
+it('imports article-keyed note history into one independent entity without losing versions or replaying imports', async () => {
+	const directory = await mkdtemp(join(tmpdir(), 'clipper-note-entity-upgrade-'))
+	const server = await startLocalJazzServer({ dataDir: join(directory, 'authority') })
+	let identity: string | null = null
+	const store = {
+		read: async () => identity,
+		update: async (transform: (value: string | null) => string) => {
+			identity = transform(identity)
+		}
+	}
+	const config = {
+		appId: server.appId,
+		serverUrl: server.url,
+		driver: { type: 'persistent' as const, dataPath: join(directory, 'replica') },
+		env: 'test' as const,
+		initial: 'local-first' as const,
+		store
+	}
+	let context: Awaited<ReturnType<typeof createJazzSession>> | undefined
+	try {
+		await deploy({
+			appId: server.appId,
+			serverUrl: server.url,
+			adminSecret: server.adminSecret,
+			schema: preEntitiesApp,
+			permissions: preEntityPermissions
+		})
+		context = await createJazzSession({
+			...config,
+			app: preEntitiesApp,
+			permissions: preEntityPermissions
+		})
+		const owner = context.getSnapshot().account!.id,
+			db = context.getSnapshot().client!.db,
+			articleId = crypto.randomUUID()
+		await db
+			.insert(preEntitiesApp.libraries, { ownerId: owner, bootstrapVersion: '1' }, { id: owner })
+			.wait({ tier: 'global' })
+		await db
+			.insert(
+				preEntitiesApp.articles,
+				{
+					libraryId: owner,
+					url: 'https://example.com/note-entity-upgrade',
+					originalSavedAt: '2026-11-06T00:00:00.000Z',
+					contentId: null,
+					operationId: null,
+					failure: null
+				},
+				{ id: articleId }
+			)
+			.wait({ tier: 'global' })
+		const baseId = crypto.randomUUID(),
+			branchId = crypto.randomUUID(),
+			otherId = crypto.randomUUID()
+		const originals = [
+			{ id: baseId, text: '  Original <b>😀</b>\n', parents: [] },
+			{ id: branchId, text: '', parents: [baseId] },
+			{ id: otherId, text: 'other offline version', parents: [baseId] }
+		]
+		for (const { id, text, parents } of originals)
+			await db
+				.insert(
+					preEntitiesApp.articleNoteRevisions,
+					{
+						libraryId: owner,
+						articleId,
+						articleParentId: articleId,
+						documentParentId: null,
+						text,
+						parents: JSON.stringify(parents),
+						editedAt: '2026-11-06T00:00:00.000Z'
+					},
+					{ id }
+				)
+				.wait({ tier: 'global' })
+		await context.close()
+		context = undefined
+		await deploy({
+			appId: server.appId,
+			serverUrl: server.url,
+			adminSecret: server.adminSecret,
+			schema: app,
+			permissions,
+			migration: entityMigration
+		})
+		context = await createJazzSession({ ...config, app, permissions })
+		const records = createLibraryRecords(context.getSnapshot().client!.db, owner, () => true)
+		await expect.poll(async () => (await records.notes.legacy()).length).toBe(3)
+		const noteId = crypto.randomUUID(),
+			draft = { id: noteId, libraryId: owner, articleId }
+		const imported = await toPromise(
+			createActor(records.notes.importLegacy, {
+				input: {
+					attempt: { operationId: noteId, workspaceId: noteId, membershipId: noteId, draft }
+				}
+			}).start()
+		)
+		if (imported.settlement.kind !== 'locallyPersisted') throw new Error('Expected note import')
+		await imported.settlement.workspace.global()
+		expect(await records.notes.read(noteId)).toEqual({
+			id: noteId,
+			libraryId: owner,
+			articleId,
+			documentId: null
+		})
+		expect((await records.notes.content(noteId)).versions.map((row) => row.text).sort()).toEqual([
+			'',
+			'other offline version'
+		])
+		expect((await records.notes.legacy()).map((row) => row.id).sort()).toEqual(
+			originals.map((row) => row.id).sort()
+		)
+		for (const original of originals) {
+			expect(
+				await records.notes.readRevision({
+					...original,
+					libraryId: owner,
+					noteId,
+					editedAt: '2026-11-06T00:00:00.000Z'
+				})
+			).toMatchObject(original)
+		}
+		const repeated = await toPromise(
+			createActor(records.notes.importLegacy, {
+				input: {
+					attempt: { operationId: noteId, workspaceId: noteId, membershipId: noteId, draft }
+				}
+			}).start()
+		)
+		expect(repeated.outcome).toBe('blocked')
+		expect(await records.notes.forArticle(articleId)).toHaveLength(1)
+		await context.close()
+		context = await createJazzSession({ ...config, app, permissions })
+		const reopened = createLibraryRecords(context.getSnapshot().client!.db, owner, () => true)
+		expect((await reopened.notes.content(noteId)).conflicted).toBe(true)
+		expect((await reopened.notes.forArticle(articleId))[0]?.id).toBe(noteId)
+	} finally {
+		await context?.close()
+		await server.stop()
+		await rm(directory, { recursive: true, force: true })
 	}
 }, 30000)

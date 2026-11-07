@@ -172,8 +172,8 @@ export const viewportMachine = setup<
 	{},
 	{
 		readingInteraction: undefined
-		changedSizes: undefined
-		visibleAnchor: undefined
+		changedSizes: { sizes: Context['nextSizes'] }
+		visibleAnchor: { anchor: Context['anchor'] }
 		newPosition: undefined
 	},
 	never,
@@ -197,8 +197,8 @@ export const viewportMachine = setup<
 	guards: {
 		readingInteraction: ({ context, event }) =>
 			event.type === 'INPUT' && isReadingInteraction(event.event, context),
-		changedSizes: ({ context }) => changedSizes(context, context.nextSizes),
-		visibleAnchor: ({ context }) => !!context.anchor?.height,
+		changedSizes: ({ context }, params) => changedSizes(context, params.sizes),
+		visibleAnchor: (_, params) => !!params.anchor?.height,
 		newPosition: ({ context, event }) =>
 			event.type === 'MEASURED' &&
 			positionSchema.safeParse(event.position).success &&
@@ -301,17 +301,21 @@ export const viewportMachine = setup<
 												onError: '#reader-viewport.disposingFailure'
 											},
 											on: {
-												ANCHOR_LOCATED: {
-													target: 'choosingAnchor',
-													actions: assign({ anchor: ({ event }) => event.anchor })
-												}
+												ANCHOR_LOCATED: [
+													{
+														guard: {
+															type: 'visibleAnchor',
+															params: ({ event }) => ({ anchor: event.anchor })
+														},
+														target: 'scrollingToAnchor',
+														actions: assign({ anchor: ({ event }) => event.anchor })
+													},
+													{
+														target: 'scrollingToStart',
+														actions: assign({ anchor: ({ event }) => event.anchor })
+													}
+												]
 											}
-										},
-										choosingAnchor: {
-											always: [
-												{ guard: 'visibleAnchor', target: 'scrollingToAnchor' },
-												{ target: 'scrollingToStart' }
-											]
 										},
 										scrollingToAnchor: {
 											invoke: {
@@ -367,24 +371,27 @@ export const viewportMachine = setup<
 												onError: '#reader-viewport.disposingFailure'
 											},
 											on: {
-												SIZES_MEASURED: {
-													target: 'comparingSizes',
-													actions: assign({ nextSizes: ({ event }) => event.sizes })
-												}
+												SIZES_MEASURED: [
+													{
+														guard: {
+															type: 'changedSizes',
+															params: ({ event }) => ({ sizes: event.sizes })
+														},
+														target: 'idle',
+														actions: [
+															assign({
+																sizes: ({ event }) => event.sizes,
+																nextSizes: ({ event }) => event.sizes
+															}),
+															raise({ type: 'REFLOW' })
+														]
+													},
+													{
+														target: 'idle',
+														actions: assign({ nextSizes: ({ event }) => event.sizes })
+													}
+												]
 											}
-										},
-										comparingSizes: {
-											always: [
-												{
-													guard: 'changedSizes',
-													target: 'idle',
-													actions: [
-														assign({ sizes: ({ context }) => context.nextSizes }),
-														raise({ type: 'REFLOW' })
-													]
-												},
-												{ target: 'idle' }
-											]
 										}
 									}
 								},

@@ -1,26 +1,21 @@
 import { z } from 'zod'
 import { querySchema, searchDocumentSchema } from './schema.js'
+const generationSchema = z.object({ generation: z.number().int().nonnegative() })
+const queryMessageSchema = generationSchema.extend({ query: querySchema })
 export const searchWorkerInputSchema = z.discriminatedUnion('type', [
-	z.object({
+	generationSchema.extend({
 		type: z.literal('INDEX'),
 		key: z.string().min(1).max(512),
-		generation: z.number().int().nonnegative(),
 		documents: z.array(searchDocumentSchema)
 	}),
-	z.object({
-		type: z.literal('QUERY'),
-		generation: z.number().int().nonnegative(),
-		query: querySchema
-	})
+	queryMessageSchema.extend({ type: z.literal('QUERY') })
 ])
 export type SearchWorkerInput = z.infer<typeof searchWorkerInputSchema>
 export const searchWorkerOutputSchema = z.discriminatedUnion('type', [
-	z.object({ type: z.literal('INDEX_READY'), generation: z.number().int().nonnegative() }),
-	z.object({
+	generationSchema.extend({ type: z.literal('INDEX_READY') }),
+	queryMessageSchema.extend({
 		type: z.literal('RESULT'),
-		generation: z.number().int().nonnegative(),
-		query: querySchema,
-		ids: z.array(z.string().uuid())
+		ids: z.array(searchDocumentSchema.shape.id)
 	}),
 	z.object({ type: z.literal('WORKER_ERROR') })
 ])

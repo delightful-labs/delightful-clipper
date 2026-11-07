@@ -381,6 +381,7 @@ test('updates wait for all old tabs, reuse immutable bytes and delete only obsol
 		})
 		const wasmBefore = ui.requests.filter((request) => request.path.endsWith('.wasm')).length
 		ui.setRoot(buildB)
+		const replacementStarted = context.waitForEvent('serviceworker')
 		await page.evaluate(async () => {
 			await (await navigator.serviceWorker.getRegistration())?.update()
 		})
@@ -389,6 +390,7 @@ test('updates wait for all old tabs, reuse immutable bytes and delete only obsol
 				exact: true
 			})
 		).toBeVisible({ timeout: 45000 })
+		const replacement = await replacementStarted
 		const before = await page.evaluate(() => caches.keys())
 		expect(before).toEqual(
 			expect.arrayContaining([prefix + 'offline-a', prefix + 'offline-b', 'unrelated-cache'])
@@ -406,6 +408,11 @@ test('updates wait for all old tabs, reuse immutable bytes and delete only obsol
 			)
 		).toBe(true)
 		await second.close()
+		// Reopening too early can give the old worker another controlled client.
+		// Observe cleanup from the replacement worker while no Clipper tab is open.
+		await expect
+			.poll(() => replacement.evaluate(() => caches.keys()))
+			.not.toContain(prefix + 'offline-a')
 		const next = await context.newPage()
 		await next.goto('http://127.0.0.1:5190')
 		await ready(next)

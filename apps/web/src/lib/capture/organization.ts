@@ -18,10 +18,12 @@ export function isArticleStatus(value: string): value is ArticleStatus {
 	return articleStatuses.some((status) => status === value)
 }
 export type LibraryView = (typeof libraryViews)[number]
+const organizationTargetSchema = tagRequestSchema.pick({ id: true })
+const articleStatusSchema = z.enum(articleStatuses)
 export const organizationRequestSchema = z.discriminatedUnion('field', [
-	z.object({ id: lowercaseUuidSchema, field: z.literal('status'), value: z.enum(articleStatuses) }),
-	z.object({ id: lowercaseUuidSchema, field: z.literal('favorite'), value: z.boolean() }),
-	z.object({ id: lowercaseUuidSchema, field: z.literal('trashed'), value: z.boolean() }),
+	organizationTargetSchema.extend({ field: z.literal('status'), value: articleStatusSchema }),
+	organizationTargetSchema.extend({ field: z.literal('favorite'), value: z.boolean() }),
+	organizationTargetSchema.extend({ field: z.literal('trashed'), value: z.boolean() }),
 	tagRequestSchema
 ])
 export type OrganizationRequest = z.infer<typeof organizationRequestSchema>
@@ -58,7 +60,7 @@ export function projectOrganization(
 		const heads = history(targets(row.id, row.contentId))
 		return {
 			...row,
-			status: z.enum(articleStatuses).parse(heads.get('status')?.value ?? 'inbox'),
+			status: articleStatusSchema.parse(heads.get('status')?.value ?? 'inbox'),
 			favorite: heads.get('favorite')?.value === 'true',
 			trashed: heads.get('trashed')?.value === 'true'
 		}

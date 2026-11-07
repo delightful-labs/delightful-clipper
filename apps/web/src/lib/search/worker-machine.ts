@@ -32,7 +32,7 @@ export function createSearchWorkerMachine(cap: {
 		},
 		{},
 		{},
-		{ cacheMatches: undefined; currentQuery: undefined },
+		{ cacheMatches: { cached: CachedIndex | undefined }; currentQuery: undefined },
 		never,
 		string
 	>({
@@ -44,7 +44,7 @@ export function createSearchWorkerMachine(cap: {
 			write: fromPromise(({ input }) => cap.write(input.key, input.value))
 		},
 		guards: {
-			cacheMatches: ({ context }) => context.cached?.fingerprint === context.fingerprint,
+			cacheMatches: ({ context }, params) => params.cached?.fingerprint === context.fingerprint,
 			currentQuery: ({ context, event }) =>
 				event.type === 'QUERY' && event.generation === context.dataset?.generation
 		}
@@ -82,15 +82,16 @@ export function createSearchWorkerMachine(cap: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => required(context.dataset).key,
-					onDone: {
-						target: 'checkingCache',
-						actions: assign({ cached: ({ event }) => event.output })
-					},
+					onDone: [
+						{
+							guard: { type: 'cacheMatches', params: ({ event }) => ({ cached: event.output }) },
+							target: 'restoring',
+							actions: assign({ cached: ({ event }) => event.output })
+						},
+						{ target: 'building' }
+					],
 					onError: 'building'
 				}
-			},
-			checkingCache: {
-				always: [{ guard: 'cacheMatches', target: 'restoring' }, { target: 'building' }]
 			},
 			restoring: {
 				invoke: {

@@ -54,9 +54,8 @@ const url = fromCallback<Event, StoredAsset>(({ input, sendBack }) => {
 	sendBack({ type: 'URL', url })
 	return () => URL.revokeObjectURL(url)
 })
-function validImageAsset(context: Context) {
+function validImageAsset(context: Context, asset: StoredAsset | null) {
 	if (!context.capability.isCurrent()) return false
-	const asset = context.asset
 	if (
 		!asset ||
 		asset.id !== context.row?.assetId ||
@@ -74,7 +73,12 @@ const model = setup<
 	{ observe: typeof observe; load: typeof load; url: typeof url },
 	{},
 	{},
-	{ changedRow: undefined; pending: undefined; ready: undefined; validAsset: undefined },
+	{
+		changedRow: undefined
+		pending: undefined
+		ready: undefined
+		validAsset: { asset: StoredAsset | null }
+	},
 	never,
 	string,
 	Input
@@ -88,7 +92,7 @@ const model = setup<
 				context.row?.assetId !== event.rows[0]?.assetId),
 		pending: ({ context }) => !context.row || context.row.status === 'pending',
 		ready: ({ context }) => context.row?.status === 'ready',
-		validAsset: ({ context }) => validImageAsset(context)
+		validAsset: ({ context }, params) => validImageAsset(context, params.asset)
 	}
 })
 const report = (view: (context: Context) => ImageView) =>
@@ -176,11 +180,17 @@ export const imageViewMachine = model.createMachine({
 					invoke: {
 						src: 'load',
 						input: ({ context }) => context,
-						onDone: { target: 'checking', actions: assign({ asset: ({ event }) => event.output }) },
+						onDone: [
+							{
+								guard: { type: 'validAsset', params: ({ event }) => ({ asset: event.output }) },
+								target: 'owningURL',
+								actions: assign({ asset: ({ event }) => event.output })
+							},
+							{ target: 'failed' }
+						],
 						onError: 'failed'
 					}
 				},
-				checking: { always: [{ guard: 'validAsset', target: 'owningURL' }, { target: 'failed' }] },
 				owningURL: {
 					initial: 'creating',
 					invoke: { src: 'url', input: ({ context }) => context.asset!, onError: 'failed' },

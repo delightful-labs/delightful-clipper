@@ -69,9 +69,18 @@ export function createLaunchMachine(cap: {
 			cap.show(input, { text: t('capture.status.save_failed'), variant: 'error' })
 		)
 	}
-	return setup<Context, { type: 'CLIP'; tab: Tab } | { type: 'POPUP_CLOSED' }, typeof actors>({
+	const model = setup<
+		Context,
+		{ type: 'CLIP'; tab: Tab } | { type: 'POPUP_CLOSED' },
+		typeof actors
+	>({
 		actors
-	}).createMachine({
+	}).extend({
+		guards: {
+			hasCaptureCapacity: (_, params: { pending: Capture[] }) => params.pending.length < 8
+		}
+	})
+	return model.createMachine({
 		initial: 'idle',
 		context: {
 			tab: undefined,
@@ -158,7 +167,10 @@ export function createLaunchMachine(cap: {
 							guard: ({ context, event }) =>
 								newlyConfirmedConnection(event.output, context.connection, context.signInRequest!),
 							target: 'checkingRuntime',
-							actions: assign({ connection: ({ event }) => event.output, authorizationAttempts: 0 })
+							actions: assign({
+								connection: ({ event }) => event.output,
+								authorizationAttempts: 0
+							})
 						},
 						{ target: 'idle' }
 					],
@@ -239,15 +251,19 @@ export function createLaunchMachine(cap: {
 			listing: {
 				invoke: {
 					src: 'pending',
-					onDone: { target: 'capacity', actions: assign({ pending: ({ event }) => event.output }) },
+					onDone: [
+						{
+							guard: {
+								type: 'hasCaptureCapacity',
+								params: ({ event }) => ({ pending: event.output })
+							},
+							target: 'persisting',
+							actions: assign({ pending: ({ event }) => event.output })
+						},
+						{ target: 'failure' }
+					],
 					onError: 'failure'
 				}
-			},
-			capacity: {
-				always: [
-					{ guard: ({ context }) => context.pending.length < 8, target: 'persisting' },
-					{ target: 'failure' }
-				]
 			},
 			persisting: {
 				invoke: {

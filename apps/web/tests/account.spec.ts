@@ -33,6 +33,11 @@ test('starts locally without signup, reloads and restores the same account into 
 	browser
 }) => {
 	await page.goto('/')
+	// Cold module/WASM startup must reach the usable local library before the
+	// separate remote-acceptance assertion starts its timeout.
+	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible({
+		timeout: 30000
+	})
 	await expect(page.getByRole('button', { name: 'Create account', exact: true })).toHaveCount(0)
 	await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()

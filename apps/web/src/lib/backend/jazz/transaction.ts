@@ -1,10 +1,8 @@
 import type { Db, Transaction, WriteHandle } from 'jazz-tools'
 import type { SyncReceipt } from '../../contracts/storage.js'
-import type { Article } from '../../contracts/articles.js'
 export type TransactionResource = {
 	tx: Transaction<'mergeable'>
 	write?: WriteHandle
-	article?: Article | null
 }
 /** Scope is checked at transaction admission and the atomic commit boundary.
  * The owning actor drains an opened transaction; domain I/O leaves do not police its lifetime. */

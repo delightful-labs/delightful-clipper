@@ -16,7 +16,7 @@ const actors = {
 	store: fromPromise(({ input }: { input: Context }) => input.port.store(response(input))),
 	discard: fromPromise(async ({ input }: { input: Context }) => response(input).body?.cancel())
 }
-export const shellAssetMachine = setup<
+const shellAssetModel = setup<
 	Context,
 	{ type: 'UNUSED' },
 	typeof actors,
@@ -27,7 +27,14 @@ export const shellAssetMachine = setup<
 	string,
 	Input,
 	'ready' | 'failed'
->({ actors }).createMachine({
+>({ actors }).extend({
+	guards: {
+		responsePresent: (_, params: { response: Response | undefined }) => !!params.response,
+		validResponse: ({ context }, params: { response: Response | undefined }) =>
+			!!params.response && context.port.valid(params.response)
+	}
+})
+export const shellAssetMachine = shellAssetModel.createMachine({
 	id: 'shell-asset',
 	context: ({ input }) => ({ port: input, response: undefined, result: 'failed' }),
 	initial: 'checkingCache',
@@ -37,35 +44,39 @@ export const shellAssetMachine = setup<
 			invoke: {
 				src: 'reuse',
 				input: ({ context }) => context.port,
-				onDone: {
-					target: 'routingCache',
-					actions: assign({ response: ({ event }) => event.output })
-				},
+				onDone: [
+					{
+						guard: { type: 'validResponse', params: ({ event }) => ({ response: event.output }) },
+						target: 'storing',
+						actions: assign({ response: ({ event }) => event.output })
+					},
+					{
+						guard: {
+							type: 'responsePresent',
+							params: ({ event }) => ({ response: event.output })
+						},
+						target: 'discarding',
+						actions: assign({ response: ({ event }) => event.output })
+					},
+					{ target: 'fetching' }
+				],
 				onError: 'failed'
 			}
-		},
-		routingCache: {
-			always: [
-				{ guard: ({ context }) => !!context.response, target: 'validating' },
-				{ target: 'fetching' }
-			]
 		},
 		fetching: {
 			invoke: {
 				src: 'fetch',
 				input: ({ context }) => context.port,
-				onDone: {
-					target: 'validating',
-					actions: assign({ response: ({ event }) => event.output })
-				},
+				onDone: [
+					{
+						guard: { type: 'validResponse', params: ({ event }) => ({ response: event.output }) },
+						target: 'storing',
+						actions: assign({ response: ({ event }) => event.output })
+					},
+					{ target: 'discarding', actions: assign({ response: ({ event }) => event.output }) }
+				],
 				onError: 'failed'
 			}
-		},
-		validating: {
-			always: [
-				{ guard: ({ context }) => context.port.valid(response(context)), target: 'storing' },
-				{ target: 'discarding' }
-			]
 		},
 		discarding: {
 			invoke: {
@@ -76,7 +87,12 @@ export const shellAssetMachine = setup<
 			}
 		},
 		storing: {
-			invoke: { src: 'store', input: ({ context }) => context, onDone: 'ready', onError: 'failed' }
+			invoke: {
+				src: 'store',
+				input: ({ context }) => context,
+				onDone: 'ready',
+				onError: 'failed'
+			}
 		},
 		ready: { type: 'final', entry: assign({ response: undefined, result: 'ready' }) },
 		failed: { type: 'final', entry: assign({ response: undefined }) }
@@ -90,7 +106,7 @@ const readActors = {
 	fetch: fromPromise(({ input }: { input: ReadInput }) => input.fetch())
 }
 /** Runtime cache misses use network without writing runtime responses into the shell cache. */
-export const shellReadMachine = setup<
+const shellReadModel = setup<
 	ReadContext,
 	{ type: 'UNUSED' },
 	typeof readActors,
@@ -101,7 +117,12 @@ export const shellReadMachine = setup<
 	string,
 	ReadInput,
 	{ response: Response | undefined; error: unknown }
->({ actors: readActors }).createMachine({
+>({ actors: readActors }).extend({
+	guards: {
+		responsePresent: (_, params: { response: Response | undefined }) => !!params.response
+	}
+})
+export const shellReadMachine = shellReadModel.createMachine({
 	id: 'shell-read',
 	context: ({ input }) => ({ port: input, response: undefined, error: undefined }),
 	initial: 'checkingCache',
@@ -111,18 +132,19 @@ export const shellReadMachine = setup<
 			invoke: {
 				src: 'cached',
 				input: ({ context }) => context.port,
-				onDone: {
-					target: 'routingCache',
-					actions: assign({ response: ({ event }) => event.output })
-				},
+				onDone: [
+					{
+						guard: {
+							type: 'responsePresent',
+							params: ({ event }) => ({ response: event.output })
+						},
+						target: 'done',
+						actions: assign({ response: ({ event }) => event.output })
+					},
+					{ target: 'fetching' }
+				],
 				onError: { target: 'done', actions: assign({ error: ({ event }) => event.error }) }
 			}
-		},
-		routingCache: {
-			always: [
-				{ guard: ({ context }) => !!context.response, target: 'done' },
-				{ target: 'fetching' }
-			]
 		},
 		fetching: {
 			invoke: {
