@@ -1,6 +1,6 @@
 export type DraftStores = { notes: IDBObjectStore; legacy: IDBObjectStore }
 
-function openDraftDatabase(): Promise<IDBDatabase> {
+export function openDraftDatabase(): Promise<IDBDatabase> {
 	return new Promise((resolve, reject) => {
 		const request = indexedDB.open('delightful-clipper-note-drafts-v1', 2)
 		request.onupgradeneeded = () => {

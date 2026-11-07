@@ -2,17 +2,9 @@ import { noteDraftRecordSchema } from './schema.js'
 import type { Note, NoteDraftRecord, NoteTarget } from './schema.js'
 import type { ArticleNoteDraftRecord as LegacyDraftRecord } from './legacy.js'
 import { draftTransaction, readDraftRequest } from './draft-database.js'
-import type { DraftStores } from './draft-database.js'
-import {
-	parseStoredDraft,
-	parseStoredLegacyDraft,
-	matchesDraftRecord,
-	matchesLegacyDraftRecord,
-	readScopedDrafts,
-	readScopedLegacyDrafts,
-	prepareDraftRecovery,
-	canReplaceRecoveredDraft
-} from './draft-recovery.js'
+import { runDraftMutation } from './draft-mutation-machine.js'
+import type { DraftEntry } from './draft-mutation-machine.js'
+import { readScopedDrafts, readScopedLegacyDrafts, prepareDraftRecovery } from './draft-recovery.js'
 
 export type NoteDraftStore = {
 	read: (target: NoteTarget) => Promise<NoteDraftRecord[]>
@@ -28,29 +20,6 @@ type NoteDraftRecovery = {
 		articleIds?: readonly string[]
 	) => Promise<void>
 }
-type DraftEntry = { key: string; target: string; record: NoteDraftRecord }
-
-function moveRecoveredDraft(stores: DraftStores, sourceKey: string, converted: DraftEntry) {
-	readDraftRequest(stores.notes.get(converted.key), stores.notes, (destination) => {
-		if (!canReplaceRecoveredDraft(destination, converted.record))
-			throw new Error('Conflicting recovered draft')
-		stores.notes.put(converted)
-		stores.legacy.delete(sourceKey)
-	})
-}
-function recoverDraft(
-	stores: DraftStores,
-	sourceKey: string,
-	source: LegacyDraftRecord,
-	converted: DraftEntry
-) {
-	readDraftRequest(stores.legacy.get(sourceKey), stores.legacy, (value) => {
-		if (!matchesLegacyDraftRecord(parseStoredLegacyDraft(value), source))
-			throw new Error('Legacy draft changed')
-		moveRecoveredDraft(stores, sourceKey, converted)
-	})
-}
-
 /** Authored recovery data, not a disposable cache. Deployment/account/note and
  * per-editor keys prevent another tab or account from overwriting a draft.
  * Resolve writes only from transaction completion, never request success. */
@@ -78,17 +47,21 @@ export function createNoteDraftStore(
 					result(readScopedLegacyDrafts(value, libraryId, articleId))
 				)
 			}),
-		recoverLegacy: (value, target, articleIds = []) =>
-			draftTransaction<void>('readwrite', (stores) => {
-				const recovery = prepareDraftRecovery(value, target, libraryId, articleIds)
-				const sourceKey = JSON.stringify([
-					namespace,
-					libraryId,
-					recovery.source.draft.articleId,
-					recovery.source.writerId
-				])
-				recoverDraft(stores, sourceKey, recovery.source, entry(recovery.record))
-			}),
+		recoverLegacy: async (value, target, articleIds = []) => {
+			const recovery = prepareDraftRecovery(value, target, libraryId, articleIds)
+			const sourceKey = JSON.stringify([
+				namespace,
+				libraryId,
+				recovery.source.draft.articleId,
+				recovery.source.writerId
+			])
+			await runDraftMutation({
+				kind: 'recover',
+				recovery,
+				sourceKey,
+				entry: entry(recovery.record)
+			})
+		},
 		read: (target) =>
 			draftTransaction('readonly', ({ notes }, result) => {
 				readDraftRequest(notes.index('target').getAll(targetKey(target)), notes, (value) =>
@@ -99,14 +72,8 @@ export function createNoteDraftStore(
 			draftTransaction<void>('readwrite', ({ notes }) => {
 				notes.put(entry(record))
 			}),
-		remove: (record) =>
-			draftTransaction<void>('readwrite', ({ notes }) => {
-				const expected = entry(record)
-				readDraftRequest(notes.get(expected.key), notes, (value) => {
-					if (value === undefined) return
-					if (matchesDraftRecord(parseStoredDraft(value), expected.record))
-						notes.delete(expected.key)
-				})
-			})
+		remove: async (record) => {
+			await runDraftMutation({ kind: 'remove', entry: entry(record) })
+		}
 	}
 }

@@ -9,12 +9,6 @@ const storedDraftSchema = z.object({ record: noteDraftRecordSchema })
 const storedLegacyDraftSchema = z.object({ record: articleNoteDraftRecordSchema })
 const recoveryAliasesSchema = z.array(lowercaseUuidSchema).max(4096)
 
-export function parseStoredDraft(value: unknown) {
-	return storedDraftSchema.parse(value).record
-}
-export function parseStoredLegacyDraft(value: unknown) {
-	return storedLegacyDraftSchema.parse(value).record
-}
 export function matchesDraftRecord(current: NoteDraftRecord, expected: NoteDraftRecord) {
 	return (
 		current.writerId === expected.writerId && acknowledgesNoteDraft(current.draft, expected.draft)
@@ -83,11 +77,26 @@ export function prepareDraftRecovery(
 	const source = articleNoteDraftRecordSchema.parse(value)
 	const note = noteSchema.parse(target)
 	const aliases = new Set(recoveryAliasesSchema.parse(articleIds))
-	if (!canRecoverDraft(source, note, libraryId, aliases))
-		throw new Error('Invalid draft recovery association')
 	const { articleId: _articleId, ...draft } = source.draft
-	return { source, record: { writerId: source.writerId, draft: { ...draft, noteId: note.id } } }
+	return {
+		source,
+		note,
+		aliases,
+		libraryId,
+		record: { writerId: source.writerId, draft: { ...draft, noteId: note.id } }
+	}
+}
+export function isStoredDraft(value: unknown) {
+	return storedDraftSchema.safeParse(value).success
+}
+export function matchesStoredDraft(value: unknown, expected: NoteDraftRecord) {
+	const parsed = storedDraftSchema.safeParse(value)
+	return parsed.success && matchesDraftRecord(parsed.data.record, expected)
+}
+export function matchesStoredLegacyDraft(value: unknown, expected: LegacyDraftRecord) {
+	const parsed = storedLegacyDraftSchema.safeParse(value)
+	return parsed.success && matchesLegacyDraftRecord(parsed.data.record, expected)
 }
 export function canReplaceRecoveredDraft(value: unknown, expected: NoteDraftRecord) {
-	return value === undefined || matchesDraftRecord(parseStoredDraft(value), expected)
+	return value === undefined || matchesStoredDraft(value, expected)
 }

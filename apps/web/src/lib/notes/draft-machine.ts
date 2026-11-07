@@ -32,7 +32,7 @@ export const noteDraftMachine = setup<
 	typeof actors,
 	{},
 	{
-		enqueue: undefined
+		enqueue: { record: NoteDraftRecord }
 		issue: undefined
 		acknowledge: { record: NoteDraftRecord }
 		retainFailed: undefined
@@ -62,10 +62,8 @@ export const noteDraftMachine = setup<
 	},
 	actions: {
 		enqueue: assign({
-			queue: ({ context, event }) =>
-				event.type === 'EDIT'
-					? replaceWriterDraft(context.queue, noteDraftRecordSchema.parse(event.record))
-					: context.queue
+			queue: ({ context }, params: { record: NoteDraftRecord }) =>
+				replaceWriterDraft(context.queue, noteDraftRecordSchema.parse(params.record))
 		}),
 		issue: assign({
 			issued: ({ context }) => context.queue[0],
@@ -89,7 +87,12 @@ export const noteDraftMachine = setup<
 	states: {
 		running: {
 			type: 'parallel',
-			on: { EDIT: { guard: 'canEdit', actions: 'enqueue' } },
+			on: {
+				EDIT: {
+					guard: 'canEdit',
+					actions: { type: 'enqueue', params: ({ event }) => ({ record: event.record }) }
+				}
+			},
 			states: {
 				control: {
 					initial: 'accepting',

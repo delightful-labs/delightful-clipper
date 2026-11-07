@@ -1,5 +1,15 @@
 # Article notes — implementation started
 
+## Explicit note workflow ownership
+
+Create, revision and legacy-import decisions now live in invoked domain charts in `notes/domain-machines.ts`. Read actors return decoded facts; `assign` stores them in chart context. Named guards admit the operation and select an existing note, article parent or legacy document parent. States order the selected mutations. The obsolete manually started parent-selection actor is removed, and the native adapter no longer stores article/note/import facts on its transaction resource.
+
+`notes/operation-machine.ts` bridges DLF's existing callback contract with typed read/stage messages. It invokes both the DLF transaction owner and the domain chart. DLF remains the sole owner of acquisition, cancellation/shutdown draining, commit, local persistence, rollback and unknown settlements. An assessment reply completes DLF's read callback; an explicit stage request permits mutations. The original attempt is returned unchanged and remote acceptance remains a separate receipt. No shared-library source or dependency pin changes are required.
+
+Draft recovery and exact-acknowledgment removal similarly use `draft-mutation-machine.ts`. A callback actor owns the native IndexedDB transaction and reports request results. Named guards select source validation, destination validation, atomic move, exact removal, no-op or abort. Follow-up commands run synchronously before the native request callback returns, preserving the same active transaction. Only transaction completion acknowledges durability. The public promise adapter starts one operation actor; I/O leaves do not manually start actors.
+
+Local evidence includes 31 focused model/draft/ownership/native-offline tests, eight real native policy/migration tests and both browser draft cases on an isolated test port. Ownership regressions cover cancellation during acquisition/read/staging/commit, rollback failure and unknown commit/persistence outcomes without replay. Full verification and hosted results are recorded on PR #19 after publication.
+
 ## Independent note entities — current implementation
 
 Following the user's AT Protocol/DLF clarification, the persistence layer now has an independent `notes` table (`id`, `libraryId`, nullable article/document references, exactly one current association) and immutable `noteRevisions` linked by `noteId`. Note IDs are caller-allocated operation identities, not article IDs, DIDs, provider subjects or AT record keys. Notes can be read by their own ID and their content projected without loading the article. Article/legacy-content aliases find associated entities without rewriting IDs. Highlight attachment remains a future entity relationship; no placeholder highlight table or AT publishing/account-linking system is added.
