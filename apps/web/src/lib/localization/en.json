@@ -168,11 +168,11 @@
 		"removed_subject_name": "{{subject}} {{name}} removed."
 	},
 	"errors": {
+		"conflict": "{{subject}} has conflicting versions. Your changes have been kept.",
 		"too_large_subject": "{{subject}} exceeds the current save limit.",
 		"already_selected_subject_name": "{{subject}} {{name}} is already selected."
 	},
 	"notes": {
-		"conflict": "This note has conflicting versions. Your text has been kept.",
 		"keep_text": "Keep this text"
 	}
 }
