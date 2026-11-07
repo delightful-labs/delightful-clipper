@@ -1,9 +1,24 @@
 import { isRequestAuthenticationError, resolveRequestSession } from 'jazz-tools/backend'
+import type { BackendRequestAuthConfig } from 'jazz-tools/backend'
+import { authConfiguration } from './auth/server.js'
+
+/** Explicit trust for the same app-issued tokens accepted by Jazz Cloud. */
+export function externalJWTVerification(origin: unknown) {
+	const parsed = authConfiguration.shape.origin.safeParse(origin)
+	if (!parsed.success) return {}
+	return {
+		jwksUrl: parsed.data + '/api/auth/jwks',
+		jwtIssuer: parsed.data,
+		jwtAudience: parsed.data
+	}
+}
 
 /** Registry admission binds the signed bearer to its canonical Jazz account. */
 export async function authenticateGateway(
 	request: Request,
-	config: { appId: string; accountRegistry: string }
+	config: Pick<BackendRequestAuthConfig, 'appId' | 'jwksUrl' | 'jwtIssuer' | 'jwtAudience'> & {
+		accountRegistry: string
+	}
 ) {
 	const headers = { 'Cache-Control': 'private, no-store', 'Content-Type': 'application/json' }
 	const failure = (status: 401 | 503) =>

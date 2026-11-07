@@ -219,3 +219,16 @@ Auth adapter, mocking only the upstream OAuth exchange/profile request. New-user
 and returning-user callbacks both redirect successfully and produce session cookies;
 returning login does not create a duplicate user/account. Real provider exchange
 and Jazz linking still require retrying the live login after deployment.
+
+## Linked-account article capture
+
+The first linked-account capture requests returned HTTP 503 before parsing. The
+capture gateway still configured only local-first authentication. It now derives
+JWKS URL, required issuer and audience from the validated server auth origin,
+matching Jazz Cloud's external JWT trust. Local-first proof verification remains
+enabled, and canonical account admission still uses strict login (no registration).
+No credentials or registry decisions are taken from the capture request body.
+
+Regression tests exercise real signature verification and account admission for
+an external JWT, wrong-audience rejection, and absent/invalid-origin fail-closed
+behavior. Live parser qualification follows deployment under the linked account.
