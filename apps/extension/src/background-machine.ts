@@ -41,6 +41,9 @@ export function createCaptureReadMachine(cap: {
 		Input,
 		Reply
 	>({ actors }).extend({
+		actions: {
+			useMetadata: assign({ result: ({ context }): Reply => ({ capture: context.capture! }) })
+		},
 		guards: {
 			matchingCapture: ({ context }, params: { value: unknown }) =>
 				captureFor(params.value, messageSchema.parse(context.message).id),
@@ -86,8 +89,11 @@ export function createCaptureReadMachine(cap: {
 								type: 'issuedMatchingCapture',
 								params: ({ event }) => ({ value: event.output })
 							},
-							target: 'metadata',
-							actions: assign({ capture: ({ event }) => captureSchema.parse(event.output) })
+							target: 'done',
+							actions: [
+								assign({ capture: ({ event }) => captureSchema.parse(event.output) }),
+								'useMetadata'
+							]
 						},
 						{
 							guard: {
@@ -112,9 +118,9 @@ export function createCaptureReadMachine(cap: {
 							target: 'capturing',
 							actions: assign({ tab: ({ event }) => event.output })
 						},
-						{ target: 'metadata' }
+						{ target: 'done', actions: 'useMetadata' }
 					],
-					onError: 'metadata'
+					onError: { target: 'done', actions: 'useMetadata' }
 				}
 			},
 			capturing: {
@@ -135,14 +141,10 @@ export function createCaptureReadMachine(cap: {
 								})
 							})
 						},
-						{ target: 'metadata' }
+						{ target: 'done', actions: 'useMetadata' }
 					],
-					onError: 'metadata'
+					onError: { target: 'done', actions: 'useMetadata' }
 				}
-			},
-			metadata: {
-				entry: assign({ result: ({ context }) => ({ capture: context.capture! }) }),
-				always: 'done'
 			},
 			failed: { type: 'final' },
 			done: {

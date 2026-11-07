@@ -44,8 +44,7 @@ export function createArticleEnsureDomain(io: {
 					]
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: 'insertingArticle' } },
-			insertingArticle: { entry: 'insertArticle', always: 'done' },
+			ready: { entry: 'allow', on: { STAGE: { target: 'done', actions: 'insertArticle' } } },
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}
@@ -92,13 +91,11 @@ export function createArticleAttachmentDomain(io: {
 				entry: 'allow',
 				on: {
 					STAGE: [
-						{ guard: 'articleExists', target: 'attachingContent' },
-						{ target: 'creatingArticle' }
+						{ guard: 'articleExists', target: 'done', actions: 'attachContent' },
+						{ target: 'done', actions: 'createArticle' }
 					]
 				}
 			},
-			attachingContent: { entry: 'attachContent', always: 'done' },
-			creatingArticle: { entry: 'createArticle', always: 'done' },
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}
@@ -138,8 +135,7 @@ export function createArticleFailureDomain(io: {
 					]
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: 'recordingFailure' } },
-			recordingFailure: { entry: 'recordFailure', always: 'done' },
+			ready: { entry: 'allow', on: { STAGE: { target: 'done', actions: 'recordFailure' } } },
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}

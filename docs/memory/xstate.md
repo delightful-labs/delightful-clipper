@@ -26,6 +26,8 @@ Ordinary functions remain appropriate for schema validation, protocol decoding, 
 
 Do not add transient states solely to check facts and route immediately. Put guarded alternatives on the preceding completion or eventless transition when that expresses the same decision clearly. Keep states that own work, waiting or a meaningful lifecycle boundary. Retain a decision boundary when its guards must observe state changes made by the same event in parallel regions; transition guards run before those sibling transitions apply.
 
+For a synchronous effect followed immediately by completion, put the named action on the selected transition into a shared final state. Use ordered action arrays for an already-selected synchronous sequence; a thrown action must prevent subsequent actions and successful completion. Do not add action-only states solely to transition immediately to `done`. Keep distinct states for asynchronous work, resource ownership, waiting and meaningful outcomes. Child machines still need final states to deliver output through the parent's `invoke.onDone`; staging completion does not imply commit, local durability or remote acceptance.
+
 Keep detailed implementations outside deeply nested state configuration. A readable chart should expose names and transitions, rather than hide blocks of application code inside `invoke.input`, `onDone.actions`, entry actions or guard callbacks.
 
 ## Make data flow explicit

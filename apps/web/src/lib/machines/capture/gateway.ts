@@ -108,6 +108,32 @@ export function createGatewayMachine(capability: {
 			successfulResponse: (_, { hop }: { hop: Hop }) => hop.status === 200
 		},
 		actions: {
+			produceResolution: assign(({ context }) => ({
+				hop: undefined,
+				output: {
+					kind: 'success' as const,
+					finalUrl: context.current,
+					provenance: {
+						submittedUrl: context.url,
+						redirects: context.redirects,
+						resolvedAt: new Date().toISOString()
+					},
+					extraction: undefined
+				}
+			})),
+			produceAsset: assign(({ context }) => ({
+				output: {
+					kind: 'success',
+					finalUrl: context.current,
+					provenance: {
+						submittedUrl: context.url,
+						redirects: context.redirects,
+						resolvedAt: new Date().toISOString()
+					},
+					extraction: undefined,
+					asset: { bytes: context.hop!.body, mediaType: context.hop!.mediaType.split(';')[0]! }
+				}
+			})),
 			rememberHop: assign({ hop: (_, { hop }: { hop: Hop }) => hop, destination: undefined }),
 			abortFailure: assign({
 				output: ({ context }): GatewayResult => ({ kind: 'failed', error: context.signal.reason })
@@ -204,8 +230,11 @@ export function createGatewayMachine(capability: {
 						},
 						{
 							guard: { type: 'resolutionResponse', params: ({ event }) => ({ hop: event.output }) },
-							target: 'resolved',
-							actions: { type: 'rememberHop', params: ({ event }) => ({ hop: event.output }) }
+							target: 'done',
+							actions: [
+								{ type: 'rememberHop', params: ({ event }) => ({ hop: event.output }) },
+								'produceResolution'
+							]
 						},
 						{
 							guard: {
@@ -217,8 +246,11 @@ export function createGatewayMachine(capability: {
 						},
 						{
 							guard: { type: 'assetResponse', params: ({ event }) => ({ hop: event.output }) },
-							target: 'assetReady',
-							actions: { type: 'rememberHop', params: ({ event }) => ({ hop: event.output }) }
+							target: 'done',
+							actions: [
+								{ type: 'rememberHop', params: ({ event }) => ({ hop: event.output }) },
+								'produceAsset'
+							]
 						},
 						{
 							guard: { type: 'successfulResponse', params: ({ event }) => ({ hop: event.output }) },
@@ -263,38 +295,6 @@ export function createGatewayMachine(capability: {
 						actions: assign({ output: ({ event }) => ({ kind: 'failed', error: event.error }) })
 					}
 				}
-			},
-			assetReady: {
-				entry: assign(({ context }) => ({
-					output: {
-						kind: 'success',
-						finalUrl: context.current,
-						provenance: {
-							submittedUrl: context.url,
-							redirects: context.redirects,
-							resolvedAt: new Date().toISOString()
-						},
-						extraction: undefined,
-						asset: { bytes: context.hop!.body, mediaType: context.hop!.mediaType.split(';')[0]! }
-					}
-				})),
-				always: 'done'
-			},
-			resolved: {
-				entry: assign(({ context }) => ({
-					hop: undefined,
-					output: {
-						kind: 'success' as const,
-						finalUrl: context.current,
-						provenance: {
-							submittedUrl: context.url,
-							redirects: context.redirects,
-							resolvedAt: new Date().toISOString()
-						},
-						extraction: undefined
-					}
-				})),
-				always: 'done'
 			},
 			extracting: {
 				invoke: {

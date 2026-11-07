@@ -56,17 +56,20 @@ export function createContentIntentDomain(io: {
 					]
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: 'insertingIntent' } },
-			insertingIntent: {
-				entry: 'insertIntent',
-				always: [
-					{ guard: and(['articleLinked', 'articleExists']), target: 'bindingArticle' },
-					{ guard: 'articleLinked', target: 'creatingArticle' },
-					{ target: 'done' }
-				]
+			ready: {
+				entry: 'allow',
+				on: {
+					STAGE: [
+						{
+							guard: and(['articleLinked', 'articleExists']),
+							target: 'done',
+							actions: ['insertIntent', 'bindArticle']
+						},
+						{ guard: 'articleLinked', target: 'done', actions: ['insertIntent', 'createArticle'] },
+						{ target: 'done', actions: 'insertIntent' }
+					]
+				}
 			},
-			bindingArticle: { entry: 'bindArticle', always: 'done' },
-			creatingArticle: { entry: 'createArticle', always: 'done' },
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}
@@ -118,20 +121,25 @@ export function createContentPublicationDomain(io: {
 					]
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: 'publishingContent' } },
-			publishingContent: {
-				entry: 'publishContent',
-				always: [
-					{ guard: 'articleLinked', target: 'attachingContent' },
-					{ guard: 'hasSource', target: 'publishingSource' },
-					{ target: 'done' }
-				]
+			ready: {
+				entry: 'allow',
+				on: {
+					STAGE: [
+						{
+							guard: and(['articleLinked', 'hasSource']),
+							target: 'done',
+							actions: ['publishContent', 'attachContent', 'publishSource']
+						},
+						{
+							guard: 'articleLinked',
+							target: 'done',
+							actions: ['publishContent', 'attachContent']
+						},
+						{ guard: 'hasSource', target: 'done', actions: ['publishContent', 'publishSource'] },
+						{ target: 'done', actions: 'publishContent' }
+					]
+				}
 			},
-			attachingContent: {
-				entry: 'attachContent',
-				always: [{ guard: 'hasSource', target: 'publishingSource' }, { target: 'done' }]
-			},
-			publishingSource: { entry: 'publishSource', always: 'done' },
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}

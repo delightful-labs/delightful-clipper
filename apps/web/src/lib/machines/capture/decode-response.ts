@@ -23,7 +23,12 @@ const model = setup<
 	string,
 	Input,
 	{ hop: Hop; error: unknown }
->({ actors: { decode } })
+>({ actors: { decode } }).extend({
+	actions: {
+		useIdentityBody: assign({ body: ({ context }) => context.wire }),
+		rejectEncoding: assign({ error: () => new CaptureError('unsupportedMedia', 415) })
+	}
+})
 const compressed = (format: 'gzip' | 'br' | 'deflate') =>
 	model.createStateConfig({
 		invoke: {
@@ -49,22 +54,18 @@ export const decodeResponseMachine = model.createMachine({
 			always: [
 				{
 					guard: ({ context }) => !context.encoding || context.encoding === 'identity',
-					target: 'identity'
+					target: 'done',
+					actions: 'useIdentityBody'
 				},
 				{ guard: ({ context }) => context.encoding === 'gzip', target: 'gzip' },
 				{ guard: ({ context }) => context.encoding === 'br', target: 'brotli' },
 				{ guard: ({ context }) => context.encoding === 'deflate', target: 'deflate' },
-				{ target: 'unsupported' }
+				{ target: 'done', actions: 'rejectEncoding' }
 			]
 		},
-		identity: { entry: assign({ body: ({ context }) => context.wire }), always: 'done' },
 		gzip: compressed('gzip'),
 		brotli: compressed('br'),
 		deflate: compressed('deflate'),
-		unsupported: {
-			entry: assign({ error: () => new CaptureError('unsupportedMedia', 415) }),
-			always: 'done'
-		},
 		done: { type: 'final', entry: assign({ wire: () => new Uint8Array() }) }
 	}
 })

@@ -70,10 +70,11 @@ export function createNoteCreationMachine(io: {
 					]
 				}
 			},
-			readyArticle: { entry: 'allow', on: { STAGE: 'insertingArticle' } },
-			readyDocument: { entry: 'allow', on: { STAGE: 'insertingDocument' } },
-			insertingArticle: { entry: 'insertArticle', always: 'done' },
-			insertingDocument: { entry: 'insertDocument', always: 'done' },
+			readyArticle: { entry: 'allow', on: { STAGE: { target: 'done', actions: 'insertArticle' } } },
+			readyDocument: {
+				entry: 'allow',
+				on: { STAGE: { target: 'done', actions: 'insertDocument' } }
+			},
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}
@@ -114,8 +115,7 @@ export function createNoteRevisionMachine(io: {
 					]
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: 'insertingRevision' } },
-			insertingRevision: { entry: 'insertRevision', always: 'done' },
+			ready: { entry: 'allow', on: { STAGE: { target: 'done', actions: 'insertRevision' } } },
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}
@@ -188,12 +188,18 @@ export function createLegacyNoteImportMachine(io: {
 					]
 				}
 			},
-			readyExisting: { entry: 'allow', on: { STAGE: 'importingRevisions' } },
-			readyArticle: { entry: 'allow', on: { STAGE: 'insertingArticle' } },
-			readyDocument: { entry: 'allow', on: { STAGE: 'insertingDocument' } },
-			insertingArticle: { entry: 'insertArticle', always: 'importingRevisions' },
-			insertingDocument: { entry: 'insertDocument', always: 'importingRevisions' },
-			importingRevisions: { entry: 'insertRevisions', always: 'done' },
+			readyExisting: {
+				entry: 'allow',
+				on: { STAGE: { target: 'done', actions: ['insertRevisions'] } }
+			},
+			readyArticle: {
+				entry: 'allow',
+				on: { STAGE: { target: 'done', actions: ['insertArticle', 'insertRevisions'] } }
+			},
+			readyDocument: {
+				entry: 'allow',
+				on: { STAGE: { target: 'done', actions: ['insertDocument', 'insertRevisions'] } }
+			},
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}

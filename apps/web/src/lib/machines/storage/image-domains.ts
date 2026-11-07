@@ -51,10 +51,10 @@ export function createImagePublicationDomain(io: {
 					]
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: 'insertingIntent' } },
-			insertingIntent: { entry: 'insertIntent', always: 'insertingAsset' },
-			insertingAsset: { entry: 'insertAsset', always: 'publishingImage' },
-			publishingImage: { entry: 'publishImage', always: 'done' },
+			ready: {
+				entry: 'allow',
+				on: { STAGE: { target: 'done', actions: ['insertIntent', 'insertAsset', 'publishImage'] } }
+			},
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}
@@ -94,8 +94,7 @@ export function createImageFailureDomain(io: {
 					]
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: 'recordingFailure' } },
-			recordingFailure: { entry: 'recordFailure', always: 'done' },
+			ready: { entry: 'allow', on: { STAGE: { target: 'done', actions: 'recordFailure' } } },
 			blocked: { entry: 'block' },
 			done: { type: 'final' }
 		}

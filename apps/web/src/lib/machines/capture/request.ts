@@ -105,10 +105,35 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 			]),
 			captureError: ({ event }) => 'error' in event && event.error instanceof CaptureError
 		}
+	}).extend({
+		actions: {
+			produceAssetResponse: assign({
+				response: ({ context }) => {
+					const asset = required(gatewaySuccess(context.result).asset)
+					return new Response(new Uint8Array(asset.bytes), {
+						headers: { ...headers, 'Content-Type': asset.mediaType }
+					})
+				}
+			}),
+			produceCancelledResponse: assign({
+				response: () => failure(new CaptureError('canceled', 408, true))
+			}),
+			produceTimeoutResponse: assign({
+				response: () => failure(new CaptureError('fetchTimeout', 504, true))
+			})
+		}
 	})
 	const interruptions = [
-		{ guard: 'timedOut' as const, target: '#request-timeout-response' },
-		{ guard: 'cancelled' as const, target: '#request-cancelled-response' }
+		{
+			guard: 'timedOut' as const,
+			target: '#request-releasing',
+			actions: 'produceTimeoutResponse' as const
+		},
+		{
+			guard: 'cancelled' as const,
+			target: '#request-releasing',
+			actions: 'produceCancelledResponse' as const
+		}
 	]
 	const errors = [
 		{ guard: 'captureError' as const, target: 'releasing', actions: 'recordFailure' as const },
@@ -132,18 +157,6 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 	const work = model.createStateConfig({
 		initial: 'authorizing',
 		states: {
-			cancelledResponse: {
-				id: 'request-cancelled-response',
-				entry: assign({ response: () => failure(new CaptureError('canceled', 408, true)) }),
-				always: 'releasing'
-			},
-			timeoutResponse: {
-				id: 'request-timeout-response',
-				entry: assign({
-					response: () => failure(new CaptureError('fetchTimeout', 504, true))
-				}),
-				always: 'releasing'
-			},
 			beforeReading: interruptedStage('reading'),
 			beforeCapturing: interruptedStage('capturing'),
 			beforeEncoding: interruptedStage('routingResponse'),
@@ -234,21 +247,11 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 					},
 					{
 						guard: ({ context }) => required(context.input).mode === 'asset',
-						target: 'encodingAsset'
+						target: 'releasing',
+						actions: 'produceAssetResponse'
 					},
 					{ target: 'encodingExtraction' }
 				]
-			},
-			encodingAsset: {
-				entry: assign({
-					response: ({ context }) => {
-						const asset = required(gatewaySuccess(context.result).asset)
-						return new Response(new Uint8Array(asset.bytes), {
-							headers: { ...headers, 'Content-Type': asset.mediaType }
-						})
-					}
-				}),
-				always: 'releasing'
 			},
 			encodingResolution: encoding(({ context }) => {
 				const result = gatewaySuccess(context.result),
@@ -271,6 +274,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 				}
 			}),
 			releasing: {
+				id: 'request-releasing',
 				entry: ({ context }) => context.release?.(),
 				always: '#capture-request.closed'
 			}

@@ -66,21 +66,30 @@ export function createOrganizationDomain(io: {
 				entry: 'allow',
 				on: {
 					STAGE: [
-						{ guard: and(['tagAssignment', 'hasArticleParent']), target: 'insertingTagArticle' },
-						{ guard: and(['tagAssignment', 'hasDocumentParent']), target: 'insertingTagDocument' },
-						{ guard: and([not('tagAssignment'), 'hasArticleParent']), target: 'insertingArticle' },
+						{
+							guard: and(['tagAssignment', 'hasArticleParent']),
+							target: 'done',
+							actions: 'insertTagArticle'
+						},
+						{
+							guard: and(['tagAssignment', 'hasDocumentParent']),
+							target: 'done',
+							actions: 'insertTagDocument'
+						},
+						{
+							guard: and([not('tagAssignment'), 'hasArticleParent']),
+							target: 'done',
+							actions: 'insertArticle'
+						},
 						{
 							guard: and([not('tagAssignment'), 'hasDocumentParent']),
-							target: 'insertingDocument'
+							target: 'done',
+							actions: 'insertDocument'
 						},
 						{ target: 'invalidParent' }
 					]
 				}
 			},
-			insertingArticle: { entry: 'insertArticle', always: 'done' },
-			insertingDocument: { entry: 'insertDocument', always: 'done' },
-			insertingTagArticle: { entry: 'insertTagArticle', always: 'done' },
-			insertingTagDocument: { entry: 'insertTagDocument', always: 'done' },
 			invalidParent: { entry: 'failParent' },
 			blocked: { entry: 'block' },
 			done: { type: 'final' }

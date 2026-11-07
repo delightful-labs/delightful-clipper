@@ -196,6 +196,39 @@ it('blocks mismatched publication facts on read completion before issuing any mu
 	expect(f.commit).not.toHaveBeenCalled()
 	expect(f.rollback).toHaveBeenCalledOnce()
 })
+it.each(['content', 'attach', 'source'] as const)(
+	'rolls back a failed %s action without running later actions or completing the child',
+	async (failure) => {
+		const f = fixture(),
+			draft = content(true)
+		const receipt = vi.fn(() => f.receipt)
+		const mutation = (name: string) => () => {
+			f.order.push(name)
+			if (name === failure) throw new Error('Native mutation failed')
+		}
+		const result = await f.run(
+			createContentPublicationDomain({
+				read: async () => ({
+					draft,
+					operationId: 'operation',
+					intent: draft.intent,
+					article: article('operation')
+				}),
+				publishContent: mutation('content'),
+				attachContent: mutation('attach'),
+				publishSource: mutation('source'),
+				receipt
+			}),
+			draft
+		)
+		const sequence = ['content', 'attach', 'source']
+		expect(f.order).toEqual(sequence.slice(0, sequence.indexOf(failure) + 1))
+		expect(receipt).not.toHaveBeenCalled()
+		expect(f.commit).not.toHaveBeenCalled()
+		expect(f.rollback).toHaveBeenCalledOnce()
+		expect(result.settlement.kind).toBe('notStarted')
+	}
+)
 it.each([true, false])(
 	'selects the attachment mutation from the retained article row (exists: %s)',
 	async (exists) => {

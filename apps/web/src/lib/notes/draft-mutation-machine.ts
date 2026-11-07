@@ -211,13 +211,13 @@ export const draftMutationMachine = setup<
 						DESTINATION_READ: [
 							{
 								guard: { type: 'destinationCompatible', params: ({ event }) => event },
-								target: 'moving'
+								target: 'waitingCompletion',
+								actions: 'move'
 							},
 							{ target: 'aborting' }
 						]
 					}
 				},
-				moving: { entry: 'move', always: 'waitingCompletion' },
 				readingCurrent: {
 					entry: 'readCurrent',
 					on: {
@@ -228,7 +228,8 @@ export const draftMutationMachine = setup<
 							},
 							{
 								guard: { type: 'currentMatches', params: ({ event }) => event },
-								target: 'deleting'
+								target: 'waitingCompletion',
+								actions: 'remove'
 							},
 							{
 								guard: { type: 'currentValid', params: ({ event }) => event },
@@ -238,7 +239,6 @@ export const draftMutationMachine = setup<
 						]
 					}
 				},
-				deleting: { entry: 'remove', always: 'waitingCompletion' },
 				aborting: { entry: 'abort' },
 				waitingCompletion: {}
 			}

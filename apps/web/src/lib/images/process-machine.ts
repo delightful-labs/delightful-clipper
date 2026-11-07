@@ -53,7 +53,7 @@ export function canDecodeImage(input: Input) {
 		input.bytes.byteLength <= IMAGE_INPUT_LIMIT
 	)
 }
-export const imageProcessingMachine = setup<
+const imageProcessingModel = setup<
 	Context,
 	{ type: 'UNUSED' },
 	{
@@ -80,7 +80,17 @@ export const imageProcessingMachine = setup<
 			['image/png', 'image/webp'].includes(blob.type),
 		canShrink: ({ context }) => context.attempts < 6 && context.edge > 64
 	}
-}).createMachine({
+}).extend({
+	actions: {
+		shrink: assign({
+			edge: ({ context }) => Math.max(64, Math.floor(context.edge * 0.75)),
+			attempts: ({ context }) => context.attempts + 1,
+			canvas: undefined,
+			blob: undefined
+		})
+	}
+})
+export const imageProcessingMachine = imageProcessingModel.createMachine({
 	id: 'image-processing',
 	initial: 'checking',
 	context: ({ input }) => ({
@@ -131,20 +141,11 @@ export const imageProcessingMachine = setup<
 								target: 'readingBytes',
 								actions: assign({ blob: ({ event }) => event.output })
 							},
-							{ guard: 'canShrink', target: 'shrinking' },
+							{ guard: 'canShrink', target: 'drawing', actions: 'shrink' },
 							{ target: '#image-processing.failed' }
 						],
 						onError: '#image-processing.failed'
 					}
-				},
-				shrinking: {
-					entry: assign({
-						edge: ({ context }) => Math.max(64, Math.floor(context.edge * 0.75)),
-						attempts: ({ context }) => context.attempts + 1,
-						canvas: undefined,
-						blob: undefined
-					}),
-					always: 'drawing'
 				},
 				readingBytes: {
 					invoke: {

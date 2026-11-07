@@ -244,6 +244,20 @@ const model = setup<
 			}))
 		})
 	}
+}).extend({
+	actions: {
+		notifyUncertain: ({ context }) => {
+			for (const slot of context.slots)
+				slot.send({ type: 'UNKNOWN', sourceUrl: context.selected!.sourceUrl })
+		},
+		recordUncertain: assign({
+			blocked: ({ context }) => [...context.blocked, context.selected!.id],
+			uncertain: ({ context }) => [...context.uncertain, context.selected!.id],
+			write: undefined,
+			fetched: undefined,
+			result: undefined
+		})
+	}
 })
 const writing = (start: 'startReady' | 'startFailure', settled: 'recordReady' | 'recordFailure') =>
 	model.createStateConfig({
@@ -259,7 +273,8 @@ const writing = (start: 'startReady' | 'startFailure', settled: 'recordReady' | 
 						'ownCompletion',
 						({ event }) => !event.output || event.output.settlement.kind === 'unresolved'
 					]),
-					target: 'uncertain'
+					target: 'routing',
+					actions: ['notifyUncertain', 'recordUncertain']
 				},
 				{
 					guard: and([
@@ -279,9 +294,13 @@ const writing = (start: 'startReady' | 'startFailure', settled: 'recordReady' | 
 						settled
 					]
 				},
-				{ guard: 'ownCompletion', target: 'blocked' }
+				{ guard: 'ownCompletion', target: 'routing', actions: 'recordUncertain' }
 			],
-			'xstate.error.actor.*': { guard: 'ownCompletion', target: 'uncertain' }
+			'xstate.error.actor.*': {
+				guard: 'ownCompletion',
+				target: 'routing',
+				actions: ['notifyUncertain', 'recordUncertain']
+			}
 		}
 	})
 export const imageQueueMachine = model.createMachine({
@@ -466,10 +485,14 @@ export const imageQueueMachine = model.createMachine({
 								onDone: [
 									{ guard: not('current'), target: 'idle' },
 									{ guard: not('online'), target: 'idle' },
-									{ guard: ({ event }) => event.output, target: 'uncertain' },
+									{
+										guard: ({ event }) => event.output,
+										target: 'routing',
+										actions: ['notifyUncertain', 'recordUncertain']
+									},
 									{ target: 'fetching' }
 								],
-								onError: 'uncertain'
+								onError: { target: 'routing', actions: ['notifyUncertain', 'recordUncertain'] }
 							}
 						},
 						fetching: {
@@ -561,32 +584,6 @@ export const imageQueueMachine = model.createMachine({
 						},
 						savingReady: writing('startReady', 'recordReady'),
 						savingFailure: writing('startFailure', 'recordFailure'),
-						uncertain: {
-							entry: [
-								({ context }) => {
-									for (const slot of context.slots)
-										slot.send({ type: 'UNKNOWN', sourceUrl: context.selected!.sourceUrl })
-								},
-								assign({
-									blocked: ({ context }) => [...context.blocked, context.selected!.id],
-									uncertain: ({ context }) => [...context.uncertain, context.selected!.id],
-									write: undefined,
-									fetched: undefined,
-									result: undefined
-								})
-							],
-							always: 'routing'
-						},
-						blocked: {
-							entry: assign({
-								blocked: ({ context }) => [...context.blocked, context.selected!.id],
-								uncertain: ({ context }) => [...context.uncertain, context.selected!.id],
-								write: undefined,
-								fetched: undefined,
-								result: undefined
-							}),
-							always: 'routing'
-						},
 						unavailable: {}
 					}
 				}

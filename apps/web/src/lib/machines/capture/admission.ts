@@ -17,7 +17,46 @@ function owner(context: Context) {
 	return Object.hasOwn(context.owners, id) ? context.owners[id] : undefined
 }
 /** Process-local bounded quota. Lease identity makes release idempotent. */
-export const captureAdmissionMachine = setup<Context, Event>({}).createMachine({
+const admissionModel = setup<Context, Event>({}).extend({
+	actions: {
+		resetWindow: assign(({ context }) => ({
+			owners: {
+				...context.owners,
+				[request(context).owner]: {
+					start: request(context).now,
+					count: 0,
+					active: owner(context)?.active ?? 0
+				}
+			}
+		})),
+		openWindow: assign(({ context }) => ({
+			owners: {
+				...context.owners,
+				[request(context).owner]: { start: request(context).now, count: 0, active: 0 }
+			}
+		})),
+		grantLease: assign(({ context }) => {
+			const value = owner(context)
+			if (!value) throw new Error('Missing quota window')
+			return {
+				sequence: context.sequence + 1,
+				leases: { ...context.leases, [context.sequence + 1]: request(context).owner },
+				owners: {
+					...context.owners,
+					[request(context).owner]: {
+						...value,
+						active: value.active + 1,
+						count: value.count + 1
+					}
+				}
+			}
+		}),
+		replyGranted: ({ context }) => request(context).reply(context.sequence),
+		denyLease: ({ context }) => request(context).reply(undefined),
+		clearRequest: assign({ request: undefined })
+	}
+})
+export const captureAdmissionMachine = admissionModel.createMachine({
 	id: 'capture-admission',
 	context: { owners: {}, leases: {}, sequence: 0, request: undefined },
 	initial: 'accepting',
@@ -58,76 +97,38 @@ export const captureAdmissionMachine = setup<Context, Event>({}).createMachine({
 				)
 			})),
 			always: [
-				{ guard: ({ context }) => Object.keys(context.leases).length >= 4, target: 'denied' },
+				{
+					guard: ({ context }) => Object.keys(context.leases).length >= 4,
+					target: 'accepting',
+					actions: ['denyLease', 'clearRequest']
+				},
 				{
 					guard: ({ context }) => !owner(context) && Object.keys(context.owners).length >= 1024,
-					target: 'denied'
+					target: 'accepting',
+					actions: ['denyLease', 'clearRequest']
 				},
-				{ guard: ({ context }) => !owner(context), target: 'openingWindow' },
+				{ guard: ({ context }) => !owner(context), target: 'checkingOwner', actions: 'openWindow' },
 				{
 					guard: ({ context }) => request(context).now - (owner(context)?.start ?? 0) >= 60000,
-					target: 'resettingWindow'
+					target: 'checkingOwner',
+					actions: 'resetWindow'
 				},
 				{ target: 'checkingOwner' }
 			]
-		},
-		openingWindow: {
-			entry: assign(({ context }) => ({
-				owners: {
-					...context.owners,
-					[request(context).owner]: { start: request(context).now, count: 0, active: 0 }
-				}
-			})),
-			always: 'checkingOwner'
-		},
-		resettingWindow: {
-			entry: assign(({ context }) => ({
-				owners: {
-					...context.owners,
-					[request(context).owner]: {
-						start: request(context).now,
-						count: 0,
-						active: owner(context)?.active ?? 0
-					}
-				}
-			})),
-			always: 'checkingOwner'
 		},
 		checkingOwner: {
 			always: [
 				{
 					guard: ({ context }) =>
 						(owner(context)?.active ?? 0) >= 2 || (owner(context)?.count ?? 0) >= 20,
-					target: 'denied'
+					target: 'accepting',
+					actions: ['denyLease', 'clearRequest']
 				},
-				{ target: 'granted' }
+				{
+					target: 'accepting',
+					actions: ['grantLease', 'replyGranted', 'clearRequest']
+				}
 			]
-		},
-		granted: {
-			entry: [
-				assign(({ context }) => {
-					const value = owner(context)
-					if (!value) throw new Error('Missing quota window')
-					return {
-						sequence: context.sequence + 1,
-						leases: { ...context.leases, [context.sequence + 1]: request(context).owner },
-						owners: {
-							...context.owners,
-							[request(context).owner]: {
-								...value,
-								active: value.active + 1,
-								count: value.count + 1
-							}
-						}
-					}
-				}),
-				({ context }) => request(context).reply(context.sequence)
-			],
-			always: { target: 'accepting', actions: assign({ request: undefined }) }
-		},
-		denied: {
-			entry: ({ context }) => request(context).reply(undefined),
-			always: { target: 'accepting', actions: assign({ request: undefined }) }
 		}
 	}
 })
