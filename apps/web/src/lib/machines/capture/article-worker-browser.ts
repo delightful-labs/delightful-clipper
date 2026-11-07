@@ -1,3 +1,4 @@
+import { connectivityEvents } from '../../offline/connectivity.js'
 import type { LibraryRecords } from '../../backend/jazz/records.js'
 import type { HostResource, HostResourceEvent } from './article-worker-host.js'
 /** Browser resource adapter only. Admission, call ownership and shutdown ordering belong to the host machine. */
@@ -20,8 +21,8 @@ export function openArticleWorkerBrowser(
 		try {
 			release?.()
 		} finally {
-			window.removeEventListener('offline', offline)
-			window.removeEventListener('online', online)
+			connectivityEvents().removeEventListener('offline', offline)
+			connectivityEvents().removeEventListener('online', online)
 			worker.postMessage({ type: 'STOP' })
 		}
 	}
@@ -33,8 +34,8 @@ export function openArticleWorkerBrowser(
 				(rows) => report({ type: 'PENDING_ROWS', rows }),
 				() => report({ type: 'RESOURCE_ERROR' })
 			)
-			window.addEventListener('offline', offline)
-			window.addEventListener('online', online)
+			connectivityEvents().addEventListener('offline', offline)
+			connectivityEvents().addEventListener('online', online)
 		},
 		quiesce,
 		dispose: () => {

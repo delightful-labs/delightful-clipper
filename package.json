@@ -27,6 +27,7 @@
 		"test:offline": "node --experimental-strip-types apps/web/tests/offline-build.ts && playwright test --config playwright.offline.config.ts",
 		"build:extension": "pnpm --filter @delightful-clipper/extension build",
 		"test:extension": "node --experimental-strip-types apps/extension/tooling/test-build.ts && playwright test --config playwright.extension.config.ts",
+		"test:worker": "playwright test --config playwright.worker.config.ts",
 		"test:fake-data": "playwright test --config playwright.fake-data.config.ts"
 	},
 	"devDependencies": {

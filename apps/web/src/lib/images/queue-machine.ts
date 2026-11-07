@@ -1,3 +1,4 @@
+import { connectivityEvents } from '../offline/connectivity.js'
 import { t } from '../localization/index.js'
 import { canRetryImageFetch, imageRetryDelay } from './failure.js'
 import {
@@ -65,12 +66,12 @@ const observe = fromCallback<Event, ImageCapability>(({ input, sendBack }) =>
 )
 const connectivity = fromCallback<Event>(({ sendBack }) => {
 	const report = () => sendBack({ type: 'CONNECTIVITY', online: navigator.onLine })
-	window.addEventListener('online', report)
-	window.addEventListener('offline', report)
+	connectivityEvents().addEventListener('online', report)
+	connectivityEvents().addEventListener('offline', report)
 	report()
 	return () => {
-		window.removeEventListener('online', report)
-		window.removeEventListener('offline', report)
+		connectivityEvents().removeEventListener('online', report)
+		connectivityEvents().removeEventListener('offline', report)
 	}
 })
 const reconcile = fromPromise<boolean, Context>(({ input, signal }) =>

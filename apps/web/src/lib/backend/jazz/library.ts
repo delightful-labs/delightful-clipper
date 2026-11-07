@@ -1,5 +1,4 @@
 import { createImageCapability } from '../../images/browser.js'
-import { PUBLIC_FAKE_DATA } from '$app/env/public'
 import { openSearchWorker } from '../../search/browser.js'
 import type { LibraryCapability } from '../../contracts/library.js'
 import { createActor, toPromise } from 'xstate'
@@ -38,7 +37,7 @@ export function createLibraryCapability(
 		reader: records.reader.capability,
 		images: createImageCapability(records.images.capability, request),
 		spawnFakeData: (spawn) =>
-			spawn(records.fakeData(PUBLIC_FAKE_DATA === 'true'), { input: undefined }),
+			spawn(records.fakeData(import.meta.env.PUBLIC_FAKE_DATA === 'true'), { input: undefined }),
 		libraryId: records.articles.libraryId,
 		search: {
 			isCurrent: records.isCurrent,
