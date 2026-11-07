@@ -1,3 +1,4 @@
+import { isOnline } from '../../offline/connectivity.js'
 import { createImageCapability } from '../../images/browser.js'
 import { openSearchWorker } from '../../search/browser.js'
 import type { LibraryCapability } from '../../contracts/library.js'
@@ -23,7 +24,7 @@ export function createLibraryCapability(
 		libraryId: records.articles.libraryId,
 		isCurrent: records.isCurrent,
 		debug: debugEnabled,
-		online: () => navigator.onLine,
+		online: isOnline,
 		open: (report) => openArticleWorkerBrowser(records, report),
 		network: (call, signal) => readCaptureResponse(request, call, signal, records.isCurrent),
 		lookup: async (call) =>

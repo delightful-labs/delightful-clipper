@@ -28,7 +28,25 @@ export default defineConfig(({ command, mode }) => {
 		envPrefix: ['VITE_', 'PUBLIC_'],
 		// The search worker starts after account readiness. Prebundle its dependency
 		// so a cold optimizer cannot trigger a late full-page reload.
-		optimizeDeps: { exclude: ['delightful-ui'], include: ['minisearch'] },
+		optimizeDeps: {
+			exclude: ['delightful-ui'],
+			include: [
+				'minisearch',
+				'jazz-tools',
+				'jazz-tools/client',
+				'delightful-local-first/recovery/view',
+				'delightful-local-first/forms/lifecycle',
+				'delightful-local-first/diagnostics/logger',
+				'delightful-local-first/backend/jazz/startup',
+				'delightful-local-first/backend/jazz/session-readiness',
+				'delightful-local-first/backend/jazz/recovery',
+				'delightful-local-first/backend/jazz/restoration',
+				'delightful-local-first/session/workflow',
+				'delightful-local-first/restoration/workflow',
+				'delightful-local-first/recovery/workflow',
+				'delightful-local-first/workspace/creation/workflow'
+			]
+		},
 		resolve: {
 			alias: [
 				{ find: /^#jazz-wasm-binary/, replacement: join(dirname(wasmEntry), 'jazz_wasm_bg.wasm') }
@@ -63,7 +81,9 @@ export default defineConfig(({ command, mode }) => {
 				outDir:
 					command === 'serve'
 						? process.env.CLIPPER_TEST === 'true'
-							? '.svelte-kit/e2e'
+							? process.env.CLIPPER_TEST_WORKER === 'true'
+								? '.svelte-kit/e2e-worker'
+								: '.svelte-kit/e2e'
 							: mode === 'agent'
 								? '.svelte-kit/agent'
 								: '.svelte-kit/local'

@@ -1,5 +1,5 @@
 import { createActor, toPromise } from 'xstate'
-import { currentLibraryRecords } from '../src/lib/backend/jazz/account.js'
+import { currentLibraryRecords } from './fixture-records.js'
 
 /** Disposable browser fixture through the actual domain save owner, never raw storage. */
 export async function seedStartupLibrary(count: number) {

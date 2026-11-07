@@ -1,0 +1,28 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -54,6 +54,11 @@
+       "types": "./dist/contracts/recovery-phrase.d.ts",
+       "default": "./dist/contracts/recovery-phrase.js"
+     },
++    "./recovery/view": {
++      "types": "./dist/components/identity/RecoveryPhraseView.svelte.d.ts",
++      "svelte": "./dist/components/identity/RecoveryPhraseView.svelte",
++      "default": "./dist/components/identity/RecoveryPhraseView.svelte"
++    },
+     "./recovery/svelte": {
+       "types": "./dist/integrations/identity/RecoveryPhrase.svelte.d.ts",
+       "svelte": "./dist/integrations/identity/RecoveryPhrase.svelte",
+diff --git a/dist/components/identity/RecoveryPhraseView.svelte.d.ts b/dist/components/identity/RecoveryPhraseView.svelte.d.ts
+--- a/dist/components/identity/RecoveryPhraseView.svelte.d.ts
++++ b/dist/components/identity/RecoveryPhraseView.svelte.d.ts
+@@ -1,7 +1,7 @@
+-import type { RecoveryPhraseView } from '../../contracts/recovery-phrase.js';
++import type { RecoveryPhraseView as RecoveryPhraseViewModel } from '../../contracts/recovery-phrase.js';
+ import type { RecoveryMessages } from '../../contracts/recovery-messages.js';
+ type $$ComponentProps = {
+-    view: RecoveryPhraseView;
++    view: RecoveryPhraseViewModel;
+     messages: RecoveryMessages;
+     onReveal: () => void;
+     onRetry: () => void;

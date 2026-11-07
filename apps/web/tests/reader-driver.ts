@@ -1,5 +1,5 @@
 import { createActor, toPromise } from 'xstate'
-import { currentLibraryRecords } from '../src/lib/backend/jazz/account.js'
+import { currentLibraryRecords } from './fixture-records.js'
 import { projectReaderState } from '../src/lib/reader/schema.js'
 export async function seedReader(url: string, paragraphCount = 70) {
 	const records = currentLibraryRecords()

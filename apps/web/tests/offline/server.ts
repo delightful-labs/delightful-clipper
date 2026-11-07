@@ -24,7 +24,9 @@ export function staticShellServer(initialRoot: string) {
 		}
 		if (
 			(url.pathname === '/' && failRoot) ||
-			(url.pathname.includes('/immutable/workers/') && failWorker)
+			(url.pathname.includes('/immutable/workers/') &&
+				failWorker &&
+				!['worker', 'sharedworker'].includes(String(req.headers['sec-fetch-dest'])))
 		) {
 			res.writeHead(503)
 			res.end('Fixture failure')

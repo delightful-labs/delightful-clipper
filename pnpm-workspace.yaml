@@ -17,6 +17,7 @@ onlyBuiltDependencies:
 packageManagerStrictVersion: true
 
 patchedDependencies:
+  delightful-local-first@0.0.0: patches/delightful-local-first@0.0.0.patch
   jazz-tools@2.0.0-alpha.59: patches/jazz-tools@2.0.0-alpha.59.patch
 
 savePrefix: ''

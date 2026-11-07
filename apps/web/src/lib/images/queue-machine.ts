@@ -1,4 +1,4 @@
-import { connectivityEvents } from '../offline/connectivity.js'
+import { connectivityEvents, isOnline } from '../offline/connectivity.js'
 import { t } from '../localization/index.js'
 import { canRetryImageFetch, imageRetryDelay } from './failure.js'
 import {
@@ -65,7 +65,7 @@ const observe = fromCallback<Event, ImageCapability>(({ input, sendBack }) =>
 	)
 )
 const connectivity = fromCallback<Event>(({ sendBack }) => {
-	const report = () => sendBack({ type: 'CONNECTIVITY', online: navigator.onLine })
+	const report = () => sendBack({ type: 'CONNECTIVITY', online: isOnline() })
 	connectivityEvents().addEventListener('online', report)
 	connectivityEvents().addEventListener('offline', report)
 	report()
@@ -231,9 +231,9 @@ const model = setup<
 			enqueue.assign({ slots: [], views: {}, documentId: '' })
 		}),
 		attach: enqueueActions(({ context, event, enqueue }) => {
-			if (event.type !== 'ATTACH') return
+			if (event.type !== 'ATTACH' && event.type !== 'ATTACH_SURFACE') return
 			for (const slot of context.slots) enqueue.stopChild(slot)
-			const urls = imageSources(event.root.innerHTML)
+			const urls = event.type === 'ATTACH' ? imageSources(event.root.innerHTML) : event.sources
 			enqueue.assign(({ context, spawn }) => ({
 				documentId: event.documentId,
 				views: {},
@@ -391,6 +391,7 @@ export const imageQueueMachine = model.createMachine({
 					}
 				},
 				ATTACH: { guard: 'current', actions: 'attach' },
+				ATTACH_SURFACE: { guard: 'current', actions: 'attach' },
 				DETACH: { actions: 'detach' },
 				IMAGE_VIEW: [
 					{

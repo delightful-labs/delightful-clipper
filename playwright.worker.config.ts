@@ -12,6 +12,7 @@ export default defineConfig({
 		timeout: 60000,
 		env: {
 			CLIPPER_TEST: 'true',
+			CLIPPER_TEST_WORKER: 'true',
 			PUBLIC_FAKE_DATA: 'false',
 			PUBLIC_DEBUG: 'true',
 			CAPTURE_GATEWAY_ENABLED: 'false',

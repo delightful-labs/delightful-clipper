@@ -7,7 +7,7 @@ const liveSessions = new Set<Awaited<ReturnType<typeof createJazzSession>>>()
 export async function seedLegacy(keepOpen = false) {
 	const session = await createJazzSession({
 		appId: '2db98ae3-fcf1-41e8-b7d3-9818496bde60',
-		serverUrl: 'http://127.0.0.1:5181',
+		serverUrl: import.meta.env.PUBLIC_JAZZ_SERVER_URL,
 		env: 'clipper',
 		initial: 'local-first',
 		runtimeSources: { wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION }
@@ -62,6 +62,6 @@ export async function seedLegacy(keepOpen = false) {
 	}
 }
 export async function sameAccount(accountId: string) {
-	const { currentLibraryRecords } = await import('../src/lib/backend/jazz/account.js')
+	const { currentLibraryRecords } = await import('./fixture-records.js')
 	return currentLibraryRecords().articles.libraryId === accountId
 }

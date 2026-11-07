@@ -1,4 +1,4 @@
-import { connectivityEvents } from './connectivity.js'
+import { connectivityEvents, isOnline } from './connectivity.js'
 import type {
 	ShellEvent,
 	ShellRegistration,
@@ -48,7 +48,7 @@ export function observeShell(registration: ShellRegistration, report: (event: Sh
 export const observeBrowserConnection: import('../contracts/connection.js').ConnectionObserver = (
 	report
 ) => {
-	const update = () => report({ type: navigator.onLine ? 'ONLINE' : 'OFFLINE' })
+	const update = () => report({ type: isOnline() ? 'ONLINE' : 'OFFLINE' })
 	connectivityEvents().addEventListener('online', update)
 	connectivityEvents().addEventListener('offline', update)
 	update()
