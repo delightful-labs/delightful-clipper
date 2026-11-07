@@ -172,19 +172,24 @@ cross-device access remain unverified.
 ## Clipper browser wiring — implementation qualification
 
 The user approved the shared DLF adapter, implementation tests, and a temporary
-browser-tab intent containing only the chosen operation and current library ID.
+browser-tab intent containing the chosen operation and current library ID; the
+approved attempt-bound refactor also records a random authorization attempt ID.
 The three approved labels are now in the account panel. No token is stored in the
-intent. The OAuth coordinator is not attached to the diagnostic machine inspector.
+intent. The diagnostic observer records modeled state names and sanitized errors,
+never context, event payloads, provider URLs or credentials.
 
 Connect and sign-in explicitly persist the intent before authorizing. On return,
 the coordinator checks the saved library ID against the selected local library,
-reads the Better Auth session, and dispatches the selected command to the existing
-application actor. The token source checks the exact user ID, issuer and audience
+requires a signed callback-completion receipt for that attempt and its newly
+authenticated user, removes the tab intent, then dispatches the selected command
+to the application actor. Existing Better Auth login alone is insufficient. The token source checks the exact user ID, issuer and audience
 on every token fetch; it does not persist the JWT.
 
 The application actor drains its existing library child before admitting the DLF
 operation. An issued SDK operation remains owned until it settles, including on
-shutdown. Its result is then reported to the coordinator and the intent is removed.
+shutdown. Its result is reported with the attempt ID. Cancellation before issue
+and unresolved SDK outcomes have distinct states; failed intent removal blocks
+issue. One parent invokes both actors and joins shutdown.
 Rejected/stale commands report failure rather than leaving the coordinator waiting.
 No provider watcher or parallel Jazz session owner is mounted.
 
@@ -195,7 +200,8 @@ Local use remains independent of auth service availability. Failures reuse exist
 approved generic account feedback; there is no automatic mutation retry.
 
 The Clipper vendor archive retains the existing `aaf718d-logger` DLF baseline and
-adds only the token contract and Jazz adapter outputs plus their public exports.
+adds the token contract, Jazz adapter and reusable OAuth coordinator outputs
+plus their public exports.
 It does not upgrade Clipper to the DLF development worktree wholesale. Shared
 source and tests are in the isolated `feat/atproto-token-identity` DLF worktree;
 they are not committed or published upstream yet.
@@ -232,3 +238,25 @@ No credentials or registry decisions are taken from the capture request body.
 Regression tests exercise real signature verification and account admission for
 an external JWT, wrong-audience rejection, and absent/invalid-origin fail-closed
 behavior. Live parser qualification follows deployment under the linked account.
+
+## Attempt-bound refactor qualification
+
+Callback tests use the actual installed Better Auth/plugin stack with mocked
+provider exchange only. They verify the receipt is issued for the new session.
+Additional checks cover receipt tampering, expiry, current-user mismatch, callback
+failure, signed-in command rejection and cancellation during library drain.
+The user approved the implementation for Clipper on 2026-11-07. Regression tests
+exercise interrupted OAuth with an older login, wrong-attempt completion, failed
+intent consumption, stale settlement, consumed-intent reload, late completion
+after shutdown, each terminal disposition, account-owner failure and parent
+shutdown joining both before and after SDK issue. Existing delayed-bootstrap,
+local-work rejection and signed-in admission cases also pass.
+
+The complete Clipper suite passes 643 tests with one skip. Type/Svelte checks,
+lint, formatting, vendor integrity and production build pass. The shared DLF
+coordinator is exercised through Clipper's provider adapter and owning actor tree.
+DLF source remains uncommitted upstream; only the required coordinator and token
+contract outputs are added to Clipper's existing vendor baseline. Live OAuth with
+the new receipt protocol still requires qualification after preview deployment;
+the earlier live-login result applies to the prior callback flow. See
+[the ownership note](reviews/atproto-attempt-refactor.md).

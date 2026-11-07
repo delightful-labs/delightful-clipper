@@ -1,3 +1,4 @@
+import { handleConfiguredAuth } from './completion-handler.js'
 import { createAuthDatabase, postgresConnection } from './database.js'
 import { createAuthServer, authConfiguration } from './server.js'
 
@@ -28,7 +29,7 @@ export async function handleAuth(request: Request): Promise<Response> {
 	try {
 		auth ??= createAuthServer(createAuthDatabase(connection.data), parsed.data)
 		stage = 'request'
-		return await auth.handler(request)
+		return await handleConfiguredAuth(auth, request, parsed.data)
 	} catch {
 		// Deliberately exclude raw errors, connection strings, tokens and stack traces.
 		return unavailable(`auth_${stage}_failed`, [], 500)

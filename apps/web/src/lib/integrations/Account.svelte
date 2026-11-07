@@ -11,17 +11,17 @@
 	import RecoveryPhrase from 'delightful-local-first/recovery/svelte'
 	import { Button, StatusMessage, Textarea, InputText } from 'delightful-ui'
 	import {
-		createApplicationReadinessMachine,
 		selectApplicationView,
 		selectRecoveryBinding,
 		selectLibraryActor
 	} from '../machines/runtime/application-readiness.js'
 	import { accountInput, type Session, type LibraryFactory } from '../backend/jazz/account.js'
+	import { createAccountLifecycleMachine } from '../machines/runtime/account-lifecycle.js'
 	import { atprotoMachine } from '../machines/runtime/atproto.js'
 	import { t, action } from '../localization/index.js'
 
 	const applicationReadinessMachine =
-		createApplicationReadinessMachine<Session>(observeBrowserConnection)
+		createAccountLifecycleMachine<Session>(observeBrowserConnection)
 	let {
 		appId,
 		serverUrl,
@@ -39,7 +39,7 @@
 		libraryFactory?: LibraryFactory
 		onSnapshot?: (snapshot: ApplicationSnapshot<Session>) => void
 	} = $props()
-	let snapshot = $state<SnapshotFrom<typeof applicationReadinessMachine>>()
+	let snapshot = $state<ApplicationSnapshot<Session>>()
 	let phrase = $state('')
 	let handle = $state('')
 	let oauthSnapshot = $state<SnapshotFrom<typeof atprotoMachine>>()
@@ -72,49 +72,34 @@
 	onMount(() => {
 		if (!appId || !serverUrl) return
 		const actor = createActor(applicationReadinessMachine, {
-			input: accountInput({ appId, serverUrl, env: 'clipper' }, libraryFactory),
+			input: {
+				account: accountInput({ appId, serverUrl, env: 'clipper' }, libraryFactory),
+				oauth: {
+					storage: {
+						getItem: (key) => window.sessionStorage.getItem(key),
+						setItem: (key, value) => window.sessionStorage.setItem(key, value),
+						removeItem: (key) => window.sessionStorage.removeItem(key)
+					},
+					origin: window.location.origin,
+					navigate: (url) => window.location.assign(url)
+				}
+			},
 			inspect: inspectMachines
 		})
-		let resumeRequested = false
-		const oauth = createActor(atprotoMachine, {
-			input: {
-				storage: {
-					getItem: (key) => window.sessionStorage.getItem(key),
-					setItem: (key, value) => window.sessionStorage.setItem(key, value),
-					removeItem: (key) => window.sessionStorage.removeItem(key)
-				},
-				origin: window.location.origin,
-				navigate: (url) => window.location.assign(url),
-				dispatch: (command) => actor.send(command)
-			}
-		})
-		const oauthSubscription = oauth.subscribe((next) => {
-			oauthSnapshot = next
-		})
-		beginAtproto = (operation) => {
-			const current = actor.getSnapshot().context.observation
-			if (current.status !== 'ready') return
-			oauth.send({ type: 'BEGIN', intent: { operation, accountId: current.accountId }, handle })
-		}
-		oauth.start()
+		beginAtproto = (operation) => actor.send({ type: 'BEGIN', operation, handle })
 		send = (event) => actor.send(event)
 		const subscription = actor.subscribe((next) => {
-			snapshot = next
-			if (
-				!resumeRequested &&
-				selectApplicationView(next, true).canTokenIdentity &&
-				next.context.observation.status === 'ready'
-			) {
-				resumeRequested = true
-				oauth.send({ type: 'RESUME', accountId: next.context.observation.accountId })
-			}
-			onSnapshot?.(next)
+			snapshot = next.context.application
+			oauthSnapshot = next.children.oauth?.getSnapshot()
+			if (snapshot) onSnapshot?.(snapshot)
 		})
 		actor.start()
+		const oauthSubscription = actor.getSnapshot().children.oauth?.subscribe((next) => {
+			oauthSnapshot = next
+		})
 		return () => {
 			subscription.unsubscribe()
-			oauthSubscription.unsubscribe()
-			stopAfterShutdown(oauth)
+			oauthSubscription?.unsubscribe()
 			phrase = ''
 			stopAfterShutdown(actor)
 		}
