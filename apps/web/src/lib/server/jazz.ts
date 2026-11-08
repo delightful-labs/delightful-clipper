@@ -36,7 +36,9 @@ const publicUrl = process.env.VERCEL
 			process.env.VERCEL_URL,
 			process.env.VERCEL_BRANCH_URL,
 			process.env.VERCEL_PROJECT_PRODUCTION_URL,
-			...(process.env.VERCEL_ENV === 'production' ? ['clipper.delightfullabs.com'] : [])
+			...(process.env.VERCEL_ENV === 'production'
+				? ['clipper.delightfullabs.com', 'delightful-clipper.vercel.app']
+				: [])
 		]
 			.filter((host): host is string => Boolean(host))
 			.map((host) => `https://${host}/jazz`)
