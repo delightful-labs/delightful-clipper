@@ -1,10 +1,7 @@
-import { isRequestAuthenticationError, resolveRequestSession } from 'jazz-tools/backend'
+import { isRequestAuthenticationError, isNoJazzAccountError, type Jazz } from 'jazz-tools/backend'
 
-/** Registry admission binds the signed bearer to its canonical Jazz account. */
-export async function authenticateGateway(
-	request: Request,
-	config: { appId: string; accountRegistry: string }
-) {
+/** Backend admission binds the request proof to its canonical Jazz account. */
+export async function authenticateGateway(request: Request, backend: Pick<Jazz, 'accountFor'>) {
 	const headers = { 'Cache-Control': 'private, no-store', 'Content-Type': 'application/json' }
 	const failure = (status: 401 | 503) =>
 		new Response(
@@ -14,16 +11,11 @@ export async function authenticateGateway(
 			}),
 			{ status, headers }
 		)
-	if (!config.appId || !config.accountRegistry) return failure(503)
 	try {
-		const session = await resolveRequestSession(
-			request,
-			{ ...config, allowLocalFirstAuth: true },
-			{ account: 'login' }
-		)
-		if (!session.account_id) return failure(503)
-		return { accountId: session.account_id }
+		const accountId = await backend.accountFor(request)
+		if (!accountId) return failure(401)
+		return { accountId }
 	} catch (error) {
-		return failure(isRequestAuthenticationError(error) ? 401 : 503)
+		return failure(isRequestAuthenticationError(error) || isNoJazzAccountError(error) ? 401 : 503)
 	}
 }

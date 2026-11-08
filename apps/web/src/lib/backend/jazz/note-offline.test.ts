@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createActor, toPromise } from 'xstate'
-import { createJazzSession } from 'jazz-tools/backend'
+import { createJazzClient } from 'jazz-tools/backend'
 import { ReadTier } from 'jazz-tools'
 import { app } from './schema.js'
 import permissions from './permissions.js'
@@ -28,9 +28,9 @@ it('compiles the actual native policies and reopens locally durable notes withou
 			}
 		}
 	}
-	let session: Awaited<ReturnType<typeof createJazzSession>> | undefined
+	let session: Awaited<ReturnType<typeof createJazzClient>> | undefined
 	try {
-		session = await createJazzSession(config)
+		session = await createJazzClient(config)
 		const owner = session.getSnapshot().account!.id
 		const db = session.getSnapshot().client!.db
 		await db.disconnect()
@@ -115,8 +115,8 @@ it('compiles the actual native policies and reopens locally durable notes withou
 		).toMatchObject({
 			noteId: documentNoteId
 		})
-		await session.close()
-		session = await createJazzSession(config)
+		await session.close({ timeoutMs: 0 })
+		session = await createJazzClient(config)
 		await session.getSnapshot().client!.db.disconnect()
 		expect(session.getSnapshot().account!.id).toBe(owner)
 		const reopened = createLibraryRecords(session.getSnapshot().client!.db, owner, () => true)
@@ -128,7 +128,7 @@ it('compiles the actual native policies and reopens locally durable notes withou
 		expect(await reopened.notes.readRevision(draft)).toEqual(draft)
 		expect(await reopened.notes.readRevision(legacy)).toEqual(legacy)
 	} finally {
-		await session?.close()
+		await session?.close({ timeoutMs: 0 })
 		await rm(dataPath, { recursive: true, force: true })
 	}
 })

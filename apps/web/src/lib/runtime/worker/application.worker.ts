@@ -4,7 +4,6 @@ import { bindWorkerConnectivity } from '../../offline/connectivity.js'
 import { createActor } from 'xstate'
 import type { AnyActorRef } from 'xstate'
 import { z } from 'zod'
-import { accountRegistryUrl } from 'jazz-tools'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { accountInput } from '../../backend/jazz/account.js'
 import { JAZZ_RUNTIME_VERSION } from '../../offline/runtime-version.js'
@@ -20,7 +19,7 @@ import { inspectMachines } from '../../diagnostics/inspect.js'
 import { workerHostMachine } from './host-machine.js'
 import type { WorkerHost } from './host-machine.js'
 import { createWorkerAccountStore } from './account-store.js'
-import { accountStorageClient } from './storage-channel.js'
+import { accountStorageClient, accountStorageKey } from './storage-channel.js'
 import { brokerHostClient } from './broker-channel.js'
 
 let updateConnectivity: ((online: boolean) => void) | undefined
@@ -88,14 +87,13 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 	}
 	const decoded = initialize.safeParse(data)
 	if (!decoded.success) return
-	const { appId, serverUrl, storage: storagePort, broker: brokerPort } = decoded.data
+	const { serverUrl, storage: storagePort, broker: brokerPort } = decoded.data
 	updateConnectivity = bindWorkerConnectivity(decoded.data.online ?? navigator.onLine)
 	const storage = accountStorageClient(storagePort)
 	const broker = brokerHostClient(brokerPort)
-	const key = `jazz-account-selection-v1:${encodeURIComponent(accountRegistryUrl(serverUrl, appId))}:clipper`
+	const key = accountStorageKey(serverUrl)
 	self.postMessage({ type: 'STORAGE_NAMESPACE', key })
 	const input = accountInput({
-		appId,
 		serverUrl,
 		env: 'clipper',
 		store: createWorkerAccountStore(key, storage),

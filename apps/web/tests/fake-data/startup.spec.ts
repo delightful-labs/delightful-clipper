@@ -1,6 +1,6 @@
 import { openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { test, expect } from '@playwright/test'
-import { startLocalJazzServer } from 'jazz-tools/testing'
+import { startLocalJazzServer } from '../browser-core.js'
 import { app } from '../../src/lib/backend/jazz/schema.js'
 import permissions from '../../src/lib/backend/jazz/permissions.js'
 let authority: Awaited<ReturnType<typeof startLocalJazzServer>>

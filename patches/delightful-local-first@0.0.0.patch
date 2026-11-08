@@ -1,7 +1,7 @@
 diff --git a/package.json b/package.json
 --- a/package.json
 +++ b/package.json
-@@ -54,6 +54,11 @@
+@@ -98,6 +98,11 @@
        "types": "./dist/contracts/recovery-phrase.d.ts",
        "default": "./dist/contracts/recovery-phrase.js"
      },

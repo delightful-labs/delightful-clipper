@@ -1,10 +1,9 @@
+import { extensionPublicKey } from '../../tooling/extension-identity.js'
 import { defineConfig, loadEnv } from 'vite'
 import { svelte } from '@sveltejs/vite-plugin-svelte'
-import { resolveJazzWasmEntry } from 'jazz-tools/dev/vite'
+import { jazzWasmEntry as wasm } from '../web/tooling/jazz-wasm.js'
 import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
-const wasm = resolveJazzWasmEntry()
-if (!wasm) throw new Error('Jazz WASM unavailable')
 export default defineConfig(({ mode }) => {
 	const env = {
 		...loadEnv(mode, resolve('../web'), ''),
@@ -22,15 +21,20 @@ export default defineConfig(({ mode }) => {
 		return url
 	}
 	const server = serviceUrl(
-		env.EXTENSION_JAZZ_SERVER_URL ?? env.PUBLIC_JAZZ_SERVER_URL ?? 'http://127.0.0.1:5174/'
+		env.EXTENSION_JAZZ_SERVER_URL ??
+			env.PUBLIC_JAZZ_SERVER_URL ??
+			'https://clipper.delightfullabs.com/jazz'
 	)
-	const appId = env.EXTENSION_JAZZ_APP_ID ?? env.PUBLIC_JAZZ_APP_ID
+	const appId =
+		env.EXTENSION_JAZZ_APP_ID ?? env.PUBLIC_JAZZ_APP_ID ?? '9c0871ad-3ea3-49d0-9eaf-b034914da924'
 	const localWeb: Record<string, string> = {
+		'http://127.0.0.1:5173': 'http://127.0.0.1:5173/',
+		'http://localhost:5173': 'http://localhost:5173/',
 		'http://127.0.0.1:5174': 'http://127.0.0.1:5173/',
 		'http://localhost:5174': 'http://localhost:5173/'
 	}
 	const web = serviceUrl(
-		env.EXTENSION_WEB_URL ?? localWeb[server.origin] ?? 'https://delightful-clipper.netlify.app/'
+		env.EXTENSION_WEB_URL ?? localWeb[server.origin] ?? 'https://clipper.delightfullabs.com/'
 	)
 	const csp = `script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; worker-src 'self'; connect-src 'self' ${server.origin} ${server.origin.replace(/^http/, 'ws')}; base-uri 'none'; frame-ancestors 'none'`
 	return {
@@ -50,6 +54,7 @@ export default defineConfig(({ mode }) => {
 						source: JSON.stringify(
 							{
 								manifest_version: 3,
+								key: extensionPublicKey,
 								name: 'Delightful Clipper',
 								version: '0.0.3',
 								permissions: ['activeTab', 'scripting', 'storage', 'offscreen'],
@@ -67,6 +72,7 @@ export default defineConfig(({ mode }) => {
 		],
 		resolve: {
 			alias: [
+				{ find: /^jazz-wasm$/, replacement: wasm },
 				{ find: /^#jazz-wasm-binary/, replacement: join(dirname(wasm), 'jazz_wasm_bg.wasm') },
 				{ find: '$app/env/public', replacement: resolve('src/environment.ts') }
 			]

@@ -1,39 +1,37 @@
+import { browserMigrations } from './tooling/browser-migrations.js'
 import { offlineAssets } from './tooling/offline-assets.js'
-import adapter from '@sveltejs/adapter-netlify'
+import netlifyAdapter from '@sveltejs/adapter-netlify'
+import vercelAdapter from '@sveltejs/adapter-vercel'
 import { sveltekit } from '@sveltejs/kit/vite'
 import { defineConfig } from 'vite'
 import { dirname, join } from 'node:path'
-import { resolveJazzWasmEntry } from 'jazz-tools/dev/vite'
-import { jazzSvelteKit } from 'jazz-tools/dev/sveltekit'
+import { jazzWasmEntry as wasmEntry } from './tooling/jazz-wasm.js'
+import { jazzDev } from './tooling/jazz-dev.js'
 import svg from '@poppanator/sveltekit-svg'
 
-const wasmEntry = resolveJazzWasmEntry()
-if (!wasmEntry) throw new Error('Jazz WASM package is unavailable')
-
 export default defineConfig(({ command, mode }) => {
-	if (
-		command === 'serve' &&
-		['dev', 'dev:agent'].includes(process.env.npm_lifecycle_event ?? '') &&
-		process.env.CLIPPER_TEST !== 'true'
-	) {
-		const appId =
-			mode === 'agent'
-				? '8d217851-cec3-4c24-a595-d130259d497c'
-				: '9c0871ad-3ea3-49d0-9eaf-b034914da924'
-		// Jazz's env-file precedence otherwise overrides the configured agent namespace.
-		process.env.PUBLIC_JAZZ_APP_ID = appId
-		process.env.JAZZ_ACCOUNT_REGISTRY = `http://127.0.0.1:${mode === 'agent' ? 5181 : 5174}/apps/${appId}/accounts`
+	const development =
+		command === 'serve' && ['dev', 'dev:agent'].includes(process.env.npm_lifecycle_event ?? '')
+	if (process.env.VERCEL || development) {
+		process.env.PUBLIC_JAZZ_APP_ID ??= '9c0871ad-3ea3-49d0-9eaf-b034914da924'
+		if (process.env.CLIPPER_TEST_EXTERNAL_JAZZ !== 'true' || process.env.CLIPPER_TEST !== 'true')
+			process.env.PUBLIC_JAZZ_SERVER_URL = 'same-origin'
+		process.env.CAPTURE_GATEWAY_ENABLED ??= 'true'
 	}
+	if (mode === 'agent') process.env.PUBLIC_DEBUG = 'true'
+	if (mode === 'agent' || process.env.CLIPPER_TEST === 'true')
+		process.env.CLIPPER_EPHEMERAL_JAZZ = 'true'
 	return {
 		envPrefix: ['VITE_', 'PUBLIC_'],
 		// The search worker starts after account readiness. Prebundle its dependency
 		// so a cold optimizer cannot trigger a late full-page reload.
 		optimizeDeps: {
-			exclude: ['delightful-ui'],
+			exclude: ['delightful-ui', 'jazz-wasm'],
 			include: [
 				'minisearch',
 				'jazz-tools',
 				'jazz-tools/client',
+				'jazz-tools/local-first',
 				'delightful-local-first/recovery/view',
 				'delightful-local-first/forms/lifecycle',
 				'delightful-local-first/diagnostics/logger',
@@ -47,37 +45,21 @@ export default defineConfig(({ command, mode }) => {
 				'delightful-local-first/workspace/creation/workflow'
 			]
 		},
+		ssr: { external: ['jazz-tools', 'jazz-napi', '@vercel/functions', '@vercel/sandbox', 'ws'] },
 		resolve: {
 			alias: [
+				{ find: /^jazz-wasm$/, replacement: wasmEntry },
 				{ find: /^#jazz-wasm-binary/, replacement: join(dirname(wasmEntry), 'jazz_wasm_bg.wasm') }
 			]
 		},
 		plugins: [
+			browserMigrations(process.env.CLIPPER_TEST_MIGRATIONS === 'true'),
 			offlineAssets(),
-			jazzSvelteKit({
-				server:
-					command === 'serve' &&
-					['dev', 'dev:agent'].includes(process.env.npm_lifecycle_event ?? '') &&
-					process.env.CLIPPER_TEST !== 'true'
-						? {
-								port: mode === 'agent' ? 5181 : 5174,
-								host: '127.0.0.1',
-								appId:
-									mode === 'agent'
-										? '8d217851-cec3-4c24-a595-d130259d497c'
-										: '9c0871ad-3ea3-49d0-9eaf-b034914da924',
-								inMemory: mode === 'agent'
-							}
-						: false,
-				appId:
-					mode === 'agent'
-						? '8d217851-cec3-4c24-a595-d130259d497c'
-						: '9c0871ad-3ea3-49d0-9eaf-b034914da924',
-				schemaDir: 'src/lib/backend/jazz',
-				inspector: false
-			}),
+			jazzDev(command === 'serve' && (development || process.env.CLIPPER_TEST === 'true')),
 			sveltekit({
-				adapter: adapter(),
+				adapter: process.env.VERCEL
+					? vercelAdapter({ runtime: 'nodejs24.x', regions: ['iad1'], maxDuration: 300 })
+					: netlifyAdapter(),
 				outDir:
 					command === 'serve'
 						? process.env.CLIPPER_TEST === 'true'
@@ -97,7 +79,7 @@ export default defineConfig(({ command, mode }) => {
 			svg()
 		],
 		server: {
-			host: '127.0.0.1',
+			host: process.env.CLIPPER_TEST === 'true' ? '127.0.0.1' : '0.0.0.0',
 			port: 5173,
 			strictPort: true,
 			...(process.env.CLIPPER_TEST === 'true' ? { fs: { allow: ['.'] } } : {})

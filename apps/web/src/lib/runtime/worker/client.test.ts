@@ -1,3 +1,4 @@
+import { accountStorageKey } from './storage-channel.js'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openApplicationClient } from './client.js'
 import type { WorkerReply } from './client.js'
@@ -73,3 +74,38 @@ it.each(['failure', 'detach'])(
 		expect(worker.onmessage).toBeNull()
 	}
 )
+
+it('binds the alpha.60 namespace before serving the worker account read', async () => {
+	vi.stubGlobal('Worker', NativeWorker)
+	vi.stubGlobal('window', new EventTarget())
+	vi.stubGlobal('navigator', { onLine: true })
+	const getItem = vi.fn(() => 'opaque-test-selection')
+	vi.stubGlobal('localStorage', { getItem, setItem: vi.fn() })
+	const client = openApplicationClient({
+		appId: crypto.randomUUID(),
+		serverUrl: 'https://example.com/jazz',
+		publish: vi.fn(),
+		recovery: vi.fn(),
+		failed: vi.fn()
+	})
+	const worker = NativeWorker.latest
+	if (!worker) throw new Error('Worker fixture unavailable')
+	const initialize: { storage: MessagePort } | undefined = worker.postMessage.mock.calls[0]?.[0]
+	if (!initialize) throw new Error('Worker initialization missing')
+	const replies: unknown[] = []
+	initialize.storage.onmessage = (event) => replies.push(event.data)
+	initialize.storage.start()
+	const id = crypto.randomUUID()
+	const key = accountStorageKey('https://example.com/jazz')
+	try {
+		worker.emit({ type: 'STORAGE_NAMESPACE', key })
+		initialize.storage.postMessage({ type: 'READ', id })
+		await vi.waitFor(() =>
+			expect(replies).toEqual([{ type: 'RESULT', id, value: 'opaque-test-selection' }])
+		)
+		expect(getItem).toHaveBeenCalledExactlyOnceWith(key)
+	} finally {
+		client.close()
+		worker.emit({ type: 'CLOSED' })
+	}
+})

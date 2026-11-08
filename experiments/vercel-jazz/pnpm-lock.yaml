@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  jazz-tools@2.0.0-alpha.60:
+    hash: 9f3f5cd768967c1c09836307d0e3d49db1899fdb8e7b25228179635441168d28
+    path: patches/jazz-tools-guest-core.patch
+
 importers:
 
   .:
@@ -19,7 +24,7 @@ importers:
         version: 2.0.0-alpha.60
       jazz-tools:
         specifier: 2.0.0-alpha.60
-        version: 2.0.0-alpha.60(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1)
+        version: 2.0.0-alpha.60(patch_hash=9f3f5cd768967c1c09836307d0e3d49db1899fdb8e7b25228179635441168d28)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1)
       svelte:
         specifier: 5.57.2
         version: 5.57.2
@@ -4261,7 +4266,7 @@ snapshots:
       '@garden-co/jazz-napi-linux-x64-gnu': 2.0.0-alpha.60
       '@garden-co/jazz-napi-win32-x64-msvc': 2.0.0-alpha.60
 
-  jazz-tools@2.0.0-alpha.60(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1):
+  jazz-tools@2.0.0-alpha.60(patch_hash=9f3f5cd768967c1c09836307d0e3d49db1899fdb8e7b25228179635441168d28)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1):
     dependencies:
       '@noble/curves': 2.0.1
       '@noble/hashes': 2.0.1

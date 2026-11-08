@@ -1,10 +1,10 @@
-import { schema as s } from 'jazz-tools'
+import { schema as s, defineMigration, migration as m } from 'jazz-tools'
 
-export default s.defineMigration({
+export default defineMigration({
 	migrate: {
 		articleNoteRevisions: {
-			articleParentId: s.add.ref('articles', { default: null }),
-			documentParentId: s.add.ref('documents', { default: null })
+			articleParentId: m.add.ref('articles', { default: null }),
+			documentParentId: m.add.ref('documents', { default: null })
 		}
 	},
 	fromHash: 'd7f861eae955',

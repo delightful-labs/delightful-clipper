@@ -1,15 +1,19 @@
-import { createJazzSession } from 'jazz-tools'
+import { createJazzClient } from 'jazz-tools/client'
+import { browserAccountStore, fixtureServerUrl } from './browser-account-store.js'
 import { createLibraryRecords } from '../src/lib/backend/jazz/records.js'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { JAZZ_RUNTIME_VERSION } from '../src/lib/offline/runtime-version.js'
 /** Test fixture access only. The production UI never imports this Window client. */
-const session = await createJazzSession({
-	appId: import.meta.env.PUBLIC_JAZZ_APP_ID,
-	serverUrl: import.meta.env.PUBLIC_JAZZ_SERVER_URL,
+const serverUrl = fixtureServerUrl()
+const session = await createJazzClient({
+	serverUrl,
+	store: browserAccountStore(serverUrl),
+	client: () => import('jazz-tools/local-first'),
 	env: 'clipper',
 	initial: 'local-first',
 	runtimeSources: { wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION }
 })
+await session.getSnapshot().client?.db.upgradeToLocalFirst(() => import('jazz-tools/local-first'))
 export function currentLibraryRecords() {
 	const { account, client } = session.getSnapshot()
 	if (!account || !client) throw new Error('Fixture account unavailable')

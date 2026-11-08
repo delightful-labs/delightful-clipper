@@ -1,0 +1,11 @@
+--- a/dist/backend/vercel-store.js
++++ b/dist/backend/vercel-store.js
+@@ -246,6 +246,8 @@
+     const claim = environment === undefined ? {} : { environment };
+     return {
+         port: VERCEL_CORE_PORT,
++        // Guest proofs still require the app backend credential and app admission.
++        allowLocalFirstAuth: true,
+         dataDir,
+         blobs: !blobs
+             ? { kind: "sqlite" }

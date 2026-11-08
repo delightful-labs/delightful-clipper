@@ -1,22 +1,6 @@
 import { z } from 'zod'
+import { ACCOUNT_STORAGE_PREFIX } from '../../src/lib/runtime/worker/storage-channel.js'
 import { test, expect } from '@playwright/test'
-import { startLocalJazzServer } from 'jazz-tools/testing'
-import { app } from '../../src/lib/backend/jazz/schema.js'
-import permissions from '../../src/lib/backend/jazz/permissions.js'
-let authority: Awaited<ReturnType<typeof startLocalJazzServer>>
-test.beforeAll(async () => {
-	authority = await startLocalJazzServer({
-		appId: '2db98ae3-fcf1-41e8-b7d3-9818496bde60',
-		host: '127.0.0.1',
-		port: 5481,
-		inMemory: true,
-		schema: app,
-		permissions
-	})
-})
-test.afterAll(async () => {
-	await authority?.stop()
-})
 test('dedicated worker reuses the existing identity and persistent library without a Window shim', async ({
 	page
 }) => {
@@ -93,8 +77,9 @@ test('worker provisions the first local account and library without a Window app
 	await page.goto('/worker-fixture')
 	await expect(page.locator('#worker-test')).toBeAttached()
 	expect(
-		await page.evaluate(() =>
-			Object.keys(localStorage).filter((key) => key.startsWith('jazz-account-selection-v1:'))
+		await page.evaluate(
+			(prefix) => Object.keys(localStorage).filter((key) => key.startsWith(prefix)),
+			ACCOUNT_STORAGE_PREFIX
 		)
 	).toEqual([])
 	const result = await page.evaluate(async () => {

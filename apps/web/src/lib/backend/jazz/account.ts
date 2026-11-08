@@ -3,7 +3,7 @@ import { createLibraryCapability } from './library.js'
 import { createLibraryRecords } from './records.js'
 import { ReadTier } from 'jazz-tools'
 import wasmUrl from '#jazz-wasm-binary?url'
-import type { JazzSession, JazzSessionConfig } from 'jazz-tools/svelte'
+import type { JazzSession, JazzClientConfig } from 'jazz-tools/client'
 import type { JazzClient } from 'jazz-tools/client'
 import { createJazzStartupRegistry } from 'delightful-local-first/backend/jazz/startup'
 import { createJazzSessionReadinessAdapter } from 'delightful-local-first/backend/jazz/session-readiness'
@@ -32,7 +32,12 @@ function bindHost(
 			current = { status: snapshot.status === 'ready' ? 'error' : snapshot.status }
 			return current
 		}
-		if (client === snapshot.client && current.status === 'ready') return current
+		if (
+			client === snapshot.client &&
+			current.status === 'ready' &&
+			current.localFirst === snapshot.client.db.isLocalFirst()
+		)
+			return current
 		client = snapshot.client
 		const account = snapshot.account
 		const db = snapshot.client.db
@@ -43,6 +48,7 @@ function bindHost(
 		}
 		current = {
 			status: 'ready',
+			localFirst: db.isLocalFirst(),
 			binding: Object.freeze({}),
 			accountId: account.id,
 			signedIn: !['urn:jazz:local-first', 'urn:jazz:anonymous'].includes(account.identity.issuer),
@@ -98,6 +104,12 @@ function bindHost(
 	const restored = createJazzRestorationAdapter(session, () => session)
 	return {
 		read,
+		prepare: () => {
+			const snapshot = session.getSnapshot()
+			if (snapshot.status !== 'ready' || !snapshot.client)
+				throw new Error('Account scope unavailable')
+			return snapshot.client.db.upgradeToLocalFirst(localFirst)
+		},
 		readiness,
 		create: () => session.createLocalFirst(),
 		logout: () => session.logout(),
@@ -111,15 +123,17 @@ function bindHost(
 
 // Constructing the registry is inert; only browser mount requests an attachment.
 const registry = createJazzStartupRegistry()
+const localFirst = () => import('jazz-tools/local-first')
 const runtimeSources = Object.freeze({ wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION })
 export function accountInput(
-	config: JazzSessionConfig,
+	config: JazzClientConfig,
 	libraryFactory: LibraryFactory = createLibraryCapability
 ): AccountInput<Session> {
 	// Match Finance: provision a local identity silently when no saved identity exists.
 	return {
 		startup: registry.getJazzStartupBinding({
 			...config,
+			client: localFirst,
 			initial: 'local-first',
 			runtimeSources: config.runtimeSources ?? runtimeSources
 		}),
@@ -127,26 +141,27 @@ export function accountInput(
 			bindHost(
 				session,
 				libraryFactory,
-				JSON.stringify([config.appId, config.serverUrl, config.env])
+				JSON.stringify([config.scope, config.serverUrl, config.env])
 			)
 	}
 }
 
 /** Existing identities/restoration only; extension sign-in must not create an unrelated account. */
 export function existingAccountInput(
-	config: JazzSessionConfig,
+	config: JazzClientConfig,
 	libraryFactory: LibraryFactory = createLibraryCapability
 ): AccountInput<Session> {
 	return {
 		startup: registry.getJazzStartupBinding({
 			...config,
+			client: localFirst,
 			runtimeSources: config.runtimeSources ?? runtimeSources
 		}),
 		bind: (session) =>
 			bindHost(
 				session,
 				libraryFactory,
-				JSON.stringify([config.appId, config.serverUrl, config.env])
+				JSON.stringify([config.scope, config.serverUrl, config.env])
 			)
 	}
 }

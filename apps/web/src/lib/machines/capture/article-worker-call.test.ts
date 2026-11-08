@@ -24,6 +24,7 @@ function fixture(call: HostCall) {
 		SyncReceipt,
 		object
 	>({
+		retainDetached: vi.fn(),
 		open: () => ({}),
 		readLocal: async () => null,
 		assess: () => ({ outcome: 'eligible' }),

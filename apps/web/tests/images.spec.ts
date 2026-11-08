@@ -1,7 +1,7 @@
 import type { ArticleImage } from '../src/lib/images/schema.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { startLocalJazzServer } from 'jazz-tools/testing'
+import { startLocalJazzServer } from './browser-core.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

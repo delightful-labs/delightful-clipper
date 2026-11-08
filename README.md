@@ -1,6 +1,6 @@
 # Delightful Clipper
 
-A private, local-first web article reader and browser clipper. The web foundation supports account creation, recovery, session reload and an owner-only private library root. Article capture, reading and extensions remain unbuilt.
+A private, local-first web article reader and browser clipper. It supports URL and rendered-page capture, private saved readers, organization, recovery, offline reading and a Chromium extension. The web application and Jazz client run in a dedicated worker.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -8,7 +8,7 @@ pnpm verify
 pnpm dev
 ```
 
-The project selects pnpm 10.22.0 and Node 24.22.2. See [tooling documentation](docs/tooling.md) for commands, archive provenance, CI and Netlify configuration.
+The project selects pnpm 10.22.0 and Node 24.22.2. See [tooling documentation](docs/tooling.md) for commands, archive provenance, CI and Vercel configuration.
 
 - [MVP specification](specs/001-jazz-clipper/spec.md)
 - [Technical plan](specs/001-jazz-clipper/plan.md)

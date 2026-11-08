@@ -77,6 +77,10 @@ export function createLaunchMachine(cap: {
 		actors
 	}).extend({
 		guards: {
+			// Offscreen creation can resolve before its ESM message listener is installed.
+			// Retry this read-only request for up to ten seconds; explicit refusals
+			// and issued capture writes never enter this retry path.
+			runtimeMayStillBeStarting: ({ context }) => context.authorizationAttempts < 50,
 			hasCaptureCapacity: (_, params: { pending: Capture[] }) => params.pending.length < 8
 		}
 	})
@@ -191,7 +195,7 @@ export function createLaunchMachine(cap: {
 					],
 					onError: [
 						{
-							guard: ({ context }) => context.authorizationAttempts < 3,
+							guard: 'runtimeMayStillBeStarting',
 							target: 'retryingAuthorization'
 						},
 						{ target: 'accountUnavailable' }

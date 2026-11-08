@@ -38,7 +38,7 @@
 		libraryFactory?: LibraryFactory
 		onSnapshot?: (snapshot: ApplicationSnapshot<Session>) => void
 	} = $props()
-	let snapshot = $state<SnapshotFrom<typeof applicationReadinessMachine>>()
+	let snapshot = $state.raw<SnapshotFrom<typeof applicationReadinessMachine>>()
 	let phrase = $state('')
 	let send = $state<
 		(event: { type: 'CREATE' | 'LOGOUT' | 'RETRY' } | { type: 'RESTORE'; phrase: string }) => void
@@ -59,7 +59,7 @@
 	onMount(() => {
 		if (!appId || !serverUrl) return
 		const actor = createActor(applicationReadinessMachine, {
-			input: accountInput({ appId, serverUrl, env: 'clipper' }, libraryFactory),
+			input: accountInput({ serverUrl, env: 'clipper' }, libraryFactory),
 			inspect: inspectMachines
 		})
 		send = (event) => actor.send(event)

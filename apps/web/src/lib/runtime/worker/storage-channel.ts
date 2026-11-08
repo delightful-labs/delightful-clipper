@@ -1,4 +1,8 @@
 import { z } from 'zod'
+export const ACCOUNT_STORAGE_PREFIX = 'jazz-account-selection-v2:'
+export function accountStorageKey(serverUrl: string) {
+	return `${ACCOUNT_STORAGE_PREFIX}${encodeURIComponent(new URL(serverUrl).href)}:clipper`
+}
 const id = z.string().uuid()
 const request = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('READ'), id }),

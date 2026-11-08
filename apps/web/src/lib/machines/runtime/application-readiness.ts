@@ -100,6 +100,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 		library: libraryMachine,
 		startup: createSessionStartupMachine<Session>(),
 		readiness: createSessionReadinessMachine(),
+		prepare: fromPromise(({ input }: { input: AccountHost }) => required(input.prepare)()),
 		create: fromPromise(({ input }: { input: AccountHost }) => input.create()),
 		logout: fromPromise(({ input }: { input: AccountHost }) => input.logout()),
 		bootstrap: rootBootstrapMachine,
@@ -129,6 +130,8 @@ export function createApplicationReadinessMachine<Session extends object>(
 		},
 		{
 			existingRoot: { outcome: string; write?: RootWrite }
+			stoppingPreparation: undefined
+			needsLocalFirst: undefined
 			stoppingCreate: undefined
 			stoppingRestore: undefined
 			stoppingLogout: undefined
@@ -180,6 +183,11 @@ export function createApplicationReadinessMachine<Session extends object>(
 				'observation' in event &&
 				event.observation === context.observationAttempt,
 
+			stoppingPreparation: stateIn('#application-flow.running.preparing.stopping'),
+			needsLocalFirst: ({ context }) =>
+				context.observation.status === 'ready' &&
+				context.observation.localFirst === false &&
+				!!context.host?.prepare,
 			stoppingCreate: stateIn('#application-flow.running.creating.stopping'),
 			stoppingRestore: stateIn('#application-flow.running.restoring.stopping'),
 			stoppingLogout: stateIn('#application-flow.running.loggingOut.stopping'),
@@ -301,6 +309,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 								target: 'unavailable',
 								actions: assign({ observation: { status: 'error' } })
 							},
+							{ guard: 'needsLocalFirst', target: 'preparing' },
 							{
 								guard: ({ context }) => context.observation.status === 'ready',
 								target: 'library'
@@ -315,6 +324,24 @@ export function createApplicationReadinessMachine<Session extends object>(
 							},
 							{ target: 'unavailable' }
 						]
+					},
+					preparing: {
+						meta: starting,
+						initial: 'active',
+						states: { active: {}, stopping: {} },
+						on: { SHUTDOWN: '.stopping' },
+						invoke: {
+							src: 'prepare',
+							input: ({ context }) => required(context.host),
+							onDone: [
+								{ guard: 'stoppingPreparation', target: 'draining' },
+								{ target: 'route', actions: 'refresh' }
+							],
+							onError: [
+								{ guard: 'stoppingPreparation', target: 'draining' },
+								{ target: 'unavailable', actions: assign({ observation: { status: 'error' } }) }
+							]
+						}
 					},
 					signedOut: {
 						meta: accountStatus('signedOut', t('account.status.signedOut')),
@@ -869,7 +896,8 @@ export function selectApplicationView<Session extends object>(
 export function selectRecoveryBinding<Session extends object>(
 	snapshot: ApplicationSnapshot<Session> | undefined
 ) {
-	return snapshot?.matches({ active: { flow: { running: 'library' } } }) &&
+	return snapshot &&
+		selectLibraryActor(snapshot) &&
 		!snapshot.matches({ active: { ownerHealth: 'failed' } }) &&
 		!snapshot.matches({ active: { cleanupHealth: 'failed' } }) &&
 		snapshot.context.observation.status === 'ready'

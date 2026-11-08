@@ -1,14 +1,16 @@
 import { serveBrokerHost } from '../../src/lib/runtime/worker/broker-channel.js'
-import { serveAccountStorage } from '../../src/lib/runtime/worker/storage-channel.js'
+import {
+	serveAccountStorage,
+	accountStorageKey
+} from '../../src/lib/runtime/worker/storage-channel.js'
 import { z } from 'zod'
-const { PUBLIC_JAZZ_APP_ID, PUBLIC_JAZZ_SERVER_URL } = z
-	.object({ PUBLIC_JAZZ_APP_ID: z.string(), PUBLIC_JAZZ_SERVER_URL: z.string().url() })
-	.parse(import.meta.env)
-import { accountRegistryUrl } from 'jazz-tools'
+import { fixtureServerUrl } from '../browser-account-store.js'
+const { PUBLIC_JAZZ_APP_ID } = z.object({ PUBLIC_JAZZ_APP_ID: z.string() }).parse(import.meta.env)
+const PUBLIC_JAZZ_SERVER_URL = fixtureServerUrl()
 export async function qualifyHost() {
 	const { currentLibraryRecords } = await import('../fixture-records.js')
 	const expected = currentLibraryRecords().articles.libraryId
-	const key = `jazz-account-selection-v1:${encodeURIComponent(accountRegistryUrl(PUBLIC_JAZZ_SERVER_URL, PUBLIC_JAZZ_APP_ID))}:clipper`
+	const key = accountStorageKey(PUBLIC_JAZZ_SERVER_URL)
 	const worker = new Worker(new URL('./host.worker.ts', import.meta.url), { type: 'module' })
 	const channel = new MessageChannel()
 	const broker = new MessageChannel()
@@ -47,7 +49,7 @@ export async function qualifyHost() {
 
 /** Exercise the real application startup/domain machine in a dedicated worker. */
 export async function qualifyApplicationHost(shutdownImmediately = false) {
-	const key = `jazz-account-selection-v1:${encodeURIComponent(accountRegistryUrl(PUBLIC_JAZZ_SERVER_URL, PUBLIC_JAZZ_APP_ID))}:clipper`
+	const key = accountStorageKey(PUBLIC_JAZZ_SERVER_URL)
 	const worker = new Worker(
 		new URL('../../src/lib/runtime/worker/application.worker.ts', import.meta.url),
 		{ type: 'module' }
@@ -93,7 +95,7 @@ export async function workerIntentExists(id: string) {
 }
 
 export async function qualifyScopedCommands() {
-	const key = `jazz-account-selection-v1:${encodeURIComponent(accountRegistryUrl(PUBLIC_JAZZ_SERVER_URL, PUBLIC_JAZZ_APP_ID))}:clipper`
+	const key = accountStorageKey(PUBLIC_JAZZ_SERVER_URL)
 	const worker = new Worker(
 		new URL('../../src/lib/runtime/worker/application.worker.ts', import.meta.url),
 		{ type: 'module' }

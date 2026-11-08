@@ -12,7 +12,7 @@ import { app as preDiscoveryApp } from '../src/lib/backend/jazz/prediscovery-sch
 import { openAddLink } from './add-link.js'
 import { test, expect, chromium, firefox } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { startLocalJazzServer, deploy } from 'jazz-tools/dev'
+import { deploy, startLocalJazzServer } from './migration-authority.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

@@ -1,6 +1,6 @@
 import { assign, createActor, fromCallback, sendTo, setup } from 'xstate'
 import { serveBrokerHost } from './broker-channel.js'
-import { serveAccountStorage } from './storage-channel.js'
+import { serveAccountStorage, ACCOUNT_STORAGE_PREFIX } from './storage-channel.js'
 import { serveReaderSurface } from '../../reader/surface-host.js'
 import type { RuntimeCommand, LibraryIntent } from './protocol.js'
 import type { RuntimeView, LibraryRender } from './views.js'
@@ -39,7 +39,7 @@ const resource = fromCallback<Event, Input>(({ input, receive, sendBack }) => {
 	worker.onmessage = ({ data }: MessageEvent<WorkerReply>) => {
 		switch (data.type) {
 			case 'STORAGE_NAMESPACE':
-				if (!releaseStorage && data.key.startsWith('jazz-account-selection-v1:'))
+				if (!releaseStorage && data.key.startsWith(ACCOUNT_STORAGE_PREFIX))
 					releaseStorage = serveAccountStorage(storage.port1, localStorage, data.key)
 				break
 			case 'RECEIVED':

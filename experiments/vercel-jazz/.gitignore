@@ -4,3 +4,7 @@ node_modules/
 .jazz/
 .env
 .env.*
+.vercel
+.env*
+
+.jazz-sdk-patch/

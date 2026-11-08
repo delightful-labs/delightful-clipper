@@ -1,3 +1,4 @@
+import { hasDetachedTransactions } from '../../backend/jazz/transaction.js'
 import { assign, fromCallback, fromPromise, raise, sendTo, setup, stopChild } from 'xstate'
 import type { ActorRefFrom } from 'xstate'
 import type { Session } from '../../backend/jazz/account.js'
@@ -82,6 +83,7 @@ export const workerHostMachine = setup<
 		forwardRecovery: undefined
 	},
 	{
+		custodyClear: undefined
 		applicationDrained: undefined
 		currentLibrary: undefined
 		currentAccount: undefined
@@ -97,6 +99,7 @@ export const workerHostMachine = setup<
 >({
 	actors,
 	guards: {
+		custodyClear: () => !hasDetachedTransactions(),
 		suppliedRecovery: ({ event }) => event.type === 'BIND_RECOVERY' && !!event.binding,
 		currentRecovery: ({ context, event }) =>
 			event.type === 'RECOVERY' && event.scope === context.scope && !!context.recovery,
@@ -294,11 +297,15 @@ export const workerHostMachine = setup<
 		settlingAcquisition: {
 			invoke: { src: 'owner', input: ({ context }) => context.input },
 			on: {
-				OWNER_READY: {
-					target: 'closingSession',
-					actions: assign({ session: ({ event }) => event.session })
-				},
-				OWNER_EMPTY: 'closed'
+				OWNER_READY: [
+					{
+						guard: 'custodyClear',
+						target: 'closingSession',
+						actions: assign({ session: ({ event }) => event.session })
+					},
+					{ target: 'failed' }
+				],
+				OWNER_EMPTY: [{ guard: 'custodyClear', target: 'closed' }, { target: 'failed' }]
 			}
 		},
 		closingSession: {

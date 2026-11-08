@@ -7,27 +7,18 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { startLocalJazzServer } from 'jazz-tools/testing'
-import { app } from '../../src/lib/backend/jazz/schema.js'
-import permissions from '../../src/lib/backend/jazz/permissions.js'
+import { startJazzAuthority } from '../jazz-authority.js'
 import { staticShellServer } from './server.js'
 const buildA = fileURLToPath(new URL('../../.offline-test-builds/a/', import.meta.url))
 const buildB = fileURLToPath(new URL('../../.offline-test-builds/b/', import.meta.url))
 const prefix = 'delightful-clipper-shell-v1-'
 const ui = staticShellServer(buildA)
-let authority: Awaited<ReturnType<typeof startLocalJazzServer>>,
+let authority: Awaited<ReturnType<typeof startJazzAuthority>>,
 	dataDir: string,
 	authorityUp = false
 async function startAuthority() {
 	if (authorityUp) return
-	authority = await startLocalJazzServer({
-		appId: '2db98ae3-fcf1-41e8-b7d3-9818496bde60',
-		host: '127.0.0.1',
-		port: 5191,
-		dataDir,
-		schema: app,
-		permissions
-	})
+	authority = await startJazzAuthority({ port: 5191, origin: 'http://127.0.0.1:5190', dataDir })
 	authorityUp = true
 }
 async function stopAuthority() {

@@ -3,19 +3,22 @@ import { createActor, toPromise } from 'xstate'
 import { createLibraryRecords } from '../../src/lib/backend/jazz/records.js'
 import { brokerHostClient } from '../../src/lib/runtime/worker/broker-channel.js'
 import { diagnosticText } from '../../src/lib/diagnostics/machines.js'
-import { createJazzSession, accountRegistryUrl } from 'jazz-tools'
+import { createJazzClient } from 'jazz-tools/client'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { app } from '../../src/lib/backend/jazz/schema.js'
 import { createWorkerAccountStore } from '../../src/lib/runtime/worker/account-store.js'
-import { accountStorageClient } from '../../src/lib/runtime/worker/storage-channel.js'
+import {
+	accountStorageClient,
+	accountStorageKey
+} from '../../src/lib/runtime/worker/storage-channel.js'
 import { JAZZ_RUNTIME_VERSION } from '../../src/lib/offline/runtime-version.js'
 self.onmessage = async ({ data }) => {
 	const storage = accountStorageClient(data.port)
 	const brokerHost = brokerHostClient(data.broker)
 	try {
-		const key = `jazz-account-selection-v1:${encodeURIComponent(accountRegistryUrl(data.serverUrl, data.appId))}:clipper`
-		const session = await createJazzSession({
-			appId: data.appId,
+		const key = accountStorageKey(data.serverUrl)
+		const session = await createJazzClient({
+			client: () => import('jazz-tools/local-first'),
 			serverUrl: data.serverUrl,
 			env: 'clipper',
 			initial: 'local-first',
@@ -23,6 +26,9 @@ self.onmessage = async ({ data }) => {
 			runtimeSources: { browserWorkerHost: brokerHost, wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION }
 		})
 		try {
+			await session
+				.getSnapshot()
+				.client?.db.upgradeToLocalFirst(() => import('jazz-tools/local-first'))
 			const { account, client } = session.getSnapshot()
 			if (!account || !client) throw new Error('Worker account unavailable')
 			const before = await client.db.one(app.libraries.where({ id: account.id }), {

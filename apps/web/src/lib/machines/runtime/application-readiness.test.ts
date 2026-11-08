@@ -9,7 +9,9 @@ import { createActor, waitFor } from 'xstate'
 import { describe, expect, it, vi } from 'vitest'
 import {
 	createApplicationReadinessMachine,
-	selectApplicationView
+	selectApplicationView,
+	selectRecoveryBinding,
+	selectLibraryActor
 } from './application-readiness.js'
 import type {
 	AccountHost,
@@ -76,7 +78,10 @@ function fixture(initial: AccountObservation) {
 		}
 	}
 }
-function ready(accountId: string, root: RootAccess): AccountObservation {
+function ready(
+	accountId: string,
+	root: RootAccess
+): Extract<AccountObservation, { status: 'ready' }> {
 	return {
 		status: 'ready',
 		binding: {},
@@ -103,6 +108,109 @@ function root(local: Promise<void>, global: Promise<void>) {
 }
 
 describe('account/root ownership', () => {
+	it('exposes recovery only for the ready library and withdraws it during shutdown', async () => {
+		const reading = Promise.withResolvers<'compatible'>()
+		const observation = ready('recovery-lifetime', { read: () => reading.promise, ensure: vi.fn() })
+		const f = fixture(observation)
+		const actor = createActor(applicationReadinessMachine, { input: input(f.host) }).start()
+		try {
+			await waitFor(actor, (snapshot) =>
+				snapshot.matches({ active: { flow: { running: { library: 'bootstrapping' } } } })
+			)
+			expect(selectRecoveryBinding(actor.getSnapshot())).toBeUndefined()
+			reading.resolve('compatible')
+			await waitFor(actor, (snapshot) => !!selectLibraryActor(snapshot))
+			expect(selectRecoveryBinding(actor.getSnapshot())?.source).toBe(observation.recovery.source)
+			actor.send({ type: 'SHUTDOWN' })
+			expect(selectRecoveryBinding(actor.getSnapshot())).toBeUndefined()
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+		} finally {
+			reading.resolve('compatible')
+			actor.stop()
+		}
+	})
+
+	it('waits for worker local-first preparation before reading the library root', async () => {
+		const preparation = Promise.withResolvers<void>()
+		const read = vi.fn(async () => 'compatible' as const)
+		const observation = ready('local-first-startup', { read, ensure: vi.fn() })
+		const f = fixture({ ...observation, localFirst: false })
+		const prepare = vi.fn(() => preparation.promise)
+		const actor = createActor(applicationReadinessMachine, {
+			input: input({ ...f.host, prepare })
+		}).start()
+		try {
+			await waitFor(actor, (snapshot) =>
+				snapshot.matches({ active: { flow: { running: { preparing: 'active' } } } })
+			)
+			expect(prepare).toHaveBeenCalledOnce()
+			expect(read).not.toHaveBeenCalled()
+			f.emit({ ...observation, localFirst: true })
+			expect(read).not.toHaveBeenCalled()
+			preparation.resolve()
+			await vi.waitFor(() => expect(read).toHaveBeenCalledOnce())
+		} finally {
+			preparation.resolve()
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			actor.stop()
+		}
+	})
+	it('drains worker local-first preparation before acknowledging shutdown', async () => {
+		const preparation = Promise.withResolvers<void>()
+		const read = vi.fn(async () => 'compatible' as const)
+		const f = fixture({
+			...ready('local-first-drain', { read, ensure: vi.fn() }),
+			localFirst: false
+		})
+		const actor = createActor(applicationReadinessMachine, {
+			input: input({ ...f.host, prepare: () => preparation.promise })
+		}).start()
+		try {
+			await waitFor(actor, (snapshot) =>
+				snapshot.matches({ active: { flow: { running: { preparing: 'active' } } } })
+			)
+			actor.send({ type: 'SHUTDOWN' })
+			expect(
+				actor.getSnapshot().matches({ active: { flow: { running: { preparing: 'stopping' } } } })
+			).toBe(true)
+			expect(actor.getSnapshot().status).toBe('active')
+			expect(f.host.release).not.toHaveBeenCalled()
+			preparation.resolve()
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			expect(read).not.toHaveBeenCalled()
+			expect(f.host.release).toHaveBeenCalledOnce()
+		} finally {
+			preparation.resolve()
+			actor.stop()
+		}
+	})
+	it('does not bootstrap a thin client after local-first preparation fails', async () => {
+		const read = vi.fn(async () => 'compatible' as const)
+		const f = fixture({
+			...ready('local-first-failure', { read, ensure: vi.fn() }),
+			localFirst: false
+		})
+		const actor = createActor(applicationReadinessMachine, {
+			input: input({
+				...f.host,
+				prepare: async () => {
+					throw new Error('Synthetic local runtime failure')
+				}
+			})
+		}).start()
+		try {
+			await waitFor(actor, (snapshot) =>
+				snapshot.matches({ active: { flow: { running: 'unavailable' } } })
+			)
+			expect(read).not.toHaveBeenCalled()
+		} finally {
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			actor.stop()
+		}
+	})
+
 	it('reuses DLF-owned late acquisition after releasing the first attachment', async () => {
 		const opening = Promise.withResolvers<AccountHost>()
 		const { host } = fixture({ status: 'signed-out' })

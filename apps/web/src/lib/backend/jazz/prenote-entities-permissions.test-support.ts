@@ -4,14 +4,10 @@ import { app } from './prenote-entities-schema.test-support.js'
 
 export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 	const canonical = () =>
-		allOf([
-			{ id: session.user.account },
-			{ ownerId: session.user.account },
-			{ bootstrapVersion: '1' }
-		])
+		allOf([{ id: session.user }, { ownerId: session.user }, { bootstrapVersion: '1' }])
 	const owns = (libraryId: string | RowRefValue) =>
-		policy.libraries.exists.where({ id: libraryId, ownerId: session.user.account })
-	policy.libraries.allowRead.where({ ownerId: session.user.account })
+		policy.libraries.exists.where({ id: libraryId, ownerId: session.user })
+	policy.libraries.allowRead.where({ ownerId: session.user })
 	policy.libraries.allowInsert.where(canonical)
 	policy.libraries.allowUpdate.whereOld(canonical).whereNew(canonical)
 	policy.libraries.allowDelete.never()

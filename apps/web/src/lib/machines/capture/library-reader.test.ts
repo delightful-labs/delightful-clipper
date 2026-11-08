@@ -12,6 +12,7 @@ it('keeps the main library alive until its reader write drains and rejects new r
 		dispose = vi.fn()
 	const stage = createWorkspaceCreationTransaction<ReaderChange, object, null, SyncReceipt, object>(
 		{
+			retainDetached: vi.fn(),
 			open: () => ({}),
 			readLocal: async () => null,
 			assess: () => ({ outcome: 'eligible' }),
