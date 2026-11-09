@@ -2,6 +2,7 @@ import { extensionId, extensionPublicKey } from '../../../tooling/extension-iden
 /// <reference types="chrome" />
 import { test, expect, chromium } from '@playwright/test'
 import { openLibraryFilters } from '../../web/tests/library-popovers.js'
+import { readingControls } from '../../web/tests/reader-ui.js'
 import type { BrowserContext, Page } from '@playwright/test'
 import { startLocalJazzServer } from '../../web/tests/browser-core.js'
 import { createServer } from 'node:http'
@@ -245,6 +246,7 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 					)
 
 					const readerURL = reader.url()
+					await readingControls(reader)
 					await reader.getByRole('link', { name: 'Open library', exact: true }).click()
 					const row = reader.locator('[data-article-id]')
 					await row.getByRole('button', { name: 'Move to Trash', exact: true }).click()

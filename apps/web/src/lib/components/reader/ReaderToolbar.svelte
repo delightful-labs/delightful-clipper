@@ -1,11 +1,15 @@
 <script lang="ts">
-	import { Button, Dialog } from 'delightful-ui'
+	import { Button, Heading } from 'delightful-ui'
 	import { action, t } from '../../localization/index.js'
+	import ContentsNavigation from './ContentsNavigation.svelte'
+	import type { ReaderHeading } from '../../reader/structure.js'
 	import ThemeSettings from './ThemeSettings.svelte'
 	import FontSettings from './FontSettings.svelte'
 	import ReadingProgress from './ReadingProgress.svelte'
 	import type { ReaderChange, ReaderPreferences } from '../../reader/schema.js'
 	let {
+		oncontents,
+		headings,
 		preferences,
 		progress,
 		sourceUrl,
@@ -14,6 +18,8 @@
 		onfocus,
 		focusId
 	}: {
+		oncontents: () => void
+		headings: ReaderHeading[]
 		preferences: ReaderPreferences
 		progress: number | undefined
 		sourceUrl: string | undefined
@@ -22,41 +28,41 @@
 		onfocus: () => void
 		focusId: string
 	} = $props()
-	let open = $state(false)
 </script>
 
-<div class="reader-toolbar" data-reader-overlay>
+<div class="reader-settings">
+	<div class="settings-heading">
+		<Heading level="h2" size="lg">{t('reader.controls')}</Heading>
+		<div class="control-spacer" aria-hidden="true"></div>
+	</div>
+	<Button id={focusId} onclick={onfocus}>{t('reader.focus_mode')}</Button>
 	<a href="/">{action('open', 'library')}</a>
 	{#if sourceUrl}<a href={sourceUrl} rel="noreferrer">{action('open', 'original')}</a>{/if}
-	<Button appearance="flat" onclick={() => (open = true)}>{t('reader.controls')}</Button>
-	<Button id={focusId} appearance="flat" onclick={onfocus}>{t('reader.focus_mode')}</Button>
 	<ReadingProgress value={progress} />
+	<ContentsNavigation {headings} onnavigate={oncontents} />
+	<ThemeSettings
+		value={preferences.theme}
+		disabled={!enabled}
+		onchange={(value) => onchange({ documentId: null, field: 'theme', value })}
+	/>
+	<FontSettings value={preferences} disabled={!enabled} {onchange} />
 </div>
-<Dialog heading={t('reader.controls')} bind:open closedby="any">
-	<div class="reader-settings">
-		<ThemeSettings
-			value={preferences.theme}
-			disabled={!enabled}
-			onchange={(value) => onchange({ documentId: null, field: 'theme', value })}
-		/>
-		<FontSettings value={preferences} disabled={!enabled} {onchange} />
-		<Button onclick={() => (open = false)}>{t('actions.close')}</Button>
-	</div>
-</Dialog>
 
 <style>
-	.reader-toolbar {
-		position: sticky;
-		inset-block-start: 0;
-		z-index: 1;
-		background-color: var(--dui-color-background);
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: var(--dui-spacing-sm);
-	}
 	.reader-settings {
 		display: grid;
 		gap: var(--dui-space-sm);
+		min-inline-size: 0;
+	}
+
+	.settings-heading {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) var(--app-control-size, 44px);
+		align-items: center;
+		gap: var(--dui-spacing-xs);
+	}
+
+	.control-spacer {
+		block-size: var(--app-control-size, 44px);
 	}
 </style>

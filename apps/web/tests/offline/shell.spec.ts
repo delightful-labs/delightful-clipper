@@ -1,6 +1,6 @@
 import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { openAddLink } from '../add-link.js'
-import { readingControls, visibleReadingParagraph } from '../reader-ui.js'
+import { readingControls, closeReadingControls, visibleReadingParagraph } from '../reader-ui.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
@@ -226,15 +226,18 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const settings = await readingControls(page)
 		await settings.getByRole('radio', { name: 'Dark', exact: true }).check()
 		await settings.getByLabel('Font family', { exact: true }).selectOption('sans')
-		await settings.getByRole('button', { name: 'Close', exact: true }).click()
-		await page.getByRole('main').hover()
+		await closeReadingControls(page)
+		await page.getByRole('main').hover({ position: { x: 2, y: 100 } })
 		await page.mouse.wheel(0, 3000)
 		await expect
-			.poll(async () => Number(await page.getByRole('progressbar').getAttribute('value')))
+			.poll(async () =>
+				Number(await page.locator('.reader-workspace progress').getAttribute('value'))
+			)
 			.toBeGreaterThan(0.05)
 		const readingParagraph = await visibleReadingParagraph(page)
 		expect(readingParagraph).toBeTruthy()
 		// Leaving flushes the debounced position; live progress is not a persistence receipt.
+		await readingControls(page)
 		await page.getByRole('link', { name: 'Open library', exact: true }).click()
 		await closeLibraryPopovers(page)
 		await page.getByRole('link', { name: 'Completely offline article', exact: true }).click()
@@ -271,7 +274,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const savedSettings = await readingControls(reopened)
 		await expect(savedSettings.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked()
 		await expect(savedSettings.getByLabel('Font family', { exact: true })).toHaveValue('sans')
-		await savedSettings.getByRole('button', { name: 'Close', exact: true }).click()
+		await closeReadingControls(reopened)
 		await expect(
 			reopened.getByRole('article').getByRole('heading', { name: 'Offline structure' })
 		).toBeVisible()
@@ -291,6 +294,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			})
 		)
 
+		await readingControls(reopened)
 		await reopened.getByRole('link', { name: 'Open library', exact: true }).click()
 		const offlineRow = reopened
 			.getByRole('region', { name: 'Saved articles' })
