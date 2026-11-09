@@ -54,6 +54,7 @@ type Context<Session extends object> = {
 	observationAttempt: number
 	observation: AccountObservation
 	preparingBinding: object | undefined
+	preparingAccountId: string | undefined
 	write: RootWrite | undefined
 	phrase: string
 	attempt: number
@@ -187,8 +188,10 @@ export function createApplicationReadinessMachine<Session extends object>(
 				event.observation === context.observationAttempt,
 
 			preparationReplaced: ({ context }) =>
-				context.observation.status !== 'ready' ||
-				context.observation.binding !== context.preparingBinding,
+				context.observation.status === 'ready' &&
+				context.observation.binding !== context.preparingBinding &&
+				(context.observation.localFirst !== false ||
+					context.observation.accountId !== context.preparingAccountId),
 			stoppingPreparation: stateIn('#application-flow.running.preparing.stopping'),
 			needsLocalFirst: ({ context }) =>
 				context.observation.status === 'ready' &&
@@ -334,7 +337,9 @@ export function createApplicationReadinessMachine<Session extends object>(
 					preparing: {
 						entry: assign({
 							preparingBinding: ({ context }) =>
-								context.observation.status === 'ready' ? context.observation.binding : undefined
+								context.observation.status === 'ready' ? context.observation.binding : undefined,
+							preparingAccountId: ({ context }) =>
+								context.observation.status === 'ready' ? context.observation.accountId : undefined
 						}),
 						meta: starting,
 						initial: 'active',
@@ -726,6 +731,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 			host: undefined,
 			observation: { status: 'signed-out' },
 			preparingBinding: undefined,
+			preparingAccountId: undefined,
 			write: undefined,
 			phrase: '',
 			attempt: 0

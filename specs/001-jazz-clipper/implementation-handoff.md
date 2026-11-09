@@ -1,5 +1,25 @@
 # Article notes — implementation started
 
+## Current AT Protocol proof — November 9, 2026
+
+PR #20 incorporates the current alpha.60/Vercel main branch. Better Auth and the
+installed AT Protocol plugin now use Jazz’s native Better Auth adapter over the
+existing backend store. No Neon connection, Postgres driver or SQL migration is
+required. Auth records have explicit deny-all client policies; the backend publishes
+an additive native migration using the shared schema and native catalogue.
+
+The user approved leaning into Jazz’s defaults. Native backend-account following
+owns guest linking, existing-account selection and remembered-account persistence.
+Clipper’s worker owns provider authorization and attempt-bound callback confirmation,
+with application drain and SDK close before redirect. Provider logout precedes native
+Jazz logout. The previous JWT source, selection record and manual connect/sign-in
+coordinator are removed. Earlier Netlify/Neon and token-integration entries below
+are historical and do not describe the current implementation.
+
+See [deployment instructions](../../docs/atproto-proof-deployment.md) for the two
+remaining auth variables and [qualification evidence](../../docs/reviews/atproto-native-alpha60.md).
+Existing disposable Neon auth records are neither imported nor deleted.
+
 ## Startup performance
 
 Existing compatible libraries now take a read-only readiness path; only missing roots issue a write and track local/remote settlement. Search resources and full-text reads start on demand, while the collection coalesces initialized subscription results and search drains stale native loads before refreshing. Reader snapshot/asset/source reads run in parallel after header validation. Narrow selectors, immutable projection caching and 50-article rendering batches reduce main-thread work; keyboard focus is preserved through batching and coalesced tag updates. No catalogs, dependency pins, schema or service worker admission policy change.

@@ -62,3 +62,22 @@ the library, clears the Better Auth cookie, then calls the native Jazz logout.
 Jazz may also follow backend identity changes independently; this implementation
 does not claim to intercept all SDK-initiated account switches or repair the SDK's
 published pending-write/account-switch limitations.
+
+## Jazz schema upgrade
+
+The generated `src/lib/backend/jazz/migrations` bundle connects main's pre-auth
+schema to the schema containing the six auth tables. `createJazz` publishes it on
+backend startup. Keep its snapshots and `index.ts` in the build; installing only
+the latest schema into an existing store would lose the required lineage.
+
+Validate changes with:
+
+```sh
+pnpm --filter @delightful-clipper/web exec jazz-tools validate \
+  --schema-dir src/lib/backend/jazz \
+  --migrations-dir src/lib/backend/jazz/migrations
+```
+
+The native SQLite upgrade regression preserves an existing main-branch library
+while adding working auth storage. Current verification is in
+[the native auth review](reviews/atproto-native-alpha60.md#verified-november-9).
