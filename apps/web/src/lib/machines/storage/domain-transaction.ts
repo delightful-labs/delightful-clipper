@@ -37,7 +37,7 @@ export function required<Value>(value: Value | undefined): Value {
 function requestRead<Resource>(owner: AnyActorRef, resource: Resource) {
 	return new Promise<WorkspaceCreationAssessment>((resolve, reject) =>
 		owner.send({
-			type: 'READ' as const,
+			type: 'READ',
 			resource,
 			reply: { resolve, reject }
 		} satisfies ReadRequest<Resource>)
@@ -45,7 +45,7 @@ function requestRead<Resource>(owner: AnyActorRef, resource: Resource) {
 }
 function requestStage(owner: AnyActorRef) {
 	return new Promise<SyncReceipt>((resolve, reject) =>
-		owner.send({ type: 'STAGE' as const, reply: { resolve, reject } } satisfies StageRequest)
+		owner.send({ type: 'STAGE', reply: { resolve, reject } } satisfies StageRequest)
 	)
 }
 
@@ -177,13 +177,13 @@ function createDomainTransactionController<Draft, Resource, Write>(
 		output: ({ context }) => required(context.record.result),
 		states: {
 			running: {
-				type: 'parallel' as const,
+				type: 'parallel',
 				on: {
 					CANCEL: (args, enq) => {
-						enq.sendTo('transaction', { type: 'CANCEL' as const })
+						enq.sendTo('transaction', { type: 'CANCEL' })
 					},
 					SHUTDOWN: (args, enq) => {
-						enq.sendTo('transaction', { type: 'SHUTDOWN' as const })
+						enq.sendTo('transaction', { type: 'SHUTDOWN' })
 					}
 				},
 				states: {
@@ -260,7 +260,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 										on: {
 											STAGE: (args, enq) => {
 												const { event } = args
-												enq.sendTo('domain', { type: 'STAGE' as const })
+												enq.sendTo('domain', { type: 'STAGE' })
 												return {
 													target: 'staging',
 													context: args.actions.acceptStage(args, event).context
@@ -277,7 +277,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 					}
 				}
 			},
-			completed: { type: 'final' as const }
+			completed: { type: 'final' }
 		}
 	})
 }
@@ -347,14 +347,14 @@ export function createDomainTransaction<Draft, Resource = TransactionResource, W
 				},
 				on: {
 					CANCEL: (args, enq) => {
-						enq.sendTo('workflow', { type: 'CANCEL' as const })
+						enq.sendTo('workflow', { type: 'CANCEL' })
 					},
 					SHUTDOWN: (args, enq) => {
-						enq.sendTo('workflow', { type: 'SHUTDOWN' as const })
+						enq.sendTo('workflow', { type: 'SHUTDOWN' })
 					}
 				}
 			},
-			done: { type: 'final' as const }
+			done: { type: 'final' }
 		}
 	})
 }

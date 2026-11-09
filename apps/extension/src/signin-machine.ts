@@ -16,18 +16,17 @@ export type ConnectionObservation =
 export function connectionObservation<Session extends object>(
 	snapshot: ApplicationSnapshot<Session>
 ): ConnectionObservation {
-	if (snapshot.matches({ active: { flow: { running: 'restoring' } } }))
-		return { kind: 'restoring' as const }
+	if (snapshot.matches({ active: { flow: { running: 'restoring' } } })) return { kind: 'restoring' }
 	if (
 		snapshot.matches({ active: { feedback: 'restoreFailed' } }) ||
 		snapshot.matches({ active: { feedback: 'restoreInvalid' } })
 	)
-		return { kind: 'failed' as const }
+		return { kind: 'failed' }
 	const library = selectLibraryActor(snapshot)
 	const accountId = library?.getSnapshot().context.capability?.libraryId
-	if (accountId) return { kind: 'ready' as const, accountId }
-	if (snapshot.context.observation.status === 'signed-out') return { kind: 'signed-out' as const }
-	return { kind: 'waiting' as const }
+	if (accountId) return { kind: 'ready', accountId }
+	if (snapshot.context.observation.status === 'signed-out') return { kind: 'signed-out' }
+	return { kind: 'waiting' }
 }
 type Context = {
 	observation: ConnectionObservation
@@ -75,7 +74,7 @@ export function createSignInMachine(cap: {
 	return model.createMachine({
 		initial: 'idle',
 		context: {
-			observation: { kind: 'waiting' as const },
+			observation: { kind: 'waiting' },
 			accountId: undefined,
 			message: undefined
 		},
@@ -117,7 +116,7 @@ export function createSignInMachine(cap: {
 				tags: ['confirming'],
 				entry: () => {
 					return {
-						context: { message: { text: t('account.status.working'), variant: 'info' as const } }
+						context: { message: { text: t('account.status.working'), variant: 'info' } }
 					}
 				},
 				invoke: {
@@ -152,7 +151,7 @@ export function createSignInMachine(cap: {
 				entry: () => {
 					return {
 						context: {
-							message: { text: t('account.feedback.identityFailed'), variant: 'error' as const }
+							message: { text: t('account.feedback.identityFailed'), variant: 'error' }
 						}
 					}
 				},
@@ -176,11 +175,11 @@ export function createSignInMachine(cap: {
 				}
 			},
 			closed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return {
 						context: {
-							observation: { kind: 'waiting' as const },
+							observation: { kind: 'waiting' },
 							accountId: undefined,
 							message: undefined
 						}

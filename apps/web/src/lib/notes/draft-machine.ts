@@ -83,7 +83,7 @@ export const noteDraftMachine = setup({
 	output: ({ context }) => ({ unsaved: context.queue }),
 	states: {
 		running: {
-			type: 'parallel' as const,
+			type: 'parallel',
 			on: {
 				EDIT: (args) => {
 					if (
@@ -160,6 +160,6 @@ export const noteDraftMachine = setup({
 				}
 			}
 		},
-		closed: { type: 'final' as const }
+		closed: { type: 'final' }
 	}
 })

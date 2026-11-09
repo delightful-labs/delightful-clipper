@@ -51,7 +51,7 @@ export function createLaunchMachine(cap: {
 		}),
 		openSignIn: createAsyncLogic({ run: ({ input }: { input: string }) => cap.openSignIn(input) }),
 		popup: createCallbackLogic<{ type: 'UNUSED' }, number>(({ input, sendBack }) =>
-			cap.watchPopup(input, () => sendBack({ type: 'POPUP_CLOSED' as const }))
+			cap.watchPopup(input, () => sendBack({ type: 'POPUP_CLOSED' }))
 		),
 		accountUnavailable: createAsyncLogic({
 			run: ({ input }: { input: Tab | undefined }) =>
@@ -62,7 +62,7 @@ export function createLaunchMachine(cap: {
 		persist: createAsyncLogic({ run: ({ input }: { input: Capture }) => cap.persist(input) }),
 		show: createAsyncLogic({
 			run: ({ input }: { input: Capture }) =>
-				cap.show(input, { text: t('capture.status.pending'), variant: 'info' as const })
+				cap.show(input, { text: t('capture.status.pending'), variant: 'info' })
 		}),
 		runtimeExists: createAsyncLogic({ run: () => cap.runtimeExists() }),
 		createRuntime: createAsyncLogic({ run: () => cap.createRuntime() }),
@@ -76,11 +76,11 @@ export function createLaunchMachine(cap: {
 		}),
 		uncertain: createAsyncLogic({
 			run: ({ input }: { input: Capture }) =>
-				cap.show(input, { text: t('capture.status.unknown'), variant: 'error' as const })
+				cap.show(input, { text: t('capture.status.unknown'), variant: 'error' })
 		}),
 		failure: createAsyncLogic({
 			run: ({ input }: { input: Capture }) =>
-				cap.show(input, { text: t('capture.status.save_failed'), variant: 'error' as const })
+				cap.show(input, { text: t('capture.status.save_failed'), variant: 'error' })
 		})
 	}
 	const model = setup({

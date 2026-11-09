@@ -101,13 +101,13 @@ export function createContentIntentDomain(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			insertIntentAndbindArticle: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertIntent(args)
 						args.actions.bindArticle(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -117,7 +117,7 @@ export function createContentIntentDomain(io: {
 					enq(() => {
 						args.actions.insertIntent(args)
 						args.actions.createArticle(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -126,7 +126,7 @@ export function createContentIntentDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertIntent(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -228,14 +228,14 @@ export function createContentPublicationDomain(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			publishContentAndattachContentAndpublishSource: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.publishContent(args)
 						args.actions.attachContent(args)
 						args.actions.publishSource(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -245,7 +245,7 @@ export function createContentPublicationDomain(io: {
 					enq(() => {
 						args.actions.publishContent(args)
 						args.actions.attachContent(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -255,7 +255,7 @@ export function createContentPublicationDomain(io: {
 					enq(() => {
 						args.actions.publishContent(args)
 						args.actions.publishSource(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -264,7 +264,7 @@ export function createContentPublicationDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.publishContent(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }

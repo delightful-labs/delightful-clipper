@@ -109,7 +109,7 @@ const model = setup({
 	},
 	states: {
 		observing: {
-			type: 'parallel' as const,
+			type: 'parallel',
 			states: {
 				articles: {
 					initial: 'pending',
@@ -171,22 +171,22 @@ const model = setup({
 					on: {
 						TAGS: (args, enq) => {
 							if (!args.guards.current()) return
-							enq.raise({ type: 'UPDATED' as const })
+							enq.raise({ type: 'UPDATED' })
 							return { context: { tags: args.event.rows } }
 						},
 						ORGANIZATION: (args, enq) => {
 							if (!args.guards.current()) return
-							enq.raise({ type: 'UPDATED' as const })
+							enq.raise({ type: 'UPDATED' })
 							return { context: { organization: args.event.rows } }
 						},
 						ARTICLES: (args, enq) => {
 							if (!args.guards.current()) return
-							enq.raise({ type: 'UPDATED' as const })
+							enq.raise({ type: 'UPDATED' })
 							return { context: { articles: args.event.rows } }
 						},
 						DOCUMENTS: (args, enq) => {
 							if (!args.guards.current()) return
-							enq.raise({ type: 'UPDATED' as const })
+							enq.raise({ type: 'UPDATED' })
 							return { context: { documents: args.event.rows } }
 						}
 					}
@@ -216,7 +216,7 @@ const model = setup({
 									if (args.guards.current()) {
 										enq.sendTo(
 											'output',
-											(({ context }) => {
+											(({ context }): OutputEvent => {
 												const targets = createArticleTargetLookup(context.articles)
 												const rows = projectLibraryArticles(context.articles, context.documents)
 												const organized = projectOrganization(
@@ -226,7 +226,7 @@ const model = setup({
 													targets
 												)
 												return {
-													type: 'ROWS' as const,
+													type: 'ROWS',
 													rows: projectTags(organized, context.tags, context.articles, targets)
 												}
 											})(args)
@@ -252,14 +252,14 @@ const model = setup({
 			}
 		},
 		failed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args, enq) => {
-				if (args.guards.current()) enq.sendTo('output', { type: 'ERROR' as const })
+				if (args.guards.current()) enq.sendTo('output', { type: 'ERROR' })
 				return { context: args.actions.clear().context }
 			}
 		},
 		closed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args) => {
 				return { context: args.actions.clear().context }
 			}
@@ -270,30 +270,30 @@ const model = setup({
 export function createArticleCollectionMachine(cap: Capability) {
 	const articles = createCallbackLogic(({ sendBack }) =>
 		cap.articles(
-			(rows) => sendBack({ type: 'ARTICLES' as const, rows }),
-			() => sendBack({ type: 'ERROR' as const })
+			(rows) => sendBack({ type: 'ARTICLES', rows }),
+			() => sendBack({ type: 'ERROR' })
 		)
 	)
 	const documents = createCallbackLogic(({ sendBack }) =>
 		cap.documents(
-			(rows) => sendBack({ type: 'DOCUMENTS' as const, rows }),
-			() => sendBack({ type: 'ERROR' as const })
+			(rows) => sendBack({ type: 'DOCUMENTS', rows }),
+			() => sendBack({ type: 'ERROR' })
 		)
 	)
 	return model.provide({
 		actors: {
 			tags: createCallbackLogic(({ sendBack }) =>
 				(cap.tags ?? emptySubscription<TagOperation>)(
-					(rows) => sendBack({ type: 'TAGS' as const, rows }),
-					() => sendBack({ type: 'ERROR' as const })
+					(rows) => sendBack({ type: 'TAGS', rows }),
+					() => sendBack({ type: 'ERROR' })
 				)
 			),
 			articles,
 			documents,
 			organization: createCallbackLogic(({ sendBack }) =>
 				(cap.organization ?? emptySubscription<OrganizationOperation>)(
-					(rows) => sendBack({ type: 'ORGANIZATION' as const, rows }),
-					() => sendBack({ type: 'ERROR' as const })
+					(rows) => sendBack({ type: 'ORGANIZATION', rows }),
+					() => sendBack({ type: 'ERROR' })
 				)
 			)
 		},

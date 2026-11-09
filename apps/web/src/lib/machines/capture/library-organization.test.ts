@@ -4,6 +4,7 @@ import { createWorkspaceCreationTransaction } from 'delightful-local-first/works
 import { libraryMachine, selectLibraryView } from './library.js'
 import { testLibraryCapability } from './library.test-support.js'
 import { createOrganizationMachine, type OrganizationDraft } from '../storage/organize.js'
+import type { LibraryArticle } from '../../contracts/articles.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 const id = crypto.randomUUID()
 const candidate = {
@@ -16,14 +17,14 @@ const candidate = {
 	provenance: '{}',
 	imagesMissing: false
 }
-const row = {
+const row: LibraryArticle = {
 	id,
 	title: 'Saved article',
 	contentId: id,
 	url: candidate.finalUrl,
 	originalSavedAt: '',
 	failure: null,
-	status: 'inbox' as const,
+	status: 'inbox',
 	favorite: true
 }
 function fixture(local = async () => {}, global = async () => {}) {

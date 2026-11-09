@@ -18,7 +18,7 @@ type Event =
 export function createRecoveryOwner(binding: RecoveryBinding) {
 	const phrase = createRecoveryPhraseMachine(binding.capability)
 	const observation = createCallbackLogic<RecoveryPhraseEvent>(({ sendBack }) =>
-		binding.source.subscribe((scope) => sendBack({ type: 'OBSERVE' as const, scope }))
+		binding.source.subscribe((scope) => sendBack({ type: 'OBSERVE', scope }))
 	)
 	return setup({
 		schemas: {
@@ -43,7 +43,7 @@ export function createRecoveryOwner(binding: RecoveryBinding) {
 		invoke: {
 			id: 'phrase',
 			src: 'phrase',
-			input: { kind: 'unavailable' as const },
+			input: { kind: 'unavailable' },
 			onDone: { target: '.closed' }
 		},
 		states: {
@@ -55,27 +55,27 @@ export function createRecoveryOwner(binding: RecoveryBinding) {
 						enq.sendTo('phrase', event)
 					},
 					REVEAL: (args, enq) => {
-						enq.sendTo('phrase', { type: 'REVEAL' as const })
+						enq.sendTo('phrase', { type: 'REVEAL' })
 					},
 					RETRY: (args, enq) => {
-						enq.sendTo('phrase', { type: 'RETRY' as const })
+						enq.sendTo('phrase', { type: 'RETRY' })
 					},
 					HIDE: (args, enq) => {
-						enq.sendTo('phrase', { type: 'HIDE' as const })
+						enq.sendTo('phrase', { type: 'HIDE' })
 					},
 					SHUTDOWN: (args, enq) => {
-						enq.sendTo('phrase', { type: 'SHUTDOWN' as const })
+						enq.sendTo('phrase', { type: 'SHUTDOWN' })
 						return { target: 'draining' }
 					}
 				}
 			},
 			draining: {},
-			closed: { type: 'final' as const }
+			closed: { type: 'final' }
 		}
 	})
 }
 export type RecoveryOwner = ActorFromLogic<ReturnType<typeof createRecoveryOwner>>
 export function recoveryView(owner: RecoveryOwner | undefined) {
 	const phrase = owner?.getSnapshot().children.phrase?.getSnapshot()
-	return phrase ? selectRecoveryPhraseView(phrase) : { kind: 'unavailable' as const }
+	return phrase ? selectRecoveryPhraseView(phrase) : { kind: 'unavailable' }
 }

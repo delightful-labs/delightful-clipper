@@ -50,7 +50,7 @@ const connections = createConnectStoreMachine({
 	idForConfirmation: () => crypto.randomUUID(),
 	write: (connection) => chrome.storage.local.set({ [connectionKey]: connection }),
 	notify: (accountId) =>
-		chrome.runtime.sendMessage({ type: 'ACCOUNT_CHANGED' as const, accountId, target: 'runtime' })
+		chrome.runtime.sendMessage({ type: 'ACCOUNT_CHANGED', accountId, target: 'runtime' })
 })
 function show(
 	capture: Capture,
@@ -129,7 +129,7 @@ const launcher = createActor(
 		authorize: async (connection) =>
 			authorizationSchema.parse(
 				await chrome.runtime.sendMessage({
-					type: 'AUTHORIZE' as const,
+					type: 'AUTHORIZE',
 					target: 'runtime',
 					accountId: connection.accountId
 				})
@@ -141,7 +141,7 @@ const launcher = createActor(
 				.parse(
 					(
 						await chrome.windows.create({
-							type: 'popup' as const,
+							type: 'popup',
 							url: chrome.runtime.getURL(`signin.html?request=${requestId}`),
 							width: 480,
 							height: 580,
@@ -185,7 +185,7 @@ const launcher = createActor(
 			}),
 		dispatch: async (id, accountId) =>
 			acknowledgmentSchema.parse(
-				await chrome.runtime.sendMessage({ target: 'runtime', type: 'RUN' as const, id, accountId })
+				await chrome.runtime.sendMessage({ target: 'runtime', type: 'RUN', id, accountId })
 			).accepted,
 
 		reject: (tab, text) =>
@@ -193,4 +193,4 @@ const launcher = createActor(
 		id: () => crypto.randomUUID()
 	})
 ).start()
-chrome.action.onClicked.addListener((tab) => launcher.send({ type: 'CLIP' as const, tab }))
+chrome.action.onClicked.addListener((tab) => launcher.send({ type: 'CLIP', tab }))

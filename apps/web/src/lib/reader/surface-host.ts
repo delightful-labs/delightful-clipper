@@ -22,11 +22,11 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 	let released = false
 	const detach = () => {
 		released = true
-		if (viewport?.getSnapshot().status === 'active') viewport.send({ type: 'DETACH' as const })
+		if (viewport?.getSnapshot().status === 'active') viewport.send({ type: 'DETACH' })
 	}
 	const fullscreen = (id?: string, ok = true) =>
 		port.postMessage({
-			type: 'FULLSCREEN' as const,
+			type: 'FULLSCREEN',
 			id,
 			ok,
 			supported: surface.fullscreen.supported(),
@@ -45,7 +45,7 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 		switch (message.type) {
 			case 'VIEWPORT_OPEN': {
 				if (released) {
-					port.postMessage({ type: 'VIEWPORT_CLOSED' as const })
+					port.postMessage({ type: 'VIEWPORT_CLOSED' })
 					return
 				}
 				if (viewport) return
@@ -61,12 +61,12 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 				actor.subscribe({
 					complete: () =>
 						port.postMessage({
-							type: 'VIEWPORT_CLOSED' as const,
+							type: 'VIEWPORT_CLOSED',
 							position: actor.getSnapshot().output?.position
 						}),
 					error: () =>
 						port.postMessage({
-							type: 'VIEWPORT_FAILED' as const,
+							type: 'VIEWPORT_FAILED',
 							attachmentId: message.attachmentId
 						})
 				})
@@ -74,7 +74,7 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 				break
 			}
 			case 'REFLOW':
-				viewport?.send({ type: 'REFLOW' as const })
+				viewport?.send({ type: 'REFLOW' })
 				break
 			case 'DETACH':
 				detach()

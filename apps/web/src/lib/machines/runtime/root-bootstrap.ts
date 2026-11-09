@@ -45,7 +45,7 @@ export const rootBootstrapMachine = setup({
 	context: ({ input }) => ({
 		root: input,
 		write: undefined,
-		result: { outcome: 'failed' as const }
+		result: { outcome: 'failed' }
 	}),
 	output: ({ context }) => context.result,
 	states: {
@@ -69,7 +69,7 @@ export const rootBootstrapMachine = setup({
 			}
 		},
 		writing: {
-			type: 'parallel' as const,
+			type: 'parallel',
 			states: {
 				lifetime: {
 					initial: 'active',
@@ -121,29 +121,29 @@ export const rootBootstrapMachine = setup({
 			}
 		},
 		ready: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args) => {
 				const { context } = args
-				return { context: { result: { outcome: 'ready' as const, write: receipt(context) } } }
+				return { context: { result: { outcome: 'ready', write: receipt(context) } } }
 			}
 		},
 		existing: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
-				return { context: { result: { outcome: 'ready' as const } } }
+				return { context: { result: { outcome: 'ready' } } }
 			}
 		},
-		failed: { type: 'final' as const },
+		failed: { type: 'final' },
 		conflict: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
-				return { context: { result: { outcome: 'conflict' as const } } }
+				return { context: { result: { outcome: 'conflict' } } }
 			}
 		},
 		closed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
-				return { context: { result: { outcome: 'closed' as const } } }
+				return { context: { result: { outcome: 'closed' } } }
 			}
 		}
 	}

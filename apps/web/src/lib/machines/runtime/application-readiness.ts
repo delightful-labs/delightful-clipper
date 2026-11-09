@@ -85,7 +85,7 @@ function observe(host: AccountHost): AccountObservation {
 	try {
 		return host.read()
 	} catch {
-		return { status: 'error' as const }
+		return { status: 'error' }
 	}
 }
 
@@ -97,7 +97,7 @@ type AccountMeta = NamedState & {
 	feedback?: AccountFeedback
 }
 function accountStatus(status: MachineStatus, name: string): AccountMeta {
-	return { status, name, variant: 'info' as const, channel: 'account' }
+	return { status, name, variant: 'info', channel: 'account' }
 }
 const configuration = accountStatus('working', t('account.status.configuration'))
 const starting = accountStatus('starting', t('account.status.starting'))
@@ -274,11 +274,13 @@ export function createApplicationReadinessMachine<Session extends object>(
 		},
 		actions: {
 			clearPhrase: () => ({ context: { phrase: '' } }),
-			clearResources: () => ({
+			clearResources: (): {
+				context: Pick<Context<Session>, 'host' | 'write' | 'observation' | 'phrase'>
+			} => ({
 				context: {
 					host: undefined,
 					write: undefined,
-					observation: { status: 'closed' as const },
+					observation: { status: 'closed' },
 					phrase: ''
 				}
 			}),
@@ -302,26 +304,26 @@ export function createApplicationReadinessMachine<Session extends object>(
 			retryAttempt: 0,
 			observationAttempt: 0,
 			host: undefined,
-			observation: { status: 'signed-out' as const },
+			observation: { status: 'signed-out' },
 			write: undefined,
 			phrase: '',
 			attempt: 0
 		}),
 
 		entry: (args, enq) => {
-			enq.sendTo('startup', { type: 'START' as const, ...args.context.input.startup })
+			enq.sendTo('startup', { type: 'START', ...args.context.input.startup })
 		},
 		invoke: {
 			id: 'startup',
 			src: 'startup',
 			input: ({ self }) => ({ reportTo: self }),
 			onDone: (args, enq) => {
-				enq.raise({ type: 'STARTUP_CLOSED' as const })
+				enq.raise({ type: 'STARTUP_CLOSED' })
 			}
 		},
 		states: {
 			active: {
-				type: 'parallel' as const,
+				type: 'parallel',
 				states: {
 					connection: {
 						initial: 'observing',
@@ -339,14 +341,14 @@ export function createApplicationReadinessMachine<Session extends object>(
 									online: {
 										meta: {
 											name: t('connection.online'),
-											variant: 'info' as const,
+											variant: 'info',
 											channel: 'connection'
 										}
 									},
 									offline: {
 										meta: {
 											name: t('connection.offline'),
-											variant: 'info' as const,
+											variant: 'info',
 											channel: 'connection'
 										}
 									}
@@ -370,7 +372,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									channel: 'feedback',
 									feedback: 'identityFailed',
 									name: t('account.feedback.identityFailed'),
-									variant: 'error' as const
+									variant: 'error'
 								}
 							},
 							restoreInvalid: {
@@ -378,7 +380,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									channel: 'feedback',
 									feedback: 'restoreInvalid',
 									name: t('account.feedback.restoreInvalid'),
-									variant: 'error' as const
+									variant: 'error'
 								}
 							},
 							restoreFailed: {
@@ -386,7 +388,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									channel: 'feedback',
 									feedback: 'restoreFailed',
 									name: t('account.feedback.restoreFailed'),
-									variant: 'error' as const
+									variant: 'error'
 								}
 							}
 						}
@@ -415,7 +417,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 							},
 							SESSION_STARTUP_FAILED: (args, enq) => {
 								if (args.guards.failedOwner(args)) {
-									enq.raise({ type: 'SHUTDOWN' as const })
+									enq.raise({ type: 'SHUTDOWN' })
 									return {}
 								}
 								if (args.guards.currentStartup(args)) {
@@ -424,7 +426,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 							},
 							SESSION_OBSERVATION_CLEANUP_FAILED: (args, enq) => {
 								if (!args.guards.currentReadinessScope(args)) return
-								enq.raise({ type: 'SHUTDOWN' as const })
+								enq.raise({ type: 'SHUTDOWN' })
 							},
 							SHUTDOWN: { target: '.closing' }
 						},
@@ -434,7 +436,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 								meta: accountStatus('unavailable', t('account.status.unavailable')),
 								on: {
 									RETRY: (args, enq) => {
-										enq.sendTo('startup', { type: 'RETRY' as const })
+										enq.sendTo('startup', { type: 'RETRY' })
 										return { target: 'opening' }
 									}
 								}
@@ -494,7 +496,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 								entry: (args, enq) => {
 									const { context } = args
 									enq.sendTo('readiness', {
-										type: 'BIND' as const,
+										type: 'BIND',
 										scope: required(context.readinessScope),
 										capability: required(context.host).readiness.capability
 									})
@@ -524,8 +526,8 @@ export function createApplicationReadinessMachine<Session extends object>(
 									SESSION_OBSERVATION_FAILED: (args, enq) => {
 										if (!args.guards.currentReadiness(args)) return
 										enq.raise({
-											type: 'OBSERVED' as const,
-											observation: { status: 'error' as const }
+											type: 'OBSERVED',
+											observation: { status: 'error' }
 										})
 									}
 								},
@@ -533,7 +535,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									draining: {
 										meta: accountStatus('closing', t('account.status.closing')),
 										entry: (args, enq) => {
-											enq.sendTo('readiness', { type: 'SHUTDOWN' as const })
+											enq.sendTo('readiness', { type: 'SHUTDOWN' })
 										},
 										on: {
 											OBSERVED: {},
@@ -563,7 +565,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 											if (matchesState({ active: { observationHealth: 'failed' } }, args.value)) {
 												return {
 													target: 'unavailable',
-													context: { observation: { status: 'error' as const } }
+													context: { observation: { status: 'error' } }
 												}
 											}
 											if (args.guards.needsLocalFirst(args)) {
@@ -605,7 +607,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 												}
 												return {
 													target: 'unavailable',
-													context: { observation: { status: 'error' as const } }
+													context: { observation: { status: 'error' } }
 												}
 											}
 										}
@@ -620,7 +622,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 												}
 											},
 											CREATE: (args, enq) => {
-												enq.raise({ type: 'FEEDBACK_CLEAR' as const })
+												enq.raise({ type: 'FEEDBACK_CLEAR' })
 												return { target: 'creating' }
 											},
 											RESTORE: (args) => {
@@ -666,7 +668,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 											patch = { ...patch, retryAttempt: context.retryAttempt + 1 }
 											context = { ...args.context, ...patch }
 											enq.sendTo('readiness', {
-												type: 'RETRY' as const,
+												type: 'RETRY',
 												scope: required(context.readinessScope),
 												attempt: context.retryAttempt
 											})
@@ -691,11 +693,11 @@ export function createApplicationReadinessMachine<Session extends object>(
 										entry: (args, enq) => {
 											let context = args.context
 											let patch = {}
-											enq.raise({ type: 'OBSERVATION_RESTARTED' as const })
+											enq.raise({ type: 'OBSERVATION_RESTARTED' })
 											patch = { ...patch, observationAttempt: context.observationAttempt + 1 }
 											context = { ...args.context, ...patch }
 											enq.sendTo('readiness', {
-												type: 'REOBSERVE' as const,
+												type: 'REOBSERVE',
 												scope: required(context.readinessScope),
 												observation: context.observationAttempt
 											})
@@ -712,7 +714,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									},
 									creating: {
 										entry: (args, enq) => {
-											enq.raise({ type: 'FEEDBACK_CLEAR' as const })
+											enq.raise({ type: 'FEEDBACK_CLEAR' })
 										},
 										initial: 'active',
 										states: {
@@ -745,7 +747,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 														target: '#application-readiness.active.flow.running.draining'
 													}
 												}
-												enq.raise({ type: 'IDENTITY_FAILED' as const })
+												enq.raise({ type: 'IDENTITY_FAILED' })
 
 												return { context: pendingContext, target: 'refreshing' }
 											}
@@ -753,7 +755,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									},
 									restoring: {
 										entry: (args, enq) => {
-											enq.raise({ type: 'FEEDBACK_CLEAR' as const })
+											enq.raise({ type: 'FEEDBACK_CLEAR' })
 										},
 										initial: 'active',
 										states: {
@@ -762,7 +764,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 										},
 										on: {
 											SHUTDOWN: (args, enq) => {
-												enq.sendTo('restore', { type: 'SHUTDOWN' as const })
+												enq.sendTo('restore', { type: 'SHUTDOWN' })
 												return { target: '.stopping', context: args.actions.clearPhrase().context }
 											},
 											RESTORATION_VALIDATED: (args) => {
@@ -771,7 +773,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 											RESTORATION_PREPARE_REQUESTED: (args, enq) => {
 												const { event } = args
 												enq.sendTo('restore', {
-													type: 'PREPARED' as const,
+													type: 'PREPARED',
 													binding: event.binding,
 													attempt: event.attempt
 												})
@@ -804,7 +806,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 													}
 												}
 												if (isRestored(event.output)) {
-													enq.raise({ type: 'FEEDBACK_CLEAR' as const })
+													enq.raise({ type: 'FEEDBACK_CLEAR' })
 													pendingContext = {
 														...pendingContext,
 														...(() => args.actions.clearPhrase().context)()
@@ -813,7 +815,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 													return { context: pendingContext, target: 'refreshing' }
 												}
 												if (isInvalidRestoration(event.output)) {
-													enq.raise({ type: 'RESTORE_INVALID' as const })
+													enq.raise({ type: 'RESTORE_INVALID' })
 													pendingContext = {
 														...pendingContext,
 														...(() => args.actions.clearPhrase().context)()
@@ -821,7 +823,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 
 													return { context: pendingContext, target: 'refreshing' }
 												}
-												enq.raise({ type: 'RESTORE_FAILED' as const })
+												enq.raise({ type: 'RESTORE_FAILED' })
 												pendingContext = {
 													...pendingContext,
 													...(() => args.actions.clearPhrase().context)()
@@ -842,7 +844,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 														target: '#application-readiness.active.flow.running.draining'
 													}
 												}
-												enq.raise({ type: 'RESTORE_FAILED' as const })
+												enq.raise({ type: 'RESTORE_FAILED' })
 												pendingContext = {
 													...pendingContext,
 													...(() => args.actions.clearPhrase().context)()
@@ -884,7 +886,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 														target: '#application-readiness.active.flow.running.draining'
 													}
 												}
-												enq.raise({ type: 'IDENTITY_FAILED' as const })
+												enq.raise({ type: 'IDENTITY_FAILED' })
 
 												return { context: pendingContext, target: 'refreshing' }
 											}
@@ -939,14 +941,14 @@ export function createApplicationReadinessMachine<Session extends object>(
 												meta: accountStatus('openingLibrary', t('account.status.openingLibrary')),
 												on: {
 													SHUTDOWN: (args, enq) => {
-														enq.sendTo('bootstrap', { type: 'SHUTDOWN' as const })
+														enq.sendTo('bootstrap', { type: 'SHUTDOWN' })
 														return { target: 'stopping' }
 													},
 													OBSERVED: (args, enq) => {
 														if (args.guards.sameBinding(args)) {
 															return {}
 														}
-														enq.sendTo('bootstrap', { type: 'SHUTDOWN' as const })
+														enq.sendTo('bootstrap', { type: 'SHUTDOWN' })
 														return {
 															target: 'replacing',
 															context: args.actions.rememberObservation(args).context
@@ -1056,8 +1058,8 @@ export function createApplicationReadinessMachine<Session extends object>(
 												},
 												on: {
 													RESTORE: (args, enq) => {
-														enq.raise({ type: 'FEEDBACK_CLEAR' as const })
-														enq.sendTo('library', { type: 'SHUTDOWN' as const })
+														enq.raise({ type: 'FEEDBACK_CLEAR' })
+														enq.sendTo('library', { type: 'SHUTDOWN' })
 														return {
 															target: '.stopping.restore',
 															context: {
@@ -1067,18 +1069,18 @@ export function createApplicationReadinessMachine<Session extends object>(
 														}
 													},
 													LOGOUT: (args, enq) => {
-														enq.sendTo('library', { type: 'SHUTDOWN' as const })
+														enq.sendTo('library', { type: 'SHUTDOWN' })
 														return { target: '.stopping.logout' }
 													},
 													SHUTDOWN: (args, enq) => {
-														enq.sendTo('library', { type: 'SHUTDOWN' as const })
+														enq.sendTo('library', { type: 'SHUTDOWN' })
 														return { target: '.stopping.shutdown' }
 													},
 													OBSERVED: (args, enq) => {
 														if (args.guards.sameBinding(args)) {
 															return {}
 														}
-														enq.sendTo('library', { type: 'SHUTDOWN' as const })
+														enq.sendTo('library', { type: 'SHUTDOWN' })
 														return {
 															target: '.stopping.replace',
 															context: args.actions.rememberObservation(args).context
@@ -1133,7 +1135,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									patch = { ...patch, ...args.actions.clearPhrase().context }
 									context = { ...args.context, ...patch }
 									enq(() => context.host?.release())
-									enq.sendTo('startup', { type: 'SHUTDOWN' as const })
+									enq.sendTo('startup', { type: 'SHUTDOWN' })
 									return { context: patch }
 								},
 								on: {
@@ -1204,28 +1206,28 @@ export function createApplicationReadinessMachine<Session extends object>(
 			},
 			cleanupFailed: {
 				meta: accountStatus('cleanupFailed', t('account.status.cleanupFailed')),
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return { context: args.actions.clearResources().context }
 				}
 			},
 			ownerFailed: {
 				meta: accountStatus('ownerFailed', t('account.status.ownerFailed')),
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return { context: args.actions.clearResources().context }
 				}
 			},
 			closed: {
 				meta: accountStatus('closed', t('account.status.closed')),
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return {
 						context: {
 							host: undefined,
 							write: undefined,
 							clean: true,
-							observation: { status: 'closed' as const },
+							observation: { status: 'closed' },
 							phrase: ''
 						}
 					}
@@ -1272,13 +1274,13 @@ export function selectApplicationView<Session extends object>(
 		feedbackMessage: stateFeedback(metadata, 'feedback'),
 		connectionMessage: stateFeedback(metadata, 'connection'),
 		feedback,
-		showIdentityForm: snapshot?.can({ type: 'CREATE' as const }) ?? false,
+		showIdentityForm: snapshot?.can({ type: 'CREATE' }) ?? false,
 		canLogout:
 			snapshot?.context.observation.status === 'ready' &&
 			snapshot.context.observation.signedIn === true &&
-			snapshot.can({ type: 'LOGOUT' as const }),
-		canRestore: snapshot?.can({ type: 'RESTORE' as const, phrase: '' }) ?? false,
-		canRetry: snapshot?.can({ type: 'RETRY' as const }) ?? false,
+			snapshot.can({ type: 'LOGOUT' }),
+		canRestore: snapshot?.can({ type: 'RESTORE', phrase: '' }) ?? false,
+		canRetry: snapshot?.can({ type: 'RETRY' }) ?? false,
 		requiresReload: snapshot?.matches('ownerFailed') || snapshot?.matches('cleanupFailed') || false
 	}
 }

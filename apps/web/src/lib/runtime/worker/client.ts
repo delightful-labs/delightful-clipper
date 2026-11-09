@@ -30,13 +30,12 @@ type Event =
 	| { type: 'SHUTDOWN' | 'CLOSED' | 'FAILED' }
 const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }) => {
 	const worker = new Worker(new URL('./application.worker.ts', import.meta.url), {
-		type: 'module' as const
+		type: 'module'
 	})
 	const storage = new MessageChannel(),
 		broker = new MessageChannel()
 	const releaseBroker = serveBrokerHost(broker.port1)
-	const connectivity = () =>
-		worker.postMessage({ type: 'CONNECTIVITY' as const, online: navigator.onLine })
+	const connectivity = () => worker.postMessage({ type: 'CONNECTIVITY', online: navigator.onLine })
 	window.addEventListener('online', connectivity)
 	window.addEventListener('offline', connectivity)
 	let releaseStorage: (() => void) | undefined
@@ -48,34 +47,34 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 					releaseStorage = serveAccountStorage(storage.port1, localStorage, data.key)
 				break
 			case 'RECEIVED':
-				sendBack({ type: 'RECEIVED' as const, requestId: data.requestId })
+				sendBack({ type: 'RECEIVED', requestId: data.requestId })
 				break
 			case 'VIEW':
-				sendBack({ type: 'VIEW' as const, view: data })
+				sendBack({ type: 'VIEW', view: data })
 				break
 			case 'RECOVERY':
 				if (recoveryAttached) input.recovery(data.view, data.available, data.scope)
 				break
 			case 'CLOSED':
-				sendBack({ type: 'CLOSED' as const })
+				sendBack({ type: 'CLOSED' })
 				break
 			case 'FAILED':
-				sendBack({ type: 'FAILED' as const })
+				sendBack({ type: 'FAILED' })
 		}
 	}
-	worker.onerror = () => sendBack({ type: 'FAILED' as const })
-	worker.onmessageerror = () => sendBack({ type: 'FAILED' as const })
+	worker.onerror = () => sendBack({ type: 'FAILED' })
+	worker.onmessageerror = () => sendBack({ type: 'FAILED' })
 	receive((event) => {
 		if (event.type === 'SEND') worker.postMessage(event.message, event.transfers ?? [])
 		if (event.type === 'UI_DETACHED') recoveryAttached = false
 		if (event.type === 'SHUTDOWN') {
 			recoveryAttached = false
-			worker.postMessage({ type: 'SHUTDOWN' as const })
+			worker.postMessage({ type: 'SHUTDOWN' })
 		}
 	})
 	worker.postMessage(
 		{
-			type: 'INITIALIZE' as const,
+			type: 'INITIALIZE',
 			online: navigator.onLine,
 			appId: input.appId,
 			serverUrl: input.serverUrl,
@@ -155,7 +154,7 @@ const clientMachine = setup({
 					}
 				},
 				SHUTDOWN: (args, enq) => {
-					enq.sendTo('resource', { type: 'SHUTDOWN' as const })
+					enq.sendTo('resource', { type: 'SHUTDOWN' })
 					return { target: 'draining' }
 				},
 				FAILED: (args, enq) => {
@@ -175,16 +174,16 @@ const clientMachine = setup({
 		},
 		failed: {
 			entry: (args, enq) => {
-				enq.sendTo('resource', { type: 'UI_DETACHED' as const })
+				enq.sendTo('resource', { type: 'UI_DETACHED' })
 			},
 			on: {
 				SHUTDOWN: (args, enq) => {
-					enq.sendTo('resource', { type: 'SHUTDOWN' as const })
+					enq.sendTo('resource', { type: 'SHUTDOWN' })
 					return { target: 'draining' }
 				}
 			}
 		},
-		closed: { type: 'final' as const }
+		closed: { type: 'final' }
 	}
 })
 export type LibraryClient = {
@@ -200,7 +199,7 @@ export function openApplicationClient(input: Input) {
 	const actor = createActor(clientMachine, { input }).start()
 	const post = (message: RuntimeCommand, transfers?: Transferable[]) => {
 		if (actor.getSnapshot().status === 'active')
-			actor.send({ type: 'SEND' as const, message, ...(transfers ? { transfers } : {}) })
+			actor.send({ type: 'SEND', message, ...(transfers ? { transfers } : {}) })
 	}
 	return {
 		post,
@@ -233,19 +232,17 @@ export function openApplicationClient(input: Input) {
 						}
 					}
 				},
-				send: (event) =>
-					post({ type: 'LIBRARY' as const, scope, requestId: crypto.randomUUID(), event }),
-				more: () => post({ type: 'MORE' as const, scope }),
-				editTags: (id) => post({ type: 'TAG_EDIT' as const, scope, ...(id ? { id } : {}) }),
-				tags: (event) =>
-					post({ type: 'TAG_FORM' as const, scope, requestId: crypto.randomUUID(), event }),
+				send: (event) => post({ type: 'LIBRARY', scope, requestId: crypto.randomUUID(), event }),
+				more: () => post({ type: 'MORE', scope }),
+				editTags: (id) => post({ type: 'TAG_EDIT', scope, ...(id ? { id } : {}) }),
+				tags: (event) => post({ type: 'TAG_FORM', scope, requestId: crypto.randomUUID(), event }),
 				attach: (elements, documentId) => {
 					if (!actor.getSnapshot().matches('attached')) return () => {}
 					const channel = new MessageChannel()
 					const surface = serveReaderSurface(channel.port1, elements)
 					post(
 						{
-							type: 'ATTACH' as const,
+							type: 'ATTACH',
 							scope,
 							documentId,
 							images: Array.from(
@@ -271,6 +268,6 @@ export function openApplicationClient(input: Input) {
 				}
 			}
 		},
-		close: () => actor.send({ type: 'SHUTDOWN' as const })
+		close: () => actor.send({ type: 'SHUTDOWN' })
 	}
 }

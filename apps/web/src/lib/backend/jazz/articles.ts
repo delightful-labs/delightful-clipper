@@ -168,7 +168,7 @@ export function createArticleRecords(
 				{ input: { next, error } }
 			).start()
 			return () => {
-				actor.send({ type: 'STOP' as const })
+				actor.send({ type: 'STOP' })
 				actor.stop()
 			}
 		}

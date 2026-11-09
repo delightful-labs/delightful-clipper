@@ -21,10 +21,10 @@ export type ShellPlatform = {
 type Context = {
 	registration: ShellRegistration | undefined
 }
-const preparing = {
+const preparing: NamedState & { status: ShellStatus } = {
 	name: t('offline.preparing'),
-	variant: 'info' as const,
-	status: 'preparing' as const
+	variant: 'info',
+	status: 'preparing'
 }
 export function createShellRegistrationMachine(platform: ShellPlatform) {
 	const actors = {
@@ -210,8 +210,6 @@ export function selectShellView(
 		status: meta.find((state) => state !== undefined)?.status,
 		message: stateFeedback(meta),
 		admitted: snapshot?.matches({ running: { admission: 'open' } }) ?? false,
-		canRetry: snapshot
-			? snapshot.hasTag('retryable') && snapshot.can({ type: 'RETRY' as const })
-			: false
+		canRetry: snapshot ? snapshot.hasTag('retryable') && snapshot.can({ type: 'RETRY' }) : false
 	}
 }

@@ -147,7 +147,7 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 		output: ({ context }) => context.output,
 		states: {
 			running: {
-				type: 'parallel' as const,
+				type: 'parallel',
 				states: {
 					control: {
 						initial: 'active',
@@ -284,7 +284,7 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 									active: {
 										on: {
 											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedSave, { type: 'SHUTDOWN' as const })
+												enq.sendTo(args.context.ownedSave, { type: 'SHUTDOWN' })
 												return { target: 'stopping' }
 											}
 										}
@@ -388,7 +388,7 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 									active: {
 										on: {
 											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedFailure, { type: 'SHUTDOWN' as const })
+												enq.sendTo(args.context.ownedFailure, { type: 'SHUTDOWN' })
 												return { target: 'stopping' }
 											}
 										}
@@ -491,7 +491,7 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 				}
 			},
 			suppressed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: { output: { id: args.context.output.id }, call: undefined, abort: undefined }
@@ -499,7 +499,7 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 				}
 			},
 			done: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { call: undefined, abort: undefined } }
 				}

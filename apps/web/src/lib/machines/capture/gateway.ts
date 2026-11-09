@@ -127,11 +127,15 @@ export function createGatewayMachine(capability: {
 			successfulResponse: (_: { context: Context }, { hop }: { hop: Hop }) => hop.status === 200
 		},
 		actions: {
-			produceResolution: ({ context }: { context: Context }) => ({
+			produceResolution: ({
+				context
+			}: {
+				context: Context
+			}): { context: Pick<Context, 'hop' | 'output'> } => ({
 				context: {
 					hop: undefined,
 					output: {
-						kind: 'success' as const,
+						kind: 'success',
 						finalUrl: context.current,
 						provenance: {
 							submittedUrl: context.url,
@@ -142,10 +146,10 @@ export function createGatewayMachine(capability: {
 					}
 				}
 			}),
-			produceAsset: ({ context }: { context: Context }) => ({
+			produceAsset: ({ context }: { context: Context }): { context: Pick<Context, 'output'> } => ({
 				context: {
 					output: {
-						kind: 'success' as const,
+						kind: 'success',
 						finalUrl: context.current,
 						provenance: {
 							submittedUrl: context.url,
@@ -163,37 +167,37 @@ export function createGatewayMachine(capability: {
 					destination: undefined
 				}
 			}),
-			abortFailure: ({ context }: { context: Context }) => ({
-				context: { output: { kind: 'failed' as const, error: context.signal.reason } }
+			abortFailure: ({ context }: { context: Context }): { context: Pick<Context, 'output'> } => ({
+				context: { output: { kind: 'failed', error: context.signal.reason } }
 			}),
-			redirectLimitFailure: () => ({
+			redirectLimitFailure: (): { context: Pick<Context, 'output'> } => ({
 				context: {
 					output: {
-						kind: 'failed' as const,
+						kind: 'failed',
 						error: new CaptureError('redirectLoop', 400)
 					}
 				}
 			}),
-			redirectLocationFailure: () => ({
+			redirectLocationFailure: (): { context: Pick<Context, 'output'> } => ({
 				context: {
 					output: {
-						kind: 'failed' as const,
+						kind: 'failed',
 						error: new CaptureError('sourceUnavailable', 502)
 					}
 				}
 			}),
-			unsupportedAssetFailure: () => ({
+			unsupportedAssetFailure: (): { context: Pick<Context, 'output'> } => ({
 				context: {
 					output: {
-						kind: 'failed' as const,
+						kind: 'failed',
 						error: new CaptureError('unsupportedMedia', 415)
 					}
 				}
 			}),
-			sourceFailure: () => ({
+			sourceFailure: (): { context: Pick<Context, 'output'> } => ({
 				context: {
 					output: {
-						kind: 'failed' as const,
+						kind: 'failed',
 						error: new CaptureError('sourceUnavailable', 502, true)
 					}
 				}
@@ -238,7 +242,7 @@ export function createGatewayMachine(capability: {
 					onError: (args) => {
 						return {
 							target: 'failed',
-							context: { output: { kind: 'failed' as const, error: args.event.error } }
+							context: { output: { kind: 'failed', error: args.event.error } }
 						}
 					}
 				}
@@ -297,7 +301,7 @@ export function createGatewayMachine(capability: {
 					onError: (args) => {
 						return {
 							target: 'failed',
-							context: { output: { kind: 'failed' as const, error: args.event.error } }
+							context: { output: { kind: 'failed', error: args.event.error } }
 						}
 					}
 				}
@@ -313,7 +317,7 @@ export function createGatewayMachine(capability: {
 							return {
 								target: 'failed',
 								context: {
-									output: { kind: 'failed' as const, error: new CaptureError('redirectLoop', 400) }
+									output: { kind: 'failed', error: new CaptureError('redirectLoop', 400) }
 								}
 							}
 						}
@@ -333,7 +337,7 @@ export function createGatewayMachine(capability: {
 					onError: (args) => {
 						return {
 							target: 'failed',
-							context: { output: { kind: 'failed' as const, error: args.event.error } }
+							context: { output: { kind: 'failed', error: args.event.error } }
 						}
 					}
 				}
@@ -350,7 +354,7 @@ export function createGatewayMachine(capability: {
 							context: {
 								hop: undefined,
 								output: {
-									kind: 'success' as const,
+									kind: 'success',
 									finalUrl: context.current,
 									provenance: {
 										submittedUrl: context.url,
@@ -365,19 +369,19 @@ export function createGatewayMachine(capability: {
 					onError: (args) => {
 						return {
 							target: 'failed',
-							context: { output: { kind: 'failed' as const, error: args.event.error } }
+							context: { output: { kind: 'failed', error: args.event.error } }
 						}
 					}
 				}
 			},
 			done: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { hop: undefined, destination: undefined } }
 				}
 			},
 			failed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { hop: undefined, destination: undefined } }
 				}

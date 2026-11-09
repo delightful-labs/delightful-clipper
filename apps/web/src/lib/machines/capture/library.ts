@@ -107,11 +107,11 @@ const actors = {
 		({ input, sendBack }) => {
 			try {
 				return input?.subscribe(
-					(rows) => sendBack({ type: 'ROWS' as const, rows }),
-					() => sendBack({ type: 'LIST_FAILED' as const })
+					(rows) => sendBack({ type: 'ROWS', rows }),
+					() => sendBack({ type: 'LIST_FAILED' })
 				)
 			} catch {
-				sendBack({ type: 'LIST_FAILED' as const })
+				sendBack({ type: 'LIST_FAILED' })
 				return
 			}
 		}
@@ -119,7 +119,7 @@ const actors = {
 	worker: createCallbackLogic<QueueControl, LibraryCapability | undefined>(
 		({ input, receive, sendBack }) => {
 			if (!input) {
-				sendBack({ type: 'BACKGROUND_CLOSED' as const })
+				sendBack({ type: 'BACKGROUND_CLOSED' })
 				return
 			}
 			try {
@@ -129,8 +129,8 @@ const actors = {
 					void resource.stop()
 				}
 			} catch {
-				sendBack({ type: 'BACKGROUND_ERROR' as const })
-				sendBack({ type: 'BACKGROUND_CLOSED' as const })
+				sendBack({ type: 'BACKGROUND_ERROR' })
+				sendBack({ type: 'BACKGROUND_CLOSED' })
 				return
 			}
 		}
@@ -620,7 +620,7 @@ export const libraryMachine = setup({
 	}),
 	states: {
 		running: {
-			type: 'parallel' as const,
+			type: 'parallel',
 			invoke: [
 				{
 					id: 'collection',
@@ -694,7 +694,7 @@ export const libraryMachine = setup({
 						)
 					)
 						return
-					enq.sendTo('search', { type: 'QUERY' as const, query: event.query })
+					enq.sendTo('search', { type: 'QUERY', query: event.query })
 					return { context: { query: event.query } }
 				},
 				SEARCH_OPEN: (args, enq) => {
@@ -705,7 +705,7 @@ export const libraryMachine = setup({
 						)
 					)
 						return
-					enq.sendTo('search', { type: 'ACTIVATE' as const })
+					enq.sendTo('search', { type: 'ACTIVATE' })
 				},
 				RETRY_SEARCH: (args, enq) => {
 					if (
@@ -715,7 +715,7 @@ export const libraryMachine = setup({
 						)
 					)
 						return
-					enq.sendTo('search', { type: 'RETRY' as const })
+					enq.sendTo('search', { type: 'RETRY' })
 				},
 				TAG_FILTER: (args) => {
 					const { event } = args
@@ -753,11 +753,11 @@ export const libraryMachine = setup({
 					)
 						return
 					enq.sendTo('receipts', {
-						type: 'WATCH' as const,
+						type: 'WATCH',
 						id: event.result.operationId,
 						receipts: savedResult(event.result).receipts
 					})
-					enq.raise({ type: 'CAPTURE_UPDATED' as const })
+					enq.raise({ type: 'CAPTURE_UPDATED' })
 					return {
 						context: {
 							sync: {
@@ -779,9 +779,9 @@ export const libraryMachine = setup({
 						let patch = {}
 						patch = { ...patch, ...args.actions.updateRows(args).context }
 						context = { ...args.context, ...patch }
-						enq.sendTo('search', { type: 'ROWS' as const, rows: context.rows })
-						enq.raise({ type: 'CAPTURE_UPDATED' as const })
-						enq.raise({ type: 'OPEN' as const, id: context.readerId })
+						enq.sendTo('search', { type: 'ROWS', rows: context.rows })
+						enq.raise({ type: 'CAPTURE_UPDATED' })
+						enq.raise({ type: 'OPEN', id: context.readerId })
 						return { context: patch }
 					}
 					if (
@@ -792,8 +792,8 @@ export const libraryMachine = setup({
 						let patch = {}
 						patch = { ...patch, ...args.actions.updateRows(args).context }
 						context = { ...args.context, ...patch }
-						enq.sendTo('search', { type: 'ROWS' as const, rows: context.rows })
-						enq.raise({ type: 'CAPTURE_UPDATED' as const })
+						enq.sendTo('search', { type: 'ROWS', rows: context.rows })
+						enq.raise({ type: 'CAPTURE_UPDATED' })
 						return { context: patch }
 					}
 				},
@@ -809,7 +809,7 @@ export const libraryMachine = setup({
 						)
 					)
 						return
-					enq.raise({ type: 'CAPTURE_UPDATED' as const })
+					enq.raise({ type: 'CAPTURE_UPDATED' })
 					return {
 						context: {
 							backgroundId: event.id,
@@ -831,7 +831,7 @@ export const libraryMachine = setup({
 					)
 						return
 					enq.raise({ type: 'WATCH_RECEIPTS', result: saveOutcome(args.event.result) })
-					enq.raise({ type: 'CAPTURE_UPDATED' as const })
+					enq.raise({ type: 'CAPTURE_UPDATED' })
 					return {
 						context: {
 							background: Object.fromEntries(
@@ -854,7 +854,7 @@ export const libraryMachine = setup({
 				},
 				RETRY: (args, enq) => {
 					if (!matchesState({ running: { control: 'active' } }, args.value)) return
-					enq.sendTo('worker', { type: 'RETRY' as const, id: args.event.id })
+					enq.sendTo('worker', { type: 'RETRY', id: args.event.id })
 				},
 				SYNC: (args, enq) => {
 					const { context, event } = args
@@ -865,7 +865,7 @@ export const libraryMachine = setup({
 						)
 					)
 						return
-					enq.raise({ type: 'CAPTURE_UPDATED' as const })
+					enq.raise({ type: 'CAPTURE_UPDATED' })
 					return { context: { sync: { ...context.sync, [event.id]: event.status } } }
 				}
 			},
@@ -886,10 +886,10 @@ export const libraryMachine = setup({
 							},
 							on: {
 								SHUTDOWN: (args, enq) => {
-									enq.sendTo('images', { type: 'SHUTDOWN' as const })
+									enq.sendTo('images', { type: 'SHUTDOWN' })
 								},
 								CLOSE_READER: (args, enq) => {
-									enq.sendTo('images', { type: 'DETACH' as const })
+									enq.sendTo('images', { type: 'DETACH' })
 								},
 								IMAGE_ERROR: (args, enq) => {
 									if (
@@ -901,7 +901,7 @@ export const libraryMachine = setup({
 										return
 									const { event } = args
 									enq.sendTo('images', {
-										type: 'IMAGE_ERROR' as const,
+										type: 'IMAGE_ERROR',
 										id: event.id,
 										url: event.url
 									})
@@ -914,7 +914,7 @@ export const libraryMachine = setup({
 										)
 									)
 										return
-									enq.sendTo('images', { type: 'RETRY' as const, id: args.event.id })
+									enq.sendTo('images', { type: 'RETRY', id: args.event.id })
 								}
 							}
 						},
@@ -938,10 +938,10 @@ export const libraryMachine = setup({
 							},
 							on: {
 								CLOSE_READER: (args, enq) => {
-									enq.sendTo('readerExperience', { type: 'SHOW_CONTROLS' as const })
+									enq.sendTo('readerExperience', { type: 'SHOW_CONTROLS' })
 								},
 								SHUTDOWN: (args, enq) => {
-									enq.sendTo('readerExperience', { type: 'SHUTDOWN' as const })
+									enq.sendTo('readerExperience', { type: 'SHUTDOWN' })
 								}
 							}
 						},
@@ -950,7 +950,7 @@ export const libraryMachine = setup({
 							meta: {
 								channel: 'reader',
 								name: t('reader.data_unavailable'),
-								variant: 'error' as const
+								variant: 'error'
 							}
 						}
 					}
@@ -1018,7 +1018,7 @@ export const libraryMachine = setup({
 								},
 								SHUTDOWN: (args, enq) => {
 									enq.sendTo(required(args.context.fakeDataRef), {
-										type: 'SHUTDOWN' as const
+										type: 'SHUTDOWN'
 									})
 								}
 							}
@@ -1056,7 +1056,7 @@ export const libraryMachine = setup({
 							meta: {
 								channel: 'organization',
 								name: t('capture.status.saving'),
-								variant: 'info' as const
+								variant: 'info'
 							},
 							initial: 'active',
 							entry: (args, enq) => {
@@ -1109,7 +1109,7 @@ export const libraryMachine = setup({
 									on: {
 										SHUTDOWN: (args, enq) => {
 											enq.sendTo(required(args.context.organizationRef), {
-												type: 'SHUTDOWN' as const
+												type: 'SHUTDOWN'
 											})
 											return { target: 'stopping' }
 										}
@@ -1180,28 +1180,28 @@ export const libraryMachine = setup({
 									meta: {
 										channel: 'organization',
 										name: t('capture.status.saved'),
-										variant: 'info' as const
+										variant: 'info'
 									}
 								},
 								pending: {
 									meta: {
 										channel: 'organization',
 										name: t('library.sync_pending'),
-										variant: 'info' as const
+										variant: 'info'
 									}
 								},
 								synced: {
 									meta: {
 										channel: 'organization',
 										name: t('capture.status.synced'),
-										variant: 'info' as const
+										variant: 'info'
 									}
 								},
 								rejected: {
 									meta: {
 										channel: 'organization',
 										name: t('capture.status.rejected'),
-										variant: 'error' as const
+										variant: 'error'
 									}
 								}
 							}
@@ -1210,14 +1210,14 @@ export const libraryMachine = setup({
 							meta: {
 								channel: 'organization',
 								name: t('capture.status.unknown'),
-								variant: 'error' as const
+								variant: 'error'
 							}
 						},
 						failed: {
 							meta: {
 								channel: 'organization',
 								name: t('capture.status.save_failed'),
-								variant: 'error' as const
+								variant: 'error'
 							}
 						}
 					}
@@ -1229,9 +1229,9 @@ export const libraryMachine = setup({
 							on: {
 								SHUTDOWN: (args, enq) => {
 									let patch = {}
-									enq.sendTo('worker', { type: 'STOP' as const })
-									enq.sendTo('search', { type: 'STOP' as const })
-									enq.sendTo('receipts', { type: 'SHUTDOWN' as const })
+									enq.sendTo('worker', { type: 'STOP' })
+									enq.sendTo('search', { type: 'STOP' })
+									enq.sendTo('receipts', { type: 'SHUTDOWN' })
 									patch = {
 										...patch,
 										reader: undefined,
@@ -1264,7 +1264,7 @@ export const libraryMachine = setup({
 							}
 						},
 						failed: {
-							meta: { name: t('capture.status.failed'), variant: 'error' as const, priority: 1 },
+							meta: { name: t('capture.status.failed'), variant: 'error', priority: 1 },
 							initial: 'active',
 							states: {
 								active: {
@@ -1344,7 +1344,7 @@ export const libraryMachine = setup({
 							)
 								return
 							enq.sendTo('worker', {
-								type: 'CANCEL' as const,
+								type: 'CANCEL',
 								id: context.backgroundId
 							})
 						}
@@ -1354,7 +1354,7 @@ export const libraryMachine = setup({
 						saving: {
 							meta: {
 								name: t('capture.status.saving'),
-								variant: 'info' as const
+								variant: 'info'
 							},
 							initial: 'active',
 							entry: (args, enq) => {
@@ -1407,13 +1407,13 @@ export const libraryMachine = setup({
 									on: {
 										SHUTDOWN: (args, enq) => {
 											enq.sendTo(required(args.context.saveRef), {
-												type: 'SHUTDOWN' as const
+												type: 'SHUTDOWN'
 											})
 											return { target: 'stopping' }
 										},
 										CANCEL: (args, enq) => {
 											enq.sendTo(required(args.context.saveRef), {
-												type: 'SHUTDOWN' as const
+												type: 'SHUTDOWN'
 											})
 											return { target: 'stopping' }
 										}
@@ -1436,7 +1436,7 @@ export const libraryMachine = setup({
 											saveOutcome(event.output).kind === 'duplicate')
 									) {
 										enq.raise({ type: 'WATCH_RECEIPTS', result: saveOutcome(args.event.output) })
-										enq.raise({ type: 'CAPTURE_SAVED' as const })
+										enq.raise({ type: 'CAPTURE_SAVED' })
 										return {
 											target: 'saved',
 											context: {
@@ -1493,19 +1493,19 @@ export const libraryMachine = setup({
 										return { target: 'local' }
 									}
 								},
-								local: { meta: { name: t('capture.status.saved'), variant: 'info' as const } },
+								local: { meta: { name: t('capture.status.saved'), variant: 'info' } },
 								duplicate: {
 									meta: {
 										name: t('capture.status.duplicate'),
-										variant: 'info' as const,
+										variant: 'info',
 										channel: 'duplicate'
 									}
 								},
-								synced: { meta: { name: t('capture.status.synced'), variant: 'info' as const } },
+								synced: { meta: { name: t('capture.status.synced'), variant: 'info' } },
 								rejected: {
 									meta: {
 										name: t('capture.status.rejected'),
-										variant: 'error' as const,
+										variant: 'error',
 										channel: 'capture-problem'
 									}
 								},
@@ -1517,28 +1517,28 @@ export const libraryMachine = setup({
 						invalidUrl: {
 							meta: {
 								name: t('capture.errors.invalid_url'),
-								variant: 'error' as const,
+								variant: 'error',
 								channel: 'capture-problem'
 							}
 						},
 						failed: {
 							meta: {
 								name: t('capture.status.save_failed'),
-								variant: 'error' as const,
+								variant: 'error',
 								channel: 'capture-problem'
 							}
 						},
 						uncertain: {
 							meta: {
 								name: t('capture.status.unknown'),
-								variant: 'error' as const,
+								variant: 'error',
 								channel: 'capture-problem'
 							}
 						},
 						canceled: {
 							meta: {
 								name: t('capture.status.canceled'),
-								variant: 'info' as const
+								variant: 'info'
 							}
 						}
 					}
@@ -1590,7 +1590,7 @@ export const libraryMachine = setup({
 					states: {
 						empty: {},
 						loading: {
-							meta: { channel: 'reader', name: t('reader.loading'), variant: 'info' as const },
+							meta: { channel: 'reader', name: t('reader.loading'), variant: 'info' },
 							invoke: {
 								id: 'read',
 								src: 'read',
@@ -1601,7 +1601,7 @@ export const libraryMachine = setup({
 									reportTo: self
 								}),
 								onError: () => {
-									return { target: 'shown', context: { reader: { kind: 'unavailable' as const } } }
+									return { target: 'shown', context: { reader: { kind: 'unavailable' } } }
 								}
 							}
 						},
@@ -1622,7 +1622,7 @@ export const libraryMachine = setup({
 									meta: {
 										channel: 'reader',
 										name: t('reader.unavailable'),
-										variant: 'error' as const
+										variant: 'error'
 									}
 								}
 							}
@@ -1632,7 +1632,7 @@ export const libraryMachine = setup({
 			}
 		},
 		closed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return {
 					context: {
@@ -1677,7 +1677,7 @@ export function selectLibraryReaderView(snapshot: LibrarySnapshot | undefined) {
 		readerExperience: selectLibraryReaderExperience(snapshot),
 		imageViews: visible ? (snapshot?.children.images?.getSnapshot().context.views ?? {}) : {},
 		readerMessage: !snapshot
-			? { text: t('reader.loading'), variant: 'info' as const }
+			? ({ text: t('reader.loading'), variant: 'info' } satisfies WorkflowMessage)
 			: visible
 				? stateFeedback(Object.values(snapshot.getMeta()), 'reader')
 				: undefined,
@@ -1778,19 +1778,19 @@ export function selectLibraryView(
 			stateFeedback(meta, 'duplicate') ??
 			(c ? forwardedState?.message?.(c) : undefined),
 		readerMessage: !snapshot
-			? { text: t('reader.loading'), variant: 'info' as const }
+			? ({ text: t('reader.loading'), variant: 'info' } satisfies WorkflowMessage)
 			: visible
 				? stateFeedback(meta, 'reader')
 				: undefined,
 		listMessage:
 			visible && c.listFailed
-				? { text: t('library.list_failed'), variant: 'error' as const }
+				? ({ text: t('library.list_failed'), variant: 'error' } satisfies WorkflowMessage)
 				: undefined,
 		emptyMessage:
 			visible && !rows.length && (!c.query.trim() || resultIds !== undefined)
 				? {
 						text: t(c.rows.length ? 'library.filtered_empty' : 'library.empty'),
-						variant: 'info' as const
+						variant: 'info'
 					}
 				: undefined,
 		readable,
@@ -1798,7 +1798,7 @@ export function selectLibraryView(
 			visible && c.captureReady && !c.background[c.captureId] && captured?.trashed !== true,
 		canCancel:
 			visible &&
-			snapshot.can({ type: 'CANCEL' as const }) &&
+			snapshot.can({ type: 'CANCEL' }) &&
 			(snapshot.matches({ running: { capture: 'saving' } }) || c.backgroundCancelable)
 	}
 }

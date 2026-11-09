@@ -31,7 +31,7 @@ function call(
 	return new Promise((resolve, reject) => {
 		const abort = () => {
 			pending.delete(id)
-			post({ type: 'CANCEL_CALL' as const, id })
+			post({ type: 'CANCEL_CALL', id })
 			reject(new Error('canceled'))
 		}
 		if (signal?.aborted) {
@@ -70,18 +70,12 @@ function capability(libraryId: string): QueueCapability {
 	return {
 		libraryId,
 		resolve: async (url, id, signal) => {
-			const reply = await call(
-				{ type: 'CALL' as const, method: 'resolve', url, requestId: id },
-				signal
-			)
+			const reply = await call({ type: 'CALL', method: 'resolve', url, requestId: id }, signal)
 			if (reply.method !== 'resolve') throw new Error('invalidResponse')
 			return resolvedUrl(json(reply.bytes, reply.status), id)
 		},
 		extract: async (url, id, signal) => {
-			const reply = await call(
-				{ type: 'CALL' as const, method: 'extract', url, requestId: id },
-				signal
-			)
+			const reply = await call({ type: 'CALL', method: 'extract', url, requestId: id }, signal)
 			if (reply.method !== 'extract') throw new Error('invalidResponse')
 			return {
 				...extractedCandidate(json(reply.bytes, reply.status), id, url),
@@ -89,22 +83,22 @@ function capability(libraryId: string): QueueCapability {
 			}
 		},
 		document: async (id, signal) => {
-			const r = await call({ type: 'CALL' as const, method: 'document', operationId: id }, signal)
+			const r = await call({ type: 'CALL', method: 'document', operationId: id }, signal)
 			if (r.method !== 'document') throw new Error('invalidResponse')
 			return r.exists
 		},
 		intent: async (id, signal) => {
-			const r = await call({ type: 'CALL' as const, method: 'intent', operationId: id }, signal)
+			const r = await call({ type: 'CALL', method: 'intent', operationId: id }, signal)
 			if (r.method !== 'intent') throw new Error('invalidResponse')
 			return r.exists
 		},
 		save: async (request) => {
-			const r = await call({ type: 'CALL' as const, method: 'save', request })
+			const r = await call({ type: 'CALL', method: 'save', request })
 			if (r.method !== 'save') throw new Error('invalidResponse')
 			return r.result
 		},
 		fail: async (id, code) => {
-			await call({ type: 'CALL' as const, method: 'fail', articleId: id, code })
+			await call({ type: 'CALL', method: 'fail', articleId: id, code })
 		},
 		report: post
 	}
@@ -122,7 +116,7 @@ self.onmessage = (event: MessageEvent<WorkerInput>) => {
 				queue: capability(message.libraryId),
 				...workerCoordination(message.libraryId),
 				commandId: () => crypto.randomUUID(),
-				failed: () => post({ type: 'WORKER_FAILED' as const })
+				failed: () => post({ type: 'WORKER_FAILED' })
 			}),
 			{
 				inspect: createMachineObserver(

@@ -131,12 +131,12 @@ export function createNoteCreationMachine(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			insertArticle: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertArticle(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -145,7 +145,7 @@ export function createNoteCreationMachine(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertDocument(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -226,12 +226,12 @@ export function createNoteRevisionMachine(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			insertRevision: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertRevision(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -390,12 +390,12 @@ export function createLegacyNoteImportMachine(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			insertRevisions: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertRevisions(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -405,7 +405,7 @@ export function createLegacyNoteImportMachine(io: {
 					enq(() => {
 						args.actions.insertArticle(args)
 						args.actions.insertRevisions(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -415,7 +415,7 @@ export function createLegacyNoteImportMachine(io: {
 					enq(() => {
 						args.actions.insertDocument(args)
 						args.actions.insertRevisions(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }

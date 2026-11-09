@@ -41,10 +41,8 @@ export type ClipCapability = {
 export function createClipMachine(cap: ClipCapability) {
 	const actors = {
 		feedback: createCallbackLogic<{ type: 'UNUSED' }, Library>(({ input, sendBack }) => {
-			const subscription = input.subscribe((snapshot) =>
-				sendBack({ type: 'LIBRARY' as const, snapshot })
-			)
-			sendBack({ type: 'LIBRARY' as const, snapshot: input.getSnapshot() })
+			const subscription = input.subscribe((snapshot) => sendBack({ type: 'LIBRARY', snapshot }))
+			sendBack({ type: 'LIBRARY', snapshot: input.getSnapshot() })
 			return () => subscription.unsubscribe()
 		}),
 		read: createAsyncLogic({ run: ({ input }: { input: string }) => cap.read(input) }),
@@ -57,15 +55,15 @@ export function createClipMachine(cap: ClipCapability) {
 		remove: createAsyncLogic({ run: ({ input }: { input: string }) => cap.remove(input) }),
 		save: createCallbackLogic<{ type: 'CANCEL' }, Context>(({ input, sendBack, receive }) => {
 			cap.library.send({
-				type: 'ADD' as const,
+				type: 'ADD',
 				url: input.capture!.url,
 				...(input.content ? { content: input.content } : {})
 			})
 			const subscription = cap.library.subscribe((snapshot) =>
-				sendBack({ type: 'LIBRARY' as const, snapshot })
+				sendBack({ type: 'LIBRARY', snapshot })
 			)
-			sendBack({ type: 'LIBRARY' as const, snapshot: cap.library.getSnapshot() })
-			receive(() => cap.library.send({ type: 'CANCEL' as const }))
+			sendBack({ type: 'LIBRARY', snapshot: cap.library.getSnapshot() })
+			receive(() => cap.library.send({ type: 'CANCEL' }))
 			return () => subscription.unsubscribe()
 		})
 	}
@@ -232,7 +230,7 @@ export function createClipMachine(cap: ClipCapability) {
 							active: {
 								on: {
 									SHUTDOWN: (args, enq) => {
-										enq.sendTo('save', { type: 'CANCEL' as const })
+										enq.sendTo('save', { type: 'CANCEL' })
 										return { target: 'stopping' }
 									}
 								}
@@ -319,7 +317,7 @@ export function createClipMachine(cap: ClipCapability) {
 				})
 			},
 			closed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { source: undefined, content: undefined, capture: undefined } }
 				}

@@ -41,8 +41,8 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 		commands: createCallbackLogic<WorkerControl>(({ receive, sendBack }) => {
 			receive((control) =>
 				sendBack({
-					type: 'COMMAND_CREATED' as const,
-					command: { type: 'COMMAND' as const, id: cap.commandId(), control }
+					type: 'COMMAND_CREATED',
+					command: { type: 'COMMAND', id: cap.commandId(), control }
 				})
 			)
 		}),
@@ -51,7 +51,7 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 			try {
 				lease = cap.claim(sendBack)
 			} catch {
-				sendBack({ type: 'LOCK_FAILED' as const })
+				sendBack({ type: 'LOCK_FAILED' })
 			}
 			receive(() => lease?.cancel())
 			return () => lease?.release()
@@ -60,15 +60,15 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 			({ receive, sendBack }) => {
 				let channel: ReturnType<RuntimeCapability['channel']> | undefined
 				try {
-					channel = cap.channel((message) => sendBack({ type: 'SHARED' as const, message }))
+					channel = cap.channel((message) => sendBack({ type: 'SHARED', message }))
 				} catch {
-					sendBack({ type: 'LOCK_FAILED' as const })
+					sendBack({ type: 'LOCK_FAILED' })
 				}
 				receive((event) => {
 					try {
 						channel?.post(event.message)
 					} catch {
-						sendBack({ type: 'LOCK_FAILED' as const })
+						sendBack({ type: 'LOCK_FAILED' })
 					}
 				})
 				return () => channel?.close()
@@ -123,7 +123,7 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 							CANCEL: ({ event }, enq) => enq.sendTo('commands', event),
 							WAKE: ({ event }, enq) => enq.sendTo('commands', event),
 							COMMAND_CREATED: ({ context, event }, enq) => {
-								enq.sendTo('channel', { type: 'PUBLISH' as const, message: event.command })
+								enq.sendTo('channel', { type: 'PUBLISH', message: event.command })
 								return {
 									context: { pending: { ...context.pending, [event.command.id]: event.command } }
 								}
@@ -144,12 +144,12 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 					active: {
 						entry: ({ context }, enq) => {
 							const actor = enq.spawn('queue', {})
-							enq.sendTo(actor, { type: 'ROWS' as const, rows: context.rows })
+							enq.sendTo(actor, { type: 'ROWS', rows: context.rows })
 							for (const command of Object.values(context.pending))
 								enq.sendTo(actor, command.control)
 							return { context: { queue: actor, pending: {} } }
 						},
-						exit: ({ context }, enq) => enq.sendTo(context.queue, { type: 'STOP' as const }),
+						exit: ({ context }, enq) => enq.sendTo(context.queue, { type: 'STOP' }),
 						on: {
 							ROWS: ({ context, event }, enq) => {
 								enq.sendTo(context.queue, event)
@@ -160,21 +160,21 @@ export function createArticleWorkerRuntimeMachine(cap: RuntimeCapability) {
 							WAKE: ({ context, event }, enq) => enq.sendTo(context.queue, event),
 							COMMAND_CREATED: ({ context, event }, enq) => {
 								enq.sendTo(context.queue, event.command.control)
-								enq.sendTo('channel', { type: 'PUBLISH' as const, message: event.command })
+								enq.sendTo('channel', { type: 'PUBLISH', message: event.command })
 							},
 							SHARED: ({ context, event }, enq) => {
 								if (event.message.type !== 'COMMAND') return
 								enq.sendTo(context.queue, event.message.control)
 								enq.sendTo('channel', {
-									type: 'PUBLISH' as const,
-									message: { type: 'ACK' as const, id: event.message.id }
+									type: 'PUBLISH',
+									message: { type: 'ACK', id: event.message.id }
 								})
 							}
 						}
 					},
 					stopped: {
 						entry: ({ context }, enq) => {
-							enq.sendTo('lock', { type: 'CANCEL_ACQUIRE' as const })
+							enq.sendTo('lock', { type: 'CANCEL_ACQUIRE' })
 							enq.stop(context.queue)
 							return { context: { queue: undefined, rows: [], pending: {} } }
 						}

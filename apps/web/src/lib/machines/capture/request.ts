@@ -66,7 +66,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 	}
 	const actors = {
 		cancellation: createCallbackLogic<{ type: 'UNUSED' }, AbortSignal>(({ input, sendBack }) => {
-			const abort = () => sendBack({ type: 'CANCEL' as const })
+			const abort = () => sendBack({ type: 'CANCEL' })
 			input.addEventListener('abort', abort, { once: true })
 			if (input.aborted) abort()
 			return () => input.removeEventListener('abort', abort)
@@ -170,38 +170,39 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 			}
 		return { target: '#request-releasing', context: { response: failure(event.error) } }
 	}
-	const encoding = (payload: (args: { context: FullContext }) => unknown) => ({
-		invoke: {
-			id: 'encode' as const,
-			src: 'encode' as const,
-			input: payload,
-			onDone: ({
-				context,
-				value,
-				event
-			}: {
-				context: FullContext
-				value: import('xstate').StateValue
-				event: { output: Response }
-			}) => {
-				if (
-					matchesState({ owning: { control: 'timedOut' } }, value) ||
-					cap.now() >= context.expiresAt
-				)
-					return {
-						target: '#request-releasing',
-						context: { response: failure(new CaptureError('fetchTimeout', 504, true)) }
-					}
-				if (matchesState({ owning: { control: 'cancelled' } }, value) || context.signal.aborted)
-					return {
-						target: '#request-releasing',
-						context: { response: failure(new CaptureError('canceled', 408, true)) }
-					}
-				return { target: '#request-releasing', context: { response: event.output } }
-			},
-			onError: errors
-		}
-	})
+	const encoding = (payload: (args: { context: FullContext }) => unknown) =>
+		model.createStateConfig({
+			invoke: {
+				id: 'encode',
+				src: 'encode',
+				input: payload,
+				onDone: ({
+					context,
+					value,
+					event
+				}: {
+					context: FullContext
+					value: import('xstate').StateValue
+					event: { output: Response }
+				}) => {
+					if (
+						matchesState({ owning: { control: 'timedOut' } }, value) ||
+						cap.now() >= context.expiresAt
+					)
+						return {
+							target: '#request-releasing',
+							context: { response: failure(new CaptureError('fetchTimeout', 504, true)) }
+						}
+					if (matchesState({ owning: { control: 'cancelled' } }, value) || context.signal.aborted)
+						return {
+							target: '#request-releasing',
+							context: { response: failure(new CaptureError('canceled', 408, true)) }
+						}
+					return { target: '#request-releasing', context: { response: event.output } }
+				},
+				onError: errors
+			}
+		})
 
 	const interruptedStage = (next: 'reading' | 'capturing' | 'routingResponse') => ({
 		always: (args: { context: FullContext; value: import('xstate').StateValue }) => {
@@ -250,7 +251,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 					src: 'cancellation',
 					input: ({ context }: { context: FullContext }) => required(context.input).request.signal
 				},
-				type: 'parallel' as const,
+				type: 'parallel',
 				states: {
 					control: {
 						initial: 'active',
@@ -430,7 +431,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 				}
 			},
 			closed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return {
 						context: { input: undefined, release: undefined, parsed: undefined, result: undefined }

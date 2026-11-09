@@ -2,9 +2,10 @@ import { expect, it, vi } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import { createConnectStoreMachine } from './connect-store-machine.js'
 import { connectionFor, newlyConfirmedConnection } from './connection.js'
+import type { Connection } from './connection.js'
 const id = '77777777-7777-4777-8777-777777777777'
 const scope = { appId: id, serverUrl: 'https://sync.test/' }
-const connection = { version: 1 as const, accountId: id, confirmationId: id, ...scope }
+const connection: Connection = { version: 1, accountId: id, confirmationId: id, ...scope }
 it('rejects absent, malformed and differently scoped confirmations', () => {
 	expect(connectionFor(undefined, scope)).toBeUndefined()
 	expect(connectionFor({ accountId: id }, scope)).toBeUndefined()

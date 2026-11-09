@@ -97,7 +97,7 @@ export const decodeResponseMachine = model.createMachine({
 			}
 		},
 		done: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return { context: { wire: new Uint8Array() } }
 			}

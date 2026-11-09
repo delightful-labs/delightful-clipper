@@ -62,7 +62,7 @@ it('reports pending/failed native rows to its owning actor and disposes its subs
 it('owns blob URLs, reports decode errors, reloads saved bytes on Retry and ignores stale URL errors', async () => {
 	const revoke = vi.spyOn(URL, 'revokeObjectURL'),
 		dispose = vi.fn(),
-		ready = { ...row, status: 'ready' as const, assetId: row.id }
+		ready: ArticleImage = { ...row, status: 'ready', assetId: row.id }
 	const payload = new Uint8Array(
 		Buffer.from(
 			'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',

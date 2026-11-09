@@ -145,7 +145,7 @@ export function createSearchWorkerMachine(cap: {
 				entry: ({ context }, enq) => {
 					enq(() =>
 						cap.report({
-							type: 'INDEX_READY' as const,
+							type: 'INDEX_READY',
 							generation: required(context.dataset).generation
 						})
 					)
@@ -156,7 +156,7 @@ export function createSearchWorkerMachine(cap: {
 						const { event } = args
 						enq(() =>
 							cap.report({
-								type: 'RESULT' as const,
+								type: 'RESULT',
 								generation: event.generation,
 								query: event.query,
 								ids: searchIndex(required(args.context.index), event.query)
@@ -167,11 +167,11 @@ export function createSearchWorkerMachine(cap: {
 			},
 			failed: {
 				entry: (_args, enq) => {
-					enq(() => cap.report({ type: 'WORKER_ERROR' as const }))
+					enq(() => cap.report({ type: 'WORKER_ERROR' }))
 				}
 			},
 			closed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return {
 						context: { dataset: undefined, fingerprint: '', cached: undefined, index: undefined }

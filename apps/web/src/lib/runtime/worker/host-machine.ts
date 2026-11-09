@@ -51,12 +51,11 @@ const owner = createCallbackLogic<SessionOwnerReply<Session>, Input>(
 	({ input, self, receive, sendBack }) => {
 		const scope = { binding: input.startup.scope.binding, attachment: {}, generation: 0 }
 		receive((event) => {
-			if (event.type === 'ACQUIRED')
-				sendBack({ type: 'OWNER_READY' as const, session: event.session })
-			else if (event.type === 'ACQUISITION_FAILED') sendBack({ type: 'OWNER_EMPTY' as const })
+			if (event.type === 'ACQUIRED') sendBack({ type: 'OWNER_READY', session: event.session })
+			else if (event.type === 'ACQUISITION_FAILED') sendBack({ type: 'OWNER_EMPTY' })
 		})
-		input.startup.owner.send({ type: 'ACQUIRE' as const, scope, replyTo: self })
-		return () => input.startup.owner.send({ type: 'RELEASE' as const, scope, replyTo: self })
+		input.startup.owner.send({ type: 'ACQUIRE', scope, replyTo: self })
+		return () => input.startup.owner.send({ type: 'RELEASE', scope, replyTo: self })
 	}
 )
 const actors = {
@@ -202,7 +201,7 @@ export const workerHostMachine = setup({
 				input: ({ context }: { context: Context }) => context.input,
 				onDone: (args, enq) => {
 					enq.raise({
-						type: 'APPLICATION_CLOSED' as const,
+						type: 'APPLICATION_CLOSED',
 						clean: args.event.output.clean
 					})
 				},
@@ -283,9 +282,9 @@ export const workerHostMachine = setup({
 								(({ event }) => {
 									if (event.type !== 'ATTACH_BOUND') throw new Error('Reader surface unavailable')
 									return {
-										type: 'READER_EVENT' as const,
+										type: 'READER_EVENT',
 										event: {
-											type: 'ATTACH_SURFACE' as const,
+											type: 'ATTACH_SURFACE',
 											surface: event.surface,
 											documentId: event.documentId,
 											sources: event.sources
@@ -297,7 +296,7 @@ export const workerHostMachine = setup({
 						TAG_FORM: (args, enq) => {
 							const { context } = args
 							if (args.guards.resettingTags(args)) {
-								enq.sendTo(required(context.tagForm), { type: 'RESET' as const })
+								enq.sendTo(required(context.tagForm), { type: 'RESET' })
 								return {}
 							}
 							if (args.guards.currentLibrary(args)) {
@@ -324,7 +323,7 @@ export const workerHostMachine = setup({
 							enq.sendTo('application', args.event.event)
 						},
 						SHUTDOWN: (args, enq) => {
-							enq.sendTo('application', { type: 'SHUTDOWN' as const })
+							enq.sendTo('application', { type: 'SHUTDOWN' })
 							return { target: 'draining' }
 						}
 					}
@@ -366,7 +365,7 @@ export const workerHostMachine = setup({
 			}
 		},
 		closed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args, enq) => {
 				enq(({ context }) => context.input.startup.owner.stop(), args)
 				return { context: { session: undefined } }

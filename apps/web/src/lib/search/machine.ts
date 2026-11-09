@@ -56,12 +56,12 @@ export function createSearchMachine() {
 				const opened = input.open(sendBack)
 				worker = opened
 				unsubscribe = input.observe(
-					() => sendBack({ type: 'DIRTY' as const }),
-					() => sendBack({ type: 'WORKER_ERROR' as const })
+					() => sendBack({ type: 'DIRTY' }),
+					() => sendBack({ type: 'WORKER_ERROR' })
 				)
 				receive((event) => opened.post(event))
 			} catch {
-				sendBack({ type: 'WORKER_ERROR' as const })
+				sendBack({ type: 'WORKER_ERROR' })
 			}
 			return () => {
 				try {
@@ -259,7 +259,7 @@ export function createSearchMachine() {
 								}
 								if (args.guards.supported(args)) {
 									enq.sendTo('resource', {
-										type: 'INDEX' as const,
+										type: 'INDEX',
 										key: 'clipper-search-v1:' + required(context.capability).libraryId,
 										generation: context.generation,
 										documents: args.event.output
@@ -291,7 +291,7 @@ export function createSearchMachine() {
 						entry: (args, enq) => {
 							const { context } = args
 							enq.sendTo('resource', {
-								type: 'QUERY' as const,
+								type: 'QUERY',
 								generation: context.generation,
 								query: context.query
 							})
@@ -322,7 +322,7 @@ export function createSearchMachine() {
 				}
 			},
 			failed: {
-				meta: { name: t('library.search_failed'), variant: 'error' as const },
+				meta: { name: t('library.search_failed'), variant: 'error' },
 				on: {
 					RETRY: (args) => {
 						if (!args.guards.supported(args)) return
@@ -339,7 +339,7 @@ export function createSearchMachine() {
 			},
 			disabled: {},
 			closed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { capability: undefined, rows: [], query: '', ids: [] } }
 				}
@@ -355,7 +355,7 @@ export function selectSearchView(
 		query: current ? snapshot.context.query : '',
 		ids: current && snapshot.matches({ running: 'ready' }) ? snapshot.context.ids : undefined,
 		message: current ? stateFeedback(Object.values(snapshot.getMeta())) : undefined,
-		canRetry: current && snapshot.can({ type: 'RETRY' as const }),
+		canRetry: current && snapshot.can({ type: 'RETRY' }),
 		enabled: snapshot?.context.capability?.isCurrent() ?? false
 	}
 }

@@ -77,12 +77,12 @@ export function createArticleEnsureDomain(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			insertArticle: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertArticle(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -167,12 +167,12 @@ export function createArticleAttachmentDomain(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			attachContent: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.attachContent(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -181,7 +181,7 @@ export function createArticleAttachmentDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.createArticle(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -256,12 +256,12 @@ export function createArticleFailureDomain(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			recordFailure: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.recordFailure(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }

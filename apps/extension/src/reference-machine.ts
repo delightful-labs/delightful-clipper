@@ -99,13 +99,13 @@ export function createReferenceMachine(cap: {
 				}
 			},
 			done: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { accepted: true, capture: undefined, message: undefined } }
 				}
 			},
 			failed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { capture: undefined, message: undefined } }
 				}

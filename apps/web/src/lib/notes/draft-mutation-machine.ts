@@ -39,9 +39,9 @@ const actors = {
 			})
 			const notes = tx.objectStore('noteDrafts'),
 				legacy = tx.objectStore('drafts')
-			tx.oncomplete = () => sendBack({ type: 'COMPLETED' as const })
-			tx.onabort = () => sendBack({ type: 'ABORTED' as const })
-			tx.onerror = () => sendBack({ type: 'STORAGE_ERROR' as const })
+			tx.oncomplete = () => sendBack({ type: 'COMPLETED' })
+			tx.onabort = () => sendBack({ type: 'ABORTED' })
+			tx.onerror = () => sendBack({ type: 'STORAGE_ERROR' })
 			function read(
 				store: IDBObjectStore,
 				key: string,
@@ -54,7 +54,7 @@ const actors = {
 				try {
 					tx.abort()
 				} catch {
-					sendBack({ type: 'ABORTED' as const })
+					sendBack({ type: 'ABORTED' })
 				}
 			}
 			const commands: Record<Command['type'], () => void> = {
@@ -74,10 +74,10 @@ const actors = {
 				try {
 					commands[command.type]()
 				} catch {
-					sendBack({ type: 'STORAGE_ERROR' as const })
+					sendBack({ type: 'STORAGE_ERROR' })
 				}
 			})
-			sendBack({ type: 'OPENED' as const })
+			sendBack({ type: 'OPENED' })
 			return () => input.db.close()
 		}
 	)
@@ -192,7 +192,7 @@ export const draftMutationMachine = setup({
 				},
 				readingSource: {
 					entry: (args, enq) => {
-						enq.sendTo('storage', { type: 'READ_SOURCE' as const })
+						enq.sendTo('storage', { type: 'READ_SOURCE' })
 					},
 					on: {
 						SOURCE_READ: (args) => {
@@ -206,13 +206,13 @@ export const draftMutationMachine = setup({
 				},
 				readingDestination: {
 					entry: (args, enq) => {
-						enq.sendTo('storage', { type: 'READ_DESTINATION' as const })
+						enq.sendTo('storage', { type: 'READ_DESTINATION' })
 					},
 					on: {
 						DESTINATION_READ: (args, enq) => {
 							const { event } = args
 							if (args.guards.destinationCompatible(args, event)) {
-								enq.sendTo('storage', { type: 'MOVE' as const })
+								enq.sendTo('storage', { type: 'MOVE' })
 								return { target: 'waitingCompletion' }
 							}
 							return { target: 'aborting' }
@@ -221,7 +221,7 @@ export const draftMutationMachine = setup({
 				},
 				readingCurrent: {
 					entry: (args, enq) => {
-						enq.sendTo('storage', { type: 'READ_CURRENT' as const })
+						enq.sendTo('storage', { type: 'READ_CURRENT' })
 					},
 					on: {
 						CURRENT_READ: (args, enq) => {
@@ -230,7 +230,7 @@ export const draftMutationMachine = setup({
 								return { target: 'waitingCompletion' }
 							}
 							if (args.guards.currentMatches(args, event)) {
-								enq.sendTo('storage', { type: 'DELETE' as const })
+								enq.sendTo('storage', { type: 'DELETE' })
 								return { target: 'waitingCompletion' }
 							}
 							if (args.guards.currentValid(args, event)) {
@@ -242,7 +242,7 @@ export const draftMutationMachine = setup({
 				},
 				aborting: {
 					entry: (args, enq) => {
-						enq.sendTo('storage', { type: 'ABORT' as const })
+						enq.sendTo('storage', { type: 'ABORT' })
 					}
 				},
 				waitingCompletion: {}
@@ -253,7 +253,7 @@ export const draftMutationMachine = setup({
 				enq(args.actions.fail)
 			}
 		},
-		done: { type: 'final' as const }
+		done: { type: 'final' }
 	}
 })
 /** Public promise API boundary; all child actors and transaction commands belong

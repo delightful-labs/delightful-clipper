@@ -17,7 +17,7 @@ type Context = {
 	result: ParserReply | undefined
 }
 function failure(code: string, status: number, retryable: boolean): Failure {
-	return { kind: 'failed' as const, code, status, retryable }
+	return { kind: 'failed', code, status, retryable }
 }
 function workerFailure(code: string) {
 	return code === 'ERR_WORKER_OUT_OF_MEMORY'
@@ -30,7 +30,7 @@ const actors = {
 		try {
 			resource = input(sendBack)
 		} catch {
-			sendBack({ type: 'WORKER_START_FAILED' as const })
+			sendBack({ type: 'WORKER_START_FAILED' })
 			return
 		}
 		receive(() => resource.terminate())
@@ -117,7 +117,7 @@ export const parserWorkerMachine = setup({
 				},
 				stopping: {
 					entry: (args, enq) => {
-						enq.sendTo('worker', { type: 'TERMINATE' as const })
+						enq.sendTo('worker', { type: 'TERMINATE' })
 					},
 					on: {
 						WORKER_RESULT: {},
@@ -131,7 +131,7 @@ export const parserWorkerMachine = setup({
 			}
 		},
 		settled: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args) => {
 				const { context } = args
 				return {

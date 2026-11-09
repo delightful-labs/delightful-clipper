@@ -54,7 +54,7 @@ export function createRuntimeMachine(cap: {
 		reload: createAsyncLogic({ run: () => cap.reload() }),
 		account: createCallbackLogic(({ sendBack }) =>
 			cap.account((library, message, accountStatus) =>
-				sendBack({ type: 'BIND' as const, library, message, accountStatus })
+				sendBack({ type: 'BIND', library, message, accountStatus })
 			)
 		),
 		clip: createCallbackLogic<{ type: 'SHUTDOWN' }, { library: Library; id: string }>(
@@ -62,9 +62,7 @@ export function createRuntimeMachine(cap: {
 				const actor = createActor(createClipMachine(cap.clip(input.library)), {
 					input: { id: input.id }
 				})
-				const subscription = actor.subscribe((snapshot) =>
-					sendBack({ type: 'CLIP' as const, snapshot })
-				)
+				const subscription = actor.subscribe((snapshot) => sendBack({ type: 'CLIP', snapshot }))
 				receive((event) => actor.send(event))
 				actor.start()
 				return () => {
@@ -207,12 +205,12 @@ export function createRuntimeMachine(cap: {
 				on: {
 					ACCOUNT_CHANGED: (args, enq) => {
 						if (!args.guards.differentAccount(args)) return
-						enq.sendTo('clip', { type: 'SHUTDOWN' as const })
+						enq.sendTo('clip', { type: 'SHUTDOWN' })
 						return { target: '.restarting', context: { queue: [] } }
 					},
 					BIND: (args, enq) => {
 						if (!args.guards.changedOwner(args)) return
-						enq.sendTo('clip', { type: 'SHUTDOWN' as const })
+						enq.sendTo('clip', { type: 'SHUTDOWN' })
 						return { target: '.draining', context: { library: args.event.library, queue: [] } }
 					},
 					CLIP: (args, enq) => {
@@ -256,7 +254,7 @@ export function createRuntimeMachine(cap: {
 									return { target: '#extension-runtime.reloading' }
 								}
 								if (args.guards.settled(args)) {
-									enq.sendTo('clip', { type: 'SHUTDOWN' as const })
+									enq.sendTo('clip', { type: 'SHUTDOWN' })
 									return {}
 								}
 							}
@@ -269,7 +267,7 @@ export function createRuntimeMachine(cap: {
 									return { target: '#extension-runtime.idle' }
 								}
 								if (args.guards.settled(args)) {
-									enq.sendTo('clip', { type: 'SHUTDOWN' as const })
+									enq.sendTo('clip', { type: 'SHUTDOWN' })
 									return {}
 								}
 							}

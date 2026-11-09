@@ -117,3 +117,10 @@ Use `@xstate/test@2.0.0-beta.0` for generated campaigns against independent
 contracts and real actor SUTs. Keep explicit generators, bounds, seeds and
 coverage requirements, retain shrinking/replay artifacts through the built-in
 failure store, and preserve native browser/Jazz tests.
+
+Prefer schema-driven contextual inference for machine configuration, transitions,
+effects and events. Do not add `as const` to every literal during migration.
+Reusable helpers and protocol projections should check their actual return/DTO
+contracts, using the setup's typed config helpers or checked return types where
+contextual inference is absent. Literal tuples used to derive finite unions are
+an appropriate, separate use of `as const`.

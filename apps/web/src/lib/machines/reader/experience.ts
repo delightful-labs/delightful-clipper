@@ -75,8 +75,8 @@ const attachmentIdentity = createCallbackLogic<never>(({ sendBack }) => {
 const observation = createCallbackLogic<ReaderExperienceEvent, ReaderCapability | undefined>(
 	({ input, sendBack }) =>
 		input?.subscribe(
-			(rows) => sendBack({ type: 'ROWS' as const, rows }),
-			() => sendBack({ type: 'OBSERVATION_FAILED' as const })
+			(rows) => sendBack({ type: 'ROWS', rows }),
+			() => sendBack({ type: 'OBSERVATION_FAILED' })
 		)
 )
 const fullscreenEntry = createAsyncLogic<void, FullscreenSurface>({
@@ -87,9 +87,9 @@ const fullscreenExit = createAsyncLogic<void, FullscreenSurface>({
 })
 const fullscreenObservation = createCallbackLogic<ReaderExperienceEvent, FullscreenSurface>(
 	({ input, sendBack }) => {
-		const change = () => sendBack({ type: 'FULLSCREEN_CHANGED' as const })
+		const change = () => sendBack({ type: 'FULLSCREEN_CHANGED' })
 		const release = input.observe(change)
-		sendBack({ type: 'FULLSCREEN_OBSERVED' as const })
+		sendBack({ type: 'FULLSCREEN_OBSERVED' })
 		return release
 	}
 )
@@ -245,7 +245,7 @@ export const readerExperienceMachine = model.createMachine({
 			}
 		},
 		active: {
-			type: 'parallel' as const,
+			type: 'parallel',
 			invoke: {
 				id: 'receipts',
 				src: 'receipts',
@@ -268,7 +268,7 @@ export const readerExperienceMachine = model.createMachine({
 			on: {
 				SYNC: (args, enq) => {
 					const { event } = args
-					enq.raise({ type: 'REFRESH_SYNC' as const })
+					enq.raise({ type: 'REFRESH_SYNC' })
 					return { context: { sync: { ...args.context.sync, [event.id]: event.status } } }
 				}
 			},
@@ -309,7 +309,7 @@ export const readerExperienceMachine = model.createMachine({
 							}
 						},
 						failed: {
-							meta: { name: t('reader.data_unavailable'), variant: 'error' as const, priority: 4 },
+							meta: { name: t('reader.data_unavailable'), variant: 'error', priority: 4 },
 							on: { SHUTDOWN: { target: 'closed' } }
 						},
 						closed: {}
@@ -592,16 +592,16 @@ export const readerExperienceMachine = model.createMachine({
 							},
 							on: {
 								REFLOW: (args, enq) => {
-									enq.sendTo('viewport', { type: 'REFLOW' as const })
+									enq.sendTo('viewport', { type: 'REFLOW' })
 								},
 								FOCUS: (args, enq) => {
-									enq.sendTo('viewport', { type: 'REFLOW' as const })
+									enq.sendTo('viewport', { type: 'REFLOW' })
 								},
 								SHOW_CONTROLS: (args, enq) => {
-									enq.sendTo('viewport', { type: 'REFLOW' as const })
+									enq.sendTo('viewport', { type: 'REFLOW' })
 								},
 								FULLSCREEN_CHANGED: (args, enq) => {
-									enq.sendTo('viewport', { type: 'REFLOW' as const })
+									enq.sendTo('viewport', { type: 'REFLOW' })
 								},
 								VIEWPORT_FAILED: (args) => {
 									if (!args.guards.currentViewport(args)) return
@@ -631,7 +631,7 @@ export const readerExperienceMachine = model.createMachine({
 											}
 											context = { ...args.context, ...patch }
 											enq.raise({
-												type: 'CHANGE' as const,
+												type: 'CHANGE',
 												change: {
 													field: 'position',
 													documentId: required(context.attachment).documentId,
@@ -646,11 +646,11 @@ export const readerExperienceMachine = model.createMachine({
 											return { context: patch }
 										},
 										DETACH: (args, enq) => {
-											enq.sendTo('viewport', { type: 'DETACH' as const })
+											enq.sendTo('viewport', { type: 'DETACH' })
 											return { target: 'closing' }
 										},
 										SHUTDOWN: (args, enq) => {
-											enq.sendTo('viewport', { type: 'DETACH' as const })
+											enq.sendTo('viewport', { type: 'DETACH' })
 											return { target: 'closing' }
 										}
 									}
@@ -659,7 +659,7 @@ export const readerExperienceMachine = model.createMachine({
 							}
 						},
 						failed: {
-							meta: { name: t('reader.data_unavailable'), variant: 'error' as const, priority: 4 },
+							meta: { name: t('reader.data_unavailable'), variant: 'error', priority: 4 },
 							on: {
 								DETACH: () => {
 									return { target: 'detached', context: { attachment: undefined } }
@@ -688,7 +688,7 @@ export const readerExperienceMachine = model.createMachine({
 						failed: {
 							meta: {
 								name: t('status.failed_subject', { subject: t('actions.sync') }),
-								variant: 'error' as const,
+								variant: 'error',
 								priority: 1
 							}
 						}
@@ -835,7 +835,7 @@ export const readerExperienceMachine = model.createMachine({
 										patch = { ...patch, ...args.actions.dropIssuedDraft(args).context }
 										context = { ...args.context, ...patch }
 										enq.sendTo('receipts', {
-											type: 'WATCH' as const,
+											type: 'WATCH',
 											id: context.operationId,
 											receipts:
 												event.output?.settlement.kind === 'locallyPersisted'
@@ -870,14 +870,14 @@ export const readerExperienceMachine = model.createMachine({
 							}
 						},
 						failed: {
-							meta: { name: t('reader.save_failed'), variant: 'error' as const, priority: 2 },
+							meta: { name: t('reader.save_failed'), variant: 'error', priority: 2 },
 							always: (args) => {
 								if (!args.guards.queued(args)) return
 								return { target: 'routing' }
 							}
 						},
 						uncertain: {
-							meta: { name: t('status.save_unknown'), variant: 'error' as const, priority: 3 },
+							meta: { name: t('status.save_unknown'), variant: 'error', priority: 3 },
 							on: { CHANGE: {}, ATTACH: { target: 'idle' }, SHUTDOWN: {} }
 						}
 					}
@@ -885,7 +885,7 @@ export const readerExperienceMachine = model.createMachine({
 			}
 		},
 		closed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return {
 					context: {

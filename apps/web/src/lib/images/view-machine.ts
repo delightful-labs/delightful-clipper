@@ -42,8 +42,8 @@ const observe = createCallbackLogic<Event, Input>(({ input, sendBack }) =>
 	input.capability.subscribeImage(
 		input.documentId,
 		input.sourceUrl,
-		(rows) => sendBack({ type: 'ROWS' as const, rows }),
-		() => sendBack({ type: 'FAILED' as const })
+		(rows) => sendBack({ type: 'ROWS', rows }),
+		() => sendBack({ type: 'FAILED' })
 	)
 )
 const load = createAsyncLogic<StoredAsset | null, Context>({
@@ -53,7 +53,7 @@ const url = createCallbackLogic<Event, StoredAsset>(({ input, sendBack }) => {
 	const url = URL.createObjectURL(
 		new Blob([new Uint8Array(input.payload)], { type: input.mediaType })
 	)
-	sendBack({ type: 'URL' as const, url })
+	sendBack({ type: 'URL', url })
 	return () => URL.revokeObjectURL(url)
 })
 function validImageAsset(context: Context, asset: StoredAsset | null) {
@@ -115,7 +115,7 @@ const report =
 		enq: EnqueueObject<Event, never>
 	) => {
 		enq.sendTo(parent, {
-			type: 'IMAGE_VIEW' as const,
+			type: 'IMAGE_VIEW',
 			documentId: context.documentId,
 			sourceUrl: context.sourceUrl,
 			view: { ...view(context), ...(context.row ? { id: context.row.id } : {}) }
@@ -194,31 +194,31 @@ export const imageViewMachine = model.createMachine({
 						return { target: 'failed' }
 					}
 				},
-				pending: { entry: report(() => ({ status: 'pending' as const, retry: false })) },
+				pending: { entry: report(() => ({ status: 'pending', retry: false })) },
 				unknown: {
-					meta: { name: t('status.save_unknown'), variant: 'error' as const },
+					meta: { name: t('status.save_unknown'), variant: 'error' },
 					entry: report(() => ({
-						status: 'unknown' as const,
+						status: 'unknown',
 						retry: false,
-						message: { text: t('status.save_unknown'), variant: 'error' as const }
+						message: { text: t('status.save_unknown'), variant: 'error' }
 					}))
 				},
 				failed: {
 					meta: {
 						name: t('status.failed_subject', { subject: action('get', 'image') }),
-						variant: 'error' as const
+						variant: 'error'
 					},
 					entry: report((context) => ({
-						status: 'failed' as const,
+						status: 'failed',
 						retry: !!context.row,
 						message: {
 							text: t('status.failed_subject', { subject: action('get', 'image') }),
-							variant: 'error' as const
+							variant: 'error'
 						}
 					}))
 				},
 				loading: {
-					entry: report(() => ({ status: 'pending' as const, retry: false })),
+					entry: report(() => ({ status: 'pending', retry: false })),
 					invoke: {
 						id: 'load',
 						src: 'load',
@@ -251,7 +251,7 @@ export const imageViewMachine = model.createMachine({
 						},
 						available: {
 							entry: report((context) => ({
-								status: 'ready' as const,
+								status: 'ready',
 								retry: false,
 								url: context.url!
 							}))

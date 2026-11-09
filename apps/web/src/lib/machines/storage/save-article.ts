@@ -101,7 +101,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 		output: ({ context }) => required(context.result),
 		states: {
 			running: {
-				type: 'parallel' as const,
+				type: 'parallel',
 				states: {
 					control: {
 						initial: 'active',
@@ -454,7 +454,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 									active: {
 										on: {
 											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedContent, { type: 'SHUTDOWN' as const })
+												enq.sendTo(args.context.ownedContent, { type: 'SHUTDOWN' })
 												return { target: 'stopping' }
 											}
 										}
@@ -510,7 +510,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 												target: '#save-article.done',
 												context: {
 													result: {
-														kind: 'saved' as const,
+														kind: 'saved',
 														operationId: required(args.context.draft).article.id,
 														ready: true,
 														receipts: event.output?.kind === 'saved' ? event.output.receipts : []
@@ -528,13 +528,13 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 				}
 			},
 			duplicate: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					const { context } = args
 					return {
 						context: {
 							result: {
-								kind: 'duplicate' as const,
+								kind: 'duplicate',
 								operationId: required(context.draft).article.id,
 								ready: !!context.existing?.contentId,
 								receipts: []
@@ -547,13 +547,13 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 				}
 			},
 			done: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { request: undefined, draft: undefined, existing: null } }
 				}
 			},
 			failed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {
@@ -566,7 +566,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 				}
 			},
 			unknown: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {
@@ -579,7 +579,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 				}
 			},
 			interrupted: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {
@@ -592,7 +592,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 				}
 			},
 			scopeChanged: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {

@@ -101,8 +101,8 @@ const sut: TestSut<SnapshotFrom<typeof contract>, EventFrom<typeof contract>> = 
 		return {
 			send(event) {
 				if (event.type === 'BIND' || event.type === 'PROBE') {
-					const command = {
-						type: 'BIND_LIBRARY' as const,
+					const command: EventFrom<typeof f.actor> = {
+						type: 'BIND_LIBRARY',
 						library: event.slot === 'none' ? undefined : libraries[event.slot],
 						scope: event.scope
 					}

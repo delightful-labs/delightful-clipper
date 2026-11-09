@@ -120,7 +120,7 @@ export function createOrganizationMachine(
 				}
 			},
 			working: {
-				type: 'parallel' as const,
+				type: 'parallel',
 				states: {
 					control: {
 						initial: 'active',
@@ -210,7 +210,7 @@ export function createOrganizationMachine(
 									active: {
 										on: {
 											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedStage, { type: 'SHUTDOWN' as const })
+												enq.sendTo(args.context.ownedStage, { type: 'SHUTDOWN' })
 												return { target: 'stopping' }
 											}
 										}
@@ -287,7 +287,7 @@ export function createOrganizationMachine(
 												target: '#organization-save.saved',
 												context: {
 													result: {
-														kind: 'saved' as const,
+														kind: 'saved',
 														operationId: args.context.operationId,
 														receipts:
 															event.output?.settlement.kind === 'locallyPersisted'
@@ -307,13 +307,13 @@ export function createOrganizationMachine(
 				}
 			},
 			saved: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { request: undefined, operations: [] } }
 				}
 			},
 			unknown: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {
@@ -325,7 +325,7 @@ export function createOrganizationMachine(
 				}
 			},
 			interrupted: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {
@@ -337,7 +337,7 @@ export function createOrganizationMachine(
 				}
 			},
 			failed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {

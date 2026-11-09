@@ -60,12 +60,12 @@ function retryJitter(id: string, attempt: number) {
 }
 const observe = createCallbackLogic<Event, ImageCapability>(({ input, sendBack }) =>
 	input.subscribe(
-		(rows) => sendBack({ type: 'IMAGE_ROWS' as const, rows }),
-		() => sendBack({ type: 'OBSERVATION_FAILED' as const })
+		(rows) => sendBack({ type: 'IMAGE_ROWS', rows }),
+		() => sendBack({ type: 'OBSERVATION_FAILED' })
 	)
 )
 const connectivity = createCallbackLogic<Event>(({ sendBack }) => {
-	const report = () => sendBack({ type: 'CONNECTIVITY' as const, online: isOnline() })
+	const report = () => sendBack({ type: 'CONNECTIVITY', online: isOnline() })
 	connectivityEvents().addEventListener('online', report)
 	connectivityEvents().addEventListener('offline', report)
 	report()
@@ -82,10 +82,10 @@ const fetchImage = createAsyncLogic<{ bytes: Uint8Array; mediaType: string }, Co
 		input.capability!.request(input.selected!.sourceUrl, input.selected!.id, signal)
 })
 const process = createCallbackLogic<Event>(({ sendBack }) => {
-	const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' as const })
-	worker.onmessage = (event) => sendBack({ type: 'WORKER_RESULT' as const, value: event.data })
-	worker.onerror = () => sendBack({ type: 'WORKER_RESULT' as const, value: undefined })
-	sendBack({ type: 'WORKER_OPENED' as const, worker })
+	const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
+	worker.onmessage = (event) => sendBack({ type: 'WORKER_RESULT', value: event.data })
+	worker.onerror = () => sendBack({ type: 'WORKER_RESULT', value: undefined })
+	sendBack({ type: 'WORKER_OPENED', worker })
 	return () => {
 		worker.onmessage = null
 		worker.onerror = null
@@ -94,7 +94,7 @@ const process = createCallbackLogic<Event>(({ sendBack }) => {
 })
 const post = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
 	input.worker!.postMessage(input.fetched)
-	sendBack({ type: 'POSTED' as const })
+	sendBack({ type: 'POSTED' })
 })
 function nextImage(context: Context) {
 	const eligible = context.rows.filter(
@@ -205,7 +205,7 @@ const model = setup({
 			context: {
 				write: context.capability!.spawnReady(spawn, {
 					image: context.selected!,
-					kind: 'ready' as const,
+					kind: 'ready',
 					result: context.result!
 				})
 			}
@@ -214,16 +214,16 @@ const model = setup({
 			context: {
 				write: context.capability!.spawnFailure(spawn, {
 					image: context.selected!,
-					kind: 'failed' as const,
+					kind: 'failed',
 					retryable: context.retryable
 				})
 			}
 		}),
-		recordReady: ({ context }: { context: Context }) => ({
+		recordReady: ({ context }: { context: Context }): { context: Partial<Context> } => ({
 			context: {
 				rows: context.rows.map((row) =>
 					row.id === context.selected!.id
-						? { ...row, status: 'ready' as const, assetId: row.id, retryable: false }
+						? { ...row, status: 'ready', assetId: row.id, retryable: false }
 						: row
 				),
 				blocked: [...context.blocked, context.selected!.id],
@@ -232,11 +232,11 @@ const model = setup({
 				result: undefined
 			}
 		}),
-		recordFailure: ({ context }: { context: Context }) => ({
+		recordFailure: ({ context }: { context: Context }): { context: Partial<Context> } => ({
 			context: {
 				rows: context.rows.map((row) =>
 					row.id === context.selected!.id
-						? { ...row, status: 'failed' as const, assetId: null, retryable: context.retryable }
+						? { ...row, status: 'failed', assetId: null, retryable: context.retryable }
 						: row
 				),
 				write: undefined,
@@ -246,9 +246,9 @@ const model = setup({
 		}),
 		notifyUncertain: ({ context }: { context: Context }) => {
 			for (const slot of context.slots)
-				slot.send({ type: 'UNKNOWN' as const, sourceUrl: context.selected!.sourceUrl })
+				slot.send({ type: 'UNKNOWN', sourceUrl: context.selected!.sourceUrl })
 		},
-		recordUncertain: ({ context }: { context: Context }) => ({
+		recordUncertain: ({ context }: { context: Context }): { context: Partial<Context> } => ({
 			context: {
 				blocked: [...context.blocked, context.selected!.id],
 				uncertain: [...context.uncertain, context.selected!.id],
@@ -294,14 +294,14 @@ export const imageQueueMachine = model.createMachine({
 			}
 		},
 		running: {
-			type: 'parallel' as const,
+			type: 'parallel',
 			invoke: [
 				{
 					id: 'observe',
 					src: 'observe',
 					input: ({ context }: { context: Context }) => context.capability!,
 					onError: (args, enq) => {
-						enq.raise({ type: 'OBSERVATION_FAILED' as const })
+						enq.raise({ type: 'OBSERVATION_FAILED' })
 					}
 				},
 				{ id: 'connectivity', src: 'connectivity' },
@@ -323,12 +323,12 @@ export const imageQueueMachine = model.createMachine({
 			on: {
 				IMAGE_ROWS: (args, enq) => {
 					if (!args.guards.current(args)) return
-					enq(() => args.self.send({ type: 'WAKE' as const }))
+					enq(() => args.self.send({ type: 'WAKE' }))
 					return { context: { rows: args.event.rows } }
 				},
 				CONNECTIVITY: (args, enq) => {
 					const { context, event } = args
-					enq(() => args.self.send({ type: 'WAKE' as const }))
+					enq(() => args.self.send({ type: 'WAKE' }))
 					return {
 						context: {
 							online: event.online,
@@ -347,15 +347,15 @@ export const imageQueueMachine = model.createMachine({
 					)
 						return
 					enq(({ context, event }) => {
-						for (const slot of context.slots) slot.send({ type: 'RETRY' as const, id: event.id })
+						for (const slot of context.slots) slot.send({ type: 'RETRY', id: event.id })
 					}, args)
-					enq(() => args.self.send({ type: 'WAKE' as const }))
+					enq(() => args.self.send({ type: 'WAKE' }))
 					return {
 						context: {
 							attempts: { ...context.attempts, [event.id]: 0 },
 							rows: context.rows.map((row) =>
 								row.id === event.id && row.status !== 'ready'
-									? { ...row, status: 'pending' as const, retryable: true }
+									? { ...row, status: 'pending', retryable: true }
 									: row
 							)
 						}
@@ -426,7 +426,7 @@ export const imageQueueMachine = model.createMachine({
 									[event.sourceUrl]: {
 										...event.view,
 										retry: false,
-										message: { text: t('status.save_unknown'), variant: 'error' as const }
+										message: { text: t('status.save_unknown'), variant: 'error' }
 									}
 								}
 							}
@@ -439,9 +439,9 @@ export const imageQueueMachine = model.createMachine({
 									...context.views,
 									[event.sourceUrl]: {
 										...event.view,
-										status: 'unknown' as const,
+										status: 'unknown',
 										retry: false,
-										message: { text: t('status.save_unknown'), variant: 'error' as const }
+										message: { text: t('status.save_unknown'), variant: 'error' }
 									}
 								}
 							}
@@ -674,12 +674,12 @@ export const imageQueueMachine = model.createMachine({
 								const ref = result.context.write
 								enq.subscribeTo(ref, {
 									done: (output): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
-										type: 'WRITE_DONE' as const,
+										type: 'WRITE_DONE',
 										actorId: ref.id,
 										output
 									}),
 									error: (error): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
-										type: 'WRITE_ERROR' as const,
+										type: 'WRITE_ERROR',
 										actorId: ref.id,
 										error
 									})
@@ -707,7 +707,7 @@ export const imageQueueMachine = model.createMachine({
 									}
 									if (event.output.settlement.kind === 'locallyPersisted') {
 										enq.sendTo('receipts', {
-											type: 'WATCH' as const,
+											type: 'WATCH',
 											id: context.selected!.id,
 											receipts: [event.output.settlement.workspace]
 										})
@@ -728,12 +728,12 @@ export const imageQueueMachine = model.createMachine({
 								const ref = result.context.write
 								enq.subscribeTo(ref, {
 									done: (output): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
-										type: 'WRITE_DONE' as const,
+										type: 'WRITE_DONE',
 										actorId: ref.id,
 										output
 									}),
 									error: (error): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
-										type: 'WRITE_ERROR' as const,
+										type: 'WRITE_ERROR',
 										actorId: ref.id,
 										error
 									})
@@ -761,7 +761,7 @@ export const imageQueueMachine = model.createMachine({
 									}
 									if (event.output.settlement.kind === 'locallyPersisted') {
 										enq.sendTo('receipts', {
-											type: 'WATCH' as const,
+											type: 'WATCH',
 											id: context.selected!.id,
 											receipts: [event.output.settlement.workspace]
 										})
@@ -785,7 +785,7 @@ export const imageQueueMachine = model.createMachine({
 			}
 		},
 		closed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: ({ context }, enq) => {
 				for (const slot of context.slots) enq.stop(slot)
 				return {

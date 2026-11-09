@@ -39,7 +39,7 @@ export const tagFormMachine = tagFormModel.createMachine({
 	context: ({ input }) => ({
 		library: input.library,
 		id: '',
-		change: { kind: 'unchanged' as const },
+		change: { kind: 'unchanged' },
 		revision: 0
 	}),
 	on: {
@@ -69,7 +69,7 @@ export const tagFormMachine = tagFormModel.createMachine({
 				}
 				if (context.change.kind === 'changed') {
 					enq.sendTo(context.library, {
-						type: 'ORGANIZE' as const,
+						type: 'ORGANIZE',
 						request: {
 							id: context.id,
 							field: 'tag',
@@ -83,7 +83,7 @@ export const tagFormMachine = tagFormModel.createMachine({
 			}
 		},
 		invalid: {
-			meta: { name: t('forms.enter_subject', { subject: noun('tag') }), variant: 'error' as const }
+			meta: { name: t('forms.enter_subject', { subject: noun('tag') }), variant: 'error' }
 		}
 	}
 })

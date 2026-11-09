@@ -122,13 +122,13 @@ export const shellCacheMachine = setup({
 			}
 		},
 		ready: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return { context: { result: 'ready', port: undefined, names: [] } }
 			}
 		},
 		failed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return { context: { result: 'failed', port: undefined, names: [] } }
 			}

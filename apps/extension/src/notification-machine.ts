@@ -169,8 +169,8 @@ export function createNotificationMachine(cap: {
 					onError: { target: 'failed' }
 				}
 			},
-			failed: { type: 'final' as const },
-			done: { type: 'final' as const }
+			failed: { type: 'final' },
+			done: { type: 'final' }
 		}
 	})
 }

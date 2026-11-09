@@ -27,7 +27,7 @@ const owner = createActor(createApplicationReadinessMachine<Session>(), {
 const runtime = createActor(
 	createRuntimeMachine({
 		reload: async () => {
-			owner.send({ type: 'SHUTDOWN' as const })
+			owner.send({ type: 'SHUTDOWN' })
 			await waitFor(owner, (snapshot) => snapshot.status === 'done')
 			location.reload()
 		},
@@ -48,24 +48,21 @@ const runtime = createActor(
 				library,
 				accountId: bound.libraryId,
 				current: bound.isCurrent,
-				read: (id) => chrome.runtime.sendMessage({ type: 'CAPTURE' as const, id }),
+				read: (id) => chrome.runtime.sendMessage({ type: 'CAPTURE', id }),
 				extract: extractSource,
-				issue: (capture, accountId) =>
-					command({ type: 'ISSUE' as const, id: capture.id, accountId }),
-				remove: (id) => command({ type: 'REMOVE' as const, id })
+				issue: (capture, accountId) => command({ type: 'ISSUE', id: capture.id, accountId }),
+				remove: (id) => command({ type: 'REMOVE', id })
 			}
 		},
 		waiting: (ids, message, revision) =>
 			Promise.all(
-				ids.map((id) =>
-					chrome.runtime.sendMessage({ type: 'WAITING' as const, id, message, revision })
-				)
+				ids.map((id) => chrome.runtime.sendMessage({ type: 'WAITING', id, message, revision }))
 			),
 		report: async (snapshot, revision) => {
 			const { capture, message, articleId } = snapshot.context
 			if (!capture || !message) return
 			await chrome.runtime.sendMessage({
-				type: 'PROGRESS' as const,
+				type: 'PROGRESS',
 				capture,
 				revision,
 				message,
@@ -90,7 +87,7 @@ chrome.runtime.onMessage.addListener((value: unknown, sender, reply) => {
 			{ input: { expected: authorization.data.accountId } }
 		)
 		void toPromise(actor)
-			.then(reply, () => reply({ status: 'unavailable' as const }))
+			.then(reply, () => reply({ status: 'unavailable' }))
 			.finally(() => actor.stop())
 		actor.start()
 		return true

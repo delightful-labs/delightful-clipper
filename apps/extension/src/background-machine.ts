@@ -156,9 +156,9 @@ export function createCaptureReadMachine(cap: {
 					}
 				}
 			},
-			failed: { type: 'final' as const },
+			failed: { type: 'final' },
 			done: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return {
 						context: { message: undefined, source: undefined, tab: undefined, capture: undefined }

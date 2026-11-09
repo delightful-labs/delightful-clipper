@@ -56,7 +56,7 @@ export function controlledSave(
 					}
 				}
 			},
-			done: { type: 'final' as const }
+			done: { type: 'final' }
 		}
 	})
 }
@@ -65,7 +65,7 @@ export function testLibraryCapability(
 	overrides: Partial<LibraryCapability> = {}
 ): LibraryCapability {
 	const save = controlledSave(async () => ({
-		kind: 'saved' as const,
+		kind: 'saved',
 		operationId: candidate.id,
 		receipts: []
 	}))
@@ -83,10 +83,10 @@ export function testLibraryCapability(
 		subscribe: () => () => {},
 		worker: (report) => ({
 			send: (event) => {
-				if (event.type === 'STOP') report({ type: 'BACKGROUND_CLOSED' as const })
+				if (event.type === 'STOP') report({ type: 'BACKGROUND_CLOSED' })
 			},
 			stop: async () => {
-				report({ type: 'BACKGROUND_CLOSED' as const })
+				report({ type: 'BACKGROUND_CLOSED' })
 			}
 		}),
 		...overrides

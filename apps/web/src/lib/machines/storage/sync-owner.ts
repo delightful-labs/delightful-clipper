@@ -54,7 +54,7 @@ export const syncOwnerMachine = setup({
 						for (const watch of Object.values(contextBefore.watches).filter(
 							(watch) => watch.documentId === event.id
 						)) {
-							enq.sendTo(watch.ref, { type: 'SHUTDOWN' as const })
+							enq.sendTo(watch.ref, { type: 'SHUTDOWN' })
 							enq.stop(watch.ref)
 						}
 						patch = {
@@ -95,11 +95,11 @@ export const syncOwnerMachine = setup({
 					) {
 						enq.sendTo(
 							required(context.reportTo),
-							(({ context, event }) => {
+							(({ context, event }): SyncReport => {
 								if (!('output' in event) || event.output.status === 'stopped')
 									throw new Error('Expected settled sync')
 								return {
-									type: 'SYNC' as const,
+									type: 'SYNC',
 									id: required(watchFor(context, event)).documentId,
 									status: event.output.status
 								}
@@ -141,9 +141,9 @@ export const syncOwnerMachine = setup({
 					const { context, event } = args
 					if (!!context.reportTo && !!watchFor(context, event)) {
 						enq.sendTo(required(context.reportTo), {
-							type: 'SYNC' as const,
+							type: 'SYNC',
 							id: required(watchFor(context, event)).documentId,
-							status: 'rejected' as const
+							status: 'rejected'
 						})
 						{
 							if (!('actorId' in event)) throw new Error('Expected child completion')
@@ -179,13 +179,13 @@ export const syncOwnerMachine = setup({
 			}
 		},
 		closed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args, enq) => {
 				let patch = {}
 				{
 					const contextBefore = args.context
 					for (const watch of Object.values(contextBefore.watches)) {
-						enq.sendTo(watch.ref, { type: 'SHUTDOWN' as const })
+						enq.sendTo(watch.ref, { type: 'SHUTDOWN' })
 						enq.stop(watch.ref)
 					}
 					patch = { ...patch, watches: {}, reportTo: undefined }

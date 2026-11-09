@@ -43,13 +43,13 @@ export function transactionDomainModel<Draft, Facts>(
 			}),
 			allow: ({ context }: { context: DomainContext<Draft, Facts> }) =>
 				context.owner.send({
-					type: 'PREPARED' as const,
-					assessment: { outcome: 'eligible' as const }
+					type: 'PREPARED',
+					assessment: { outcome: 'eligible' }
 				}),
 			block: ({ context }: { context: DomainContext<Draft, Facts> }) =>
 				context.owner.send({
-					type: 'PREPARED' as const,
-					assessment: { outcome: 'blocked' as const, reason }
+					type: 'PREPARED',
+					assessment: { outcome: 'blocked', reason }
 				})
 		}
 	})

@@ -71,16 +71,17 @@ export function createFakeDataMachine(cap: {
 				matchesState({ writing: 'stopping' }, value)
 		}
 	})
-	const terminal = (outcome: FakeDataOutcome) => ({
-		type: 'final' as const,
-		entry: () => {
-			return { context: { outcome, plan: [] } }
-		}
-	})
+	const terminal = (outcome: FakeDataOutcome) =>
+		model.createStateConfig({
+			type: 'final',
+			entry: () => {
+				return { context: { outcome, plan: [] } }
+			}
+		})
 	return model.createMachine({
 		id: 'library-fake-data',
 		initial: 'checking',
-		context: { plan: [], outcome: 'skipped' as const, ownedStage: undefined },
+		context: { plan: [], outcome: 'skipped', ownedStage: undefined },
 		output: ({ context }) => context.outcome,
 		states: {
 			checking: {
@@ -138,7 +139,7 @@ export function createFakeDataMachine(cap: {
 					active: {
 						on: {
 							SHUTDOWN: (args, enq) => {
-								enq.sendTo(args.context.ownedStage, { type: 'SHUTDOWN' as const })
+								enq.sendTo(args.context.ownedStage, { type: 'SHUTDOWN' })
 								return { target: 'stopping' }
 							}
 						}

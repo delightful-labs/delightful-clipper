@@ -29,7 +29,7 @@ const transport = createCallbackLogic<Event, SurfaceViewportInput>(
 		port.start()
 		receive((event) => port.postMessage(event))
 		port.postMessage({
-			type: 'VIEWPORT_OPEN' as const,
+			type: 'VIEWPORT_OPEN',
 			attachmentId: input.attachmentId,
 			position: input.position
 		})
@@ -98,10 +98,10 @@ export const surfaceViewportMachine = setup({
 					enq.sendTo(args.parent, event)
 				},
 				DETACH: (args, enq) => {
-					enq.sendTo('native', { type: 'DETACH' as const })
+					enq.sendTo('native', { type: 'DETACH' })
 				},
 				REFLOW: (args, enq) => {
-					enq.sendTo('native', { type: 'REFLOW' as const })
+					enq.sendTo('native', { type: 'REFLOW' })
 				}
 			}
 		},
@@ -121,16 +121,16 @@ export const surfaceViewportMachine = setup({
 					enq.sendTo(args.parent, event)
 				},
 				DETACH: (args, enq) => {
-					enq.sendTo('transport', { type: 'DETACH' as const })
+					enq.sendTo('transport', { type: 'DETACH' })
 				},
 				REFLOW: (args, enq) => {
-					enq.sendTo('transport', { type: 'REFLOW' as const })
+					enq.sendTo('transport', { type: 'REFLOW' })
 				},
 				VIEWPORT_CLOSED: (args) => {
 					return { target: 'closed', context: { position: args.event.position } }
 				}
 			}
 		},
-		closed: { type: 'final' as const }
+		closed: { type: 'final' }
 	}
 })

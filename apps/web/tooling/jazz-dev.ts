@@ -107,8 +107,8 @@ const lifecycle = setup({
 				onError: { target: 'failed' }
 			}
 		},
-		closed: { type: 'final' as const },
-		failed: { type: 'final' as const }
+		closed: { type: 'final' },
+		failed: { type: 'final' }
 	}
 })
 export function jazzDev(enabled: boolean): Plugin {
@@ -133,12 +133,12 @@ export function jazzDev(enabled: boolean): Plugin {
 			owner = createActor(lifecycle, { input: server })
 			settled = toPromise(owner)
 			void settled.catch(() => undefined)
-			server.httpServer?.once('close', () => owner?.send({ type: 'CLOSE' as const }))
-			server.httpServer?.once('listening', () => owner?.send({ type: 'LISTEN' as const }))
+			server.httpServer?.once('close', () => owner?.send({ type: 'CLOSE' }))
+			server.httpServer?.once('listening', () => owner?.send({ type: 'LISTEN' }))
 			owner.start()
 		},
 		async closeBundle() {
-			owner?.send({ type: 'CLOSE' as const })
+			owner?.send({ type: 'CLOSE' })
 			await settled
 		}
 	}

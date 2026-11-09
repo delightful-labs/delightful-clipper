@@ -12,5 +12,5 @@ const actor = createActor(
 onmessage = (event: MessageEvent<unknown>) => {
 	const parsed = searchWorkerInputSchema.safeParse(event.data)
 	if (parsed.success) actor.send(parsed.data)
-	else postMessage({ type: 'WORKER_ERROR' as const })
+	else postMessage({ type: 'WORKER_ERROR' })
 }

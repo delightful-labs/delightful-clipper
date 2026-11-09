@@ -69,7 +69,7 @@ export function createConnectStoreMachine(cap: {
 									const { accountId, requestId } = connectMessageSchema.parse(context.message)
 									return {
 										...cap.scope,
-										version: 1 as const,
+										version: 1,
 										accountId,
 										...(requestId ? { requestId } : {})
 									}
@@ -113,13 +113,13 @@ export function createConnectStoreMachine(cap: {
 				}
 			},
 			done: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { accepted: true, connection: undefined, message: undefined } }
 				}
 			},
 			failed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { connection: undefined, message: undefined } }
 				}

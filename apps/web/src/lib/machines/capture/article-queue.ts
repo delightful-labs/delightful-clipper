@@ -197,7 +197,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 				entry: ({ context }, enq) => {
 					enq(() =>
 						cap.report({
-							type: 'STATUS' as const,
+							type: 'STATUS',
 							id: required(context.current).id,
 							message: {
 								text: t('capture.status.pending'),
@@ -338,7 +338,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 				entry: ({ context }, enq) => {
 					enq(() =>
 						cap.report({
-							type: 'STATUS' as const,
+							type: 'STATUS',
 							id: required(context.current).id,
 							message: {
 								text: t('capture.status.saving'),
@@ -427,7 +427,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 						entry: ({ context }, enq) => {
 							enq(() =>
 								cap.report({
-									type: 'STATUS' as const,
+									type: 'STATUS',
 									id: required(context.current).id,
 									message: { text: t('capture.status.unknown'), variant: 'error' },
 									cancelable: false
@@ -440,7 +440,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 						entry: ({ context }, enq) => {
 							enq(() =>
 								cap.report({
-									type: 'STATUS' as const,
+									type: 'STATUS',
 									id: required(context.current).id,
 									message: { text: t('capture.errors.session_unavailable'), variant: 'error' },
 									cancelable: false
@@ -453,7 +453,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 						entry: ({ context }, enq) => {
 							enq(() =>
 								cap.report({
-									type: 'STATUS' as const,
+									type: 'STATUS',
 									id: required(context.current).id,
 									message: { text: t('capture.errors.rate_limited'), variant: 'error' },
 									cancelable: false
@@ -466,7 +466,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 						entry: ({ context }, enq) => {
 							enq(() =>
 								cap.report({
-									type: 'STATUS' as const,
+									type: 'STATUS',
 									id: required(context.current).id,
 									message: { text: t('capture.status.canceled'), variant: 'error' },
 									cancelable: false
@@ -479,7 +479,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 						entry: ({ context }, enq) => {
 							enq(() =>
 								cap.report({
-									type: 'STATUS' as const,
+									type: 'STATUS',
 									id: required(context.current).id,
 									message: { text: t('capture.status.failed'), variant: 'error' },
 									cancelable: false
@@ -497,7 +497,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 				}
 			},
 			closed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
 					return { context: { rows: [], current: undefined, content: undefined, seen: {} } }
 				}

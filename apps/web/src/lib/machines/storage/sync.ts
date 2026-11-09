@@ -22,7 +22,7 @@ export const storageSyncMachine = setup({
 }).createMachine({
 	id: 'storage-sync',
 	initial: 'pending',
-	context: ({ input }) => ({ receipts: input, result: { status: 'stopped' as const } }),
+	context: ({ input }) => ({ receipts: input, result: { status: 'stopped' } }),
 	output: ({ context }) => context.result,
 	on: { SHUTDOWN: { target: '.stopped' } },
 	states: {
@@ -37,21 +37,21 @@ export const storageSyncMachine = setup({
 			}
 		},
 		accepted: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
-				return { context: { receipts: [], result: { status: 'accepted' as const } } }
+				return { context: { receipts: [], result: { status: 'accepted' } } }
 			}
 		},
 		rejected: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
-				return { context: { receipts: [], result: { status: 'rejected' as const } } }
+				return { context: { receipts: [], result: { status: 'rejected' } } }
 			}
 		},
 		stopped: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
-				return { context: { receipts: [], result: { status: 'stopped' as const } } }
+				return { context: { receipts: [], result: { status: 'stopped' } } }
 			}
 		}
 	}

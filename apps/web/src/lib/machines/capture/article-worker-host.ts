@@ -81,9 +81,9 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 			let resource: HostResource | undefined
 			try {
 				resource = cap.open(sendBack)
-				sendBack({ type: 'RESOURCE_READY' as const })
+				sendBack({ type: 'RESOURCE_READY' })
 			} catch {
-				sendBack({ type: 'RESOURCE_ERROR' as const })
+				sendBack({ type: 'RESOURCE_ERROR' })
 			}
 			receive((event) => {
 				if (event.type === 'DISPOSE') {
@@ -92,9 +92,9 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 					try {
 						current?.dispose()
 					} catch {
-						sendBack({ type: 'RESOURCE_ERROR' as const })
+						sendBack({ type: 'RESOURCE_ERROR' })
 					} finally {
-						sendBack({ type: 'RESOURCE_CLOSED' as const })
+						sendBack({ type: 'RESOURCE_CLOSED' })
 					}
 					return
 				}
@@ -104,7 +104,7 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 					if (event.type === 'OBSERVE') resource.observe()
 					if (event.type === 'QUIESCE') resource.quiesce()
 				} catch {
-					sendBack({ type: 'RESOURCE_ERROR' as const })
+					sendBack({ type: 'RESOURCE_ERROR' })
 				}
 			})
 			return () => resource?.dispose()
@@ -151,7 +151,7 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 				) => import('xstate').ActorFromLogic<typeof callMachine>
 			}) => {
 				let call: HostCall
-				if (event.type === 'RETRY') call = { type: 'RETRY' as const, id: event.id }
+				if (event.type === 'RETRY') call = { type: 'RETRY', id: event.id }
 				else if (event.type === 'WORKER_MESSAGE' && event.message.type === 'CALL')
 					call = event.message
 				else return { context: {} }
@@ -194,8 +194,8 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 					STOP: { target: '.draining' },
 					RESOURCE_ERROR: (args, enq) => {
 						enq.sendTo('output', {
-							type: 'REPORT' as const,
-							event: { type: 'BACKGROUND_ERROR' as const }
+							type: 'REPORT',
+							event: { type: 'BACKGROUND_ERROR' }
 						})
 						return { target: '.draining' }
 					}
@@ -205,10 +205,10 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 						on: {
 							RESOURCE_READY: (args, enq) => {
 								enq.sendTo('resource', {
-									type: 'POST' as const,
-									message: { type: 'INIT' as const, libraryId: cap.libraryId, debug: cap.debug }
+									type: 'POST',
+									message: { type: 'INIT', libraryId: cap.libraryId, debug: cap.debug }
 								})
-								enq.sendTo('resource', { type: 'OBSERVE' as const })
+								enq.sendTo('resource', { type: 'OBSERVE' })
 								return { target: 'running' }
 							}
 						}
@@ -218,16 +218,16 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 							PENDING_ROWS: (args, enq) => {
 								if (!cap.isCurrent()) return
 								enq.sendTo('resource', {
-									type: 'POST' as const,
-									message: { type: 'ROWS' as const, rows: args.event.rows }
+									type: 'POST',
+									message: { type: 'ROWS', rows: args.event.rows }
 								})
 							},
 							CONNECTIVITY: (args, enq) => {
 								const { event } = args
 								if (event.online && !args.context.online) {
 									enq.sendTo('resource', {
-										type: 'POST' as const,
-										message: { type: 'WAKE' as const }
+										type: 'POST',
+										message: { type: 'WAKE' }
 									})
 									return { context: { online: event.online } }
 								}
@@ -241,19 +241,19 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 										for (const task of Object.values(args.context.tasks).filter(
 											(task) => task.id === id
 										))
-											enq.sendTo(task.ref, { type: 'SHUTDOWN' as const })
+											enq.sendTo(task.ref, { type: 'SHUTDOWN' })
 									}
 									return {}
 								}
 								if (cap.isCurrent() && event.message.type === 'STATUS') {
 									enq.sendTo(
 										'output',
-										(({ event }) => {
+										(({ event }): { type: 'REPORT'; event: QueueReport } => {
 											const message = statusMessage(event.message)
 											return {
-												type: 'REPORT' as const,
+												type: 'REPORT',
 												event: {
-													type: 'BACKGROUND_STATUS' as const,
+													type: 'BACKGROUND_STATUS',
 													id: message.id,
 													message: message.message,
 													cancelable: message.cancelable
@@ -298,13 +298,13 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 							CANCEL: (args, enq) => {
 								if (!cap.isCurrent()) return
 								const { event } = args
-								enq.sendTo('resource', { type: 'POST' as const, message: event })
+								enq.sendTo('resource', { type: 'POST', message: event })
 							},
 							WAKE: (args, enq) => {
 								if (!cap.isCurrent()) return
 								enq.sendTo('resource', {
-									type: 'POST' as const,
-									message: { type: 'WAKE' as const }
+									type: 'POST',
+									message: { type: 'WAKE' }
 								})
 							},
 							CALL_DONE: (args, enq) => {
@@ -313,8 +313,8 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 								const { context, event } = args
 								if (validCompletion(context, event) && !!completion(event).retry) {
 									enq.sendTo('resource', {
-										type: 'POST' as const,
-										message: { type: 'RETRY' as const, id: required(completion(event).retry) }
+										type: 'POST',
+										message: { type: 'RETRY', id: required(completion(event).retry) }
 									})
 									{
 										if (!('actorId' in event)) throw new Error('Expected child completion')
@@ -341,16 +341,16 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 									!!completion(event).result
 								) {
 									enq.sendTo('output', {
-										type: 'REPORT' as const,
+										type: 'REPORT',
 										event: {
-											type: 'BACKGROUND_SAVED' as const,
+											type: 'BACKGROUND_SAVED',
 											result: required(completion(event).result)
 										}
 									})
 									enq.sendTo('resource', {
-										type: 'POST' as const,
+										type: 'POST',
 										message: {
-											type: 'REPLY' as const,
+											type: 'REPLY',
 											id: completion(event).id,
 											reply: required(completion(event).reply)
 										}
@@ -376,9 +376,9 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 								}
 								if (validCompletion(context, event) && !!completion(event).reply) {
 									enq.sendTo('resource', {
-										type: 'POST' as const,
+										type: 'POST',
 										message: {
-											type: 'REPLY' as const,
+											type: 'REPLY',
 											id: completion(event).id,
 											reply: required(completion(event).reply)
 										}
@@ -408,8 +408,8 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 									!!task(context, event)?.retry
 								) {
 									enq.sendTo('output', {
-										type: 'REPORT' as const,
-										event: { type: 'BACKGROUND_ERROR' as const }
+										type: 'REPORT',
+										event: { type: 'BACKGROUND_ERROR' }
 									})
 									{
 										if (!('actorId' in event)) throw new Error('Expected child completion')
@@ -436,9 +436,9 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 									task(context, event)?.id === completion(event).id
 								) {
 									enq.sendTo('resource', {
-										type: 'POST' as const,
+										type: 'POST',
 										message: {
-											type: 'ERROR' as const,
+											type: 'ERROR',
 											id: completion(event).id,
 											code: required(completion(event).error)
 										}
@@ -487,8 +487,8 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 								const { context, event } = args
 								if (cap.isCurrent() && !!task(context, event)?.retry) {
 									enq.sendTo('output', {
-										type: 'REPORT' as const,
-										event: { type: 'BACKGROUND_ERROR' as const }
+										type: 'REPORT',
+										event: { type: 'BACKGROUND_ERROR' }
 									})
 									{
 										if (!('actorId' in event)) throw new Error('Expected child completion')
@@ -511,9 +511,9 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 								}
 								if (cap.isCurrent() && !!task(context, event)) {
 									enq.sendTo('resource', {
-										type: 'POST' as const,
+										type: 'POST',
 										message: {
-											type: 'ERROR' as const,
+											type: 'ERROR',
 											id: required(task(context, event)).id,
 											code: 'captureFailed'
 										}
@@ -560,14 +560,14 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 					},
 					releasing: {
 						entry: (args, enq) => {
-							enq.sendTo('resource', { type: 'DISPOSE' as const })
+							enq.sendTo('resource', { type: 'DISPOSE' })
 						},
 						on: {
 							RESOURCE_CLOSED: { target: '#article-worker-host.closed' },
 							RESOURCE_ERROR: (args, enq) => {
 								enq.sendTo('output', {
-									type: 'REPORT' as const,
-									event: { type: 'BACKGROUND_ERROR' as const }
+									type: 'REPORT',
+									event: { type: 'BACKGROUND_ERROR' }
 								})
 							},
 							STOP: {}
@@ -576,9 +576,9 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 
 					draining: {
 						entry: (args, enq) => {
-							enq.sendTo('resource', { type: 'QUIESCE' as const })
+							enq.sendTo('resource', { type: 'QUIESCE' })
 							for (const task of Object.values(args.context.tasks))
-								enq.sendTo(task.ref, { type: 'SHUTDOWN' as const })
+								enq.sendTo(task.ref, { type: 'SHUTDOWN' })
 						},
 						always: (args) => {
 							if (!(Object.keys(args.context.tasks).length === 0)) return
@@ -640,11 +640,11 @@ export function createArticleWorkerHostMachine(cap: HostCapability) {
 				}
 			},
 			closed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args, enq) => {
 					enq.sendTo('output', {
-						type: 'REPORT' as const,
-						event: { type: 'BACKGROUND_CLOSED' as const }
+						type: 'REPORT',
+						event: { type: 'BACKGROUND_CLOSED' }
 					})
 					return { context: { report: undefined, tasks: {} } }
 				}

@@ -612,3 +612,18 @@ removed, and no speculative account-admission or persistence change was retained
 The beta pins remain experimental. Generated coverage is bounded and does not
 prove all native interleavings. Full browser support/release qualification and
 Finance's worker migration remain separate work.
+
+### Literal-typing review
+
+Removed 664 primitive literal `as const` assertions from the migration. Machine
+schemas supply contextual inference for configuration, events and context
+patches; reusable helpers and fixtures check their actual DTO/return contracts.
+The shared terminal-state and encoding-state factories use the setup's typed
+`createStateConfig` helper. Worker views retain inferred payload types with an
+explicitly typed `VIEW` envelope. Finite readonly tuples remain unchanged.
+
+The follow-up passes `pnpm verify` (628 tests in 95 files, strict types, lint,
+formatting, vendor integrity and production build) and all 6 worker-browser
+checks. Emitted JavaScript token streams are identical in 73 changed files. The
+remaining three use the published identity config helper or the typed worker
+view envelope; no machine decision, effect or persistence policy was changed.

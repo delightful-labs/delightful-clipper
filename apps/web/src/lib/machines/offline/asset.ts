@@ -104,13 +104,13 @@ export const shellAssetMachine = shellAssetModel.createMachine({
 			}
 		},
 		ready: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return { context: { response: undefined, result: 'ready' } }
 			}
 		},
 		failed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return { context: { response: undefined } }
 			}
@@ -179,6 +179,6 @@ export const shellReadMachine = shellReadModel.createMachine({
 				}
 			}
 		},
-		done: { type: 'final' as const }
+		done: { type: 'final' }
 	}
 })

@@ -184,7 +184,7 @@ export const imageProcessingMachine = imageProcessingModel.createMachine({
 			}
 		},
 		done: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return {
 					context: {
@@ -197,7 +197,7 @@ export const imageProcessingMachine = imageProcessingModel.createMachine({
 			}
 		},
 		failed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return {
 					context: {

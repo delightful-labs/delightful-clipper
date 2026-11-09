@@ -12,12 +12,12 @@ export function selectAccountAccess(snapshot: RuntimeSnapshot): AccountAccess {
 		snapshot.matches({ job: 'restarting' }) ||
 		snapshot.matches({ job: 'draining' })
 	)
-		return { kind: 'waiting' as const }
+		return { kind: 'waiting' }
 	const accountId = snapshot.context.library?.getSnapshot().context.capability?.libraryId
-	if (accountId) return { kind: 'ready' as const, accountId }
-	if (snapshot.context.accountStatus === 'signedOut') return { kind: 'signed-out' as const }
-	if (snapshot.context.accountMessage?.variant === 'error') return { kind: 'unavailable' as const }
-	return { kind: 'waiting' as const }
+	if (accountId) return { kind: 'ready', accountId }
+	if (snapshot.context.accountStatus === 'signedOut') return { kind: 'signed-out' }
+	if (snapshot.context.accountMessage?.variant === 'error') return { kind: 'unavailable' }
+	return { kind: 'waiting' }
 }
 type Event = { type: 'ACCOUNT'; value: AccountAccess }
 /** Read-only admission. No credentials or article writes are acquired by this actor. */
@@ -26,7 +26,7 @@ export function createAuthorizationMachine(
 ) {
 	const actors = {
 		account: createCallbackLogic(({ sendBack }) =>
-			watch((value) => sendBack({ type: 'ACCOUNT' as const, value }))
+			watch((value) => sendBack({ type: 'ACCOUNT', value }))
 		)
 	}
 	return setup({
@@ -41,7 +41,7 @@ export function createAuthorizationMachine(
 		actors
 	}).createMachine({
 		initial: 'waiting',
-		context: ({ input }) => ({ ...input, status: 'unavailable' as const }),
+		context: ({ input }) => ({ ...input, status: 'unavailable' }),
 		invoke: { id: 'account', src: 'account' },
 		output: ({ context }) => ({ status: context.status }),
 		states: {
@@ -66,18 +66,18 @@ export function createAuthorizationMachine(
 				}
 			},
 			connected: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
-					return { context: { status: 'connected' as const } }
+					return { context: { status: 'connected' } }
 				}
 			},
 			signedOut: {
-				type: 'final' as const,
+				type: 'final',
 				entry: () => {
-					return { context: { status: 'signed-out' as const } }
+					return { context: { status: 'signed-out' } }
 				}
 			},
-			unavailable: { type: 'final' as const }
+			unavailable: { type: 'final' }
 		}
 	})
 }

@@ -54,7 +54,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 				}
 				const surface = remoteReaderSurface(message.port, message.fullscreen)
 				const event = {
-					type: 'ATTACH_BOUND' as const,
+					type: 'ATTACH_BOUND',
 					scope: message.scope,
 					surface,
 					documentId: message.documentId,
@@ -81,7 +81,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 				host.send(message)
 				if (message.type === 'LIBRARY' || message.type === 'TAG_FORM')
 					self.postMessage({
-						type: 'RECEIVED' as const,
+						type: 'RECEIVED',
 						requestId: message.requestId,
 						scope: message.scope
 					})
@@ -96,7 +96,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 	const storage = accountStorageClient(storagePort)
 	const broker = brokerHostClient(brokerPort)
 	const key = accountStorageKey(serverUrl)
-	self.postMessage({ type: 'STORAGE_NAMESPACE' as const, key })
+	self.postMessage({ type: 'STORAGE_NAMESPACE', key })
 	const input = accountInput({
 		serverUrl,
 		env: 'clipper',
@@ -110,7 +110,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 	host = actor
 	const publish = () => {
 		if (actor.getSnapshot().matches('failed')) {
-			self.postMessage({ type: 'FAILED' as const })
+			self.postMessage({ type: 'FAILED' })
 			return
 		}
 		const application = actor.getSnapshot().children.application
@@ -118,12 +118,12 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		const binding = selectRecoveryBinding(snapshot)
 		if (binding?.capability !== observedRecovery) {
 			observedRecovery = binding?.capability
-			actor.send({ type: 'BIND_RECOVERY' as const, binding })
+			actor.send({ type: 'BIND_RECOVERY', binding })
 			return
 		}
 		const recovery = actor.getSnapshot().context.recovery
 		self.postMessage({
-			type: 'RECOVERY' as const,
+			type: 'RECOVERY',
 			scope: actor.getSnapshot().context.scope,
 			available: !!recovery,
 			view: recoveryView(recovery)
@@ -131,7 +131,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		const library = selectLibraryActor(snapshot)
 		if (library !== observedLibrary) {
 			observedLibrary = library
-			actor.send({ type: 'BIND_LIBRARY' as const, library, scope: crypto.randomUUID() })
+			actor.send({ type: 'BIND_LIBRARY', library, scope: crypto.randomUUID() })
 			return
 		}
 		const watched: AnyActorRef[] = [
@@ -177,9 +177,9 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 			subscriptions.clear()
 			storage.close()
 			broker.close()
-			self.postMessage({ type: 'CLOSED' as const })
+			self.postMessage({ type: 'CLOSED' })
 		},
-		error: () => self.postMessage({ type: 'FAILED' as const })
+		error: () => self.postMessage({ type: 'FAILED' })
 	})
 	actor.start()
 }

@@ -24,10 +24,10 @@ function workerOpen(body: Uint8Array, mediaType: string, url: string): WorkerOpe
 			workerData: { body: payload, mediaType, url },
 			transferList: [payload.buffer]
 		})
-		const message = (reply: ParserReply) => report({ type: 'WORKER_RESULT' as const, reply })
+		const message = (reply: ParserReply) => report({ type: 'WORKER_RESULT', reply })
 		const error = (value: Error & { code?: string }) =>
-			report({ type: 'WORKER_ERROR' as const, code: value.code ?? 'UNKNOWN' })
-		const exit = () => report({ type: 'WORKER_EXIT' as const })
+			report({ type: 'WORKER_ERROR', code: value.code ?? 'UNKNOWN' })
+		const exit = () => report({ type: 'WORKER_EXIT' })
 		worker.on('message', message)
 		worker.on('error', error)
 		worker.on('exit', exit)
@@ -35,7 +35,7 @@ function workerOpen(body: Uint8Array, mediaType: string, url: string): WorkerOpe
 			terminate: () => {
 				void worker
 					.terminate()
-					.catch(() => report({ type: 'WORKER_ERROR' as const, code: 'TERMINATION_FAILED' }))
+					.catch(() => report({ type: 'WORKER_ERROR', code: 'TERMINATION_FAILED' }))
 			},
 			release: () => {
 				worker.off('message', message)
@@ -59,7 +59,7 @@ export async function extractInWorker(
 	const actor = createActor(parserWorkerMachine, {
 		input: { open: workerOpen(body, mediaType, url) }
 	})
-	const abort = () => actor.send({ type: 'CANCEL' as const })
+	const abort = () => actor.send({ type: 'CANCEL' })
 	signal.addEventListener('abort', abort, { once: true })
 	try {
 		actor.start()

@@ -116,52 +116,48 @@ const frame = createCallbackLogic<FrameEvent, FrameEvent>(({ input, sendBack }) 
 // including abrupt actor stop; setup order and partial failure are state transitions.
 const controller = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
 	const controller = new input.root.ownerDocument.defaultView!.AbortController()
-	sendBack({ type: 'CONTROLLER_CREATED' as const, controller })
+	sendBack({ type: 'CONTROLLER_CREATED', controller })
 	return () => controller.abort()
 })
 const observer = createCallbackLogic<Event>(({ sendBack }) => {
-	const observer = new ResizeObserver(() => sendBack({ type: 'RESIZE' as const }))
-	sendBack({ type: 'OBSERVER_CREATED' as const, observer })
+	const observer = new ResizeObserver(() => sendBack({ type: 'RESIZE' }))
+	sendBack({ type: 'OBSERVER_CREATED', observer })
 	return () => observer.disconnect()
 })
 const registerObservation = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
 	for (const target of input.targets) required(input.observer).observe(target)
-	sendBack({ type: 'OBSERVING' as const })
+	sendBack({ type: 'OBSERVING' })
 })
 const registerListeners = createCallbackLogic<
 	Event,
 	{ context: Context; report: (event: Event) => void }
 >(({ input: { context: input, report }, sendBack }) => {
 	const options = { passive: true, signal: required(input.controller).signal }
-	input.scroller.addEventListener('scroll', () => report({ type: 'SCROLL' as const }), options)
+	input.scroller.addEventListener('scroll', () => report({ type: 'SCROLL' }), options)
 	for (const name of ['wheel', 'touchstart', 'pointerdown', 'keydown'])
-		input.scroller.addEventListener(
-			name,
-			(event) => report({ type: 'INPUT' as const, event }),
-			options
-		)
-	sendBack({ type: 'LISTENING' as const })
+		input.scroller.addEventListener(name, (event) => report({ type: 'INPUT', event }), options)
+	sendBack({ type: 'LISTENING' })
 })
 const measureSizes = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
-	sendBack({ type: 'SIZES_MEASURED' as const, sizes: sizes(input.targets) })
+	sendBack({ type: 'SIZES_MEASURED', sizes: sizes(input.targets) })
 })
 const finalMeasurement = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
-	sendBack({ type: 'FINAL_MEASURED' as const, position: measurePosition(input) })
+	sendBack({ type: 'FINAL_MEASURED', position: measurePosition(input) })
 })
 
 const measurement = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
-	sendBack({ type: 'MEASURED' as const, position: measurePosition(input) })
+	sendBack({ type: 'MEASURED', position: measurePosition(input) })
 })
 const locateAnchor = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
-	sendBack({ type: 'ANCHOR_LOCATED' as const, anchor: matchingAnchor(input) })
+	sendBack({ type: 'ANCHOR_LOCATED', anchor: matchingAnchor(input) })
 })
 const scrollToAnchor = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
 	input.scroller.scrollTop += required(input.anchor).top - viewportTop(input.scroller)
-	sendBack({ type: 'SCROLLED' as const })
+	sendBack({ type: 'SCROLLED' })
 })
 const scrollToStart = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
 	input.scroller.scrollTop = 0
-	sendBack({ type: 'SCROLLED' as const })
+	sendBack({ type: 'SCROLLED' })
 })
 
 export const viewportMachine = setup({
@@ -315,12 +311,12 @@ export const viewportMachine = setup({
 							on: { LISTENING: { target: 'active' } }
 						},
 						active: {
-							type: 'parallel' as const,
+							type: 'parallel',
 							on: {
 								INPUT: (args, enq) => {
 									if (!args.guards.readingInteraction(args)) return
-									enq.raise({ type: 'USER_INTERACT' as const })
-									enq.raise({ type: 'SCROLL' as const })
+									enq.raise({ type: 'USER_INTERACT' })
+									enq.raise({ type: 'SCROLL' })
 								},
 								DETACH: { target: '#reader-viewport.disposing' }
 							},
@@ -332,7 +328,7 @@ export const viewportMachine = setup({
 										waitingForLayout: {
 											invoke: {
 												src: 'frame',
-												input: { type: 'LAYOUT_FRAME' as const },
+												input: { type: 'LAYOUT_FRAME' },
 												onError: { target: '#reader-viewport.disposingFailure' }
 											},
 											on: {
@@ -381,7 +377,7 @@ export const viewportMachine = setup({
 										waitingForPaint: {
 											invoke: {
 												src: 'frame',
-												input: { type: 'PAINT_FRAME' as const },
+												input: { type: 'PAINT_FRAME' },
 												onError: { target: '#reader-viewport.disposingFailure' }
 											},
 											on: {
@@ -403,7 +399,7 @@ export const viewportMachine = setup({
 														args.actions.report,
 														{ ...args, context },
 														{
-															type: 'MEASURE' as const,
+															type: 'MEASURE',
 															attachmentId: context.attachmentId,
 															position: required(event.position)
 														}
@@ -430,7 +426,7 @@ export const viewportMachine = setup({
 												SIZES_MEASURED: (args, enq) => {
 													const { event } = args
 													if (args.guards.changedSizes(args, { sizes: event.sizes })) {
-														enq.raise({ type: 'REFLOW' as const })
+														enq.raise({ type: 'REFLOW' })
 														return {
 															target: 'idle',
 															context: { sizes: event.sizes, nextSizes: event.sizes }
@@ -450,7 +446,7 @@ export const viewportMachine = setup({
 										framePending: {
 											invoke: {
 												src: 'frame',
-												input: { type: 'MEASURE_FRAME' as const },
+												input: { type: 'MEASURE_FRAME' },
 												onError: { target: '#reader-viewport.disposingFailure' }
 											},
 											on: { MEASURE_FRAME: { target: 'measuring' }, SCROLL: {} }
@@ -493,12 +489,12 @@ export const viewportMachine = setup({
 				}
 			}
 		},
-		closed: { type: 'final' as const },
+		closed: { type: 'final' },
 		failed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args, enq) => {
 				enq(args.actions.report, args, {
-					type: 'VIEWPORT_FAILED' as const,
+					type: 'VIEWPORT_FAILED',
 					attachmentId: args.context.attachmentId
 				})
 			}

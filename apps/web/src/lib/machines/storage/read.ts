@@ -42,19 +42,19 @@ const clear = {
 	source: undefined
 }
 function available(context: Context): ReadResult {
-	if (!context.capability?.isCurrent()) return { kind: 'unavailable' as const }
+	if (!context.capability?.isCurrent()) return { kind: 'unavailable' }
 	const document = required(context.document),
 		snapshot = required(context.snapshot),
 		asset = context.asset,
 		source = context.source
 
 	return {
-		kind: 'available' as const,
+		kind: 'available',
 		document,
 		text: snapshot.text,
 		asset: isValidAsset(asset, document)
-			? { kind: 'available' as const, bytes: asset.payload, mediaType: asset.mediaType }
-			: { kind: 'unavailable' as const, reason: asset ? 'invalid' : 'missing' },
+			? { kind: 'available', bytes: asset.payload, mediaType: asset.mediaType }
+			: { kind: 'unavailable', reason: asset ? 'invalid' : 'missing' },
 		...(isValidSource(source, document) ? { source } : {})
 	}
 }
@@ -124,7 +124,7 @@ export const readRecordMachine = model.createMachine({
 		capability: input.capability,
 		generation: input.generation ?? 0,
 		reportTo: input.reportTo,
-		result: { kind: 'unavailable' as const }
+		result: { kind: 'unavailable' }
 	}),
 	output: ({ context }) => context.result,
 	on: { SHUTDOWN: { target: '.unavailable' } },
@@ -153,7 +153,7 @@ export const readRecordMachine = model.createMachine({
 		// Once the header is validated, these independent reads share one owner.
 		// Only the required snapshot can fail the read; asset/source remain optional.
 		resources: {
-			type: 'parallel' as const,
+			type: 'parallel',
 			onDone: { target: 'available' },
 			states: {
 				snapshot: {
@@ -180,7 +180,7 @@ export const readRecordMachine = model.createMachine({
 								onError: { target: '#read-record.unavailable' }
 							}
 						},
-						ready: { type: 'final' as const }
+						ready: { type: 'final' }
 					}
 				},
 				asset: {
@@ -205,7 +205,7 @@ export const readRecordMachine = model.createMachine({
 								}
 							}
 						},
-						ready: { type: 'final' as const }
+						ready: { type: 'final' }
 					}
 				},
 				source: {
@@ -230,13 +230,13 @@ export const readRecordMachine = model.createMachine({
 								}
 							}
 						},
-						ready: { type: 'final' as const }
+						ready: { type: 'final' }
 					}
 				}
 			}
 		},
 		available: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args, enq) => {
 				let pendingContext = {}
 
@@ -244,10 +244,10 @@ export const readRecordMachine = model.createMachine({
 				{
 					const params = { result: available(context) }
 					const { result } = params
-					enq.emit({ type: 'record' as const, result })
+					enq.emit({ type: 'record', result })
 					if (context.reportTo)
 						enq.sendTo(context.reportTo, {
-							type: 'READ_RESULT' as const,
+							type: 'READ_RESULT',
 							generation: context.generation,
 							result
 						})
@@ -262,24 +262,22 @@ export const readRecordMachine = model.createMachine({
 			}
 		},
 		missing: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args, enq) => {
 				let pendingContext = {}
 
 				const { context } = args
 				{
-					const params = {
+					const params: { result: ReadResult } = {
 						result: {
-							kind: context.capability?.isCurrent()
-								? ('missing' as const)
-								: ('unavailable' as const)
+							kind: context.capability?.isCurrent() ? 'missing' : 'unavailable'
 						}
 					}
 					const { result } = params
-					enq.emit({ type: 'record' as const, result })
+					enq.emit({ type: 'record', result })
 					if (context.reportTo)
 						enq.sendTo(context.reportTo, {
-							type: 'READ_RESULT' as const,
+							type: 'READ_RESULT',
 							generation: context.generation,
 							result
 						})
@@ -294,24 +292,22 @@ export const readRecordMachine = model.createMachine({
 			}
 		},
 		corrupt: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args, enq) => {
 				let pendingContext = {}
 
 				const { context } = args
 				{
-					const params = {
+					const params: { result: ReadResult } = {
 						result: {
-							kind: context.capability?.isCurrent()
-								? ('corrupt' as const)
-								: ('unavailable' as const)
+							kind: context.capability?.isCurrent() ? 'corrupt' : 'unavailable'
 						}
 					}
 					const { result } = params
-					enq.emit({ type: 'record' as const, result })
+					enq.emit({ type: 'record', result })
 					if (context.reportTo)
 						enq.sendTo(context.reportTo, {
-							type: 'READ_RESULT' as const,
+							type: 'READ_RESULT',
 							generation: context.generation,
 							result
 						})
@@ -326,18 +322,18 @@ export const readRecordMachine = model.createMachine({
 			}
 		},
 		unavailable: {
-			type: 'final' as const,
+			type: 'final',
 			entry: (args, enq) => {
 				let pendingContext = {}
 
 				const { context } = args
 				{
-					const params = { result: { kind: 'unavailable' as const } }
+					const params: { result: ReadResult } = { result: { kind: 'unavailable' } }
 					const { result } = params
-					enq.emit({ type: 'record' as const, result })
+					enq.emit({ type: 'record', result })
 					if (context.reportTo)
 						enq.sendTo(context.reportTo, {
-							type: 'READ_RESULT' as const,
+							type: 'READ_RESULT',
 							generation: context.generation,
 							result
 						})

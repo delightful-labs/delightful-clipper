@@ -6,7 +6,7 @@ const actor = createActor(captureAdmissionMachine).start()
 export function acquireCapture(owner: string) {
 	let lease: number | undefined
 	actor.send({
-		type: 'ACQUIRE' as const,
+		type: 'ACQUIRE',
 		owner,
 		now: Date.now(),
 		reply: (value) => {
@@ -15,5 +15,5 @@ export function acquireCapture(owner: string) {
 	})
 	if (lease === undefined) throw new CaptureError('rateLimited', 429, true)
 	const granted = lease
-	return () => actor.send({ type: 'RELEASE' as const, lease: granted })
+	return () => actor.send({ type: 'RELEASE', lease: granted })
 }

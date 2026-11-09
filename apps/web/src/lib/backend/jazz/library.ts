@@ -64,7 +64,7 @@ export function createLibraryCapability(
 					if (actor.getSnapshot().status === 'active') actor.send(event)
 				},
 				stop: () => {
-					if (actor.getSnapshot().status === 'active') actor.send({ type: 'STOP' as const })
+					if (actor.getSnapshot().status === 'active') actor.send({ type: 'STOP' })
 					return stopped
 				}
 			}

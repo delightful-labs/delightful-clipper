@@ -72,7 +72,7 @@ self.onmessage = async ({ data }) => {
 				saving.stop()
 			}
 			self.postMessage({
-				type: 'READY' as const,
+				type: 'READY',
 				accountId: account.id,
 				existing: !!before,
 				domainSaved: saved,
@@ -86,13 +86,13 @@ self.onmessage = async ({ data }) => {
 		}
 	} catch (error) {
 		self.postMessage({
-			type: 'FAILED' as const,
+			type: 'FAILED',
 			message: diagnosticText(error instanceof Error ? error.message : 'Unknown worker failure'),
 			sharedWorker: typeof SharedWorker
 		})
 	} finally {
 		brokerHost.close()
 		storage.close()
-		self.postMessage({ type: 'CLOSED' as const })
+		self.postMessage({ type: 'CLOSED' })
 	}
 }

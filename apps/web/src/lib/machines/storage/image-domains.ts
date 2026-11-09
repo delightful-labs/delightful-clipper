@@ -92,14 +92,14 @@ export function createImagePublicationDomain(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			insertIntentAndinsertAssetAndpublishImage: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertIntent(args)
 						args.actions.insertAsset(args)
 						args.actions.publishImage(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }
@@ -174,12 +174,12 @@ export function createImageFailureDomain(io: {
 					})
 				}
 			},
-			done: { type: 'final' as const },
+			done: { type: 'final' },
 			recordFailure: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.recordFailure(args)
-						args.self.send({ type: 'STAGED' as const })
+						args.self.send({ type: 'STAGED' })
 					})
 				},
 				on: { STAGED: { target: 'done' } }

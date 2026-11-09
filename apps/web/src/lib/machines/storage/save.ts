@@ -77,7 +77,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 		output: ({ context }) => required(context.result),
 		states: {
 			running: {
-				type: 'parallel' as const,
+				type: 'parallel',
 				states: {
 					control: {
 						initial: 'active',
@@ -132,7 +132,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 									active: {
 										on: {
 											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedIntent, { type: 'SHUTDOWN' as const })
+												enq.sendTo(args.context.ownedIntent, { type: 'SHUTDOWN' })
 												return { target: 'stopping' }
 											}
 										}
@@ -217,7 +217,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 									active: {
 										on: {
 											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedPublish, { type: 'SHUTDOWN' as const })
+												enq.sendTo(args.context.ownedPublish, { type: 'SHUTDOWN' })
 												return { target: 'stopping' }
 											}
 										}
@@ -301,13 +301,13 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 				}
 			},
 			saved: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					const { context } = args
 					return {
 						context: {
 							result: {
-								kind: 'saved' as const,
+								kind: 'saved',
 								operationId: context.operationId,
 								receipts: context.receipts
 							},
@@ -319,7 +319,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 				}
 			},
 			unknown: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {
@@ -332,7 +332,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 				}
 			},
 			interrupted: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {
@@ -345,7 +345,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 				}
 			},
 			scopeChanged: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {
@@ -358,7 +358,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 				}
 			},
 			blocked: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {
@@ -371,7 +371,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 				}
 			},
 			failed: {
-				type: 'final' as const,
+				type: 'final',
 				entry: (args) => {
 					return {
 						context: {

@@ -17,12 +17,12 @@ const lock = createCallbackLogic<LockCommand, string>(({ input, sendBack, receiv
 	receive(() => released.resolve())
 	void navigator.locks
 		.request(input, { signal: controller.signal }, async () => {
-			sendBack({ type: 'LOCKED' as const })
+			sendBack({ type: 'LOCKED' })
 			await released.promise
 		})
 		.then(
-			() => sendBack({ type: 'RELEASED' as const }),
-			() => sendBack({ type: 'LOCK_FAILED' as const })
+			() => sendBack({ type: 'RELEASED' }),
+			() => sendBack({ type: 'LOCK_FAILED' })
 		)
 	return () => {
 		controller.abort()
@@ -100,24 +100,24 @@ export const accountStoreUpdateMachine = setup({
 		},
 		releasing: {
 			entry: (args, enq) => {
-				enq.sendTo('lock', { type: 'RELEASE' as const })
+				enq.sendTo('lock', { type: 'RELEASE' })
 			},
 			on: { RELEASED: { target: 'ready' } }
 		},
 		releasingFailure: {
 			entry: (args, enq) => {
-				enq.sendTo('lock', { type: 'RELEASE' as const })
+				enq.sendTo('lock', { type: 'RELEASE' })
 			},
 			on: { RELEASED: { target: 'failed' } }
 		},
 		ready: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return { context: { ok: true, current: null, replacement: '' } }
 			}
 		},
 		failed: {
-			type: 'final' as const,
+			type: 'final',
 			entry: () => {
 				return { context: { current: null, replacement: '' } }
 			}
