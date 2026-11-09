@@ -53,7 +53,7 @@ retain offline reading/editing; after reconnect and fresh authentication the sam
 library and pending edit return. Actual provider-cookie sign-out followed by a cold
 offline restart does not restore the prior account.
 
-All 54 general web regressions pass. Eight historical-schema browser cases pass in
+All 55 general web regressions pass on main’s drawer-navigation baseline. Eight historical-schema browser cases pass in
 Chromium and Firefox; the separate native SQLite regression covers the backend auth
 migration. Six worker-boundary/shutdown cases pass. These browser runs
 use an isolated source copy with only port numbers remapped because the default
@@ -73,8 +73,20 @@ Live AT Protocol consent and the deployed preview's environment remain separate
 hosted checks. Existing Neon records are not imported or deleted. No release claim
 is made about every SDK pending-write/account-switch edge case.
 
-All eleven packaged extension cases pass after a clean rebuild without diagnostic
-hooks, including account restoration, successive captures, offline capture through
-browser restart, reconnect, sign-in cancellation and stale connection rejection.
-The retained source uses one shared schema and Jazz’s shipped migration graph.
-Schema-separation experiments and temporary diagnostic hooks are not included.
+## Open extension regression
+
+The packaged extension is not qualified on the final merged tree. Two earlier
+retained-source runs passed all eleven cases (one without diagnostic hooks), but
+final rebuilt runs still fail intermittently at cold offscreen startup or account
+restoration. The latest full run passed two cases and failed nine, beginning with
+the toolbar’s missing status bar. A separate run first failed because Playwright’s
+service-worker handle restarted. After a test failure, the fixture restarts its core
+while the web backend remains alive; subsequent restoration failures therefore do
+not independently establish nine application defects. Unchanged main passed all
+eleven cases in a control run.
+
+The underlying startup failure remains unresolved. Do not treat the earlier green
+runs as qualification of this final tree or claim the complete integration usable.
+Schema-separation experiments and temporary diagnostic hooks are not retained.
+The native auth web/offline evidence above remains valid and independent of this
+packaged-extension issue. Live provider consent is also still a hosted check.
