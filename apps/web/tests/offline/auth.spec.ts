@@ -12,6 +12,7 @@ import { app } from '../../src/lib/backend/jazz/schema.js'
 import { startJazzAuthority } from '../jazz-authority.js'
 import { staticShellServer } from './server.js'
 import { openAddLink } from '../add-link.js'
+import { readingControls } from '../reader-ui.js'
 
 // Synthetic provider identity, real Better Auth session verification, real Jazz
 // storage/authentication, built worker/UI and persistent browser profile.
@@ -198,6 +199,7 @@ for (const mode of ['linked', 'existing', 'expired'])
 			}
 			await page.getByRole('link', { name: 'Native authorized article', exact: true }).click()
 			await expect(page.getByRole('article')).toContainText('Readable native backend capture.')
+			await readingControls(page)
 			await page.getByRole('link', { name: 'Open library', exact: true }).click()
 
 			if (mode === 'expired') {
@@ -238,6 +240,7 @@ for (const mode of ['linked', 'existing', 'expired'])
 				}
 				await page.getByRole('link', { name: 'Native authorized article', exact: true }).click()
 				await expect(page.getByRole('article')).toContainText('Readable native backend capture.')
+				await readingControls(page)
 				await page.getByRole('link', { name: 'Open library', exact: true }).click()
 
 				if (restart === 0) await context.close()
