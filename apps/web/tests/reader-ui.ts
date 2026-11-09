@@ -2,9 +2,20 @@ import { expect, type Page } from '@playwright/test'
 
 async function settledReaderLayout(page: Page) {
 	await page.locator('.reader-workspace').evaluate(async (reader) => {
-		await Promise.all(
-			reader.getAnimations({ subtree: true }).map((animation) => animation.finished)
-		)
+		const layoutAnimations = () =>
+			Array.from(
+				reader.querySelectorAll(
+					'.reader-drawer, .reader-drawer .inline-panel, .page-control-spacer'
+				)
+			)
+				.flatMap((element) => element.getAnimations())
+				.filter((animation) => animation.pending || animation.playState === 'running')
+		let animations = layoutAnimations()
+		while (animations.length) {
+			// Layout updates can cancel and replace an in-flight transition.
+			await Promise.allSettled(animations.map((animation) => animation.finished))
+			animations = layoutAnimations()
+		}
 		await new Promise<void>((resolve) => {
 			requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
 		})
