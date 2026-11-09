@@ -1,8 +1,7 @@
-import type { EventPayload } from '../events.js'
-import { types, createActor, setup, toPromise, createAsyncLogic, type AnyActorRef } from 'xstate'
+import { types, createActor, setup, toPromise, createAsyncLogic } from 'xstate'
 import { expect, it, vi } from 'vitest'
 
-import { createDomainTransaction } from './domain-transaction.js'
+import { createDomainTransaction, type PreparedPort } from './domain-transaction.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 
 type Phase = 'open' | 'read' | 'stage' | 'commit' | 'persist'
@@ -24,7 +23,11 @@ function fixture(
 		write = {}
 	const receipt: SyncReceipt = { global: vi.fn(async () => {}) }
 	type Draft = { id: string }
-	type Input = { resource: object; owner: AnyActorRef }
+	type Input = {
+		resource: object
+		owner: PreparedPort
+		attempt: import('delightful-local-first/workspace/creation/contracts').WorkspaceCreationAttempt<Draft>
+	}
 	const actors = {
 		read: createAsyncLogic({
 			run: async () => {
@@ -40,7 +43,7 @@ function fixture(
 	const domain = setup({
 		schemas: {
 			context: types<Input>(),
-			events: { STAGE: types<EventPayload<{ type: 'STAGE' }, 'STAGE'>>() },
+			events: { STAGE: types(), STAGED: types() },
 			input: types<Input>(),
 			output: types<SyncReceipt>(),
 			tags: types<string>(),
@@ -92,23 +95,26 @@ function fixture(
 		trace.push('rollback')
 		return !options.rollbackFails
 	})
-	const logic = createDomainTransaction<Draft, object, object>(domain, {
-		retainDetached: vi.fn(),
-		open: async () => {
-			await step('open')
-			return resource
-		},
-		commit: async (current) => {
-			expect(current).toBe(resource)
-			await step('commit')
-			return write
-		},
-		persistLocal: async (current) => {
-			expect(current).toBe(write)
-			await step('persist')
-		},
-		rollback
-	})
+	const logic = createDomainTransaction<Draft, object, object>(
+		(spawn, input) => spawn(domain, { input }),
+		{
+			retainDetached: vi.fn(),
+			open: async () => {
+				await step('open')
+				return resource
+			},
+			commit: async (current) => {
+				expect(current).toBe(resource)
+				await step('commit')
+				return write
+			},
+			persistLocal: async (current) => {
+				expect(current).toBe(write)
+				await step('persist')
+			},
+			rollback
+		}
+	)
 	const attempt = {
 		operationId: 'operation',
 		workspaceId: 'workspace',

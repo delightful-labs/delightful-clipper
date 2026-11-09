@@ -103,14 +103,18 @@ export function createOrganizationRecords(
 			)
 		}
 	const stage = createDomainTransaction<OrganizationDraft>(
-		createOrganizationDomain({
-			read: readLocal,
-			insertArticle: insertOrganization('articleId'),
-			insertDocument: insertOrganization('documentId'),
-			insertTagArticle: insertTag('articleId'),
-			insertTagDocument: insertTag('documentId'),
-			receipt: transactionReceipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createOrganizationDomain({
+					read: readLocal,
+					insertArticle: insertOrganization('articleId'),
+					insertDocument: insertOrganization('documentId'),
+					insertTagArticle: insertTag('articleId'),
+					insertTagDocument: insertTag('documentId'),
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		transactionLifecycle(db, isCurrent)
 	)
 

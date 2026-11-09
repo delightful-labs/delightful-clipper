@@ -25,74 +25,82 @@ export function createImageRecords(
 	}
 	const lifecycle = transactionLifecycle(db, isCurrent)
 	const ready = createDomainTransaction<ReadyImageWrite>(
-		createImagePublicationDomain({
-			read: async (resource, input) => {
-				const result = processedImageSchema.parse(input.result)
-				const draft: ReadyImageWrite = {
-					kind: 'ready',
-					image: imageRowSchema.parse(input.image),
-					result
-				}
-				const digest = new Uint8Array(
-					await crypto.subtle.digest('SHA-256', new Uint8Array(result.bytes))
-				)
-				const hash = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
-				const image = await readImage(resource, draft.image.id)
-				const intent = await resource.tx.one(
-					app.storageOperations.where({ id: draft.image.id, libraryId }),
-					{ tier: ReadTier.LocalFirst }
-				)
-				return { draft, image, intent, hash }
-			},
-			insertIntent: (resource, { draft, hash }) => {
-				resource.tx.insert(
-					app.storageOperations,
-					{ libraryId, payloadHash: hash, createdAt: new Date().toISOString() },
-					{ id: draft.image.id }
-				)
-			},
-			insertAsset: (resource, { draft }) => {
-				resource.tx.insert(
-					app.assets,
-					{
-						libraryId,
-						operationId: draft.image.id,
-						mediaType: draft.result.mediaType,
-						payload: draft.result.bytes
+		(spawn, input) =>
+			spawn(
+				createImagePublicationDomain({
+					read: async (resource, input) => {
+						const result = processedImageSchema.parse(input.result)
+						const draft: ReadyImageWrite = {
+							kind: 'ready',
+							image: imageRowSchema.parse(input.image),
+							result
+						}
+						const digest = new Uint8Array(
+							await crypto.subtle.digest('SHA-256', new Uint8Array(result.bytes))
+						)
+						const hash = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('')
+						const image = await readImage(resource, draft.image.id)
+						const intent = await resource.tx.one(
+							app.storageOperations.where({ id: draft.image.id, libraryId }),
+							{ tier: ReadTier.LocalFirst }
+						)
+						return { draft, image, intent, hash }
 					},
-					{ id: draft.image.id }
-				)
-			},
-			publishImage: (resource, { draft }) => {
-				resource.tx.update(app.articleImages, draft.image.id, {
-					status: 'ready',
-					assetId: draft.image.id,
-					retryable: false
-				})
-			},
-			receipt: transactionReceipt
-		}),
+					insertIntent: (resource, { draft, hash }) => {
+						resource.tx.insert(
+							app.storageOperations,
+							{ libraryId, payloadHash: hash, createdAt: new Date().toISOString() },
+							{ id: draft.image.id }
+						)
+					},
+					insertAsset: (resource, { draft }) => {
+						resource.tx.insert(
+							app.assets,
+							{
+								libraryId,
+								operationId: draft.image.id,
+								mediaType: draft.result.mediaType,
+								payload: draft.result.bytes
+							},
+							{ id: draft.image.id }
+						)
+					},
+					publishImage: (resource, { draft }) => {
+						resource.tx.update(app.articleImages, draft.image.id, {
+							status: 'ready',
+							assetId: draft.image.id,
+							retryable: false
+						})
+					},
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 	const recordImageFailure = createDomainTransaction<FailedImageWrite>(
-		createImageFailureDomain({
-			read: async (resource, input) => {
-				const draft: FailedImageWrite = {
-					kind: 'failed',
-					image: imageRowSchema.parse(input.image),
-					retryable: z.boolean().parse(input.retryable)
-				}
-				return { draft, image: await readImage(resource, draft.image.id) }
-			},
-			recordFailure: (resource, { draft }) => {
-				resource.tx.update(app.articleImages, draft.image.id, {
-					status: 'failed',
-					assetId: null,
-					retryable: draft.retryable
-				})
-			},
-			receipt: transactionReceipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createImageFailureDomain({
+					read: async (resource, input) => {
+						const draft: FailedImageWrite = {
+							kind: 'failed',
+							image: imageRowSchema.parse(input.image),
+							retryable: z.boolean().parse(input.retryable)
+						}
+						return { draft, image: await readImage(resource, draft.image.id) }
+					},
+					recordFailure: (resource, { draft }) => {
+						resource.tx.update(app.articleImages, draft.image.id, {
+							status: 'failed',
+							assetId: null,
+							retryable: draft.retryable
+						})
+					},
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 	const subscribe = (

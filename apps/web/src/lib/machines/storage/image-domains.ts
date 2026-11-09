@@ -1,7 +1,7 @@
+import { types } from 'xstate'
 import type { ReadyImageWrite, FailedImageWrite, ArticleImage } from '../../images/schema.js'
 import { canWriteImage } from '../../images/schema.js'
 import type { TransactionResource } from '../../backend/jazz/transaction.js'
-import { required } from './domain-transaction.js'
 import { transactionDomainModel, domainContext } from './domain-model.js'
 import type { DomainRead, DomainReceipt } from './domain-model.js'
 export type ImagePublicationFacts = {
@@ -21,26 +21,44 @@ export function createImagePublicationDomain(io: {
 	receipt: DomainReceipt
 }) {
 	const model = transactionDomainModel(io.read, 'Image publication unavailable').extend({
+		states: {
+			reading: {},
+			ready: { schemas: { context: types<{ facts: ImagePublicationFacts }>() } },
+			blocked: {},
+			done: {},
+			insertIntentAndinsertAssetAndpublishImage: {
+				schemas: { context: types<{ facts: ImagePublicationFacts }>() }
+			}
+		},
 		guards: {
 			canPublishImage: (_, { facts }: { facts: ImagePublicationFacts }) =>
 				canWriteImage(facts.image, facts.draft, facts.intent)
 		},
 		actions: {
-			insertIntent: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<ReadyImageWrite, ImagePublicationFacts>
-			}) => io.insertIntent(context.resource, required(context.facts)),
-			insertAsset: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<ReadyImageWrite, ImagePublicationFacts>
-			}) => io.insertAsset(context.resource, required(context.facts)),
-			publishImage: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<ReadyImageWrite, ImagePublicationFacts>
-			}) => io.publishImage(context.resource, required(context.facts))
+			insertIntent: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<ReadyImageWrite, ImagePublicationFacts>
+				},
+				{ facts }: { facts: ImagePublicationFacts }
+			) => io.insertIntent(context.resource, facts),
+			insertAsset: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<ReadyImageWrite, ImagePublicationFacts>
+				},
+				{ facts }: { facts: ImagePublicationFacts }
+			) => io.insertAsset(context.resource, facts),
+			publishImage: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<ReadyImageWrite, ImagePublicationFacts>
+				},
+				{ facts }: { facts: ImagePublicationFacts }
+			) => io.publishImage(context.resource, facts)
 		}
 	})
 	return model.createMachine({
@@ -57,18 +75,11 @@ export function createImagePublicationDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: (args, _enq) => {
-						let patch = {}
-						if (
-							args.guards.canPublishImage(args, (({ event }) => ({ facts: event.output }))(args))
-						) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'ready', context: patch }
+					onDone: (args) => {
+						if (args.guards.canPublishImage(args, { facts: args.event.output })) {
+							return { target: 'ready', context: { facts: args.event.output } }
 						}
-						return { target: 'blocked', context: patch }
+						return { target: 'blocked' }
 					}
 				}
 			},
@@ -79,10 +90,7 @@ export function createImagePublicationDomain(io: {
 					})
 				},
 				on: {
-					STAGE: (_args, _enq) => {
-						let patch = {}
-						return { target: 'insertIntentAndinsertAssetAndpublishImage', context: patch }
-					}
+					STAGE: { target: 'insertIntentAndinsertAssetAndpublishImage' }
 				}
 			},
 			blocked: {
@@ -96,9 +104,9 @@ export function createImagePublicationDomain(io: {
 			insertIntentAndinsertAssetAndpublishImage: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertIntent(args)
-						args.actions.insertAsset(args)
-						args.actions.publishImage(args)
+						args.actions.insertIntent(args, { facts: args.context.facts })
+						args.actions.insertAsset(args, { facts: args.context.facts })
+						args.actions.publishImage(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -113,16 +121,26 @@ export function createImageFailureDomain(io: {
 	receipt: DomainReceipt
 }) {
 	const model = transactionDomainModel(io.read, 'Image publication unavailable').extend({
+		states: {
+			reading: {},
+			ready: { schemas: { context: types<{ facts: ImageFailureFacts }>() } },
+			blocked: {},
+			done: {},
+			recordFailure: { schemas: { context: types<{ facts: ImageFailureFacts }>() } }
+		},
 		guards: {
 			canRecordFailure: (_, { facts }: { facts: ImageFailureFacts }) =>
 				canWriteImage(facts.image, facts.draft, undefined)
 		},
 		actions: {
-			recordFailure: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<FailedImageWrite, ImageFailureFacts>
-			}) => io.recordFailure(context.resource, required(context.facts))
+			recordFailure: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<FailedImageWrite, ImageFailureFacts>
+				},
+				{ facts }: { facts: ImageFailureFacts }
+			) => io.recordFailure(context.resource, facts)
 		}
 	})
 	return model.createMachine({
@@ -139,18 +157,11 @@ export function createImageFailureDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: (args, _enq) => {
-						let patch = {}
-						if (
-							args.guards.canRecordFailure(args, (({ event }) => ({ facts: event.output }))(args))
-						) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'ready', context: patch }
+					onDone: (args) => {
+						if (args.guards.canRecordFailure(args, { facts: args.event.output })) {
+							return { target: 'ready', context: { facts: args.event.output } }
 						}
-						return { target: 'blocked', context: patch }
+						return { target: 'blocked' }
 					}
 				}
 			},
@@ -161,10 +172,7 @@ export function createImageFailureDomain(io: {
 					})
 				},
 				on: {
-					STAGE: (_args, _enq) => {
-						let patch = {}
-						return { target: 'recordFailure', context: patch }
-					}
+					STAGE: { target: 'recordFailure' }
 				}
 			},
 			blocked: {
@@ -178,7 +186,7 @@ export function createImageFailureDomain(io: {
 			recordFailure: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.recordFailure(args)
+						args.actions.recordFailure(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},

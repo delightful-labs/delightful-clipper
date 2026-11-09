@@ -20,7 +20,7 @@ Before implementation, identify:
 
 Register descriptive guards, actions and actor sources in `setup`; reference their names in the chart. Use action/guard parameters and small context/event adapters to reuse implementations without coupling every function to the entire machine context.
 
-Guards must be pure, synchronous predicates. Give domain rules names such as `canBindIntent`, `hasArticleParent`, `sourceUnchanged` and `matchingCapture`. Compose shallow named predicates with `and`, `or` and `not` when useful. Do not bury parsing, scope checks, history construction and sequence comparison together inside an anonymous guard.
+Guards must be pure, synchronous predicates. Give domain rules names such as `canBindIntent`, `hasArticleParent`, `sourceUnchanged` and `matchingCapture`. Compose shallow named predicates with JavaScript `&&`, `||` and `!` when useful; v6 removed the v5 guard combinators. Do not bury parsing, scope checks, history construction and sequence comparison together inside an anonymous guard.
 
 Ordinary functions remain appropriate for schema validation, protocol decoding, serialization, pure projection and bounded I/O. A coherent transaction-local snapshot read or an already-selected atomic batch can be one I/O operation. Do not create a state for every primitive calculation or database call. The distinction is whether the function implements a selected operation or decides the workflow itself.
 
@@ -88,7 +88,7 @@ These sources explain XState's mechanisms. The requirements above also record th
 ## Installed v6 contracts
 
 The web, extension and workers use published `xstate@6.0.0-beta.1`. Read the
-installed `xstate/docs` mechanism guides and `xstate/agents.md` when changing a
+installed `xstate/docs` mechanism guides and `xstate/docs/agents.md` when changing a
 chart. `setup({ schemas })` declares context, inputs, event payload maps, outputs
 and children. Selection and `.can()` may evaluate calculation functions: return
 context patches, use `enq` for effects, and obtain native observations through
@@ -124,3 +124,18 @@ Reusable helpers and protocol projections should check their actual return/DTO
 contracts, using the setup's typed config helpers or checked return types where
 contextual inference is absent. Literal tuples used to derive finite unions are
 an appropriate, separate use of `as const`.
+
+State-level `schemas.context` should express facts guaranteed by the active
+state. Pass validated temporary payloads through state input, rather than root
+nullable fields; retain write receipts and custody facts through their full drain
+lifetime. Private coordination belongs in `schemas.internalEvents`, not a
+public command map. Observe clocks and native cancellation in owned actors and
+consume their returned facts in pure transitions, including deadline checks when
+a timer callback is delayed. Dynamic per-job capabilities are actor input; the
+extension invokes its clip workflow directly and supervises errors explicitly.
+
+The generic transaction bridge accepts a typed domain spawn capability, keeping
+the concrete source and its checked input at the producer. Its controller owns
+the spawned child through completion or failure and stops its retained ref on
+exit; DLF still owns acquisition, commit, rollback and settlement. Avoid erasing
+these contracts with `AnyActorRef` or `AnyStateMachine`.

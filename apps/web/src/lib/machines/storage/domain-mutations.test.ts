@@ -1,7 +1,9 @@
+import { Transaction } from 'jazz-tools'
 import { expect, it, vi } from 'vitest'
-import { createActor, toPromise, type AnyStateMachine } from 'xstate'
+import { createActor, toPromise } from 'xstate'
 
-import { createDomainTransaction } from './domain-transaction.js'
+import type { TransactionResource } from '../../backend/jazz/transaction.js'
+import { createDomainTransaction, type DomainSpawner } from './domain-transaction.js'
 import { createContentIntentDomain, createContentPublicationDomain } from './content-domains.js'
 import { createArticleAttachmentDomain } from './article-domains.js'
 import { createOrganizationDomain } from './organization-domain.js'
@@ -13,16 +15,25 @@ import type { ArticleImage, ReadyImageWrite } from '../../images/schema.js'
 function fixture() {
 	const order: string[] = [],
 		receipt = { global: vi.fn(async () => {}) }
+	const resource: TransactionResource = {
+		tx: new Transaction('mergeable', () => {
+			throw new Error('Domain stubs must not bind a native table')
+		}),
+		commit: () => {
+			throw new Error('The DLF lifecycle owns commit')
+		},
+		global: async () => {}
+	}
 	const rollback = vi.fn(async () => true),
 		commit = vi.fn(() => ({}))
 	const leaf = (name: string) =>
 		vi.fn(() => {
 			order.push(name)
 		})
-	async function run<Draft>(domain: AnyStateMachine, draft: Draft) {
-		const logic = createDomainTransaction<Draft, object, object>(domain, {
+	async function run<Draft>(domain: DomainSpawner<Draft>, draft: Draft) {
+		const logic = createDomainTransaction<Draft, TransactionResource, object>(domain, {
 			retainDetached: vi.fn(),
-			open: () => ({}),
+			open: () => resource,
 			commit,
 			persistLocal: async () => {},
 			rollback
@@ -104,18 +115,22 @@ it.each([
 		const f = fixture(),
 			draft = content(linked)
 		const result = await f.run(
-			createContentIntentDomain({
-				read: async () => ({
-					draft,
-					operationId: 'operation',
-					intent: null,
-					article: exists ? article() : null
-				}),
-				insertIntent: f.leaf('intent'),
-				createArticle: f.leaf('create'),
-				bindArticle: f.leaf('bind'),
-				receipt: () => f.receipt
-			}),
+			(spawn, input) =>
+				spawn(
+					createContentIntentDomain({
+						read: async () => ({
+							draft,
+							operationId: 'operation',
+							intent: null,
+							article: exists ? article() : null
+						}),
+						insertIntent: f.leaf('intent'),
+						createArticle: f.leaf('create'),
+						bindArticle: f.leaf('bind'),
+						receipt: () => f.receipt
+					}),
+					{ input }
+				),
 			draft
 		)
 		expect(result.settlement.kind).toBe('locallyPersisted')
@@ -133,18 +148,22 @@ it.each([
 		const f = fixture(),
 			draft = content(linked, source)
 		await f.run(
-			createContentPublicationDomain({
-				read: async () => ({
-					draft,
-					operationId: 'operation',
-					intent: draft.intent,
-					article: linked ? article('operation') : null
-				}),
-				publishContent: f.leaf('content'),
-				attachContent: f.leaf('attach'),
-				publishSource: f.leaf('source'),
-				receipt: () => f.receipt
-			}),
+			(spawn, input) =>
+				spawn(
+					createContentPublicationDomain({
+						read: async () => ({
+							draft,
+							operationId: 'operation',
+							intent: draft.intent,
+							article: linked ? article('operation') : null
+						}),
+						publishContent: f.leaf('content'),
+						attachContent: f.leaf('attach'),
+						publishSource: f.leaf('source'),
+						receipt: () => f.receipt
+					}),
+					{ input }
+				),
 			draft
 		)
 		expect(f.order).toEqual(expected)
@@ -155,18 +174,22 @@ it('blocks an existing intent on read completion before issuing any mutations', 
 	const f = fixture(),
 		draft = content(true)
 	const result = await f.run(
-		createContentIntentDomain({
-			read: async () => ({
-				draft,
-				operationId: 'operation',
-				intent: draft.intent,
-				article: article()
-			}),
-			insertIntent: f.leaf('intent'),
-			createArticle: f.leaf('create'),
-			bindArticle: f.leaf('bind'),
-			receipt: () => f.receipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createContentIntentDomain({
+					read: async () => ({
+						draft,
+						operationId: 'operation',
+						intent: draft.intent,
+						article: article()
+					}),
+					insertIntent: f.leaf('intent'),
+					createArticle: f.leaf('create'),
+					bindArticle: f.leaf('bind'),
+					receipt: () => f.receipt
+				}),
+				{ input }
+			),
 		draft
 	)
 	expect(result.outcome).toBe('blocked')
@@ -178,18 +201,22 @@ it('blocks mismatched publication facts on read completion before issuing any mu
 	const f = fixture(),
 		draft = content(true)
 	const result = await f.run(
-		createContentPublicationDomain({
-			read: async () => ({
-				draft,
-				operationId: 'operation',
-				intent: { ...draft.intent, payloadHash: 'other' },
-				article: article('operation')
-			}),
-			publishContent: f.leaf('content'),
-			attachContent: f.leaf('attach'),
-			publishSource: f.leaf('source'),
-			receipt: () => f.receipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createContentPublicationDomain({
+					read: async () => ({
+						draft,
+						operationId: 'operation',
+						intent: { ...draft.intent, payloadHash: 'other' },
+						article: article('operation')
+					}),
+					publishContent: f.leaf('content'),
+					attachContent: f.leaf('attach'),
+					publishSource: f.leaf('source'),
+					receipt: () => f.receipt
+				}),
+				{ input }
+			),
 		draft
 	)
 	expect(result.outcome).toBe('blocked')
@@ -208,18 +235,22 @@ it.each(['content', 'attach', 'source'] as const)(
 			if (name === failure) throw new Error('Native mutation failed')
 		}
 		const result = await f.run(
-			createContentPublicationDomain({
-				read: async () => ({
-					draft,
-					operationId: 'operation',
-					intent: draft.intent,
-					article: article('operation')
-				}),
-				publishContent: mutation('content'),
-				attachContent: mutation('attach'),
-				publishSource: mutation('source'),
-				receipt
-			}),
+			(spawn, input) =>
+				spawn(
+					createContentPublicationDomain({
+						read: async () => ({
+							draft,
+							operationId: 'operation',
+							intent: draft.intent,
+							article: article('operation')
+						}),
+						publishContent: mutation('content'),
+						attachContent: mutation('attach'),
+						publishSource: mutation('source'),
+						receipt
+					}),
+					{ input }
+				),
 			draft
 		)
 		const sequence = ['content', 'attach', 'source']
@@ -236,12 +267,16 @@ it.each([true, false])(
 		const f = fixture(),
 			draft: ArticleDraft = { article: article(), target: 'document' }
 		await f.run(
-			createArticleAttachmentDomain({
-				read: async () => ({ draft, article: exists ? article() : null, available: true }),
-				attachContent: f.leaf('attach'),
-				createArticle: f.leaf('create'),
-				receipt: () => f.receipt
-			}),
+			(spawn, input) =>
+				spawn(
+					createArticleAttachmentDomain({
+						read: async () => ({ draft, article: exists ? article() : null, available: true }),
+						attachContent: f.leaf('attach'),
+						createArticle: f.leaf('create'),
+						receipt: () => f.receipt
+					}),
+					{ input }
+				),
 			draft
 		)
 		expect(f.order).toEqual([exists ? 'attach' : 'create'])
@@ -251,20 +286,24 @@ it('returns a thrown native mutation to DLF without issuing attachment or proven
 	const f = fixture(),
 		draft = content(true)
 	const result = await f.run(
-		createContentPublicationDomain({
-			read: async () => ({
-				draft,
-				operationId: 'operation',
-				intent: draft.intent,
-				article: article('operation')
-			}),
-			publishContent: () => {
-				throw new Error('native staging failed')
-			},
-			attachContent: f.leaf('attach'),
-			publishSource: f.leaf('source'),
-			receipt: () => f.receipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createContentPublicationDomain({
+					read: async () => ({
+						draft,
+						operationId: 'operation',
+						intent: draft.intent,
+						article: article('operation')
+					}),
+					publishContent: () => {
+						throw new Error('native staging failed')
+					},
+					attachContent: f.leaf('attach'),
+					publishSource: f.leaf('source'),
+					receipt: () => f.receipt
+				}),
+				{ input }
+			),
 		draft
 	)
 	expect(result.settlement.kind).toBe('notStarted')
@@ -281,20 +320,24 @@ for (const parent of ['article', 'document'] as const) {
 					? { id: 'article', field: 'tag', value: 'Work', assigned: true, operations: [] }
 					: { id: 'article', field: 'favorite', value: true, operations: [] }
 			await f.run(
-				createOrganizationDomain({
-					read: async () => ({
-						draft,
-						operationId: 'operation',
-						article: parent === 'article' ? {} : null,
-						document: parent === 'document' ? {} : null,
-						parents: ['observed']
-					}),
-					insertArticle: f.leaf('scalar-article'),
-					insertDocument: f.leaf('scalar-document'),
-					insertTagArticle: f.leaf('tag-article'),
-					insertTagDocument: f.leaf('tag-document'),
-					receipt: () => f.receipt
-				}),
+				(spawn, input) =>
+					spawn(
+						createOrganizationDomain({
+							read: async () => ({
+								draft,
+								operationId: 'operation',
+								article: parent === 'article' ? {} : null,
+								document: parent === 'document' ? {} : null,
+								parents: ['observed']
+							}),
+							insertArticle: f.leaf('scalar-article'),
+							insertDocument: f.leaf('scalar-document'),
+							insertTagArticle: f.leaf('tag-article'),
+							insertTagDocument: f.leaf('tag-document'),
+							receipt: () => f.receipt
+						}),
+						{ input }
+					),
 				draft
 			)
 			expect(f.order).toEqual([`${kind}-${parent}`])
@@ -305,20 +348,24 @@ it('blocks a missing organization parent before issuing any mutation', async () 
 	const f = fixture(),
 		draft: OrganizationDraft = { id: 'article', field: 'favorite', value: true, operations: [] }
 	const result = await f.run(
-		createOrganizationDomain({
-			read: async () => ({
-				draft,
-				operationId: 'operation',
-				article: null,
-				document: null,
-				parents: []
-			}),
-			insertArticle: f.leaf('article'),
-			insertDocument: f.leaf('document'),
-			insertTagArticle: f.leaf('tag-article'),
-			insertTagDocument: f.leaf('tag-document'),
-			receipt: () => f.receipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createOrganizationDomain({
+					read: async () => ({
+						draft,
+						operationId: 'operation',
+						article: null,
+						document: null,
+						parents: []
+					}),
+					insertArticle: f.leaf('article'),
+					insertDocument: f.leaf('document'),
+					insertTagArticle: f.leaf('tag-article'),
+					insertTagDocument: f.leaf('tag-document'),
+					receipt: () => f.receipt
+				}),
+				{ input }
+			),
 		draft
 	)
 	expect(result.outcome).toBe('blocked')
@@ -342,13 +389,17 @@ it('uses the prepared image facts and stages intent, bytes and publication in or
 		result: { bytes: new Uint8Array([1]), mediaType: 'image/png', width: 1, height: 1 }
 	}
 	await f.run(
-		createImagePublicationDomain({
-			read: async () => ({ draft, image, intent: null, hash: 'prepared hash' }),
-			insertIntent: f.leaf('intent'),
-			insertAsset: f.leaf('bytes'),
-			publishImage: f.leaf('publish'),
-			receipt: () => f.receipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createImagePublicationDomain({
+					read: async () => ({ draft, image, intent: null, hash: 'prepared hash' }),
+					insertIntent: f.leaf('intent'),
+					insertAsset: f.leaf('bytes'),
+					publishImage: f.leaf('publish'),
+					receipt: () => f.receipt
+				}),
+				{ input }
+			),
 		draft
 	)
 	expect(f.order).toEqual(['intent', 'bytes', 'publish'])

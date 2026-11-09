@@ -1,5 +1,7 @@
+import type { WriteHandle } from 'jazz-tools'
+import type { ChildSpawner } from '../children.js'
 import type { EventPayload } from '../events.js'
-import { types, setup, matchesState, type AnyActorRef, type AnyStateMachine } from 'xstate'
+import { types, setup, matchesState, type Snapshot, type ActorInstance } from 'xstate'
 
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import type {
@@ -10,7 +12,6 @@ import type {
 } from 'delightful-local-first/workspace/creation/contracts'
 import type { SyncReceipt } from '../../contracts/storage.js'
 import type { TransactionResource } from '../../backend/jazz/transaction.js'
-import type { WriteHandle } from 'jazz-tools'
 
 type Reply<T> = { resolve: (value: T) => void; reject: (error: unknown) => void }
 type ReadRequest<Resource> = {
@@ -25,16 +26,26 @@ type Event<Resource> =
 	| StageRequest
 	| Prepared
 	| { type: 'CANCEL' | 'SHUTDOWN' }
-export type TransactionDomainInput<Draft> = {
-	resource: TransactionResource
+export type PreparedPort = { send: (event: Prepared) => void }
+type TransactionPort<Resource> = { send: (event: ReadRequest<Resource> | StageRequest) => void }
+export type TransactionDomainInput<Draft, Resource = TransactionResource> = {
+	resource: Resource
 	attempt: WorkspaceCreationAttempt<Draft>
-	owner: AnyActorRef
+	owner: PreparedPort
 }
+export type DomainChild = ActorInstance<
+	Snapshot<SyncReceipt>,
+	{ type: 'STAGE' } | { type: 'STAGED' }
+>
+export type DomainSpawner<Draft, Resource = TransactionResource> = (
+	spawn: ChildSpawner,
+	input: TransactionDomainInput<Draft, Resource>
+) => DomainChild
 export function required<Value>(value: Value | undefined): Value {
 	if (value === undefined) throw new Error('Missing transaction domain resource')
 	return value
 }
-function requestRead<Resource>(owner: AnyActorRef, resource: Resource) {
+function requestRead<Resource>(owner: TransactionPort<Resource>, resource: Resource) {
 	return new Promise<WorkspaceCreationAssessment>((resolve, reject) =>
 		owner.send({
 			type: 'READ',
@@ -43,7 +54,7 @@ function requestRead<Resource>(owner: AnyActorRef, resource: Resource) {
 		} satisfies ReadRequest<Resource>)
 	)
 }
-function requestStage(owner: AnyActorRef) {
+function requestStage(owner: { send: (event: StageRequest) => void }) {
 	return new Promise<SyncReceipt>((resolve, reject) =>
 		owner.send({ type: 'STAGE', reply: { resolve, reject } } satisfies StageRequest)
 	)
@@ -53,7 +64,7 @@ function requestStage(owner: AnyActorRef) {
  * domain chart owns facts, guards and mutations; messages cross the callback API
  * without storing domain state on an imperative transaction handle. */
 function createDomainTransactionController<Draft, Resource, Write>(
-	domain: AnyStateMachine,
+	spawnDomain: DomainSpawner<Draft, Resource>,
 	lifecycle: {
 		retainDetached: (custody: DetachedTransaction<Resource, Write>) => void
 		open: () => Resource | PromiseLike<Resource>
@@ -64,6 +75,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 ) {
 	type Attempt = WorkspaceCreationAttempt<Draft>
 	type Context = {
+		domain: DomainChild | undefined
 		record: {
 			attempt: Attempt
 			resource: Resource | undefined
@@ -73,7 +85,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 		}
 	}
 	const transaction = createWorkspaceCreationTransaction<
-		{ request: Draft; domain: AnyActorRef },
+		{ request: Draft; domain: TransactionPort<Resource> },
 		Resource,
 		WorkspaceCreationAssessment,
 		SyncReceipt,
@@ -84,7 +96,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 		assess: (assessment) => assessment,
 		stage: (_resource, attempt) => requestStage(attempt.draft.domain)
 	})
-	const actors = { transaction, domain }
+	const actors = { transaction }
 	return setup({
 		schemas: {
 			context: types<Context>(),
@@ -93,14 +105,14 @@ function createDomainTransactionController<Draft, Resource, Write>(
 				PREPARED: types<EventPayload<Event<Resource>, 'PREPARED'>>(),
 				SHUTDOWN: types<EventPayload<Event<Resource>, 'SHUTDOWN'>>(),
 				CANCEL: types<EventPayload<Event<Resource>, 'CANCEL'>>(),
-				READ: types<EventPayload<Event<Resource>, 'READ'>>()
+				READ: types<EventPayload<Event<Resource>, 'READ'>>(),
+				DOMAIN_DONE: types<{ receipt: SyncReceipt }>()
 			},
 			input: types<{ attempt: Attempt }>(),
 			output: types<WorkspaceCreationResult<Draft, SyncReceipt>>(),
 			tags: types<string>(),
 			children: {
-				transaction: types<import('xstate').ActorRefFrom<typeof transaction>>(),
-				domain: types<import('xstate').ActorRefFrom<typeof domain>>()
+				transaction: types<import('xstate').ActorRefFrom<typeof transaction>>()
 			}
 		},
 		actors,
@@ -113,8 +125,8 @@ function createDomainTransactionController<Draft, Resource, Write>(
 				context: {
 					record: {
 						...args.context.record,
-						resource: ((_, request: ReadRequest<Resource>) => request.resource)(args, params),
-						readReply: ((_, request: ReadRequest<Resource>) => request.reply)(args, params)
+						resource: params.resource,
+						readReply: params.reply
 					}
 				}
 			}),
@@ -122,7 +134,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 				context: {
 					record: {
 						...args.context.record,
-						stageReply: ((_, request: StageRequest) => request.reply)(args, params)
+						stageReply: params.reply
 					}
 				}
 			}),
@@ -137,27 +149,16 @@ function createDomainTransactionController<Draft, Resource, Write>(
 			finish: (
 				args: { context: Context },
 				params: {
-					result: WorkspaceCreationResult<{ request: Draft; domain: AnyActorRef }, SyncReceipt>
+					result: WorkspaceCreationResult<
+						{ request: Draft; domain: TransactionPort<Resource> },
+						SyncReceipt
+					>
 				}
 			) => ({
 				context: {
 					record: {
 						...args.context.record,
-						result: ((
-							{ context },
-							event: {
-								result: WorkspaceCreationResult<
-									{
-										request: Draft
-										domain: AnyActorRef
-									},
-									SyncReceipt
-								>
-							}
-						) => ({
-							...event.result,
-							attempt: context.record.attempt
-						}))(args, params)
+						result: { ...params.result, attempt: args.context.record.attempt }
 					}
 				}
 			})
@@ -165,6 +166,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 	}).createMachine({
 		id: 'domain-transaction',
 		context: ({ input }) => ({
+			domain: undefined,
 			record: {
 				attempt: input.attempt,
 				resource: undefined,
@@ -220,29 +222,30 @@ function createDomainTransactionController<Draft, Resource, Write>(
 								}
 							},
 							processing: {
-								invoke: {
-									id: 'domain',
-									src: 'domain',
-									input: ({ context, self }: { context: Context; self: AnyActorRef }) =>
-										({
-											resource: required(context.record.resource),
-											attempt: context.record.attempt,
-											owner: self
-										}) satisfies { resource: Resource; attempt: Attempt; owner: AnyActorRef },
-									onDone: (args, enq) => {
-										enq(args.actions.reportStaged, args, { receipt: args.event.output })
+								entry: (args, enq) => {
+									const domain = spawnDomain(enq.spawn, {
+										resource: required(args.context.record.resource),
+										attempt: args.context.record.attempt,
+										owner: args.self
+									})
+									enq.subscribeTo(domain, {
+										done: (receipt) => ({ type: 'DOMAIN_DONE', receipt: required(receipt) })
+									})
+									return { context: { domain } }
+								},
+								exit: ({ context }, enq) => {
+									enq.stop(context.domain)
+									return { context: { domain: undefined } }
+								},
+								onError: (args, enq) => {
+									if (args.guards.reading(args)) enq(args.actions.rejectRead, args, args.event)
+									else enq(args.actions.rejectStage, args, args.event)
+									return { target: 'failed' }
+								},
+								on: {
+									DOMAIN_DONE: (args, enq) => {
+										enq(args.actions.reportStaged, args, args.event)
 										return { target: 'staged' }
-									},
-									onError: (args, enq) => {
-										const { event } = args
-										if (
-											matchesState({ running: { domain: { processing: 'reading' } } }, args.value)
-										) {
-											enq(args.actions.rejectRead, args, { error: event.error })
-											return { target: 'failed' }
-										}
-										enq(args.actions.rejectStage, args, { error: event.error })
-										return { target: 'failed' }
 									}
 								},
 								initial: 'reading',
@@ -260,7 +263,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 										on: {
 											STAGE: (args, enq) => {
 												const { event } = args
-												enq.sendTo('domain', { type: 'STAGE' })
+												enq.sendTo(args.context.domain, { type: 'STAGE' })
 												return {
 													target: 'staging',
 													context: args.actions.acceptStage(args, event).context
@@ -285,7 +288,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 /** Expose only lifecycle commands to application actors. Read/stage protocol
  * events remain private to the invoked controller and its domain child. */
 export function createDomainTransaction<Draft, Resource = TransactionResource, Write = WriteHandle>(
-	domain: AnyStateMachine,
+	spawnDomain: DomainSpawner<Draft, Resource>,
 	lifecycle: {
 		retainDetached: (custody: DetachedTransaction<Resource, Write>) => void
 		open: () => Resource | PromiseLike<Resource>
@@ -298,7 +301,7 @@ export function createDomainTransaction<Draft, Resource = TransactionResource, W
 	type Result = WorkspaceCreationResult<Draft, SyncReceipt>
 	type Context = { record: Input & { result: Result | undefined } }
 	const actors = {
-		workflow: createDomainTransactionController<Draft, Resource, Write>(domain, lifecycle)
+		workflow: createDomainTransactionController<Draft, Resource, Write>(spawnDomain, lifecycle)
 	}
 	return setup({
 		schemas: {
@@ -318,12 +321,7 @@ export function createDomainTransaction<Draft, Resource = TransactionResource, W
 				context: {
 					record: {
 						...args.context.record,
-						result: ((
-							_,
-							params: {
-								result: Result
-							}
-						) => params.result)(args, params)
+						result: params.result
 					}
 				}
 			})

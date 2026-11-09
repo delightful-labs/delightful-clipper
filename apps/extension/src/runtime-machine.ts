@@ -1,7 +1,6 @@
 import type { EventPayload } from '../../web/src/lib/machines/events.js'
 import {
 	types,
-	createActor,
 	createCallbackLogic,
 	setup,
 	createAsyncLogic,
@@ -10,7 +9,6 @@ import {
 	type SnapshotFrom
 } from 'xstate'
 
-import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 import { createClipMachine } from './clip-machine.js'
 import type { ApplicationStatus } from '../../web/src/lib/machines/runtime/application-readiness.js'
 import type { WorkflowMessage } from '../../web/src/lib/contracts/feedback.js'
@@ -36,6 +34,7 @@ type Context = {
 	revision: number
 	accountMessage: WorkflowMessage | undefined
 	accountStatus: ApplicationStatus | undefined
+	clipError: unknown
 }
 export function createRuntimeMachine(cap: {
 	reload: () => Promise<void>
@@ -51,40 +50,27 @@ export function createRuntimeMachine(cap: {
 	report: (snapshot: ClipSnapshot, revision: number) => Promise<unknown>
 }) {
 	const actors = {
+		clip: createClipMachine(),
 		reload: createAsyncLogic({ run: () => cap.reload() }),
 		account: createCallbackLogic(({ sendBack }) =>
 			cap.account((library, message, accountStatus) =>
 				sendBack({ type: 'BIND', library, message, accountStatus })
 			)
-		),
-		clip: createCallbackLogic<{ type: 'SHUTDOWN' }, { library: Library; id: string }>(
-			({ input, sendBack, receive }) => {
-				const actor = createActor(createClipMachine(cap.clip(input.library)), {
-					input: { id: input.id }
-				})
-				const subscription = actor.subscribe((snapshot) => sendBack({ type: 'CLIP', snapshot }))
-				receive((event) => actor.send(event))
-				actor.start()
-				return () => {
-					subscription.unsubscribe()
-					stopAfterShutdown(actor)
-				}
-			}
 		)
 	}
-	return setup({
+	const model = setup({
 		schemas: {
 			context: types<Context>(),
 			events: {
 				BIND: types<EventPayload<Event, 'BIND'>>(),
 				RUN: types<EventPayload<Event, 'RUN'>>(),
-				ACCOUNT_CHANGED: types<EventPayload<Event, 'ACCOUNT_CHANGED'>>(),
-				CLIP: types<EventPayload<Event, 'CLIP'>>()
+				ACCOUNT_CHANGED: types<EventPayload<Event, 'ACCOUNT_CHANGED'>>()
 			},
+			internalEvents: { CLIP: types<EventPayload<Event, 'CLIP'>>() },
 			children: {
 				reload: types<import('xstate').ActorRefFrom<(typeof actors)['reload']>>(),
 				account: types<import('xstate').ActorRefFrom<(typeof actors)['account']>>(),
-				clip: types<import('xstate').ActorRefFrom<(typeof actors)['clip']>>()
+				clip: types<ActorRefFrom<ReturnType<typeof createClipMachine>>>()
 			}
 		},
 		actors,
@@ -119,7 +105,8 @@ export function createRuntimeMachine(cap: {
 				void cap.report(event.snapshot, context.revision).catch(() => {})
 			}
 		}
-	}).createMachine({
+	})
+	return model.createMachine({
 		id: 'extension-runtime',
 		initial: 'idle',
 		context: {
@@ -129,7 +116,8 @@ export function createRuntimeMachine(cap: {
 			id: '',
 			revision: 0,
 			accountMessage: undefined,
-			accountStatus: undefined
+			accountStatus: undefined,
+			clipError: undefined
 		},
 		invoke: { id: 'account', src: 'account' },
 		on: {
@@ -157,6 +145,7 @@ export function createRuntimeMachine(cap: {
 					!(
 						args.guards.admit(args) &&
 						!matchesState('reloading', args.value) &&
+						!matchesState('failed', args.value) &&
 						!matchesState({ job: 'restarting' }, args.value)
 					)
 				)
@@ -174,6 +163,7 @@ export function createRuntimeMachine(cap: {
 			}
 		},
 		states: {
+			failed: {},
 			reloading: { invoke: { id: 'reload', src: 'reload' }, on: { ACCOUNT_CHANGED: {} } },
 			idle: {
 				entry: () => {
@@ -197,9 +187,18 @@ export function createRuntimeMachine(cap: {
 				invoke: {
 					id: 'clip',
 					src: 'clip',
-					input: ({ context }: { context: Context }) => ({
-						library: context.owner!,
-						id: context.id
+					input: ({ context }) => ({ id: context.id, capability: cap.clip(context.owner!) }),
+					onSnapshot: ({ event }, enq) => {
+						enq.raise({ type: 'CLIP', snapshot: event.snapshot })
+					},
+					onDone: ({ value }) => ({
+						target: matchesState({ job: 'restarting' }, value)
+							? '#extension-runtime.reloading'
+							: '#extension-runtime.idle'
+					}),
+					onError: ({ event }) => ({
+						target: '#extension-runtime.failed',
+						context: { clipError: event.error, queue: [] }
 					})
 				},
 				on: {

@@ -1,8 +1,8 @@
+import { types } from 'xstate'
 import type { TransactionResource } from '../backend/jazz/transaction.js'
 import type { NoteCreate, NoteRevision } from './schema.js'
 import { canCreateNote, canImportLegacy, canWriteNoteRevision } from './eligibility.js'
 import type { NoteAssociation, LegacyNoteImportRows, NoteRevisionRows } from './eligibility.js'
-import { required } from '../machines/storage/domain-transaction.js'
 
 import { transactionDomainModel, domainContext } from '../machines/storage/domain-model.js'
 import type {
@@ -26,6 +26,15 @@ export function createNoteCreationMachine(io: {
 	receipt: Receipt
 }) {
 	const model = transactionDomainModel(io.read, 'Note parent or identity unavailable').extend({
+		states: {
+			reading: {},
+			readyArticle: { schemas: { context: types<{ facts: NoteParentFacts }>() } },
+			readyDocument: { schemas: { context: types<{ facts: NoteParentFacts }>() } },
+			blocked: {},
+			done: {},
+			insertArticle: { schemas: { context: types<{ facts: NoteParentFacts }>() } },
+			insertDocument: { schemas: { context: types<{ facts: NoteParentFacts }>() } }
+		},
 		guards: {
 			canCreateArticleNote: (_, { facts }: { facts: NoteParentFacts }) =>
 				canCreateNote(facts, facts.request.id) && !!facts.article,
@@ -33,22 +42,28 @@ export function createNoteCreationMachine(io: {
 				canCreateNote(facts, facts.request.id) && !facts.article && !!facts.document
 		},
 		actions: {
-			insertArticle: ({
-				context
-			}: {
-				context: import('../machines/storage/domain-model.js').DomainContext<
-					NoteCreate,
-					NoteParentFacts
-				>
-			}) => io.insertArticle(context.resource, required(context.facts).request),
-			insertDocument: ({
-				context
-			}: {
-				context: import('../machines/storage/domain-model.js').DomainContext<
-					NoteCreate,
-					NoteParentFacts
-				>
-			}) => io.insertDocument(context.resource, required(context.facts).request)
+			insertArticle: (
+				{
+					context
+				}: {
+					context: import('../machines/storage/domain-model.js').DomainContext<
+						NoteCreate,
+						NoteParentFacts
+					>
+				},
+				{ facts }: { facts: NoteParentFacts }
+			) => io.insertArticle(context.resource, facts.request),
+			insertDocument: (
+				{
+					context
+				}: {
+					context: import('../machines/storage/domain-model.js').DomainContext<
+						NoteCreate,
+						NoteParentFacts
+					>
+				},
+				{ facts }: { facts: NoteParentFacts }
+			) => io.insertDocument(context.resource, facts.request)
 		}
 	})
 	return model.createMachine({
@@ -68,33 +83,14 @@ export function createNoteCreationMachine(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: (args, _enq) => {
-						let patch = {}
-						if (
-							args.guards.canCreateArticleNote(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							)
-						) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'readyArticle', context: patch }
+					onDone: (args) => {
+						if (args.guards.canCreateArticleNote(args, { facts: args.event.output })) {
+							return { target: 'readyArticle', context: { facts: args.event.output } }
 						}
-						if (
-							args.guards.canCreateDocumentNote(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							)
-						) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'readyDocument', context: patch }
+						if (args.guards.canCreateDocumentNote(args, { facts: args.event.output })) {
+							return { target: 'readyDocument', context: { facts: args.event.output } }
 						}
-						return { target: 'blocked', context: patch }
+						return { target: 'blocked' }
 					}
 				}
 			},
@@ -105,10 +101,7 @@ export function createNoteCreationMachine(io: {
 					})
 				},
 				on: {
-					STAGE: (_args, _enq) => {
-						let patch = {}
-						return { target: 'insertArticle', context: patch }
-					}
+					STAGE: { target: 'insertArticle' }
 				}
 			},
 			readyDocument: {
@@ -118,10 +111,7 @@ export function createNoteCreationMachine(io: {
 					})
 				},
 				on: {
-					STAGE: (_args, _enq) => {
-						let patch = {}
-						return { target: 'insertDocument', context: patch }
-					}
+					STAGE: { target: 'insertDocument' }
 				}
 			},
 			blocked: {
@@ -135,7 +125,7 @@ export function createNoteCreationMachine(io: {
 			insertArticle: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertArticle(args)
+						args.actions.insertArticle(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -144,7 +134,7 @@ export function createNoteCreationMachine(io: {
 			insertDocument: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertDocument(args)
+						args.actions.insertDocument(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -159,19 +149,29 @@ export function createNoteRevisionMachine(io: {
 	receipt: Receipt
 }) {
 	const model = transactionDomainModel(io.read, 'Note or revision unavailable').extend({
+		states: {
+			reading: {},
+			ready: { schemas: { context: types<{ facts: NoteRevisionFacts }>() } },
+			blocked: {},
+			done: {},
+			insertRevision: { schemas: { context: types<{ facts: NoteRevisionFacts }>() } }
+		},
 		guards: {
 			canWriteRevision: (_, { facts }: { facts: NoteRevisionFacts }) =>
 				canWriteNoteRevision(facts, facts.revision)
 		},
 		actions: {
-			insertRevision: ({
-				context
-			}: {
-				context: import('../machines/storage/domain-model.js').DomainContext<
-					NoteRevision,
-					NoteRevisionFacts
-				>
-			}) => io.insertRevision(context.resource, required(context.facts).revision)
+			insertRevision: (
+				{
+					context
+				}: {
+					context: import('../machines/storage/domain-model.js').DomainContext<
+						NoteRevision,
+						NoteRevisionFacts
+					>
+				},
+				{ facts }: { facts: NoteRevisionFacts }
+			) => io.insertRevision(context.resource, facts.revision)
 		}
 	})
 	return model.createMachine({
@@ -191,18 +191,11 @@ export function createNoteRevisionMachine(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: (args, _enq) => {
-						let patch = {}
-						if (
-							args.guards.canWriteRevision(args, (({ event }) => ({ facts: event.output }))(args))
-						) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'ready', context: patch }
+					onDone: (args) => {
+						if (args.guards.canWriteRevision(args, { facts: args.event.output })) {
+							return { target: 'ready', context: { facts: args.event.output } }
 						}
-						return { target: 'blocked', context: patch }
+						return { target: 'blocked' }
 					}
 				}
 			},
@@ -213,10 +206,7 @@ export function createNoteRevisionMachine(io: {
 					})
 				},
 				on: {
-					STAGE: (_args, _enq) => {
-						let patch = {}
-						return { target: 'insertRevision', context: patch }
-					}
+					STAGE: { target: 'insertRevision' }
 				}
 			},
 			blocked: {
@@ -230,7 +220,7 @@ export function createNoteRevisionMachine(io: {
 			insertRevision: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertRevision(args)
+						args.actions.insertRevision(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -250,6 +240,21 @@ export function createLegacyNoteImportMachine(io: {
 		io.read,
 		'Legacy note import unavailable or already applied'
 	).extend({
+		states: {
+			reading: {},
+			readyExisting: { schemas: { context: types<{ facts: NoteImportFacts }>() } },
+			readyArticle: { schemas: { context: types<{ facts: NoteImportFacts }>() } },
+			readyDocument: { schemas: { context: types<{ facts: NoteImportFacts }>() } },
+			blocked: {},
+			done: {},
+			insertRevisions: { schemas: { context: types<{ facts: NoteImportFacts }>() } },
+			insertArticleAndinsertRevisions: {
+				schemas: { context: types<{ facts: NoteImportFacts }>() }
+			},
+			insertDocumentAndinsertRevisions: {
+				schemas: { context: types<{ facts: NoteImportFacts }>() }
+			}
+		},
 		guards: {
 			canImportExistingNote: (_, { facts }: { facts: NoteImportFacts }) =>
 				canImportLegacy(facts) && !!facts.note,
@@ -259,30 +264,39 @@ export function createLegacyNoteImportMachine(io: {
 				canImportLegacy(facts) && !!facts.document
 		},
 		actions: {
-			insertArticle: ({
-				context
-			}: {
-				context: import('../machines/storage/domain-model.js').DomainContext<
-					NoteCreate,
-					NoteImportFacts
-				>
-			}) => io.insertArticle(context.resource, required(context.facts).request),
-			insertDocument: ({
-				context
-			}: {
-				context: import('../machines/storage/domain-model.js').DomainContext<
-					NoteCreate,
-					NoteImportFacts
-				>
-			}) => io.insertDocument(context.resource, required(context.facts).request),
-			insertRevisions: ({
-				context
-			}: {
-				context: import('../machines/storage/domain-model.js').DomainContext<
-					NoteCreate,
-					NoteImportFacts
-				>
-			}) => io.insertRevisions(context.resource, required(context.facts).missing)
+			insertArticle: (
+				{
+					context
+				}: {
+					context: import('../machines/storage/domain-model.js').DomainContext<
+						NoteCreate,
+						NoteImportFacts
+					>
+				},
+				{ facts }: { facts: NoteImportFacts }
+			) => io.insertArticle(context.resource, facts.request),
+			insertDocument: (
+				{
+					context
+				}: {
+					context: import('../machines/storage/domain-model.js').DomainContext<
+						NoteCreate,
+						NoteImportFacts
+					>
+				},
+				{ facts }: { facts: NoteImportFacts }
+			) => io.insertDocument(context.resource, facts.request),
+			insertRevisions: (
+				{
+					context
+				}: {
+					context: import('../machines/storage/domain-model.js').DomainContext<
+						NoteCreate,
+						NoteImportFacts
+					>
+				},
+				{ facts }: { facts: NoteImportFacts }
+			) => io.insertRevisions(context.resource, facts.missing)
 		}
 	})
 	return model.createMachine({
@@ -302,45 +316,17 @@ export function createLegacyNoteImportMachine(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: (args, _enq) => {
-						let patch = {}
-						if (
-							args.guards.canImportExistingNote(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							)
-						) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'readyExisting', context: patch }
+					onDone: (args) => {
+						if (args.guards.canImportExistingNote(args, { facts: args.event.output })) {
+							return { target: 'readyExisting', context: { facts: args.event.output } }
 						}
-						if (
-							args.guards.canImportArticleNote(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							)
-						) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'readyArticle', context: patch }
+						if (args.guards.canImportArticleNote(args, { facts: args.event.output })) {
+							return { target: 'readyArticle', context: { facts: args.event.output } }
 						}
-						if (
-							args.guards.canImportDocumentNote(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							)
-						) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'readyDocument', context: patch }
+						if (args.guards.canImportDocumentNote(args, { facts: args.event.output })) {
+							return { target: 'readyDocument', context: { facts: args.event.output } }
 						}
-						return { target: 'blocked', context: patch }
+						return { target: 'blocked' }
 					}
 				}
 			},
@@ -351,10 +337,7 @@ export function createLegacyNoteImportMachine(io: {
 					})
 				},
 				on: {
-					STAGE: (_args, _enq) => {
-						let patch = {}
-						return { target: 'insertRevisions', context: patch }
-					}
+					STAGE: { target: 'insertRevisions' }
 				}
 			},
 			readyArticle: {
@@ -364,10 +347,7 @@ export function createLegacyNoteImportMachine(io: {
 					})
 				},
 				on: {
-					STAGE: (_args, _enq) => {
-						let patch = {}
-						return { target: 'insertArticleAndinsertRevisions', context: patch }
-					}
+					STAGE: { target: 'insertArticleAndinsertRevisions' }
 				}
 			},
 			readyDocument: {
@@ -377,10 +357,7 @@ export function createLegacyNoteImportMachine(io: {
 					})
 				},
 				on: {
-					STAGE: (_args, _enq) => {
-						let patch = {}
-						return { target: 'insertDocumentAndinsertRevisions', context: patch }
-					}
+					STAGE: { target: 'insertDocumentAndinsertRevisions' }
 				}
 			},
 			blocked: {
@@ -394,7 +371,7 @@ export function createLegacyNoteImportMachine(io: {
 			insertRevisions: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertRevisions(args)
+						args.actions.insertRevisions(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -403,8 +380,8 @@ export function createLegacyNoteImportMachine(io: {
 			insertArticleAndinsertRevisions: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertArticle(args)
-						args.actions.insertRevisions(args)
+						args.actions.insertArticle(args, { facts: args.context.facts })
+						args.actions.insertRevisions(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -413,8 +390,8 @@ export function createLegacyNoteImportMachine(io: {
 			insertDocumentAndinsertRevisions: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertDocument(args)
-						args.actions.insertRevisions(args)
+						args.actions.insertDocument(args, { facts: args.context.facts })
+						args.actions.insertRevisions(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},

@@ -18,6 +18,8 @@ const contract = setup({
 			limit: number
 			history: Slot[]
 			rebound: boolean
+			previousScope: string | undefined
+			staleAfterRebound: boolean
 		}>(),
 		events: {
 			BIND: types<{ slot: Slot; scope: string }>(),
@@ -29,7 +31,15 @@ const contract = setup({
 }).createMachine({
 	id: 'worker-binding-contract',
 	initial: 'unbound',
-	context: { slot: 'none', scope: 'test-scope', limit: 50, history: [], rebound: false },
+	context: {
+		slot: 'none',
+		scope: 'test-scope',
+		limit: 50,
+		history: [],
+		rebound: false,
+		previousScope: undefined,
+		staleAfterRebound: false
+	},
 	on: {
 		BIND: ({ context, event }) => {
 			const history = [...context.history, event.slot].slice(-3)
@@ -37,6 +47,12 @@ const contract = setup({
 				target: event.slot === 'none' ? '.unbound' : '.bound',
 				context: {
 					slot: event.slot,
+					previousScope:
+						context.scope !== 'test-scope' && context.scope !== event.scope
+							? context.scope
+							: context.previousScope !== event.scope
+								? context.previousScope
+								: undefined,
 					scope: event.scope,
 					limit: 50,
 					history,
@@ -57,7 +73,12 @@ const contract = setup({
 			on: {
 				PROBE: { target: 'bound' },
 				MORE: ({ context }) => ({ context: { limit: context.limit + 50 } }),
-				STALE_MORE: { target: 'bound' }
+				STALE_MORE: ({ context }) => ({
+					context: {
+						staleAfterRebound:
+							context.staleAfterRebound || (context.rebound && !!context.previousScope)
+					}
+				})
 			}
 		}
 	}
@@ -97,6 +118,8 @@ const sut: TestSut<SnapshotFrom<typeof contract>, EventFrom<typeof contract>> = 
 		const editors = new Set<
 			NonNullable<ReturnType<typeof f.actor.getSnapshot>['context']['tagForm']>
 		>()
+		let currentScope = 'test-scope'
+		let previousScope: string | undefined
 		f.actor.start()
 		return {
 			send(event) {
@@ -112,13 +135,20 @@ const sut: TestSut<SnapshotFrom<typeof contract>, EventFrom<typeof contract>> = 
 						before.can(command)
 						expect(f.actor.getSnapshot()).toBe(before)
 					} else {
+						previousScope =
+							currentScope !== 'test-scope' && currentScope !== event.scope
+								? currentScope
+								: previousScope !== event.scope
+									? previousScope
+									: undefined
+						currentScope = event.scope
 						f.actor.send(command)
 						const editor = f.actor.getSnapshot().context.tagForm
 						if (editor) editors.add(editor)
 					}
 				} else {
-					const scope = f.actor.getSnapshot().context.scope
-					f.actor.send({ type: 'MORE', scope: event.type === 'MORE' ? scope : scope + ':obsolete' })
+					const scope = event.type === 'MORE' ? currentScope : previousScope
+					if (scope) f.actor.send({ type: 'MORE', scope })
 				}
 			},
 			read() {
@@ -177,6 +207,11 @@ it('generates binding replacements, A → B → A, pure probes and stale worker 
 				type: 'sometimes',
 				id: 'A-B-A-rebinding',
 				predicate: ({ snapshot }) => snapshot.context.rebound
+			},
+			{
+				type: 'sometimes',
+				id: 'stale-valid-scope-after-rebinding',
+				predicate: ({ snapshot }) => snapshot.context.staleAfterRebound
 			}
 		],
 		events: { BIND: binding, PROBE: binding, MORE: fc.constant({}), STALE_MORE: fc.constant({}) },

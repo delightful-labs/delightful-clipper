@@ -627,3 +627,30 @@ formatting, vendor integrity and production build) and all 6 worker-browser
 checks. Emitted JavaScript token streams are identical in 73 changed files. The
 remaining three use the published identity config helper or the typed worker
 view envelope; no machine decision, effect or persistence policy was changed.
+
+
+## PR #28 v6 review corrections (2026-11-09)
+
+Addressed all six review findings: direct supervised extension invocation; owned
+request time/cancellation observations; private self-only events; concrete
+transaction protocol/spawn contracts; domain/account typestates and binding
+state input; and expanded independent generated lifecycle coverage. See the
+migration specification's documentation-review corrections for ownership and
+campaign details. No dependency, Jazz patch, XState declaration, CI trigger or
+user-visible copy changed.
+
+Fresh `pnpm verify` passes with 633 tests in 97 files, strict web/extension/tooling
+checks, formatting, lint, vendor integrity and production build. The native
+HTTP/Jazz tests require local listener access; the sandbox-only run was not a
+passing qualification. The extension check and 15 clip/runtime regression cases
+also pass after the final capability-observation change. All six worker browser
+cases pass against the actual application worker and Jazz adapter.
+
+
+The macOS packaged-extension run passed 6/11 cases and failed five: four while
+waiting for the extension/account connection or bar, and one waiting for the web
+article after sign-in. All five failed cases passed in the isolated follow-up against the final
+rebuilt extension (5/5). This is consistent with previously observed local suite
+instability, but does not establish the cause of every failure. Keep the full
+Linux CI matrix and all native assertions as acceptance gates. The extension
+production build passes; fresh CI results must be checked on the pushed commit.

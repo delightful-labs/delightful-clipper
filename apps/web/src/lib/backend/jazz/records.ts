@@ -47,52 +47,60 @@ export function createLibraryRecords(
 	}
 	const lifecycle = transactionLifecycle(db, isCurrent)
 	const intent = createDomainTransaction<PreparedSave>(
-		createContentIntentDomain({
-			read: readLocal,
-			insertIntent: (resource, { draft }) => {
-				const { id, ...intent } = draft.intent
-				resource.tx.insert(app.storageOperations, intent, { id })
-			},
-			bindArticle: (resource, { draft }) => {
-				resource.tx.update(app.articles, required(draft.articleId), {
-					operationId: draft.intent.id,
-					failure: null
-				})
-			},
-			createArticle: (resource, { draft }) => {
-				resource.tx.insert(
-					app.articles,
-					{
-						libraryId,
-						url: required(draft.source).submittedUrl,
-						originalSavedAt: draft.intent.createdAt,
-						contentId: null,
-						operationId: draft.intent.id,
-						failure: null
+		(spawn, input) =>
+			spawn(
+				createContentIntentDomain({
+					read: readLocal,
+					insertIntent: (resource, { draft }) => {
+						const { id, ...intent } = draft.intent
+						resource.tx.insert(app.storageOperations, intent, { id })
 					},
-					{ id: required(draft.articleId) }
-				)
-			},
-			receipt: transactionReceipt
-		}),
+					bindArticle: (resource, { draft }) => {
+						resource.tx.update(app.articles, required(draft.articleId), {
+							operationId: draft.intent.id,
+							failure: null
+						})
+					},
+					createArticle: (resource, { draft }) => {
+						resource.tx.insert(
+							app.articles,
+							{
+								libraryId,
+								url: required(draft.source).submittedUrl,
+								originalSavedAt: draft.intent.createdAt,
+								contentId: null,
+								operationId: draft.intent.id,
+								failure: null
+							},
+							{ id: required(draft.articleId) }
+						)
+					},
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 	const publish = createDomainTransaction<PreparedSave>(
-		createContentPublicationDomain({
-			read: readLocal,
-			publishContent: (resource, { draft }) => insertPreparedContent(resource.tx, draft),
-			attachContent: (resource, { draft }) => {
-				resource.tx.update(app.articles, required(draft.articleId), {
-					contentId: draft.document.id,
-					failure: null
-				})
-			},
-			publishSource: (resource, { draft }) => {
-				const { id, ...source } = required(draft.source)
-				resource.tx.insert(app.articleSources, source, { id })
-			},
-			receipt: transactionReceipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createContentPublicationDomain({
+					read: readLocal,
+					publishContent: (resource, { draft }) => insertPreparedContent(resource.tx, draft),
+					attachContent: (resource, { draft }) => {
+						resource.tx.update(app.articles, required(draft.articleId), {
+							contentId: draft.document.id,
+							failure: null
+						})
+					},
+					publishSource: (resource, { draft }) => {
+						const { id, ...source } = required(draft.source)
+						resource.tx.insert(app.articleSources, source, { id })
+					},
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 

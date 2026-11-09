@@ -21,6 +21,7 @@ type Event =
 	| { type: 'SHUTDOWN' }
 	| { type: 'LIBRARY'; snapshot: SnapshotFrom<typeof libraryMachine> }
 type Context = {
+	capability: ClipCapability
 	id: string
 	capture: Capture | undefined
 	source: Source | undefined
@@ -38,32 +39,48 @@ export type ClipCapability = {
 	issue: (capture: Capture, accountId: string) => Promise<void>
 	remove: (id: string) => Promise<void>
 }
-export function createClipMachine(cap: ClipCapability) {
+export function createClipMachine() {
 	const actors = {
+		current: createAsyncLogic({
+			run: async ({ input }: { input: ClipCapability }) => input.current()
+		}),
 		feedback: createCallbackLogic<{ type: 'UNUSED' }, Library>(({ input, sendBack }) => {
 			const subscription = input.subscribe((snapshot) => sendBack({ type: 'LIBRARY', snapshot }))
 			sendBack({ type: 'LIBRARY', snapshot: input.getSnapshot() })
 			return () => subscription.unsubscribe()
 		}),
-		read: createAsyncLogic({ run: ({ input }: { input: string }) => cap.read(input) }),
+		read: createAsyncLogic({
+			run: ({ input }: { input: Pick<Context, 'capability' | 'id'> }) =>
+				input.capability.read(input.id)
+		}),
 		extract: createAsyncLogic({
-			run: ({ input, signal }: { input: Source; signal: AbortSignal }) => cap.extract(input, signal)
+			run: ({
+				input,
+				signal
+			}: {
+				input: { capability: ClipCapability; source: Source }
+				signal: AbortSignal
+			}) => input.capability.extract(input.source, signal)
 		}),
 		issue: createAsyncLogic({
-			run: ({ input }: { input: Capture }) => cap.issue(input, cap.accountId)
+			run: ({ input }: { input: { capability: ClipCapability; capture: Capture } }) =>
+				input.capability.issue(input.capture, input.capability.accountId)
 		}),
-		remove: createAsyncLogic({ run: ({ input }: { input: string }) => cap.remove(input) }),
+		remove: createAsyncLogic({
+			run: ({ input }: { input: Pick<Context, 'capability' | 'id'> }) =>
+				input.capability.remove(input.id)
+		}),
 		save: createCallbackLogic<{ type: 'CANCEL' }, Context>(({ input, sendBack, receive }) => {
-			cap.library.send({
+			input.capability.library.send({
 				type: 'ADD',
 				url: input.capture!.url,
 				...(input.content ? { content: input.content } : {})
 			})
-			const subscription = cap.library.subscribe((snapshot) =>
+			const subscription = input.capability.library.subscribe((snapshot) =>
 				sendBack({ type: 'LIBRARY', snapshot })
 			)
-			sendBack({ type: 'LIBRARY', snapshot: cap.library.getSnapshot() })
-			receive(() => cap.library.send({ type: 'CANCEL' }))
+			sendBack({ type: 'LIBRARY', snapshot: input.capability.library.getSnapshot() })
+			receive(() => input.capability.library.send({ type: 'CANCEL' }))
 			return () => subscription.unsubscribe()
 		})
 	}
@@ -74,9 +91,10 @@ export function createClipMachine(cap: ClipCapability) {
 				SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>(),
 				LIBRARY: types<EventPayload<Event, 'LIBRARY'>>()
 			},
-			input: types<{ id: string }>(),
+			input: types<{ id: string; capability: ClipCapability }>(),
 			tags: types<string>(),
 			children: {
+				current: types<ActorRefFrom<typeof actors.current>>(),
 				feedback: types<import('xstate').ActorRefFrom<(typeof actors)['feedback']>>(),
 				read: types<import('xstate').ActorRefFrom<(typeof actors)['read']>>(),
 				extract: types<import('xstate').ActorRefFrom<(typeof actors)['extract']>>(),
@@ -89,7 +107,6 @@ export function createClipMachine(cap: ClipCapability) {
 		guards: {
 			stopping: ({ value }: { value: import('xstate').StateValue }) =>
 				matchesState({ running: { issuing: 'stopping' } }, value),
-			current: () => cap.current(),
 			validReply: (
 				_: { context: Context; value: import('xstate').StateValue },
 				{ value }: { value: unknown }
@@ -139,7 +156,10 @@ export function createClipMachine(cap: ClipCapability) {
 						invoke: {
 							id: 'read',
 							src: 'read',
-							input: ({ context }: { context: Context }) => context.id,
+							input: ({ context }: { context: Context }) => ({
+								id: context.id,
+								capability: context.capability
+							}),
 							onDone: (args) => {
 								const { event } = args
 								if (args.guards.issuedReply(args, { value: event.output })) {
@@ -172,15 +192,15 @@ export function createClipMachine(cap: ClipCapability) {
 						invoke: {
 							id: 'extract',
 							src: 'extract',
-							input: ({ context }: { context: Context }) => context.source!,
+							input: ({ context }: { context: Context }) => ({
+								source: context.source!,
+								capability: context.capability
+							}),
 							onDone: (args) => {
 								const { event } = args
-								if (!args.guards.current()) {
-									return { target: '#extension-clip.closed' }
-								}
 								if (args.guards.matchingContent(args, { value: event.output })) {
 									return {
-										target: 'issuing',
+										target: 'checkingIssue',
 										context: { content: contentSchema.parse(event.output), source: undefined }
 									}
 								}
@@ -193,11 +213,18 @@ export function createClipMachine(cap: ClipCapability) {
 						entry: () => {
 							return { context: { source: undefined } }
 						},
-						always: (args) => {
-							if (args.guards.current()) {
-								return { target: 'issuing' }
-							}
-							return { target: '#extension-clip.closed' }
+						always: { target: 'checkingIssue' }
+					},
+
+					checkingIssue: {
+						on: { SHUTDOWN: { target: '#extension-clip.closed' } },
+						invoke: {
+							id: 'current',
+							src: 'current',
+							input: ({ context }) => context.capability,
+							onDone: ({ event }) => ({
+								target: event.output ? 'issuing' : '#extension-clip.closed'
+							})
 						}
 					},
 
@@ -211,19 +238,31 @@ export function createClipMachine(cap: ClipCapability) {
 						invoke: {
 							id: 'issue',
 							src: 'issue',
-							input: ({ context }: { context: Context }) => context.capture!,
+							input: ({ context }: { context: Context }) => ({
+								capture: context.capture!,
+								capability: context.capability
+							}),
 							onDone: (args) => {
 								if (args.guards.stopping(args)) {
 									return { target: '#extension-clip.closed' }
 								}
-								if (args.guards.current()) {
-									return { target: 'saving' }
-								}
-								return { target: '#extension-clip.unknown' }
+								return { target: 'checkingSave' }
 							},
 							onError: { target: '#extension-clip.failed' }
 						}
 					},
+					checkingSave: {
+						on: { SHUTDOWN: { target: '#extension-clip.closed' } },
+						invoke: {
+							id: 'current',
+							src: 'current',
+							input: ({ context }) => context.capability,
+							onDone: ({ event }) => ({
+								target: event.output ? 'saving' : '#extension-clip.unknown'
+							})
+						}
+					},
+
 					saving: {
 						initial: 'active',
 						states: {
@@ -274,7 +313,10 @@ export function createClipMachine(cap: ClipCapability) {
 						invoke: {
 							id: 'remove',
 							src: 'remove',
-							input: ({ context }: { context: Context }) => context.id,
+							input: ({ context }: { context: Context }) => ({
+								id: context.id,
+								capability: context.capability
+							}),
 							onDone: { target: '#extension-clip.saved' },
 							onError: { target: '#extension-clip.saved' }
 						}
@@ -283,7 +325,11 @@ export function createClipMachine(cap: ClipCapability) {
 				on: { SHUTDOWN: { target: '#extension-clip.closed' } }
 			},
 			saved: {
-				invoke: { id: 'feedback', src: 'feedback', input: () => cap.library },
+				invoke: {
+					id: 'feedback',
+					src: 'feedback',
+					input: ({ context }) => context.capability.library
+				},
 				on: {
 					SHUTDOWN: { target: 'closed' },
 					LIBRARY: (args) => {

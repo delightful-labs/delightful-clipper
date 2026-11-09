@@ -36,11 +36,9 @@ export function transactionDomainModel<Draft, Facts>(
 			tags: types<string>(),
 			children: { read: types<import('xstate').ActorRefFrom<(typeof actors)['read']>>() }
 		},
+		states: {},
 		actors,
 		actions: {
-			rememberFacts: (_: unknown, params: { facts: Facts }) => ({
-				context: { facts: params.facts }
-			}),
 			allow: ({ context }: { context: DomainContext<Draft, Facts> }) =>
 				context.owner.send({
 					type: 'PREPARED',

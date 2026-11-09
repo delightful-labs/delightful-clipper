@@ -1,3 +1,4 @@
+import { types } from 'xstate'
 import type { PreparedSave } from '../../contracts/storage.js'
 import {
 	canBindStorageIntent,
@@ -8,7 +9,6 @@ import {
 } from '../../capture/content-policy.js'
 import type { ContentFacts } from '../../capture/content-policy.js'
 import type { TransactionResource } from '../../backend/jazz/transaction.js'
-import { required } from './domain-transaction.js'
 import { transactionDomainModel, domainContext } from './domain-model.js'
 import type { DomainRead, DomainReceipt } from './domain-model.js'
 type Mutation = (resource: TransactionResource, facts: ContentFacts) => void
@@ -21,27 +21,45 @@ export function createContentIntentDomain(io: {
 	receipt: DomainReceipt
 }) {
 	const model = transactionDomainModel(io.read, 'Operation identity is not eligible').extend({
+		states: {
+			reading: {},
+			ready: { schemas: { context: types<{ facts: ContentFacts }>() } },
+			blocked: {},
+			done: {},
+			insertIntentAndbindArticle: { schemas: { context: types<{ facts: ContentFacts }>() } },
+			insertIntentAndcreateArticle: { schemas: { context: types<{ facts: ContentFacts }>() } },
+			insertIntent: { schemas: { context: types<{ facts: ContentFacts }>() } }
+		},
 		guards: {
 			canBindIntent: (_, params: { facts: ContentFacts }) => canBindStorageIntent(params.facts),
-			articleLinked: ({ context }) => hasLinkedArticle(required(context.facts)),
-			articleExists: ({ context }) => hasExistingArticle(required(context.facts))
+			articleLinked: (_, { facts }: { facts: ContentFacts }) => hasLinkedArticle(facts),
+			articleExists: (_, { facts }: { facts: ContentFacts }) => hasExistingArticle(facts)
 		},
 		actions: {
-			insertIntent: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
-			}) => io.insertIntent(context.resource, required(context.facts)),
-			bindArticle: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
-			}) => io.bindArticle(context.resource, required(context.facts)),
-			createArticle: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
-			}) => io.createArticle(context.resource, required(context.facts))
+			insertIntent: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+				},
+				{ facts }: { facts: ContentFacts }
+			) => io.insertIntent(context.resource, facts),
+			bindArticle: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+				},
+				{ facts }: { facts: ContentFacts }
+			) => io.bindArticle(context.resource, facts),
+			createArticle: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+				},
+				{ facts }: { facts: ContentFacts }
+			) => io.createArticle(context.resource, facts)
 		}
 	})
 	return model.createMachine({
@@ -58,20 +76,11 @@ export function createContentIntentDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: (args, _enq) => {
-						let patch = {}
-						if (args.guards.canBindIntent(args, (({ event }) => ({ facts: event.output }))(args))) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'ready', context: patch }
+					onDone: (args) => {
+						if (args.guards.canBindIntent(args, { facts: args.event.output })) {
+							return { target: 'ready', context: { facts: args.event.output } }
 						}
-						patch = args.actions.rememberFacts(
-							args,
-							(({ event }) => ({ facts: event.output }))(args)
-						).context
-						return { target: 'blocked', context: patch }
+						return { target: 'blocked', context: { facts: args.event.output } }
 					}
 				}
 			},
@@ -82,15 +91,17 @@ export function createContentIntentDomain(io: {
 					})
 				},
 				on: {
-					STAGE: (args, _enq) => {
-						let patch = {}
-						if (args.guards.articleLinked(args) && args.guards.articleExists(args)) {
-							return { target: 'insertIntentAndbindArticle', context: patch }
+					STAGE: (args) => {
+						if (
+							args.guards.articleLinked(args, { facts: args.context.facts }) &&
+							args.guards.articleExists(args, { facts: args.context.facts })
+						) {
+							return { target: 'insertIntentAndbindArticle' }
 						}
-						if (args.guards.articleLinked(args)) {
-							return { target: 'insertIntentAndcreateArticle', context: patch }
+						if (args.guards.articleLinked(args, { facts: args.context.facts })) {
+							return { target: 'insertIntentAndcreateArticle' }
 						}
-						return { target: 'insertIntent', context: patch }
+						return { target: 'insertIntent' }
 					}
 				}
 			},
@@ -105,8 +116,8 @@ export function createContentIntentDomain(io: {
 			insertIntentAndbindArticle: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertIntent(args)
-						args.actions.bindArticle(args)
+						args.actions.insertIntent(args, { facts: args.context.facts })
+						args.actions.bindArticle(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -115,8 +126,8 @@ export function createContentIntentDomain(io: {
 			insertIntentAndcreateArticle: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertIntent(args)
-						args.actions.createArticle(args)
+						args.actions.insertIntent(args, { facts: args.context.facts })
+						args.actions.createArticle(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -125,7 +136,7 @@ export function createContentIntentDomain(io: {
 			insertIntent: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.insertIntent(args)
+						args.actions.insertIntent(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -142,28 +153,49 @@ export function createContentPublicationDomain(io: {
 	receipt: DomainReceipt
 }) {
 	const model = transactionDomainModel(io.read, 'Operation identity is not eligible').extend({
+		states: {
+			reading: {},
+			ready: { schemas: { context: types<{ facts: ContentFacts }>() } },
+			blocked: {},
+			done: {},
+			publishContentAndattachContentAndpublishSource: {
+				schemas: { context: types<{ facts: ContentFacts }>() }
+			},
+			publishContentAndattachContent: { schemas: { context: types<{ facts: ContentFacts }>() } },
+			publishContentAndpublishSource: { schemas: { context: types<{ facts: ContentFacts }>() } },
+			publishContent: { schemas: { context: types<{ facts: ContentFacts }>() } }
+		},
 		guards: {
 			canPublishContent: (_, params: { facts: ContentFacts }) =>
 				canPublishStoredContent(params.facts),
-			articleLinked: ({ context }) => hasLinkedArticle(required(context.facts)),
-			hasSource: ({ context }) => hasContentSource(required(context.facts))
+			articleLinked: (_, { facts }: { facts: ContentFacts }) => hasLinkedArticle(facts),
+			hasSource: (_, { facts }: { facts: ContentFacts }) => hasContentSource(facts)
 		},
 		actions: {
-			publishContent: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
-			}) => io.publishContent(context.resource, required(context.facts)),
-			attachContent: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
-			}) => io.attachContent(context.resource, required(context.facts)),
-			publishSource: ({
-				context
-			}: {
-				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
-			}) => io.publishSource(context.resource, required(context.facts))
+			publishContent: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+				},
+				{ facts }: { facts: ContentFacts }
+			) => io.publishContent(context.resource, facts),
+			attachContent: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+				},
+				{ facts }: { facts: ContentFacts }
+			) => io.attachContent(context.resource, facts),
+			publishSource: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+				},
+				{ facts }: { facts: ContentFacts }
+			) => io.publishSource(context.resource, facts)
 		}
 	})
 	return model.createMachine({
@@ -180,22 +212,11 @@ export function createContentPublicationDomain(io: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: (args, _enq) => {
-						let patch = {}
-						if (
-							args.guards.canPublishContent(args, (({ event }) => ({ facts: event.output }))(args))
-						) {
-							patch = args.actions.rememberFacts(
-								args,
-								(({ event }) => ({ facts: event.output }))(args)
-							).context
-							return { target: 'ready', context: patch }
+					onDone: (args) => {
+						if (args.guards.canPublishContent(args, { facts: args.event.output })) {
+							return { target: 'ready', context: { facts: args.event.output } }
 						}
-						patch = args.actions.rememberFacts(
-							args,
-							(({ event }) => ({ facts: event.output }))(args)
-						).context
-						return { target: 'blocked', context: patch }
+						return { target: 'blocked', context: { facts: args.event.output } }
 					}
 				}
 			},
@@ -206,18 +227,20 @@ export function createContentPublicationDomain(io: {
 					})
 				},
 				on: {
-					STAGE: (args, _enq) => {
-						let patch = {}
-						if (args.guards.articleLinked(args) && args.guards.hasSource(args)) {
-							return { target: 'publishContentAndattachContentAndpublishSource', context: patch }
+					STAGE: (args) => {
+						if (
+							args.guards.articleLinked(args, { facts: args.context.facts }) &&
+							args.guards.hasSource(args, { facts: args.context.facts })
+						) {
+							return { target: 'publishContentAndattachContentAndpublishSource' }
 						}
-						if (args.guards.articleLinked(args)) {
-							return { target: 'publishContentAndattachContent', context: patch }
+						if (args.guards.articleLinked(args, { facts: args.context.facts })) {
+							return { target: 'publishContentAndattachContent' }
 						}
-						if (args.guards.hasSource(args)) {
-							return { target: 'publishContentAndpublishSource', context: patch }
+						if (args.guards.hasSource(args, { facts: args.context.facts })) {
+							return { target: 'publishContentAndpublishSource' }
 						}
-						return { target: 'publishContent', context: patch }
+						return { target: 'publishContent' }
 					}
 				}
 			},
@@ -232,9 +255,9 @@ export function createContentPublicationDomain(io: {
 			publishContentAndattachContentAndpublishSource: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.publishContent(args)
-						args.actions.attachContent(args)
-						args.actions.publishSource(args)
+						args.actions.publishContent(args, { facts: args.context.facts })
+						args.actions.attachContent(args, { facts: args.context.facts })
+						args.actions.publishSource(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -243,8 +266,8 @@ export function createContentPublicationDomain(io: {
 			publishContentAndattachContent: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.publishContent(args)
-						args.actions.attachContent(args)
+						args.actions.publishContent(args, { facts: args.context.facts })
+						args.actions.attachContent(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -253,8 +276,8 @@ export function createContentPublicationDomain(io: {
 			publishContentAndpublishSource: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.publishContent(args)
-						args.actions.publishSource(args)
+						args.actions.publishContent(args, { facts: args.context.facts })
+						args.actions.publishSource(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},
@@ -263,7 +286,7 @@ export function createContentPublicationDomain(io: {
 			publishContent: {
 				entry: (args, enq) => {
 					enq(() => {
-						args.actions.publishContent(args)
+						args.actions.publishContent(args, { facts: args.context.facts })
 						args.self.send({ type: 'STAGED' })
 					})
 				},

@@ -210,3 +210,43 @@ coverage remains required. CI preserves `.xstate-test` on failure.
 
 Qualification: see the final implementation handoff entry for commands, counts,
 engine versions and any remaining limitations.
+
+
+## PR #28 documentation-review corrections (2026-11-09)
+
+The follow-up review identified retained v5-era design gaps, rather than only
+literal-inference issues. The extension runtime now invokes the actual clip
+machine with a typed per-job capability input. Snapshots are raised privately;
+completion and unexpected failure are supervised by the runtime. A failed job
+clears queued work and rejects new work, without replaying an issued operation.
+The clip chart samples account currency in owned async logic before issue and
+when the issued marker settles, rather than consulting native state in guards.
+
+Request resource construction, clock reads and cancellation observations now
+belong to owned logic. Explicit completion checkpoints supply facts to pure
+routing, retaining deadline precedence even when the timer callback is delayed.
+Cancellation still aborts cooperatively and holds the admission lease until the
+outstanding body/parser/gateway settles. Lease release is an enqueued effect.
+Self-raised account acknowledgements and feedback coordination use
+`schemas.internalEvents`; native/child reports remain public actor events.
+
+Transaction owners expose checked read/stage/prepared ports. Concrete domain
+sources are spawned through a typed capability by the controller, which retains
+and stops the child ref and supervises errors; no separate root is created.
+DLF retains transaction acquisition, commit, rollback and local/unknown settlement.
+Domain state schemas guarantee validated facts in ready/mutation states. The
+account chart similarly guarantees host/readiness scope while running, and its
+unadopted session travels through binding state input. Receipts and drain custody
+retain their existing lifetimes. Compile-only regressions reject unrelated
+recipients, unsupported port commands and mismatched domain input.
+
+The binding campaign now reuses previously issued valid scopes, including after
+A → B → A, instead of manufacturing a malformed scope suffix. Two additional
+independent `propertyTest` campaigns cover delayed acquisition with shutdown and
+duplicate acquisition completion (seed 60382, 60 runs, 12 commands), and issued
+write draining, uncertain settlement and duplicate completion after uncertainty
+(seed 60383, 100 runs, 20 commands). Each requires complete modeled
+state/event/transition coverage; these bounds do not prove all native schedules.
+
+Fresh qualification for these corrections is recorded in the implementation
+handoff. Existing CI triggers and native acceptance cases remain enabled.

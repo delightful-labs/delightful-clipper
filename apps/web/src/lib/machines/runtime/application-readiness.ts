@@ -61,7 +61,6 @@ type Event<Session extends object> =
 
 type Context<Session extends object> = {
 	clean: boolean
-	pendingBinding: Readonly<{ session: Session }> | undefined
 	host: AccountHost | undefined
 	input: AccountInput<Session>
 	scope: AccountInput<Session>['startup']['scope']
@@ -176,13 +175,15 @@ export function createApplicationReadinessMachine<Session extends object>(
 				RESTORATION_VALIDATED: types<EventPayload<Event<Session>, 'RESTORATION_VALIDATED'>>(),
 				RESTORATION_PREPARE_REQUESTED:
 					types<EventPayload<Event<Session>, 'RESTORATION_PREPARE_REQUESTED'>>(),
+				SESSION_ACQUIRED: types<EventPayload<Event<Session>, 'SESSION_ACQUIRED'>>()
+			},
+			internalEvents: {
 				OBSERVATION_RESTARTED: types<EventPayload<Event<Session>, 'OBSERVATION_RESTARTED'>>(),
 				STARTUP_CLOSED: types<EventPayload<Event<Session>, 'STARTUP_CLOSED'>>(),
 				FEEDBACK_CLEAR: types<EventPayload<Event<Session>, 'FEEDBACK_CLEAR'>>(),
 				IDENTITY_FAILED: types<EventPayload<Event<Session>, 'IDENTITY_FAILED'>>(),
 				RESTORE_INVALID: types<EventPayload<Event<Session>, 'RESTORE_INVALID'>>(),
-				RESTORE_FAILED: types<EventPayload<Event<Session>, 'RESTORE_FAILED'>>(),
-				SESSION_ACQUIRED: types<EventPayload<Event<Session>, 'SESSION_ACQUIRED'>>()
+				RESTORE_FAILED: types<EventPayload<Event<Session>, 'RESTORE_FAILED'>>()
 			},
 			input: types<AccountInput<Session>>(),
 			output: types<{ clean: boolean }>(),
@@ -201,6 +202,143 @@ export function createApplicationReadinessMachine<Session extends object>(
 				global: types<import('xstate').ActorRefFrom<(typeof accountActors)['global']>>(),
 				restore: types<import('xstate').ActorRefFrom<(typeof accountActors)['restore']>>()
 			}
+		},
+		states: {
+			active: {
+				type: 'parallel',
+				states: {
+					connection: {
+						states: {
+							observing: {
+								states: {
+									checking: {},
+									online: {},
+									offline: {}
+								}
+							},
+							closed: {}
+						}
+					},
+					feedback: {
+						states: {
+							none: {},
+							identityFailed: {},
+							restoreInvalid: {},
+							restoreFailed: {}
+						}
+					},
+					flow: {
+						id: 'application-flow',
+						states: {
+							opening: {},
+							openFailed: {},
+							binding: {
+								schemas: { input: types<{ session: Session }>() },
+								states: {
+									waiting: {},
+									adopting: {
+										schemas: {
+											context: types<{ host: AccountHost; readinessScope: SessionReadinessScope }>()
+										}
+									},
+									stopping: {}
+								}
+							},
+							running: {
+								id: 'application-active-flow-running',
+								schemas: {
+									context: types<{ host: AccountHost; readinessScope: SessionReadinessScope }>()
+								},
+								states: {
+									draining: { id: 'application-active-flow-running-draining' },
+									refreshing: {},
+									route: { id: 'application-active-flow-running-route' },
+									preparing: {
+										states: {
+											active: {},
+											stopping: {}
+										}
+									},
+									signedOut: {},
+									waiting: {},
+									unavailable: {},
+									retrying: {},
+									reobserving: {},
+									creating: {
+										states: {
+											active: {},
+											stopping: {}
+										}
+									},
+									restoring: {
+										id: 'application-active-flow-running-restoring',
+										states: {
+											active: {},
+											stopping: {}
+										}
+									},
+									loggingOut: {
+										id: 'application-active-flow-running-loggingOut',
+										states: {
+											active: {},
+											stopping: {}
+										}
+									},
+									library: {
+										id: 'application-active-flow-running-library',
+										states: {
+											bootstrapping: {},
+											stopping: {},
+											replacing: {},
+											conflict: {},
+											failed: {},
+											ready: {
+												states: {
+													existing: {},
+													stopping: {
+														states: {
+															shutdown: {},
+															restore: {},
+															logout: {},
+															replace: {}
+														}
+													},
+													syncPending: {},
+													synced: {},
+													syncFailed: {}
+												}
+											}
+										}
+									}
+								}
+							},
+							closing: { id: 'application-active-flow-closing' },
+							finished: { type: 'choice' }
+						}
+					},
+					ownerHealth: {
+						states: {
+							healthy: {},
+							failed: {}
+						}
+					},
+					cleanupHealth: {
+						states: {
+							healthy: {},
+							failed: {}
+						}
+					},
+					observationHealth: {
+						states: {
+							healthy: {},
+							failed: {}
+						}
+					}
+				}
+			},
+			cleanupFailed: { id: 'application-cleanupFailed', type: 'final' },
+			ownerFailed: { id: 'application-ownerFailed', type: 'final' },
+			closed: { id: 'application-closed', type: 'final' }
 		},
 		actors: accountActors,
 		guards: {
@@ -252,7 +390,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 
 			stoppingPreparation: ({ value }: { value: import('xstate').StateValue }) =>
 				matchesState({ active: { flow: { running: { preparing: 'stopping' } } } }, value),
-			needsLocalFirst: ({ context }: { context: Context<Session> }) =>
+			needsLocalFirst: ({ context }) =>
 				context.observation.status === 'ready' &&
 				context.observation.localFirst === false &&
 				!!context.host?.prepare,
@@ -297,7 +435,6 @@ export function createApplicationReadinessMachine<Session extends object>(
 		output: ({ context }) => ({ clean: context.clean }),
 		context: ({ input }) => ({
 			clean: false,
-			pendingBinding: undefined,
 			input,
 			scope: input.startup.scope,
 			readinessScope: undefined,
@@ -412,7 +549,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 								if (!args.guards.currentStartup(args)) return
 								return {
 									target: '.binding',
-									context: { pendingBinding: { session: args.event.session } }
+									input: { session: args.event.session }
 								}
 							},
 							SESSION_STARTUP_FAILED: (args, enq) => {
@@ -447,8 +584,8 @@ export function createApplicationReadinessMachine<Session extends object>(
 								invoke: {
 									id: 'binding',
 									src: 'binding',
-									input: ({ context }) => ({
-										session: required(context.pendingBinding).session,
+									input: ({ context, input }) => ({
+										session: input.session,
 										account: context.input,
 										scope: context.scope
 									}),
@@ -466,7 +603,6 @@ export function createApplicationReadinessMachine<Session extends object>(
 													context: {
 														host,
 														observation,
-														pendingBinding: undefined,
 														readinessScope: { binding: host.readiness.binding, attachment: {} }
 													}
 												}
@@ -477,28 +613,28 @@ export function createApplicationReadinessMachine<Session extends object>(
 										entry: (_args, enq) => {
 											enq.sendTo('binding', { type: 'ADOPT' })
 										},
-										on: { HOST_ADOPTED: { target: '#application-readiness.active.flow.running' } }
+										on: { HOST_ADOPTED: { target: '#application-active-flow-running' } }
 									},
 									stopping: {
 										on: {
 											HOST_BOUND: {
-												target: '#application-readiness.active.flow.closing',
-												context: { pendingBinding: undefined }
+												target: '#application-active-flow-closing'
 											},
-											HOST_ADOPTED: { target: '#application-readiness.active.flow.closing' }
+											HOST_ADOPTED: { target: '#application-active-flow-closing' }
 										}
 									}
 								}
 							},
 							running: {
+								id: 'application-active-flow-running',
 								initial: 'route',
 
 								entry: (args, enq) => {
 									const { context } = args
 									enq.sendTo('readiness', {
 										type: 'BIND',
-										scope: required(context.readinessScope),
-										capability: required(context.host).readiness.capability
+										scope: context.readinessScope,
+										capability: context.host.readiness.capability
 									})
 								},
 								invoke: [
@@ -506,12 +642,12 @@ export function createApplicationReadinessMachine<Session extends object>(
 										id: 'readiness',
 										src: 'readiness',
 										input: ({ self }) => ({ reportTo: self }),
-										onDone: { target: '#application-readiness.active.flow.closing' }
+										onDone: { target: '#application-active-flow-closing' }
 									},
 									{
 										id: 'observation',
 										src: 'observation',
-										input: ({ context }) => required(context.host)
+										input: ({ context }) => context.host
 									}
 								],
 								on: {
@@ -533,6 +669,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 								},
 								states: {
 									draining: {
+										id: 'application-active-flow-running-draining',
 										meta: accountStatus('closing', t('account.status.closing')),
 										entry: (args, enq) => {
 											enq.sendTo('readiness', { type: 'SHUTDOWN' })
@@ -557,6 +694,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 										}
 									},
 									route: {
+										id: 'application-active-flow-running-route',
 										entry: () => {
 											return { context: { write: undefined } }
 										},
@@ -591,7 +729,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 										invoke: {
 											id: 'prepare',
 											src: 'prepare',
-											input: ({ context }: { context: Context<Session> }) => required(context.host),
+											input: ({ context }) => context.host,
 											onDone: (args, _enq) => {
 												let pendingContext = {}
 
@@ -669,7 +807,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 											context = { ...args.context, ...patch }
 											enq.sendTo('readiness', {
 												type: 'RETRY',
-												scope: required(context.readinessScope),
+												scope: context.readinessScope,
 												attempt: context.retryAttempt
 											})
 											return { context: patch }
@@ -698,7 +836,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 											context = { ...args.context, ...patch }
 											enq.sendTo('readiness', {
 												type: 'REOBSERVE',
-												scope: required(context.readinessScope),
+												scope: context.readinessScope,
 												observation: context.observationAttempt
 											})
 											return { context: patch }
@@ -725,14 +863,14 @@ export function createApplicationReadinessMachine<Session extends object>(
 										invoke: {
 											id: 'create',
 											src: 'create',
-											input: ({ context }: { context: Context<Session> }) => required(context.host),
+											input: ({ context }) => context.host,
 											onDone: (args, _enq) => {
 												let pendingContext = {}
 
 												if (args.guards.stoppingCreate(args)) {
 													return {
 														context: pendingContext,
-														target: '#application-readiness.active.flow.running.draining'
+														target: '#application-active-flow-running-draining'
 													}
 												}
 
@@ -744,7 +882,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 												if (args.guards.stoppingCreate(args)) {
 													return {
 														context: pendingContext,
-														target: '#application-readiness.active.flow.running.draining'
+														target: '#application-active-flow-running-draining'
 													}
 												}
 												enq.raise({ type: 'IDENTITY_FAILED' })
@@ -754,6 +892,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 										}
 									},
 									restoring: {
+										id: 'application-active-flow-running-restoring',
 										entry: (args, enq) => {
 											enq.raise({ type: 'FEEDBACK_CLEAR' })
 										},
@@ -783,9 +922,9 @@ export function createApplicationReadinessMachine<Session extends object>(
 											id: 'restore',
 											src: 'restore',
 											input: ({ context, self }) => ({
-												capability: required(context.host).restoration.capability,
+												capability: context.host.restoration.capability,
 												scope: {
-													binding: required(context.host).restoration.binding,
+													binding: context.host.restoration.binding,
 													attempt: context.attempt
 												},
 												phrase: context.phrase,
@@ -802,7 +941,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 													}
 													return {
 														context: pendingContext,
-														target: '#application-readiness.active.flow.running.draining'
+														target: '#application-active-flow-running-draining'
 													}
 												}
 												if (isRestored(event.output)) {
@@ -841,7 +980,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 													}
 													return {
 														context: pendingContext,
-														target: '#application-readiness.active.flow.running.draining'
+														target: '#application-active-flow-running-draining'
 													}
 												}
 												enq.raise({ type: 'RESTORE_FAILED' })
@@ -855,6 +994,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 										}
 									},
 									loggingOut: {
+										id: 'application-active-flow-running-loggingOut',
 										initial: 'active',
 										states: {
 											active: {},
@@ -864,14 +1004,14 @@ export function createApplicationReadinessMachine<Session extends object>(
 										invoke: {
 											id: 'logout',
 											src: 'logout',
-											input: ({ context }: { context: Context<Session> }) => required(context.host),
+											input: ({ context }) => context.host,
 											onDone: (args, _enq) => {
 												let pendingContext = {}
 
 												if (args.guards.stoppingLogout(args)) {
 													return {
 														context: pendingContext,
-														target: '#application-readiness.active.flow.running.draining'
+														target: '#application-active-flow-running-draining'
 													}
 												}
 
@@ -883,7 +1023,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 												if (args.guards.stoppingLogout(args)) {
 													return {
 														context: pendingContext,
-														target: '#application-readiness.active.flow.running.draining'
+														target: '#application-active-flow-running-draining'
 													}
 												}
 												enq.raise({ type: 'IDENTITY_FAILED' })
@@ -894,18 +1034,19 @@ export function createApplicationReadinessMachine<Session extends object>(
 									},
 
 									library: {
+										id: 'application-active-flow-running-library',
 										initial: 'bootstrapping',
 										invoke: {
 											id: 'bootstrap',
 											src: 'bootstrap',
-											input: ({ context }: { context: Context<Session> }) => root(context),
+											input: ({ context }) => root(context),
 											onDone: (args) => {
 												const { event } = args
 												if (args.guards.stoppingBootstrap(args)) {
-													return { target: '#application-readiness.active.flow.running.draining' }
+													return { target: '#application-active-flow-running-draining' }
 												}
 												if (args.guards.replacingBootstrap(args)) {
-													return { target: '#application-readiness.active.flow.running.route' }
+													return { target: '#application-active-flow-running-route' }
 												}
 												if (args.guards.existingRoot(args, event.output)) {
 													return { target: '.ready.existing', context: { write: undefined } }
@@ -931,7 +1072,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 													return {}
 												}
 												return {
-													target: '#application-readiness.active.flow.running.route',
+													target: '#application-active-flow-running-route',
 													context: args.actions.rememberObservation(args).context
 												}
 											}
@@ -978,7 +1119,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 												meta: accountStatus('conflict', t('account.status.conflict')),
 												on: {
 													LOGOUT: {
-														target: '#application-readiness.active.flow.running.loggingOut'
+														target: '#application-active-flow-running-loggingOut'
 													}
 												}
 											},
@@ -986,11 +1127,11 @@ export function createApplicationReadinessMachine<Session extends object>(
 												meta: accountStatus('rootFailed', t('account.status.rootFailed')),
 												on: {
 													RETRY: {
-														target: '#application-readiness.active.flow.running.library',
+														target: '#application-active-flow-running-library',
 														reenter: true
 													},
 													LOGOUT: {
-														target: '#application-readiness.active.flow.running.loggingOut'
+														target: '#application-active-flow-running-loggingOut'
 													}
 												}
 											},
@@ -999,7 +1140,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 												invoke: {
 													id: 'library',
 													src: 'library',
-													input: ({ context }: { context: Context<Session> }) =>
+													input: ({ context }) =>
 														context.observation.status === 'ready'
 															? context.observation.library
 															: undefined,
@@ -1018,7 +1159,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 																))(args)
 														) {
 															return {
-																target: '#application-readiness.active.flow.running.restoring'
+																target: '#application-active-flow-running-restoring'
 															}
 														}
 														if (
@@ -1035,7 +1176,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 																))(args)
 														) {
 															return {
-																target: '#application-readiness.active.flow.running.loggingOut'
+																target: '#application-active-flow-running-loggingOut'
 															}
 														}
 														if (
@@ -1051,9 +1192,9 @@ export function createApplicationReadinessMachine<Session extends object>(
 																	value
 																))(args)
 														) {
-															return { target: '#application-readiness.active.flow.running.route' }
+															return { target: '#application-active-flow-running-route' }
 														}
-														return { target: '#application-readiness.active.flow.running.draining' }
+														return { target: '#application-active-flow-running-draining' }
 													}
 												},
 												on: {
@@ -1108,8 +1249,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 														invoke: {
 															id: 'global',
 															src: 'global',
-															input: ({ context }: { context: Context<Session> }) =>
-																required(context.write),
+															input: ({ context }) => required(context.write),
 															onDone: { target: 'synced' },
 															onError: { target: 'syncFailed' }
 														}
@@ -1128,6 +1268,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 								}
 							},
 							closing: {
+								id: 'application-active-flow-closing',
 								meta: accountStatus('closing', t('account.status.closing')),
 								entry: (args, enq) => {
 									let context = args.context
@@ -1149,12 +1290,12 @@ export function createApplicationReadinessMachine<Session extends object>(
 								type: 'choice',
 								choice: (args) => {
 									if (matchesState({ active: { cleanupHealth: 'failed' } }, args.value)) {
-										return { target: '#application-readiness.cleanupFailed' }
+										return { target: '#application-cleanupFailed' }
 									}
 									if (matchesState({ active: { ownerHealth: 'failed' } }, args.value)) {
-										return { target: '#application-readiness.ownerFailed' }
+										return { target: '#application-ownerFailed' }
 									}
-									return { target: '#application-readiness.closed' }
+									return { target: '#application-closed' }
 								}
 							}
 						}
@@ -1205,6 +1346,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 				}
 			},
 			cleanupFailed: {
+				id: 'application-cleanupFailed',
 				meta: accountStatus('cleanupFailed', t('account.status.cleanupFailed')),
 				type: 'final',
 				entry: (args) => {
@@ -1212,6 +1354,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 				}
 			},
 			ownerFailed: {
+				id: 'application-ownerFailed',
 				meta: accountStatus('ownerFailed', t('account.status.ownerFailed')),
 				type: 'final',
 				entry: (args) => {
@@ -1219,6 +1362,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 				}
 			},
 			closed: {
+				id: 'application-closed',
 				meta: accountStatus('closed', t('account.status.closed')),
 				type: 'final',
 				entry: () => {
