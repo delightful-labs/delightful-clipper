@@ -11,6 +11,7 @@ import {
 	shellKey,
 	shellPolicy
 } from '../lib/offline/policy.js'
+// Immutable assets include every bundled Jost and Cascadia Code font, including italics.
 const policy = shellPolicy(
 	self.registration.scope,
 	version,
