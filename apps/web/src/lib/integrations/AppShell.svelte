@@ -2,8 +2,9 @@
 	import type { WorkflowMessage } from '../contracts/feedback.js'
 	import { onMount, type Snippet } from 'svelte'
 	import { page } from '$app/state'
-	import { Button, Drawer, Heading, Navigation, TopNavigation } from 'delightful-ui'
+	import { Button, Drawer, Heading, Icon, Navigation } from 'delightful-ui'
 	import type { ReaderPreferences } from '../reader/schema.js'
+	import { setAccountNavigation } from '../runtime/navigation.js'
 	import AddLink from './AddLink.svelte'
 	import ConnectionStatus from './ConnectionStatus.svelte'
 	import { useWorkerLibrary } from '../runtime/worker/context.js'
@@ -19,6 +20,11 @@
 	const id = $props.id()
 	const drawerId = `${id}-account`
 	let drawerOpen = $state(false)
+	setAccountNavigation({
+		get open() {
+			return drawerOpen
+		}
+	})
 	let mobile = $state(false)
 	let readerFocused = $state(false)
 	let theme = $state<ReaderPreferences['theme']>('system')
@@ -63,19 +69,22 @@
 
 <div class="app-shell" class:focused={readerFocused}>
 	{#if !readerFocused}
-		<TopNavigation sticky class="clipper-header">
+		<div class="account-control">
 			<Button
+				class="account-toggle"
 				id={`${id}-toggle`}
 				type="button"
-				appearance="flat"
 				aria-label={drawerOpen ? action('close', 'account') : action('show', 'account')}
 				aria-controls={drawerId}
 				aria-expanded={drawerOpen}
 				onclick={() => setDrawerOpen(!drawerOpen)}
-				>{drawerOpen ? action('close', 'account') : action('show', 'account')}</Button
 			>
-			<Heading level="h1" size="lg"><a href="/">{t('app.title')}</a></Heading>
-		</TopNavigation>
+				<Icon width="24" height="24">
+					{#if drawerOpen}<path d="m6 6 12 12M18 6 6 18" />
+					{:else}<path d="M4 6h16M4 12h16M4 18h16" />{/if}
+				</Icon>
+			</Button>
+		</div>
 	{/if}
 	<div class="workspace">
 		{#if !readerFocused}
@@ -89,6 +98,10 @@
 				bind:open={() => drawerOpen, setDrawerOpen}
 			>
 				<div class="sidebar-content">
+					<div class="drawer-brand">
+						<div class="control-spacer" aria-hidden="true"></div>
+						<Heading level="h2" size="lg"><a href="/">{t('app.title')}</a></Heading>
+					</div>
 					<Navigation label={t('library.heading')}>
 						<li>
 							<a
@@ -109,10 +122,12 @@
 			</Drawer>
 		{/if}
 		<main class="content" inert={modal && !readerFocused}>
-			{@render children()}
-			{#if library.actor && !readerFocused}{#key library.actor}<AddLink
-						actor={library.actor}
-					/>{/key}{/if}
+			<div class="page-content">{@render children()}</div>
+			{#if library.actor && !readerFocused}
+				<div class="capture-control">
+					{#key library.actor}<AddLink actor={library.actor} />{/key}
+				</div>
+			{/if}
 		</main>
 		{#if modal && !readerFocused}
 			<button
@@ -127,23 +142,55 @@
 
 <style>
 	.app-shell {
+		--app-control-size: 44px;
+		--app-padding: var(--dui-space-md, 1.5rem);
+		--dui-drawer-padding: var(--app-padding);
 		--dui-drawer-height: 100%;
 		--dui-drawer-width: 20rem;
 		display: grid;
-		grid-template-rows: max-content minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr);
+		min-block-size: 0;
 		height: 100dvh;
 		overflow: hidden;
 	}
 
-	.app-shell.focused {
-		grid-template-rows: minmax(0, 1fr);
+	.account-control {
+		grid-area: 1 / 1;
+		align-self: start;
+		justify-self: start;
+		position: sticky;
+		inset-block-start: var(--app-padding);
+		margin: var(--app-padding);
+		z-index: 3;
+	}
+
+	.account-control :global(.account-toggle) {
+		--dui-button-padding: var(--dui-spacing-xs);
+		inline-size: var(--app-control-size);
+		block-size: var(--app-control-size);
+		display: grid;
+		place-items: center;
+	}
+
+	.drawer-brand {
+		display: grid;
+		grid-template-columns: var(--app-control-size) minmax(0, 1fr);
+		align-items: center;
+		gap: var(--dui-spacing-md);
+		min-block-size: var(--app-control-size);
+	}
+
+	.control-spacer {
+		block-size: var(--app-control-size);
 	}
 
 	.workspace {
+		grid-area: 1 / 1;
 		position: relative;
 		display: flex;
 		align-items: flex-start;
 		min-block-size: 0;
+		overflow: hidden;
 	}
 
 	.sidebar-content {
@@ -158,11 +205,33 @@
 	}
 
 	.content {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		position: relative;
+		box-sizing: border-box;
+		min-block-size: 0;
+		scrollbar-gutter: stable;
 		flex: 1 1 0%;
 		min-inline-size: 0;
 		height: 100%;
 		overflow: auto;
-		padding: var(--dui-space-md);
+		padding: var(--app-padding);
+	}
+
+	.page-content {
+		grid-area: 1 / 1;
+		min-inline-size: 0;
+	}
+
+	.capture-control {
+		grid-area: 1 / 1;
+		align-self: end;
+		position: sticky;
+		inset-block-end: 0;
+	}
+
+	.content:has(:global(.reader-workspace)) {
+		overflow-anchor: none;
 	}
 
 	.drawer-dismiss {

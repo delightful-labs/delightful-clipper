@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte'
 	import type { LibraryClient } from '../runtime/worker/client.js'
 	import type { LibraryRender } from '../runtime/worker/views.js'
+	import PageNavigation from '../components/navigation/PageNavigation.svelte'
 	import { Button, StatusMessage } from 'delightful-ui'
 	import LibrarySearch from '../components/library/LibrarySearch.svelte'
 	import LibraryFilters from '../components/library/LibraryFilters.svelte'
@@ -34,7 +35,8 @@
 {#if capture}
 	<section aria-label={t('library.heading')}>
 		<div class="library-header">
-			<h2 bind:this={heading} tabindex="-1">{t('library.heading')}</h2>
+			<PageNavigation />
+			<h1 bind:this={heading} tabindex="-1">{t('library.heading')}</h1>
 			<LibraryFilterPopovers
 				searchLabel={action('search', 'article', 2)}
 				onsearch={() => actor.send({ type: 'SEARCH_OPEN' })}
@@ -107,13 +109,17 @@
 
 <style>
 	.library-header {
-		display: flex;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
 		align-items: center;
-		gap: var(--dui-spacing-md);
 		min-inline-size: 0;
 	}
 
+	.library-header h1 {
+		margin: 0;
+	}
+
 	section {
-		margin-block: 1.5rem;
+		min-inline-size: 0;
 	}
 </style>

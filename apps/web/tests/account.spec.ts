@@ -848,10 +848,10 @@ test('keeps account controls in the desktop drawer without replacing the library
 	await expect(
 		page.getByRole('main').getByRole('button', { name: 'Restore account', exact: true })
 	).toHaveCount(0)
-	await page.locator('header').getByRole('button', { name: 'Close account', exact: true }).click()
+	await page.getByRole('button', { name: 'Close account', exact: true }).click()
 	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
 	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
-	await page.locator('header').getByRole('button', { name: 'Show account', exact: true }).click()
+	await page.getByRole('button', { name: 'Show account', exact: true }).click()
 	await expect(
 		drawer.getByRole('button', { name: 'Show recovery phrase', exact: true })
 	).toBeVisible()

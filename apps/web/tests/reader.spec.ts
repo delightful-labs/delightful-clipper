@@ -1,5 +1,6 @@
 import {
 	readingControls as controls,
+	closeReadingControls,
 	visibleReadingParagraph as visibleParagraph
 } from './reader-ui.js'
 import { test, expect, chromium } from '@playwright/test'
@@ -51,7 +52,7 @@ async function state(page: Page): Promise<ReturnType<typeof projectReaderState>>
 	})
 }
 async function readMiddle(page: Page) {
-	await page.getByRole('main').hover()
+	await page.getByRole('main').hover({ position: { x: 2, y: 100 } })
 	await page.mouse.wheel(0, 10000)
 	await expect
 		.poll(async () => Math.max(0, ...Object.values((await state(page)).progress)))
@@ -104,6 +105,7 @@ test('uses shared reader controls, keyboard contents/footnotes, persistent focus
 	await page.getByRole('button', { name: 'Archive', exact: true }).click()
 	await expect(page.getByRole('button', { name: 'Archive', exact: true })).toHaveCount(0)
 	await expect(page).toHaveURL(new RegExp(path))
+	await controls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	await expect(page.locator('[data-article-id]').getByLabel('Status', { exact: true })).toHaveValue(
 		'archive'
@@ -126,7 +128,7 @@ test('keeps a text anchor through typography, viewport resizing, navigation and 
 	await dialog.getByRole('slider', { name: 'Line spacing', exact: true }).press('End')
 	await dialog.getByRole('slider', { name: 'Reading width', exact: true }).press('Home')
 	await dialog.getByRole('radio', { name: 'Dark', exact: true }).check()
-	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	await closeReadingControls(page)
 	await expect.poll(() => visibleParagraph(page)).toBe(paragraph)
 	await page.setViewportSize({ width: 800, height: 700 })
 	await expect.poll(() => visibleParagraph(page)).toBe(paragraph)
@@ -136,11 +138,12 @@ test('keeps a text anchor through typography, viewport resizing, navigation and 
 	const furthest = Math.max(...Object.values((await state(page)).progress))
 	await page.reload()
 	await expect.poll(() => visibleParagraph(page)).toBe(paragraph)
-	await page.getByRole('main').hover()
+	await page.getByRole('main').hover({ position: { x: 2, y: 100 } })
 	await page.mouse.wheel(0, -4000)
 	await expect
 		.poll(async () => Number(await visibleParagraph(page)))
 		.toBeLessThan(Number(paragraph))
+	await controls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	const row = page.locator(`[data-article-id="${id}"]`)
 	await expect(row.getByRole('progressbar')).toHaveAttribute('value', String(furthest))
@@ -168,11 +171,11 @@ test('synchronizes independent settings and latest positions without scrolling a
 		expect(await other.getByRole('main').evaluate((node) => node.scrollTop)).toBe(before)
 		const first = await controls(page)
 		await first.getByRole('radio', { name: 'Dark', exact: true }).check()
-		await first.getByRole('button', { name: 'Close', exact: true }).click()
+		await closeReadingControls(page)
 		const second = await controls(other)
 		await expect(second.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked()
 		await second.getByLabel('Font family', { exact: true }).selectOption('sans')
-		await second.getByRole('button', { name: 'Close', exact: true }).click()
+		await closeReadingControls(other)
 		await expect.poll(async () => (await state(page)).preferences.font).toBe('sans')
 		await other.reload()
 		await expect.poll(async () => Number(await visibleParagraph(other))).toBeGreaterThan(1)
@@ -191,8 +194,9 @@ test('retains offline reading settings and location through a complete browser r
 		stopped = true
 		const dialog = await controls(page)
 		await dialog.getByRole('radio', { name: 'Dark', exact: true }).check()
-		await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+		await closeReadingControls(page)
 		const paragraph = await readMiddle(page)
+		await controls(page)
 		await page.getByRole('link', { name: 'Open library', exact: true }).click()
 		await expect(page.locator(`[data-article-id="${id}"]`).getByRole('progressbar')).toBeVisible()
 		await context.close()
@@ -202,7 +206,7 @@ test('retains offline reading settings and location through a complete browser r
 		await expect.poll(() => visibleParagraph(reopened)).toBe(paragraph)
 		const again = await controls(reopened)
 		await expect(again.getByRole('radio', { name: 'Dark', exact: true })).toBeChecked()
-		await again.getByRole('button', { name: 'Close', exact: true }).click()
+		await closeReadingControls(reopened)
 		authority = await startLocalJazzServer(options())
 		stopped = false
 		await expect(
@@ -220,7 +224,7 @@ test('shows live progress before a debounced save and keeps the furthest progres
 	await seed(page)
 	await page.clock.install()
 	const main = page.getByRole('main')
-	await main.hover()
+	await main.hover({ position: { x: 2, y: 100 } })
 	await page.mouse.wheel(0, 6000)
 	await expect.poll(() => main.evaluate((node) => node.scrollTop)).toBeGreaterThan(2000)
 	await page.clock.runFor(100)
@@ -252,8 +256,55 @@ test('updates progress for a short article when a reading gesture cannot scroll 
 	await expect(page.getByRole('article')).toBeVisible()
 	const main = page.getByRole('main')
 	expect(await main.evaluate((node) => node.scrollHeight <= node.clientHeight)).toBe(true)
-	await main.hover()
+	await main.hover({ position: { x: 2, y: 100 } })
 	await page.mouse.wheel(0, 200)
 	await expect.poll(async () => Math.max(0, ...Object.values((await state(page)).progress))).toBe(1)
 	await expect(page.getByRole('progressbar')).toHaveAttribute('value', '1')
+})
+
+test('reader drawer replaces the top toolbar with persistent controls and independent scrolling', async ({
+	page
+}) => {
+	await page.setViewportSize({ width: 1440, height: 520 })
+	await page.emulateMedia({ reducedMotion: 'reduce' })
+	await seed(page)
+	await expect(page.locator('header.clipper-header')).toHaveCount(0)
+	await expect(page.locator('.reader-toolbar')).toHaveCount(0)
+	const main = page.getByRole('main')
+	const toggle = page.getByRole('button', { name: 'Reading controls', exact: true })
+	const drawer = await controls(page)
+	await expect(drawer.getByRole('link', { name: 'Open original', exact: true })).toBeVisible()
+	await expect(drawer.getByRole('radio', { name: 'System', exact: true })).toBeChecked()
+	await expect(drawer.getByLabel('Font family', { exact: true })).toBeVisible()
+	await toggle.evaluate((node) => node.setAttribute('data-persistent-toggle', 'yes'))
+	const before = await toggle.boundingBox()
+	if (!before) throw new Error('Missing reader toggle')
+	for (const open of [false, true]) {
+		await toggle.click()
+		await expect(toggle).toHaveAttribute('aria-expanded', String(open))
+		await expect(toggle).toHaveAttribute('data-persistent-toggle', 'yes')
+		const after = await toggle.boundingBox()
+		expect(after?.x).toBe(before.x)
+		expect(after?.y).toBe(before.y)
+	}
+	const body = drawer.locator('.drawer-body')
+	expect(await body.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true)
+	await body.evaluate((node) => {
+		node.scrollTop = 100
+	})
+	expect(await main.evaluate((node) => node.scrollTop)).toBe(0)
+	await main.evaluate((node) => {
+		node.scrollTop = 300
+	})
+	expect(await body.evaluate((node) => node.scrollTop)).toBe(100)
+	expect((await toggle.boundingBox())?.y).toBe(before.y)
+	expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(520)
+	await page.setViewportSize({ width: 390, height: 844 })
+	await expect(page.locator('.reader-body')).toHaveAttribute('inert', '')
+	await drawer.getByLabel('Font family', { exact: true }).focus()
+	await page.keyboard.press('Escape')
+	await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+	await expect(toggle).toBeFocused()
+	await expect(page.locator('.reader-body')).not.toHaveAttribute('inert', '')
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
 })
