@@ -1,8 +1,15 @@
-import { assign, fromPromise, setup } from 'xstate'
+import type { EventPayload } from '../../web/src/lib/machines/events.js'
+import { types, setup, createAsyncLogic, createCallbackLogic } from 'xstate'
+
 import { connectMessageSchema, trustedAccountPage } from './protocol.js'
 import type { Connection, ConnectionScope } from './connection.js'
 type Input = { message: unknown; sender: chrome.runtime.MessageSender }
-type Context = Input & { connection: Connection | undefined; accepted: boolean }
+type PendingConnection = Omit<Connection, 'confirmationId'>
+type Context = Input & {
+	pendingConnection: PendingConnection | undefined
+	connection: Connection | undefined
+	accepted: boolean
+}
 export function createConnectStoreMachine(cap: {
 	id: string
 	pages: string[]
@@ -12,69 +19,111 @@ export function createConnectStoreMachine(cap: {
 	notify: (accountId: string) => Promise<unknown>
 }) {
 	const actors = {
-		write: fromPromise(({ input }: { input: Connection }) => cap.write(input)),
-		notify: fromPromise(({ input }: { input: string }) => cap.notify(input))
+		confirmation: createCallbackLogic<never, PendingConnection>(({ input, sendBack }) => {
+			sendBack({
+				type: 'CONFIRMATION_ISSUED',
+				connection: { ...input, confirmationId: cap.idForConfirmation() }
+			})
+		}),
+		write: createAsyncLogic({ run: ({ input }: { input: Connection }) => cap.write(input) }),
+		notify: createAsyncLogic({ run: ({ input }: { input: string }) => cap.notify(input) })
 	}
-	return setup<
-		Context,
-		{ type: 'UNUSED' },
-		typeof actors,
-		{},
-		{},
-		{},
-		never,
-		string,
-		Input,
-		{ accepted: boolean }
-	>({ actors }).createMachine({
+	return setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				CONFIRMATION_ISSUED: types<{ connection: Connection }>(),
+				UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>()
+			},
+			input: types<Input>(),
+			output: types<{ accepted: boolean }>(),
+			tags: types<string>(),
+			children: {
+				confirmation: types<import('xstate').ActorRefFrom<typeof actors.confirmation>>(),
+				write: types<import('xstate').ActorRefFrom<(typeof actors)['write']>>(),
+				notify: types<import('xstate').ActorRefFrom<(typeof actors)['notify']>>()
+			}
+		},
+		actors
+	}).createMachine({
 		initial: 'admitting',
-		context: ({ input }) => ({ ...input, connection: undefined, accepted: false }),
+		context: ({ input }) => ({
+			...input,
+			connection: undefined,
+			pendingConnection: undefined,
+			accepted: false
+		}),
 		output: ({ context }) => ({ accepted: context.accepted }),
 		states: {
 			admitting: {
-				always: [
-					{
-						guard: ({ context }) =>
-							trustedAccountPage(context.sender, cap.id, cap.pages) &&
-							connectMessageSchema.safeParse(context.message).success,
-						target: 'persisting',
-						actions: assign({
-							connection: ({ context }) => {
-								const { accountId, requestId } = connectMessageSchema.parse(context.message)
-								return {
-									...cap.scope,
-									version: 1 as const,
-									confirmationId: cap.idForConfirmation(),
-									accountId,
-									...(requestId ? { requestId } : {})
-								}
+				always: (args) => {
+					const { context } = args
+					if (
+						trustedAccountPage(context.sender, cap.id, cap.pages) &&
+						connectMessageSchema.safeParse(context.message).success
+					) {
+						return {
+							target: 'confirming',
+							context: {
+								pendingConnection: (({ context }) => {
+									const { accountId, requestId } = connectMessageSchema.parse(context.message)
+									return {
+										...cap.scope,
+										version: 1 as const,
+										accountId,
+										...(requestId ? { requestId } : {})
+									}
+								})(args)
 							}
-						})
-					},
-					{ target: 'failed' }
-				]
+						}
+					}
+					return { target: 'failed' }
+				}
+			},
+			confirming: {
+				invoke: {
+					id: 'confirmation',
+					src: 'confirmation',
+					input: ({ context }) => context.pendingConnection!,
+					onError: { target: 'failed' }
+				},
+				on: {
+					CONFIRMATION_ISSUED: ({ event }) => ({
+						target: 'persisting',
+						context: { connection: event.connection, pendingConnection: undefined }
+					})
+				}
 			},
 			persisting: {
 				invoke: {
+					id: 'write',
 					src: 'write',
-					input: ({ context }) => context.connection!,
-					onDone: 'notifying',
-					onError: 'failed'
+					input: ({ context }: { context: Context }) => context.connection!,
+					onDone: { target: 'notifying' },
+					onError: { target: 'failed' }
 				}
 			},
 			notifying: {
 				invoke: {
+					id: 'notify',
 					src: 'notify',
-					input: ({ context }) => context.connection!.accountId,
-					onDone: 'done',
-					onError: 'done'
+					input: ({ context }: { context: Context }) => context.connection!.accountId,
+					onDone: { target: 'done' },
+					onError: { target: 'done' }
 				}
 			},
 			done: {
-				type: 'final',
-				entry: assign({ accepted: true, connection: undefined, message: undefined })
+				type: 'final' as const,
+				entry: () => {
+					return { context: { accepted: true, connection: undefined, message: undefined } }
+				}
 			},
-			failed: { type: 'final', entry: assign({ connection: undefined, message: undefined }) }
+			failed: {
+				type: 'final' as const,
+				entry: () => {
+					return { context: { connection: undefined, message: undefined } }
+				}
+			}
 		}
 	})
 }

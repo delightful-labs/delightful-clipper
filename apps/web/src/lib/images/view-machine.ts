@@ -1,4 +1,6 @@
-import { assign, fromCallback, fromPromise, sendParent, setup } from 'xstate'
+import type { EventPayload } from '../machines/events.js'
+import { types, createCallbackLogic, setup, createAsyncLogic, type EnqueueObject } from 'xstate'
+
 import type { ImageCapability } from '../contracts/images.js'
 import type { ArticleImage } from './schema.js'
 import { IMAGE_OUTPUT_LIMIT } from './schema.js'
@@ -36,22 +38,22 @@ export type ImageViewReport = {
 	sourceUrl: string
 	view: ImageView
 }
-const observe = fromCallback<Event, Input>(({ input, sendBack }) =>
+const observe = createCallbackLogic<Event, Input>(({ input, sendBack }) =>
 	input.capability.subscribeImage(
 		input.documentId,
 		input.sourceUrl,
-		(rows) => sendBack({ type: 'ROWS', rows }),
-		() => sendBack({ type: 'FAILED' })
+		(rows) => sendBack({ type: 'ROWS' as const, rows }),
+		() => sendBack({ type: 'FAILED' as const })
 	)
 )
-const load = fromPromise<StoredAsset | null, Context>(({ input, signal }) =>
-	input.capability.asset(input.row!.assetId!, signal)
-)
-const url = fromCallback<Event, StoredAsset>(({ input, sendBack }) => {
+const load = createAsyncLogic<StoredAsset | null, Context>({
+	run: ({ input, signal }) => input.capability.asset(input.row!.assetId!, signal)
+})
+const url = createCallbackLogic<Event, StoredAsset>(({ input, sendBack }) => {
 	const url = URL.createObjectURL(
 		new Blob([new Uint8Array(input.payload)], { type: input.mediaType })
 	)
-	sendBack({ type: 'URL', url })
+	sendBack({ type: 'URL' as const, url })
 	return () => URL.revokeObjectURL(url)
 })
 function validImageAsset(context: Context, asset: StoredAsset | null) {
@@ -67,43 +69,58 @@ function validImageAsset(context: Context, asset: StoredAsset | null) {
 	const size = imageDimensions(asset.payload)
 	return !!size && size.width > 0 && size.height > 0 && size.width <= 2048 && size.height <= 2048
 }
-const model = setup<
-	Context,
-	Event,
-	{ observe: typeof observe; load: typeof load; url: typeof url },
-	{},
-	{},
-	{
-		changedRow: undefined
-		pending: undefined
-		ready: undefined
-		validAsset: { asset: StoredAsset | null }
+const model = setup({
+	schemas: {
+		meta: types<{
+			name?: string
+			variant?: 'info' | 'error'
+			channel?: string
+			priority?: number
+		}>(),
+		context: types<Context>(),
+		events: {
+			ROWS: types<EventPayload<Event, 'ROWS'>>(),
+			FAILED: types<EventPayload<Event, 'FAILED'>>(),
+			UNKNOWN: types<EventPayload<Event, 'UNKNOWN'>>(),
+			RETRY: types<EventPayload<Event, 'RETRY'>>(),
+			IMAGE_ERROR: types<EventPayload<Event, 'IMAGE_ERROR'>>(),
+			URL: types<EventPayload<Event, 'URL'>>()
+		},
+		input: types<Input>(),
+		tags: types<string>(),
+		children: {
+			observe: types<import('xstate').ActorRefFrom<typeof observe>>(),
+			load: types<import('xstate').ActorRefFrom<typeof load>>(),
+			url: types<import('xstate').ActorRefFrom<typeof url>>()
+		}
 	},
-	never,
-	string,
-	Input
->({
 	actors: { observe, load, url },
 	guards: {
-		changedRow: ({ context, event }) =>
+		changedRow: ({ context, event }: { context: Context; event: Event }) =>
 			event.type === 'ROWS' &&
 			(context.row?.id !== event.rows[0]?.id ||
 				context.row?.status !== event.rows[0]?.status ||
 				context.row?.assetId !== event.rows[0]?.assetId),
-		pending: ({ context }) => !context.row || context.row.status === 'pending',
-		ready: ({ context }) => context.row?.status === 'ready',
-		validAsset: ({ context }, params) => validImageAsset(context, params.asset)
+		pending: ({ context }: { context: Context }) =>
+			!context.row || context.row.status === 'pending',
+		ready: ({ context }: { context: Context }) => context.row?.status === 'ready',
+		validAsset: ({ context }: { context: Context }, params: { asset: StoredAsset | null }) =>
+			validImageAsset(context, params.asset)
 	}
 })
-const report = (view: (context: Context) => ImageView) =>
-	sendParent<Context, Event, undefined, ImageViewReport, Event>(
-		({ context }: { context: Context }): ImageViewReport => ({
-			type: 'IMAGE_VIEW',
+const report =
+	(view: (context: Context) => ImageView) =>
+	(
+		{ context, parent }: { context: Context; parent: import('xstate').AnyActorRef | undefined },
+		enq: EnqueueObject<Event, never>
+	) => {
+		enq.sendTo(parent, {
+			type: 'IMAGE_VIEW' as const,
 			documentId: context.documentId,
 			sourceUrl: context.sourceUrl,
 			view: { ...view(context), ...(context.row ? { id: context.row.id } : {}) }
-		})
-	)
+		} satisfies ImageViewReport)
+	}
 
 export const imageViewMachine = model.createMachine({
 	id: 'image-view',
@@ -111,97 +128,133 @@ export const imageViewMachine = model.createMachine({
 	initial: 'observing',
 	states: {
 		observing: {
-			invoke: { src: 'observe', input: ({ context }) => context, onError: '.failed' },
+			invoke: {
+				id: 'observe',
+				src: 'observe',
+				input: ({ context }: { context: Context }) => context,
+				onError: { target: '.failed' }
+			},
 			initial: 'pending',
 			on: {
-				ROWS: {
-					guard: 'changedRow',
-					target: '.routing',
-					actions: assign({ row: ({ event }) => event.rows[0], asset: null, url: undefined })
+				ROWS: (args) => {
+					if (!args.guards.changedRow(args)) return
+					return {
+						target: '.routing',
+						context: { row: args.event.rows[0], asset: null, url: undefined }
+					}
 				},
-				FAILED: '.failed',
-				IMAGE_ERROR: {
-					guard: ({ context, event }) =>
-						event.type === 'IMAGE_ERROR' &&
-						context.row?.id === event.id &&
-						context.url === event.url,
-					target: '.failed',
-					actions: assign({ url: undefined })
+				FAILED: { target: '.failed' },
+				IMAGE_ERROR: (args) => {
+					const { context, event } = args
+					if (
+						!(
+							event.type === 'IMAGE_ERROR' &&
+							context.row?.id === event.id &&
+							context.url === event.url
+						)
+					)
+						return
+					return { target: '.failed', context: { url: undefined } }
 				},
-				RETRY: {
-					guard: ({ context, event }) =>
-						event.type === 'RETRY' &&
-						context.row?.id === event.id &&
-						context.row.status === 'ready',
-					target: '.loading',
-					actions: assign({ url: undefined })
+				RETRY: (args) => {
+					const { context, event } = args
+					if (
+						!(
+							event.type === 'RETRY' &&
+							context.row?.id === event.id &&
+							context.row.status === 'ready'
+						)
+					)
+						return
+					return { target: '.loading', context: { url: undefined } }
 				},
-				UNKNOWN: {
-					guard: ({ context, event }) =>
-						event.type === 'UNKNOWN' &&
-						event.sourceUrl === context.sourceUrl &&
-						context.row?.status !== 'ready',
-					target: '.unknown'
+				UNKNOWN: (args) => {
+					const { context, event } = args
+					if (
+						!(
+							event.type === 'UNKNOWN' &&
+							event.sourceUrl === context.sourceUrl &&
+							context.row?.status !== 'ready'
+						)
+					)
+						return
+					return { target: '.unknown' }
 				}
 			},
 			states: {
 				routing: {
-					always: [
-						{ guard: 'pending', target: 'pending' },
-						{ guard: 'ready', target: 'loading' },
-						{ target: 'failed' }
-					]
+					type: 'choice',
+					choice: (args) => {
+						if (args.guards.pending(args)) {
+							return { target: 'pending' }
+						}
+						if (args.guards.ready(args)) {
+							return { target: 'loading' }
+						}
+						return { target: 'failed' }
+					}
 				},
-				pending: { entry: report(() => ({ status: 'pending', retry: false })) },
+				pending: { entry: report(() => ({ status: 'pending' as const, retry: false })) },
 				unknown: {
-					meta: { name: t('status.save_unknown'), variant: 'error' },
+					meta: { name: t('status.save_unknown'), variant: 'error' as const },
 					entry: report(() => ({
-						status: 'unknown',
+						status: 'unknown' as const,
 						retry: false,
-						message: { text: t('status.save_unknown'), variant: 'error' }
+						message: { text: t('status.save_unknown'), variant: 'error' as const }
 					}))
 				},
 				failed: {
 					meta: {
 						name: t('status.failed_subject', { subject: action('get', 'image') }),
-						variant: 'error'
+						variant: 'error' as const
 					},
 					entry: report((context) => ({
-						status: 'failed',
+						status: 'failed' as const,
 						retry: !!context.row,
 						message: {
 							text: t('status.failed_subject', { subject: action('get', 'image') }),
-							variant: 'error'
+							variant: 'error' as const
 						}
 					}))
 				},
 				loading: {
-					entry: report(() => ({ status: 'pending', retry: false })),
+					entry: report(() => ({ status: 'pending' as const, retry: false })),
 					invoke: {
+						id: 'load',
 						src: 'load',
-						input: ({ context }) => context,
-						onDone: [
-							{
-								guard: { type: 'validAsset', params: ({ event }) => ({ asset: event.output }) },
-								target: 'owningURL',
-								actions: assign({ asset: ({ event }) => event.output })
-							},
-							{ target: 'failed' }
-						],
-						onError: 'failed'
+						input: ({ context }: { context: Context }) => context,
+						onDone: (args) => {
+							const { event } = args
+							if (args.guards.validAsset(args, { asset: event.output })) {
+								return { target: 'owningURL', context: { asset: event.output } }
+							}
+							return { target: 'failed' }
+						},
+						onError: { target: 'failed' }
 					}
 				},
 				owningURL: {
 					initial: 'creating',
-					invoke: { src: 'url', input: ({ context }) => context.asset!, onError: 'failed' },
+					invoke: {
+						id: 'url',
+						src: 'url',
+						input: ({ context }: { context: Context }) => context.asset!,
+						onError: { target: 'failed' }
+					},
 					states: {
 						creating: {
 							on: {
-								URL: { target: 'available', actions: assign({ url: ({ event }) => event.url }) }
+								URL: (args) => {
+									return { target: 'available', context: { url: args.event.url } }
+								}
 							}
 						},
 						available: {
-							entry: report((context) => ({ status: 'ready', retry: false, url: context.url! }))
+							entry: report((context) => ({
+								status: 'ready' as const,
+								retry: false,
+								url: context.url!
+							}))
 						}
 					}
 				}

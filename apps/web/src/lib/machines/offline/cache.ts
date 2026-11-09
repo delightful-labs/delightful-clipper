@@ -1,4 +1,6 @@
-import { assign, fromPromise, setup } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup, createAsyncLogic } from 'xstate'
+
 type Port = {
 	populate: () => Promise<void>
 	discard: () => Promise<void>
@@ -15,31 +17,36 @@ type Context = {
 }
 type Input = { mode: 'install' | 'activate'; port: Port }
 const actors = {
-	populate: fromPromise(({ input }: { input: Port }) => input.populate()),
-	discard: fromPromise(({ input }: { input: Port }) => input.discard()),
-	obsolete: fromPromise(({ input }: { input: Port }) => input.obsolete()),
-	remove: fromPromise(({ input }: { input: { port: Port; names: string[] } }) =>
-		input.port.remove(input.names)
-	),
-	claim: fromPromise(({ input }: { input: Port }) => input.claim())
+	populate: createAsyncLogic({ run: ({ input }: { input: Port }) => input.populate() }),
+	discard: createAsyncLogic({ run: ({ input }: { input: Port }) => input.discard() }),
+	obsolete: createAsyncLogic({ run: ({ input }: { input: Port }) => input.obsolete() }),
+	remove: createAsyncLogic({
+		run: ({ input }: { input: { port: Port; names: string[] } }) => input.port.remove(input.names)
+	}),
+	claim: createAsyncLogic({ run: ({ input }: { input: Port }) => input.claim() })
 }
 function port(context: Context) {
 	if (!context.port) throw new Error('Missing shell cache port')
 	return context.port
 }
 const input = ({ context }: { context: Context }) => port(context)
-export const shellCacheMachine = setup<
-	Context,
-	{ type: 'UNUSED' },
-	typeof actors,
-	{},
-	{},
-	{},
-	never,
-	string,
-	Input,
-	'ready' | 'failed'
->({ actors }).createMachine({
+export const shellCacheMachine = setup({
+	schemas: {
+		context: types<Context>(),
+		events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+		input: types<Input>(),
+		output: types<'ready' | 'failed'>(),
+		tags: types<string>(),
+		children: {
+			populate: types<import('xstate').ActorRefFrom<(typeof actors)['populate']>>(),
+			discard: types<import('xstate').ActorRefFrom<(typeof actors)['discard']>>(),
+			obsolete: types<import('xstate').ActorRefFrom<(typeof actors)['obsolete']>>(),
+			remove: types<import('xstate').ActorRefFrom<(typeof actors)['remove']>>(),
+			claim: types<import('xstate').ActorRefFrom<(typeof actors)['claim']>>()
+		}
+	},
+	actors
+}).createMachine({
 	id: 'shell-cache',
 	initial: 'route',
 	context: ({ input }) => ({
@@ -52,31 +59,79 @@ export const shellCacheMachine = setup<
 	output: ({ context }) => context.result,
 	states: {
 		route: {
-			always: [
-				{ guard: ({ context }) => context.mode === 'install', target: 'populating' },
-				{ target: 'listing' }
-			]
+			type: 'choice',
+			choice: (args) => {
+				if (args.context.mode === 'install') {
+					return { target: 'populating' }
+				}
+				return { target: 'listing' }
+			}
 		},
-		populating: { invoke: { src: 'populate', input, onDone: 'ready', onError: 'discarding' } },
-		discarding: { invoke: { src: 'discard', input, onDone: 'failed', onError: 'failed' } },
+		populating: {
+			invoke: {
+				id: 'populate',
+				src: 'populate',
+				input,
+				onDone: { target: 'ready' },
+				onError: { target: 'discarding' }
+			}
+		},
+		discarding: {
+			invoke: {
+				id: 'discard',
+				src: 'discard',
+				input,
+				onDone: { target: 'failed' },
+				onError: { target: 'failed' }
+			}
+		},
 		listing: {
 			invoke: {
+				id: 'obsolete',
 				src: 'obsolete',
 				input,
-				onDone: { target: 'removing', actions: assign({ names: ({ event }) => event.output }) },
-				onError: { target: 'claiming', actions: assign({ cleanupFailed: true }) }
+				onDone: (args) => {
+					return { target: 'removing', context: { names: args.event.output } }
+				},
+				onError: () => {
+					return { target: 'claiming', context: { cleanupFailed: true } }
+				}
 			}
 		},
 		removing: {
 			invoke: {
+				id: 'remove',
 				src: 'remove',
-				input: ({ context }) => ({ port: port(context), names: context.names }),
-				onDone: 'claiming',
-				onError: { target: 'claiming', actions: assign({ cleanupFailed: true }) }
+				input: ({ context }: { context: Context }) => ({
+					port: port(context),
+					names: context.names
+				}),
+				onDone: { target: 'claiming' },
+				onError: () => {
+					return { target: 'claiming', context: { cleanupFailed: true } }
+				}
 			}
 		},
-		claiming: { invoke: { src: 'claim', input, onDone: 'ready', onError: 'failed' } },
-		ready: { type: 'final', entry: assign({ result: 'ready', port: undefined, names: [] }) },
-		failed: { type: 'final', entry: assign({ result: 'failed', port: undefined, names: [] }) }
+		claiming: {
+			invoke: {
+				id: 'claim',
+				src: 'claim',
+				input,
+				onDone: { target: 'ready' },
+				onError: { target: 'failed' }
+			}
+		},
+		ready: {
+			type: 'final' as const,
+			entry: () => {
+				return { context: { result: 'ready', port: undefined, names: [] } }
+			}
+		},
+		failed: {
+			type: 'final' as const,
+			entry: () => {
+				return { context: { result: 'failed', port: undefined, names: [] } }
+			}
+		}
 	}
 })

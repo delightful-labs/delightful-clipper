@@ -39,12 +39,13 @@ it('refuses website senders before writing connection metadata', async () => {
 })
 it('keeps a confirmed account durable even if no offscreen runtime exists yet', async () => {
 	const write = vi.fn(async () => {})
+	const identity = vi.fn(() => id)
 	const actor = createActor(
 		createConnectStoreMachine({
 			id: 'clipper',
 			pages: ['chrome-extension://clipper/signin.html'],
 			scope,
-			idForConfirmation: () => id,
+			idForConfirmation: identity,
 			write,
 			notify: async () => {
 				throw new Error('runtime not started')
@@ -58,9 +59,11 @@ it('keeps a confirmed account durable even if no offscreen runtime exists yet', 
 		}
 	)
 	const result = toPromise(actor)
+	expect(identity).not.toHaveBeenCalled()
 	actor.start()
 	expect(await result).toEqual({ accepted: true })
 	expect(write).toHaveBeenCalledWith(connection)
+	expect(identity).toHaveBeenCalledOnce()
 })
 
 it('does not notify the runtime or grant confirmation when local persistence fails', async () => {

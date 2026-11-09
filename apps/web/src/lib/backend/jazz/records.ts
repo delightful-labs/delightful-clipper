@@ -101,8 +101,8 @@ export function createLibraryRecords(
 		saveMachine: createSaveRecordMachine({
 			isCurrent,
 			prepare: (request) => prepareSave(libraryId, request),
-			intent,
-			publish
+			intent: (spawn, input) => spawn(intent, { input }),
+			publish: (spawn, input) => spawn(publish, { input })
 		}),
 		readCapabilities: {
 			isCurrent,
@@ -185,7 +185,9 @@ export function createLibraryRecords(
 				{ onUpdate: dirty, onError: error },
 				{ tier: ReadTier.LocalFirst }
 			),
-		articles: createArticleRecords(db, libraryId, isCurrent, records.saveMachine),
+		articles: createArticleRecords(db, libraryId, isCurrent, (spawn, input) =>
+			spawn(records.saveMachine, { input })
+		),
 		isCurrent,
 		hasDocument: async (id: string) => {
 			const row = await db.one(app.documents.where({ id, libraryId }), {

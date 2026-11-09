@@ -138,6 +138,7 @@ it('opens one sign-in popup and saves nothing when it is canceled', async () => 
 	await waitFor(actor, (s) => s.matches('waitingForSignIn'))
 	actor.send({ type: 'CLIP', tab: { id: 7, url } })
 	expect(popup).toHaveBeenCalledOnce()
+	expect(popup).toHaveBeenCalledWith(id)
 	expect(inspect).not.toHaveBeenCalled()
 	expect(persist).not.toHaveBeenCalled()
 	closed()

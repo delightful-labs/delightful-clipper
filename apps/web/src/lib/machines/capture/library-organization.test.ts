@@ -44,7 +44,10 @@ function fixture(local = async () => {}, global = async () => {}) {
 		persistLocal: local,
 		rollback: () => true
 	})
-	const machine = createOrganizationMachine(stage, () => true)
+	const machine = createOrganizationMachine(
+		(spawn, input) => spawn(stage, { input }),
+		() => true
+	)
 	const actor = createActor(libraryMachine, {
 		input: testLibraryCapability(candidate, {
 			spawnOrganization: (spawn, request) => spawn(machine, { input: request })

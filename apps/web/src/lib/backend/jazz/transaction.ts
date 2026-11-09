@@ -15,8 +15,9 @@ export function hasDetachedTransactions() {
 }
 
 export type TransactionResource = {
-	tx: Transaction<'mergeable'>
-	write?: WriteHandle
+	readonly tx: Transaction<'mergeable'>
+	readonly commit: () => WriteHandle
+	readonly global: () => Promise<void>
 }
 /** Scope is checked at transaction admission and the atomic commit boundary.
  * The owning actor drains an opened transaction; domain I/O leaves do not police its lifetime. */
@@ -28,23 +29,29 @@ export function transactionLifecycle(db: Pick<Db, 'beginTransaction'>, isCurrent
 		retainDetached: retainDetachedTransaction<TransactionResource, WriteHandle>,
 		open: (): TransactionResource => {
 			assertCurrent()
-			return { tx: db.beginTransaction() }
+			const tx = db.beginTransaction()
+			let committed: WriteHandle | undefined
+			return {
+				tx,
+				commit: () => {
+					const write = tx.commit()
+					committed = write
+					return write
+				},
+				global: () => {
+					if (!committed) throw new Error('Missing committed receipt')
+					return committed.wait({ tier: 'global' })
+				}
+			}
 		},
 		commit: (resource: TransactionResource) => {
 			assertCurrent()
-			const write = resource.tx.commit()
-			resource.write = write
-			return write
+			return resource.commit()
 		},
 		persistLocal: (write: WriteHandle) => write.wait({ tier: 'local' }),
 		rollback: (resource: TransactionResource) => resource.tx.rollback()
 	}
 }
 export function transactionReceipt(resource: TransactionResource): SyncReceipt {
-	return {
-		global: () => {
-			if (!resource.write) throw new Error('Missing committed receipt')
-			return resource.write.wait({ tier: 'global' })
-		}
-	}
+	return { global: resource.global }
 }

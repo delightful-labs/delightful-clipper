@@ -71,7 +71,7 @@ export async function resetSearchSaved() {
 	const runtime = searchRuntime
 	searchRuntime = undefined
 	if (runtime) {
-		runtime.actor.send({ type: 'SHUTDOWN' })
+		runtime.actor.send({ type: 'SHUTDOWN' as const })
 		await toPromise(runtime.actor)
 	}
 }
@@ -107,7 +107,7 @@ export async function searchSaved(
 				},
 				worker: (report) => ({
 					send: (event) => {
-						if (event.type === 'STOP') report({ type: 'BACKGROUND_CLOSED' })
+						if (event.type === 'STOP') report({ type: 'BACKGROUND_CLOSED' as const })
 					},
 					stop: async () => {}
 				})
@@ -117,8 +117,8 @@ export async function searchSaved(
 	}
 	const actor = searchRuntime.actor
 
-	actor.send({ type: 'QUERY', query })
-	actor.send({ type: 'FILTER', view, favorites: false })
+	actor.send({ type: 'QUERY' as const, query })
+	actor.send({ type: 'FILTER' as const, view, favorites: false })
 	await waitFor(
 		actor,
 		(s) =>

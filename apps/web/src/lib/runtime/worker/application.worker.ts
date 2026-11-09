@@ -1,8 +1,8 @@
 import { imageUrlSchema } from '../../images/schema.js'
 import { bindWorkerConnectivity } from '../../offline/connectivity.js'
 /// <reference lib="webworker" />
-import { createActor } from 'xstate'
-import type { AnyActorRef } from 'xstate'
+import { createActor, type AnyActorRef } from 'xstate'
+
 import { z } from 'zod'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { accountInput } from '../../backend/jazz/account.js'
@@ -54,7 +54,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 				}
 				const surface = remoteReaderSurface(message.port, message.fullscreen)
 				const event = {
-					type: 'ATTACH_BOUND',
+					type: 'ATTACH_BOUND' as const,
 					scope: message.scope,
 					surface,
 					documentId: message.documentId,
@@ -80,7 +80,11 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 			} else {
 				host.send(message)
 				if (message.type === 'LIBRARY' || message.type === 'TAG_FORM')
-					self.postMessage({ type: 'RECEIVED', requestId: message.requestId, scope: message.scope })
+					self.postMessage({
+						type: 'RECEIVED' as const,
+						requestId: message.requestId,
+						scope: message.scope
+					})
 			}
 		}
 		return
@@ -92,18 +96,21 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 	const storage = accountStorageClient(storagePort)
 	const broker = brokerHostClient(brokerPort)
 	const key = accountStorageKey(serverUrl)
-	self.postMessage({ type: 'STORAGE_NAMESPACE', key })
+	self.postMessage({ type: 'STORAGE_NAMESPACE' as const, key })
 	const input = accountInput({
 		serverUrl,
 		env: 'clipper',
 		store: createWorkerAccountStore(key, storage),
 		runtimeSources: { wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION, browserWorkerHost: broker }
 	})
-	const actor = createActor(workerHostMachine, { input, inspect: inspectMachines })
+	const actor = createActor(workerHostMachine, {
+		input: { ...input, scope: crypto.randomUUID() },
+		inspect: inspectMachines
+	})
 	host = actor
 	const publish = () => {
 		if (actor.getSnapshot().matches('failed')) {
-			self.postMessage({ type: 'FAILED' })
+			self.postMessage({ type: 'FAILED' as const })
 			return
 		}
 		const application = actor.getSnapshot().children.application
@@ -111,12 +118,12 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		const binding = selectRecoveryBinding(snapshot)
 		if (binding?.capability !== observedRecovery) {
 			observedRecovery = binding?.capability
-			actor.send({ type: 'BIND_RECOVERY', binding })
+			actor.send({ type: 'BIND_RECOVERY' as const, binding })
 			return
 		}
 		const recovery = actor.getSnapshot().context.recovery
 		self.postMessage({
-			type: 'RECOVERY',
+			type: 'RECOVERY' as const,
 			scope: actor.getSnapshot().context.scope,
 			available: !!recovery,
 			view: recoveryView(recovery)
@@ -124,7 +131,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		const library = selectLibraryActor(snapshot)
 		if (library !== observedLibrary) {
 			observedLibrary = library
-			actor.send({ type: 'BIND_LIBRARY', library })
+			actor.send({ type: 'BIND_LIBRARY' as const, library, scope: crypto.randomUUID() })
 			return
 		}
 		const watched: AnyActorRef[] = [
@@ -148,6 +155,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		for (const surface of surfaces) {
 			if (
 				readerContext?.attachment?.surface !== surface &&
+				readerContext?.pendingAttachment?.surface !== surface &&
 				readerContext?.display !== surface.fullscreen
 			) {
 				surface.dispose()
@@ -169,9 +177,9 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 			subscriptions.clear()
 			storage.close()
 			broker.close()
-			self.postMessage({ type: 'CLOSED' })
+			self.postMessage({ type: 'CLOSED' as const })
 		},
-		error: () => self.postMessage({ type: 'FAILED' })
+		error: () => self.postMessage({ type: 'FAILED' as const })
 	})
 	actor.start()
 }

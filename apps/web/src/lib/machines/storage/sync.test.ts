@@ -1,12 +1,12 @@
 import { expect, it } from 'vitest'
-import { createActor, fromCallback, toPromise, waitFor } from 'xstate'
+import { createActor, createCallbackLogic, toPromise, waitFor } from 'xstate'
 import { storageSyncMachine } from './sync.js'
 import { syncOwnerMachine } from './sync-owner.js'
 import type { SyncReport } from '../../contracts/storage.js'
 function fixture() {
 	const reports: SyncReport[] = []
 	const sink = createActor(
-		fromCallback<SyncReport>(({ receive }) => receive((event) => reports.push(event)))
+		createCallbackLogic<SyncReport>(({ receive }) => receive((event) => reports.push(event)))
 	).start()
 	const actor = createActor(syncOwnerMachine, { input: { reportTo: sink } }).start()
 	return {

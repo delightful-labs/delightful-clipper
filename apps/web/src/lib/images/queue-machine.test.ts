@@ -191,7 +191,9 @@ it('honors the gateway Retry-After delay instead of exhausting retries inside it
 			throw new ImageFetchError('rateLimited', 60000)
 		}),
 		{ actor } = fixture(request)
-	await vi.advanceTimersByTimeAsync(59999)
+	await vi.advanceTimersByTimeAsync(30000)
+	actor.send({ type: 'WAKE' })
+	await vi.advanceTimersByTimeAsync(29999)
 	expect(request).toHaveBeenCalledOnce()
 	await vi.advanceTimersByTimeAsync(1)
 	expect(request).toHaveBeenCalledTimes(2)

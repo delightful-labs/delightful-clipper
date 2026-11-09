@@ -1,4 +1,5 @@
-import { assign, fromPromise, sendTo, setup } from 'xstate'
+import { types, setup, createAsyncLogic } from 'xstate'
+
 import type { SyncReceipt } from '../../contracts/storage.js'
 import type { TransactionResource } from '../../backend/jazz/transaction.js'
 import type { TransactionDomainInput } from './domain-transaction.js'
@@ -21,37 +22,35 @@ export function transactionDomainModel<Draft, Facts>(
 	reason: string
 ) {
 	const actors = {
-		read: fromPromise(({ input }: { input: TransactionDomainInput<Draft> }) =>
-			read(input.resource, input.attempt.draft, input.attempt.operationId)
-		)
+		read: createAsyncLogic({
+			run: ({ input }: { input: TransactionDomainInput<Draft> }) =>
+				read(input.resource, input.attempt.draft, input.attempt.operationId)
+		})
 	}
-	return setup<
-		DomainContext<Draft, Facts>,
-		{ type: 'STAGE' },
-		typeof actors,
-		{},
-		{
-			rememberFacts: { facts: Facts }
-			allow: undefined
-			block: undefined
+	return setup({
+		schemas: {
+			context: types<DomainContext<Draft, Facts>>(),
+			events: { STAGE: types(), STAGED: types() },
+			input: types<TransactionDomainInput<Draft>>(),
+			output: types<SyncReceipt>(),
+			tags: types<string>(),
+			children: { read: types<import('xstate').ActorRefFrom<(typeof actors)['read']>>() }
 		},
-		{},
-		never,
-		string,
-		TransactionDomainInput<Draft>,
-		SyncReceipt
-	>({
 		actors,
 		actions: {
-			rememberFacts: assign({ facts: (_, params) => params.facts }),
-			allow: sendTo(({ context }) => context.owner, {
-				type: 'PREPARED',
-				assessment: { outcome: 'eligible' }
+			rememberFacts: (_: unknown, params: { facts: Facts }) => ({
+				context: { facts: params.facts }
 			}),
-			block: sendTo(({ context }) => context.owner, {
-				type: 'PREPARED',
-				assessment: { outcome: 'blocked', reason }
-			})
+			allow: ({ context }: { context: DomainContext<Draft, Facts> }) =>
+				context.owner.send({
+					type: 'PREPARED' as const,
+					assessment: { outcome: 'eligible' as const }
+				}),
+			block: ({ context }: { context: DomainContext<Draft, Facts> }) =>
+				context.owner.send({
+					type: 'PREPARED' as const,
+					assessment: { outcome: 'blocked' as const, reason }
+				})
 		}
 	})
 }

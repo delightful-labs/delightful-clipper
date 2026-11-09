@@ -1,4 +1,3 @@
-import { and, not } from 'xstate'
 import type { OrganizationDraft } from './organize.js'
 import { canOrganizeArticle } from '../../capture/organization.js'
 import type { TransactionResource } from '../../backend/jazz/transaction.js'
@@ -34,65 +33,133 @@ export function createOrganizationDomain(io: {
 			failParent: () => {
 				throw new Error('Missing organization parent')
 			},
-			insertArticle: ({ context }) => io.insertArticle(context.resource, required(context.facts)),
-			insertDocument: ({ context }) => io.insertDocument(context.resource, required(context.facts)),
-			insertTagArticle: ({ context }) =>
-				io.insertTagArticle(context.resource, required(context.facts)),
-			insertTagDocument: ({ context }) =>
-				io.insertTagDocument(context.resource, required(context.facts))
+			insertArticle: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+			}) => io.insertArticle(context.resource, required(context.facts)),
+			insertDocument: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+			}) => io.insertDocument(context.resource, required(context.facts)),
+			insertTagArticle: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+			}) => io.insertTagArticle(context.resource, required(context.facts)),
+			insertTagDocument: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+			}) => io.insertTagDocument(context.resource, required(context.facts))
 		}
 	})
 	return model.createMachine({
 		id: 'organization-domain',
 		context: domainContext<OrganizationDraft, OrganizationFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: { type: 'parentAvailable', params: ({ event }) => ({ facts: event.output }) },
-							target: 'ready',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{ target: 'blocked' }
-					]
+					onDone: (args, _enq) => {
+						let patch = {}
+						if (
+							args.guards.parentAvailable(args, (({ event }) => ({ facts: event.output }))(args))
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'ready', context: patch }
+						}
+						return { target: 'blocked', context: patch }
+					}
 				}
 			},
 			ready: {
-				entry: 'allow',
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
 				on: {
-					STAGE: [
-						{
-							guard: and(['tagAssignment', 'hasArticleParent']),
-							target: 'done',
-							actions: 'insertTagArticle'
-						},
-						{
-							guard: and(['tagAssignment', 'hasDocumentParent']),
-							target: 'done',
-							actions: 'insertTagDocument'
-						},
-						{
-							guard: and([not('tagAssignment'), 'hasArticleParent']),
-							target: 'done',
-							actions: 'insertArticle'
-						},
-						{
-							guard: and([not('tagAssignment'), 'hasDocumentParent']),
-							target: 'done',
-							actions: 'insertDocument'
-						},
-						{ target: 'invalidParent' }
-					]
+					STAGE: (args, _enq) => {
+						let patch = {}
+						if (args.guards.tagAssignment(args) && args.guards.hasArticleParent(args)) {
+							return { target: 'insertTagArticle', context: patch }
+						}
+						if (args.guards.tagAssignment(args) && args.guards.hasDocumentParent(args)) {
+							return { target: 'insertTagDocument', context: patch }
+						}
+						if (!args.guards.tagAssignment(args) && args.guards.hasArticleParent(args)) {
+							return { target: 'insertArticle', context: patch }
+						}
+						if (!args.guards.tagAssignment(args) && args.guards.hasDocumentParent(args)) {
+							return { target: 'insertDocument', context: patch }
+						}
+						return { target: 'invalidParent', context: patch }
+					}
 				}
 			},
-			invalidParent: { entry: 'failParent' },
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			invalidParent: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.failParent()
+					})
+				}
+			},
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' as const },
+			insertTagArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertTagArticle(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertTagDocument: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertTagDocument(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertArticle(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertDocument: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertDocument(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }

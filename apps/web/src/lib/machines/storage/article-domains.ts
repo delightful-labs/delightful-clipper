@@ -21,32 +21,72 @@ export function createArticleEnsureDomain(io: {
 			articleMissing: (_, { facts }: { facts: ArticleEnsureFacts }) => !hasExistingArticle(facts)
 		},
 		actions: {
-			insertArticle: ({ context }) => io.insertArticle(context.resource, required(context.facts))
+			insertArticle: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<ArticleDraft, ArticleEnsureFacts>
+			}) => io.insertArticle(context.resource, required(context.facts))
 		}
 	})
 	return model.createMachine({
 		id: 'article-ensure-domain',
 		context: domainContext<ArticleDraft, ArticleEnsureFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('./domain-model.js').DomainContext<ArticleDraft, ArticleEnsureFacts>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: { type: 'articleMissing', params: ({ event }) => ({ facts: event.output }) },
-							target: 'ready',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{ target: 'blocked' }
-					]
+					onDone: (args, _enq) => {
+						let patch = {}
+						if (
+							args.guards.articleMissing(args, (({ event }) => ({ facts: event.output }))(args))
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'ready', context: patch }
+						}
+						return { target: 'blocked', context: patch }
+					}
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: { target: 'done', actions: 'insertArticle' } } },
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			ready: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
+				on: {
+					STAGE: (_args, _enq) => {
+						let patch = {}
+						return { target: 'insertArticle', context: patch }
+					}
+				}
+			},
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' as const },
+			insertArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertArticle(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }
@@ -63,41 +103,89 @@ export function createArticleAttachmentDomain(io: {
 			articleExists: ({ context }) => hasExistingArticle(required(context.facts))
 		},
 		actions: {
-			attachContent: ({ context }) => io.attachContent(context.resource, required(context.facts)),
-			createArticle: ({ context }) => io.createArticle(context.resource, required(context.facts))
+			attachContent: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<ArticleDraft, ArticleAttachmentFacts>
+			}) => io.attachContent(context.resource, required(context.facts)),
+			createArticle: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<ArticleDraft, ArticleAttachmentFacts>
+			}) => io.createArticle(context.resource, required(context.facts))
 		}
 	})
 	return model.createMachine({
 		id: 'article-attachment-domain',
 		context: domainContext<ArticleDraft, ArticleAttachmentFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('./domain-model.js').DomainContext<ArticleDraft, ArticleAttachmentFacts>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: { type: 'canAttachContent', params: ({ event }) => ({ facts: event.output }) },
-							target: 'ready',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{ target: 'blocked' }
-					]
+					onDone: (args, _enq) => {
+						let patch = {}
+						if (
+							args.guards.canAttachContent(args, (({ event }) => ({ facts: event.output }))(args))
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'ready', context: patch }
+						}
+						return { target: 'blocked', context: patch }
+					}
 				}
 			},
 			ready: {
-				entry: 'allow',
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
 				on: {
-					STAGE: [
-						{ guard: 'articleExists', target: 'done', actions: 'attachContent' },
-						{ target: 'done', actions: 'createArticle' }
-					]
+					STAGE: (args, _enq) => {
+						let patch = {}
+						if (args.guards.articleExists(args)) {
+							return { target: 'attachContent', context: patch }
+						}
+						return { target: 'createArticle', context: patch }
+					}
 				}
 			},
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' as const },
+			attachContent: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.attachContent(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			createArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.createArticle(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }
@@ -112,32 +200,72 @@ export function createArticleFailureDomain(io: {
 				isPendingArticle(facts.article)
 		},
 		actions: {
-			recordFailure: ({ context }) => io.recordFailure(context.resource, required(context.facts))
+			recordFailure: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<ArticleFailure, ArticleFailureFacts>
+			}) => io.recordFailure(context.resource, required(context.facts))
 		}
 	})
 	return model.createMachine({
 		id: 'article-failure-domain',
 		context: domainContext<ArticleFailure, ArticleFailureFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('./domain-model.js').DomainContext<ArticleFailure, ArticleFailureFacts>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: { type: 'articlePending', params: ({ event }) => ({ facts: event.output }) },
-							target: 'ready',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{ target: 'blocked' }
-					]
+					onDone: (args, _enq) => {
+						let patch = {}
+						if (
+							args.guards.articlePending(args, (({ event }) => ({ facts: event.output }))(args))
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'ready', context: patch }
+						}
+						return { target: 'blocked', context: patch }
+					}
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: { target: 'done', actions: 'recordFailure' } } },
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			ready: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
+				on: {
+					STAGE: (_args, _enq) => {
+						let patch = {}
+						return { target: 'recordFailure', context: patch }
+					}
+				}
+			},
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' as const },
+			recordFailure: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.recordFailure(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }

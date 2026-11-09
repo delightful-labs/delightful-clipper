@@ -1,4 +1,6 @@
-import { assign, setup } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup } from 'xstate'
+
 type Owner = { start: number; count: number; active: number }
 type Request = { owner: string; now: number; reply: (lease: number | undefined) => void }
 type Context = {
@@ -17,43 +19,56 @@ function owner(context: Context) {
 	return Object.hasOwn(context.owners, id) ? context.owners[id] : undefined
 }
 /** Process-local bounded quota. Lease identity makes release idempotent. */
-const admissionModel = setup<Context, Event>({}).extend({
+const admissionModel = setup({
+	schemas: {
+		context: types<Context>(),
+		events: {
+			ACQUIRE: types<EventPayload<Event, 'ACQUIRE'>>(),
+			RELEASE: types<EventPayload<Event, 'RELEASE'>>()
+		}
+	},
 	actions: {
-		resetWindow: assign(({ context }) => ({
-			owners: {
-				...context.owners,
-				[request(context).owner]: {
-					start: request(context).now,
-					count: 0,
-					active: owner(context)?.active ?? 0
-				}
-			}
-		})),
-		openWindow: assign(({ context }) => ({
-			owners: {
-				...context.owners,
-				[request(context).owner]: { start: request(context).now, count: 0, active: 0 }
-			}
-		})),
-		grantLease: assign(({ context }) => {
-			const value = owner(context)
-			if (!value) throw new Error('Missing quota window')
-			return {
-				sequence: context.sequence + 1,
-				leases: { ...context.leases, [context.sequence + 1]: request(context).owner },
+		resetWindow: ({ context }: { context: Context }) => ({
+			context: {
 				owners: {
 					...context.owners,
 					[request(context).owner]: {
-						...value,
-						active: value.active + 1,
-						count: value.count + 1
+						start: request(context).now,
+						count: 0,
+						active: owner(context)?.active ?? 0
 					}
 				}
 			}
 		}),
-		replyGranted: ({ context }) => request(context).reply(context.sequence),
-		denyLease: ({ context }) => request(context).reply(undefined),
-		clearRequest: assign({ request: undefined })
+		openWindow: ({ context }: { context: Context }) => ({
+			context: {
+				owners: {
+					...context.owners,
+					[request(context).owner]: { start: request(context).now, count: 0, active: 0 }
+				}
+			}
+		}),
+		grantLease: ({ context }: { context: Context }) => {
+			const value = owner(context)
+			if (!value) throw new Error('Missing quota window')
+			return {
+				context: {
+					sequence: context.sequence + 1,
+					leases: { ...context.leases, [context.sequence + 1]: request(context).owner },
+					owners: {
+						...context.owners,
+						[request(context).owner]: {
+							...value,
+							active: value.active + 1,
+							count: value.count + 1
+						}
+					}
+				}
+			}
+		},
+		replyGranted: ({ context }: { context: Context }) => request(context).reply(context.sequence),
+		denyLease: ({ context }: { context: Context }) => request(context).reply(undefined),
+		clearRequest: () => ({ context: { request: undefined } })
 	}
 })
 export const captureAdmissionMachine = admissionModel.createMachine({
@@ -63,72 +78,85 @@ export const captureAdmissionMachine = admissionModel.createMachine({
 	states: {
 		accepting: {
 			on: {
-				ACQUIRE: {
-					target: 'checking',
-					actions: assign({
-						request: ({ event }) => ({ owner: event.owner, now: event.now, reply: event.reply })
-					})
+				ACQUIRE: (args) => {
+					const { event } = args
+					return {
+						target: 'checking',
+						context: { request: { owner: event.owner, now: event.now, reply: event.reply } }
+					}
 				},
-				RELEASE: {
-					guard: ({ context, event }) => context.leases[event.lease] !== undefined,
-					actions: assign(({ context, event }) => {
-						const id = context.leases[event.lease]
-						if (id === undefined || !context.owners[id])
-							throw new Error('Missing active lease owner')
-						return {
-							leases: Object.fromEntries(
-								Object.entries(context.leases).filter(([lease]) => lease !== String(event.lease))
-							),
-							owners: {
-								...context.owners,
-								[id]: { ...context.owners[id], active: context.owners[id].active - 1 }
+				RELEASE: (args) => {
+					const { context, event } = args
+					if (!(context.leases[event.lease] !== undefined)) return
+					return {
+						context: (({ context, event }) => {
+							const id = context.leases[event.lease]
+							if (id === undefined || !context.owners[id])
+								throw new Error('Missing active lease owner')
+							return {
+								leases: Object.fromEntries(
+									Object.entries(context.leases).filter(([lease]) => lease !== String(event.lease))
+								),
+								owners: {
+									...context.owners,
+									[id]: { ...context.owners[id], active: context.owners[id].active - 1 }
+								}
 							}
-						}
-					})
+						})(args)
+					}
 				}
 			}
 		},
 		checking: {
-			entry: assign(({ context }) => ({
-				owners: Object.fromEntries(
-					Object.entries(context.owners).filter(
-						([, value]) => value.active !== 0 || request(context).now - value.start < 60000
-					)
-				)
-			})),
-			always: [
-				{
-					guard: ({ context }) => Object.keys(context.leases).length >= 4,
-					target: 'accepting',
-					actions: ['denyLease', 'clearRequest']
-				},
-				{
-					guard: ({ context }) => !owner(context) && Object.keys(context.owners).length >= 1024,
-					target: 'accepting',
-					actions: ['denyLease', 'clearRequest']
-				},
-				{ guard: ({ context }) => !owner(context), target: 'checkingOwner', actions: 'openWindow' },
-				{
-					guard: ({ context }) => request(context).now - (owner(context)?.start ?? 0) >= 60000,
-					target: 'checkingOwner',
-					actions: 'resetWindow'
-				},
-				{ target: 'checkingOwner' }
-			]
+			entry: (args) => {
+				const { context } = args
+				return {
+					context: {
+						owners: Object.fromEntries(
+							Object.entries(context.owners).filter(
+								([, value]) => value.active !== 0 || request(context).now - value.start < 60000
+							)
+						)
+					}
+				}
+			},
+			always: (args, enq) => {
+				const { context } = args
+				if (Object.keys(context.leases).length >= 4) {
+					enq(args.actions.denyLease, args)
+					return { target: 'accepting', context: args.actions.clearRequest().context }
+				}
+				if (!owner(context) && Object.keys(context.owners).length >= 1024) {
+					enq(args.actions.denyLease, args)
+					return { target: 'accepting', context: args.actions.clearRequest().context }
+				}
+				if (!owner(context)) {
+					return { target: 'checkingOwner', context: args.actions.openWindow(args).context }
+				}
+				if (request(context).now - (owner(context)?.start ?? 0) >= 60000) {
+					return { target: 'checkingOwner', context: args.actions.resetWindow(args).context }
+				}
+				return { target: 'checkingOwner' }
+			}
 		},
 		checkingOwner: {
-			always: [
-				{
-					guard: ({ context }) =>
-						(owner(context)?.active ?? 0) >= 2 || (owner(context)?.count ?? 0) >= 20,
-					target: 'accepting',
-					actions: ['denyLease', 'clearRequest']
-				},
-				{
-					target: 'accepting',
-					actions: ['grantLease', 'replyGranted', 'clearRequest']
+			always: (args, enq) => {
+				const { context } = args
+				if ((owner(context)?.active ?? 0) >= 2 || (owner(context)?.count ?? 0) >= 20) {
+					enq(args.actions.denyLease, args)
+					return { target: 'accepting', context: args.actions.clearRequest().context }
 				}
-			]
+				{
+					let context = args.context
+					let patch = {}
+					patch = { ...patch, ...args.actions.grantLease(args).context }
+					context = { ...args.context, ...patch }
+					enq(args.actions.replyGranted, { ...args, context })
+					patch = { ...patch, ...args.actions.clearRequest().context }
+					context = { ...args.context, ...patch }
+					return { target: 'accepting', context: patch }
+				}
+			}
 		}
 	}
 })

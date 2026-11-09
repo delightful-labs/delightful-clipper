@@ -1,4 +1,6 @@
-import { and, assign, fromPromise, setup, stateIn } from 'xstate'
+import type { EventPayload } from '../machines/events.js'
+import { types, setup, createAsyncLogic, matchesState } from 'xstate'
+
 import type { NoteDraftRecord } from './schema.js'
 import { noteDraftRecordSchema } from './schema.js'
 import {
@@ -19,64 +21,59 @@ type Event = { type: 'EDIT'; record: NoteDraftRecord } | { type: 'RETRY' | 'SHUT
 /** Serial local-draft ownership is independent of source writes and connectivity.
  * Shutdown drains edits already admitted under the original account binding. */
 const actors = {
-	persist: fromPromise(
-		async ({ input }: { input: { store: NoteDraftStore; record: NoteDraftRecord } }) => {
+	persist: createAsyncLogic({
+		run: async ({ input }: { input: { store: NoteDraftStore; record: NoteDraftRecord } }) => {
 			await input.store.write(input.record)
 			return input.record
 		}
-	)
+	})
 }
-export const noteDraftMachine = setup<
-	Context,
-	Event,
-	typeof actors,
-	{},
-	{
-		enqueue: { record: NoteDraftRecord }
-		issue: undefined
-		acknowledge: { record: NoteDraftRecord }
-		retainFailed: undefined
+export const noteDraftMachine = setup({
+	schemas: {
+		context: types<Context>(),
+		events: {
+			EDIT: types<EventPayload<Event, 'EDIT'>>(),
+			RETRY: types<EventPayload<Event, 'RETRY'>>(),
+			SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>()
+		},
+		input: types<Input>(),
+		output: types<{ unsaved: NoteDraftRecord[] }>(),
+		tags: types<string>(),
+		children: { persist: types<import('xstate').ActorRefFrom<(typeof actors)['persist']>>() }
 	},
-	{
-		queued: undefined
-		stopping: undefined
-		accepting: undefined
-		currentBinding: undefined
-		admissibleEdit: undefined
-		canEdit: undefined
-	},
-	never,
-	string,
-	Input,
-	{ unsaved: NoteDraftRecord[] }
->({
 	actors,
 	guards: {
-		queued: ({ context }) => context.queue.length > 0,
-		stopping: stateIn({ running: { control: 'stopping' } }),
-		accepting: stateIn({ running: { control: 'accepting' } }),
-		currentBinding: ({ context }) => context.isCurrent(),
-		admissibleEdit: ({ context, event }) =>
-			event.type === 'EDIT' && canAdmitDraftEdit(event.record, context.libraryId, context),
-		canEdit: and(['accepting', 'currentBinding', 'admissibleEdit'])
+		queued: ({ context }: { context: Context }) => context.queue.length > 0,
+		stopping: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ running: { control: 'stopping' } }, value),
+		accepting: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ running: { control: 'accepting' } }, value),
+		currentBinding: ({ context }: { context: Context }) => context.isCurrent(),
+		admissibleEdit: ({ context, event }: { context: Context; event: Event }) =>
+			event.type === 'EDIT' && canAdmitDraftEdit(event.record, context.libraryId, context)
 	},
 	actions: {
-		enqueue: assign({
-			queue: ({ context }, params: { record: NoteDraftRecord }) =>
-				replaceWriterDraft(context.queue, noteDraftRecordSchema.parse(params.record))
+		enqueue: (args: { context: Context }, params: { record: NoteDraftRecord }) => ({
+			context: {
+				queue: (({ context }, params: { record: NoteDraftRecord }) =>
+					replaceWriterDraft(context.queue, noteDraftRecordSchema.parse(params.record)))(
+					args,
+					params
+				)
+			}
 		}),
-		issue: assign({
-			issued: ({ context }) => context.queue[0],
-			queue: ({ context }) => context.queue.slice(1)
+		issue: ({ context }: { context: Context }) => ({
+			context: { issued: context.queue[0], queue: context.queue.slice(1) }
 		}),
-		acknowledge: assign({
-			durable: ({ context }, params: { record: NoteDraftRecord }) =>
-				replaceWriterDraft(context.durable, params.record),
-			issued: undefined
+		acknowledge: (args: { context: Context }, params: { record: NoteDraftRecord }) => ({
+			context: {
+				durable: (({ context }, params: { record: NoteDraftRecord }) =>
+					replaceWriterDraft(context.durable, params.record))(args, params),
+				issued: undefined
+			}
 		}),
-		retainFailed: assign({
-			queue: ({ context }) => retainFailedDraft(context),
-			issued: undefined
+		retainFailed: ({ context }: { context: Context }) => ({
+			context: { queue: retainFailedDraft(context), issued: undefined }
 		})
 	}
 }).createMachine({
@@ -86,63 +83,83 @@ export const noteDraftMachine = setup<
 	output: ({ context }) => ({ unsaved: context.queue }),
 	states: {
 		running: {
-			type: 'parallel',
+			type: 'parallel' as const,
 			on: {
-				EDIT: {
-					guard: 'canEdit',
-					actions: { type: 'enqueue', params: ({ event }) => ({ record: event.record }) }
+				EDIT: (args) => {
+					if (
+						!(
+							matchesState({ running: { control: 'accepting' } }, args.value) &&
+							args.guards.currentBinding(args) &&
+							args.guards.admissibleEdit(args)
+						)
+					)
+						return
+					return { context: args.actions.enqueue(args, { record: args.event.record }).context }
 				}
 			},
 			states: {
 				control: {
 					initial: 'accepting',
-					states: { accepting: { on: { SHUTDOWN: 'stopping' } }, stopping: {} }
+					states: { accepting: { on: { SHUTDOWN: { target: 'stopping' } } }, stopping: {} }
 				},
 				storage: {
 					initial: 'routing',
 					states: {
 						routing: {
-							always: [
-								{ guard: 'queued', target: 'writing' },
-								{ guard: 'stopping', target: '#note-drafts.closed' },
-								{ target: 'idle' }
-							]
+							type: 'choice',
+							choice: (args) => {
+								if (args.guards.queued(args)) {
+									return { target: 'issuing' }
+								}
+								if (matchesState({ running: { control: 'stopping' } }, args.value)) {
+									return { target: '#note-drafts.closed' }
+								}
+								return { target: 'idle' }
+							}
 						},
 						idle: {
-							always: [
-								{ guard: 'queued', target: 'routing' },
-								{ guard: 'stopping', target: '#note-drafts.closed' }
-							]
+							always: (args) => {
+								if (args.guards.queued(args)) {
+									return { target: 'routing' }
+								}
+								if (matchesState({ running: { control: 'stopping' } }, args.value)) {
+									return { target: '#note-drafts.closed' }
+								}
+							}
+						},
+						issuing: {
+							always: (args) => ({ target: 'writing', context: args.actions.issue(args).context })
 						},
 						writing: {
-							entry: 'issue',
 							invoke: {
+								id: 'persist',
 								src: 'persist',
-								input: ({ context }) => ({
+								input: ({ context }: { context: Context }) => ({
 									store: context.store,
 									record: requireIssuedDraft(context)
 								}),
-								onDone: {
-									target: 'routing',
-									actions: {
-										type: 'acknowledge',
-										params: ({ event }) => ({ record: event.output })
+								onDone: (args) => {
+									return {
+										target: 'routing',
+										context: args.actions.acknowledge(args, { record: args.event.output }).context
 									}
 								},
-								onError: {
-									target: 'failed',
-									actions: 'retainFailed'
+								onError: (args) => {
+									return { target: 'failed', context: args.actions.retainFailed(args).context }
 								}
 							}
 						},
 						failed: {
-							always: { guard: 'stopping', target: '#note-drafts.closed' },
-							on: { RETRY: 'routing' }
+							always: (args) => {
+								if (!matchesState({ running: { control: 'stopping' } }, args.value)) return
+								return { target: '#note-drafts.closed' }
+							},
+							on: { RETRY: { target: 'routing' } }
 						}
 					}
 				}
 			}
 		},
-		closed: { type: 'final' }
+		closed: { type: 'final' as const }
 	}
 })

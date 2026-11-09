@@ -1,6 +1,7 @@
+import type { EventPayload } from '../events.js'
+import { types, createActor, setup, toPromise, createAsyncLogic, type AnyActorRef } from 'xstate'
 import { expect, it, vi } from 'vitest'
-import { createActor, fromPromise, sendTo, setup, toPromise } from 'xstate'
-import type { AnyActorRef } from 'xstate'
+
 import { createDomainTransaction } from './domain-transaction.js'
 import type { SyncReceipt } from '../../contracts/storage.js'
 
@@ -25,47 +26,65 @@ function fixture(
 	type Draft = { id: string }
 	type Input = { resource: object; owner: AnyActorRef }
 	const actors = {
-		read: fromPromise(async () => {
-			await step('read')
+		read: createAsyncLogic({
+			run: async () => {
+				await step('read')
+			}
 		}),
-		stage: fromPromise(async () => {
-			await step('stage')
+		stage: createAsyncLogic({
+			run: async () => {
+				await step('stage')
+			}
 		})
 	}
-	const domain = setup<
-		Input,
-		{ type: 'STAGE' },
-		typeof actors,
-		{},
-		{ allow: undefined; block: undefined },
-		{ allowed: undefined },
-		never,
-		string,
-		Input,
-		SyncReceipt
-	>({
+	const domain = setup({
+		schemas: {
+			context: types<Input>(),
+			events: { STAGE: types<EventPayload<{ type: 'STAGE' }, 'STAGE'>>() },
+			input: types<Input>(),
+			output: types<SyncReceipt>(),
+			tags: types<string>(),
+			children: {
+				read: types<import('xstate').ActorRefFrom<(typeof actors)['read']>>(),
+				stage: types<import('xstate').ActorRefFrom<(typeof actors)['stage']>>()
+			}
+		},
 		actors,
 		guards: { allowed: () => !options.blocked },
-		actions: {
-			allow: sendTo(({ context }) => context.owner, {
-				type: 'PREPARED',
-				assessment: { outcome: 'eligible' }
-			}),
-			block: sendTo(({ context }) => context.owner, {
-				type: 'PREPARED',
-				assessment: { outcome: 'blocked', reason: 'unavailable' }
-			})
-		}
+		actions: {}
 	}).createMachine({
 		context: ({ input }) => input,
 		initial: 'reading',
 		output: () => receipt,
 		states: {
-			reading: { invoke: { src: 'read', onDone: 'checking' } },
-			checking: { always: [{ guard: 'allowed', target: 'ready' }, { target: 'blocked' }] },
-			ready: { entry: 'allow', on: { STAGE: 'staging' } },
-			staging: { invoke: { src: 'stage', onDone: 'done' } },
-			blocked: { entry: 'block' },
+			reading: { invoke: { id: 'read', src: 'read', onDone: { target: 'checking' } } },
+			checking: {
+				type: 'choice',
+				choice: (args) => {
+					if (args.guards.allowed()) {
+						return { target: 'ready' }
+					}
+					return { target: 'blocked' }
+				}
+			},
+			ready: {
+				entry: (args, enq) => {
+					enq.sendTo(args.context.owner, {
+						type: 'PREPARED',
+						assessment: { outcome: 'eligible' }
+					})
+				},
+				on: { STAGE: { target: 'staging' } }
+			},
+			staging: { invoke: { id: 'stage', src: 'stage', onDone: { target: 'done' } } },
+			blocked: {
+				entry: (args, enq) => {
+					enq.sendTo(args.context.owner, {
+						type: 'PREPARED',
+						assessment: { outcome: 'blocked', reason: 'unavailable' }
+					})
+				}
+			},
 			done: { type: 'final' }
 		}
 	})

@@ -10,12 +10,13 @@ const input = z.object({
 self.onmessage = (event: MessageEvent<unknown>) => {
 	const parsed = input.safeParse(event.data)
 	if (!parsed.success) {
-		self.postMessage({ kind: 'failed' })
+		self.postMessage({ kind: 'failed' as const })
 		return
 	}
 	const actor = createActor(imageProcessingMachine, { input: parsed.data }).start()
 	void toPromise(actor).then(
-		(result) => self.postMessage(result ? { kind: 'ready', result } : { kind: 'failed' }),
-		() => self.postMessage({ kind: 'failed' })
+		(result) =>
+			self.postMessage(result ? { kind: 'ready' as const, result } : { kind: 'failed' as const }),
+		() => self.postMessage({ kind: 'failed' as const })
 	)
 }

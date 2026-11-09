@@ -40,6 +40,31 @@ test.afterAll(async () => {
 	await new Promise<void>((resolve) => sourceServer.close(() => resolve()))
 	if (directory) await rm(directory, { recursive: true, force: true })
 })
+// Chrome can replace the background execution context between native commands.
+// Retry only its explicit restart error, for these idempotent fixture operations;
+// toolbar gestures and article writes are never replayed by this helper.
+async function backgroundEvaluate<Result>(
+	context: BrowserContext,
+	id: string,
+	operation: (arg: string | undefined) => Result | Promise<Result>,
+	arg?: string
+): Promise<Awaited<Result>> {
+	for (let attempt = 0; attempt < 2; attempt++) {
+		const worker = context.serviceWorkers().find((value) => new URL(value.url()).host === id)
+		if (!worker) throw new Error('Extension background worker unavailable')
+		try {
+			return await worker.evaluate(operation, arg)
+		} catch (error) {
+			if (
+				attempt === 1 ||
+				!(error instanceof Error) ||
+				!error.message.includes('Service worker restarted')
+			)
+				throw error
+		}
+	}
+	throw new Error('Extension background command did not complete')
+}
 async function extension(profile: string, connected = true) {
 	const path = resolve('apps/extension/.test-build')
 	const context = await chromium.launchPersistentContext(profile, {
@@ -98,7 +123,11 @@ async function extension(profile: string, connected = true) {
 		}
 		await options.close()
 	}
-	return { context, id, worker }
+	const evaluate = <Result>(
+		operation: (arg: string | undefined) => Result | Promise<Result>,
+		arg?: string
+	) => backgroundEvaluate(context, id, operation, arg)
+	return { context, id, worker: { evaluate } }
 }
 async function invokeToolbar(context: BrowserContext, id: string, source: Page) {
 	await source.bringToFront()
@@ -124,8 +153,7 @@ async function clip(context: BrowserContext, id: string, source: Page) {
 
 async function openOptions(context: BrowserContext, id: string) {
 	const url = `chrome-extension://${id}/index.html`
-	const worker = context.serviceWorkers().find((worker) => new URL(worker.url()).host === id)!
-	await worker.evaluate(() => chrome.runtime.openOptionsPage())
+	await backgroundEvaluate(context, id, () => chrome.runtime.openOptionsPage(), undefined)
 	await expect.poll(() => context.pages().some((page) => page.url() === url)).toBe(true)
 	const page = context.pages().find((page) => page.url() === url)!
 	await page.waitForLoadState('domcontentloaded')

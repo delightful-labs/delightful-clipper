@@ -1,9 +1,11 @@
+import type { EventPayload } from '../events.js'
+import { types, createCallbackLogic, setup, matchesState } from 'xstate'
 import { createArticleTargetLookup } from '../../capture/causal.js'
 import { projectTags } from '../../capture/tags.js'
 import type { TagOperation } from '../../capture/tags.js'
 import { projectOrganization } from '../../capture/organization.js'
 import type { OrganizationOperation } from '../../capture/organization.js'
-import { assign, enqueueActions, fromCallback, sendTo, setup, raise, and, stateIn } from 'xstate'
+
 import type { Article, LibraryArticle } from '../../contracts/articles.js'
 import type { DocumentHeader } from '../../contracts/storage.js'
 import { projectLibraryArticles } from '../../capture/library-articles.js'
@@ -26,37 +28,42 @@ type Event =
 	| { type: 'ARTICLES'; rows: Article[] }
 	| { type: 'DOCUMENTS'; rows: DocumentHeader[] }
 	| { type: 'ERROR' | 'STOP' | 'UPDATED' }
-const subscription = fromCallback(() => {})
+const subscription = createCallbackLogic(() => {})
 type OutputEvent = { type: 'ROWS'; rows: LibraryArticle[] } | { type: 'ERROR' }
-const output = fromCallback<OutputEvent, Input>(({ input, receive }) => {
+const output = createCallbackLogic<OutputEvent, Input>(({ input, receive }) => {
 	receive((event) => {
 		if (event.type === 'ROWS') input.next(event.rows)
 		else input.error()
 	})
 })
-const model = setup<
-	{
-		articles: Article[]
-		documents: DocumentHeader[]
-		organization: OrganizationOperation[]
-		tags: TagOperation[]
-		callbacks: Input | undefined
+const model = setup({
+	schemas: {
+		context: types<{
+			articles: Article[]
+			documents: DocumentHeader[]
+			organization: OrganizationOperation[]
+			tags: TagOperation[]
+			callbacks: Input | undefined
+		}>(),
+		events: {
+			ORGANIZATION: types<EventPayload<Event, 'ORGANIZATION'>>(),
+			TAGS: types<EventPayload<Event, 'TAGS'>>(),
+			ARTICLES: types<EventPayload<Event, 'ARTICLES'>>(),
+			DOCUMENTS: types<EventPayload<Event, 'DOCUMENTS'>>(),
+			ERROR: types<EventPayload<Event, 'ERROR'>>(),
+			STOP: types<EventPayload<Event, 'STOP'>>(),
+			UPDATED: types<EventPayload<Event, 'UPDATED'>>()
+		},
+		input: types<Input>(),
+		tags: types<string>(),
+		children: {
+			tags: types<import('xstate').ActorRefFrom<typeof subscription>>(),
+			organization: types<import('xstate').ActorRefFrom<typeof subscription>>(),
+			articles: types<import('xstate').ActorRefFrom<typeof subscription>>(),
+			documents: types<import('xstate').ActorRefFrom<typeof subscription>>(),
+			output: types<import('xstate').ActorRefFrom<typeof output>>()
+		}
 	},
-	Event,
-	{
-		organization: typeof subscription
-		tags: typeof subscription
-		articles: typeof subscription
-		documents: typeof subscription
-		output: typeof output
-	},
-	{},
-	{ publish: undefined; clear: undefined; reportError: undefined },
-	{ current: undefined; initialized: undefined },
-	never,
-	string,
-	Input
->({
 	actors: {
 		tags: subscription,
 		organization: subscription,
@@ -65,25 +72,12 @@ const model = setup<
 		output
 	},
 	guards: {
-		current: () => false,
-		initialized: and([
-			stateIn({ observing: { articles: 'ready' } }),
-			stateIn({ observing: { documents: 'ready' } }),
-			stateIn({ observing: { tags: 'ready' } }),
-			stateIn({ observing: { organization: 'ready' } })
-		])
+		current: (): boolean => false
 	},
 	actions: {
-		reportError: enqueueActions(({ check, enqueue }) => {
-			if (check('current')) enqueue.sendTo('output', { type: 'ERROR' })
-		}),
-		publish: sendTo('output', ({ context }) => {
-			const targets = createArticleTargetLookup(context.articles)
-			const rows = projectLibraryArticles(context.articles, context.documents)
-			const organized = projectOrganization(rows, context.organization, context.articles, targets)
-			return { type: 'ROWS', rows: projectTags(organized, context.tags, context.articles, targets) }
-		}),
-		clear: assign({ articles: [], documents: [], organization: [], tags: [], callbacks: undefined })
+		clear: () => ({
+			context: { articles: [], documents: [], organization: [], tags: [], callbacks: undefined }
+		})
 	}
 }).createMachine({
 	id: 'article-collection',
@@ -98,124 +92,208 @@ const model = setup<
 	invoke: {
 		id: 'output',
 		src: 'output',
-		input: ({ context }) => {
+		input: ({
+			context
+		}: {
+			context: {
+				articles: Article[]
+				documents: DocumentHeader[]
+				organization: OrganizationOperation[]
+				tags: TagOperation[]
+				callbacks: Input | undefined
+			}
+		}) => {
 			if (!context.callbacks) throw new Error('Missing collection callbacks')
 			return context.callbacks
 		}
 	},
 	states: {
 		observing: {
-			type: 'parallel',
+			type: 'parallel' as const,
 			states: {
 				articles: {
 					initial: 'pending',
 					states: {
-						pending: { on: { ARTICLES: { guard: 'current', target: 'ready' } } },
+						pending: {
+							on: {
+								ARTICLES: (args) => {
+									if (!args.guards.current()) return
+									return { target: 'ready' }
+								}
+							}
+						},
 						ready: {}
 					}
 				},
 				documents: {
 					initial: 'pending',
 					states: {
-						pending: { on: { DOCUMENTS: { guard: 'current', target: 'ready' } } },
+						pending: {
+							on: {
+								DOCUMENTS: (args) => {
+									if (!args.guards.current()) return
+									return { target: 'ready' }
+								}
+							}
+						},
 						ready: {}
 					}
 				},
 				tags: {
 					initial: 'pending',
-					states: { pending: { on: { TAGS: { guard: 'current', target: 'ready' } } }, ready: {} }
+					states: {
+						pending: {
+							on: {
+								TAGS: (args) => {
+									if (!args.guards.current()) return
+									return { target: 'ready' }
+								}
+							}
+						},
+						ready: {}
+					}
 				},
 				organization: {
 					initial: 'pending',
 					states: {
-						pending: { on: { ORGANIZATION: { guard: 'current', target: 'ready' } } },
+						pending: {
+							on: {
+								ORGANIZATION: (args) => {
+									if (!args.guards.current()) return
+									return { target: 'ready' }
+								}
+							}
+						},
 						ready: {}
 					}
 				},
 				data: {
 					on: {
-						TAGS: {
-							guard: 'current',
-							actions: [assign({ tags: ({ event }) => event.rows }), raise({ type: 'UPDATED' })]
+						TAGS: (args, enq) => {
+							if (!args.guards.current()) return
+							enq.raise({ type: 'UPDATED' as const })
+							return { context: { tags: args.event.rows } }
 						},
-						ORGANIZATION: {
-							guard: 'current',
-							actions: [
-								assign({ organization: ({ event }) => event.rows }),
-								raise({ type: 'UPDATED' })
-							]
+						ORGANIZATION: (args, enq) => {
+							if (!args.guards.current()) return
+							enq.raise({ type: 'UPDATED' as const })
+							return { context: { organization: args.event.rows } }
 						},
-						ARTICLES: {
-							guard: 'current',
-							actions: [assign({ articles: ({ event }) => event.rows }), raise({ type: 'UPDATED' })]
+						ARTICLES: (args, enq) => {
+							if (!args.guards.current()) return
+							enq.raise({ type: 'UPDATED' as const })
+							return { context: { articles: args.event.rows } }
 						},
-						DOCUMENTS: {
-							guard: 'current',
-							actions: [
-								assign({ documents: ({ event }) => event.rows }),
-								raise({ type: 'UPDATED' })
-							]
+						DOCUMENTS: (args, enq) => {
+							if (!args.guards.current()) return
+							enq.raise({ type: 'UPDATED' as const })
+							return { context: { documents: args.event.rows } }
 						}
 					}
 				},
 				publication: {
 					initial: 'idle',
 					states: {
-						idle: { on: { UPDATED: { guard: 'initialized', target: 'coalescing' } } },
+						idle: {
+							on: {
+								UPDATED: (args) => {
+									if (
+										!(
+											matchesState({ observing: { articles: 'ready' } }, args.value) &&
+											matchesState({ observing: { documents: 'ready' } }, args.value) &&
+											matchesState({ observing: { tags: 'ready' } }, args.value) &&
+											matchesState({ observing: { organization: 'ready' } }, args.value)
+										)
+									)
+										return
+									return { target: 'coalescing' }
+								}
+							}
+						},
 						coalescing: {
 							after: {
-								0: [{ guard: 'current', target: 'idle', actions: 'publish' }, { target: 'idle' }]
+								0: (args, enq) => {
+									if (args.guards.current()) {
+										enq.sendTo(
+											'output',
+											(({ context }) => {
+												const targets = createArticleTargetLookup(context.articles)
+												const rows = projectLibraryArticles(context.articles, context.documents)
+												const organized = projectOrganization(
+													rows,
+													context.organization,
+													context.articles,
+													targets
+												)
+												return {
+													type: 'ROWS' as const,
+													rows: projectTags(organized, context.tags, context.articles, targets)
+												}
+											})(args)
+										)
+										return { target: 'idle' }
+									}
+									return { target: 'idle' }
+								}
 							}
 						}
 					}
 				}
 			},
 			invoke: [
-				{ src: 'articles', onError: 'failed' },
-				{ src: 'tags', onError: 'failed' },
-				{ src: 'organization', onError: 'failed' },
-				{ src: 'documents', onError: 'failed' }
+				{ id: 'articles', src: 'articles', onError: { target: 'failed' } },
+				{ id: 'tags', src: 'tags', onError: { target: 'failed' } },
+				{ id: 'organization', src: 'organization', onError: { target: 'failed' } },
+				{ id: 'documents', src: 'documents', onError: { target: 'failed' } }
 			],
 			on: {
-				ERROR: 'failed',
-				STOP: 'closed'
+				ERROR: { target: 'failed' },
+				STOP: { target: 'closed' }
 			}
 		},
 		failed: {
-			type: 'final',
-			entry: ['reportError', 'clear']
+			type: 'final' as const,
+			entry: (args, enq) => {
+				if (args.guards.current()) enq.sendTo('output', { type: 'ERROR' as const })
+				return { context: args.actions.clear().context }
+			}
 		},
-		closed: { type: 'final', entry: 'clear' }
+		closed: {
+			type: 'final' as const,
+			entry: (args) => {
+				return { context: args.actions.clear().context }
+			}
+		}
 	}
 })
 
 export function createArticleCollectionMachine(cap: Capability) {
-	const articles = fromCallback(({ sendBack }) =>
+	const articles = createCallbackLogic(({ sendBack }) =>
 		cap.articles(
-			(rows) => sendBack({ type: 'ARTICLES', rows }),
-			() => sendBack({ type: 'ERROR' })
+			(rows) => sendBack({ type: 'ARTICLES' as const, rows }),
+			() => sendBack({ type: 'ERROR' as const })
 		)
 	)
-	const documents = fromCallback(({ sendBack }) =>
+	const documents = createCallbackLogic(({ sendBack }) =>
 		cap.documents(
-			(rows) => sendBack({ type: 'DOCUMENTS', rows }),
-			() => sendBack({ type: 'ERROR' })
+			(rows) => sendBack({ type: 'DOCUMENTS' as const, rows }),
+			() => sendBack({ type: 'ERROR' as const })
 		)
 	)
 	return model.provide({
 		actors: {
-			tags: fromCallback(({ sendBack }) =>
+			tags: createCallbackLogic(({ sendBack }) =>
 				(cap.tags ?? emptySubscription<TagOperation>)(
-					(rows) => sendBack({ type: 'TAGS', rows }),
-					() => sendBack({ type: 'ERROR' })
+					(rows) => sendBack({ type: 'TAGS' as const, rows }),
+					() => sendBack({ type: 'ERROR' as const })
 				)
 			),
 			articles,
 			documents,
-			organization: fromCallback(({ sendBack }) =>
+			organization: createCallbackLogic(({ sendBack }) =>
 				(cap.organization ?? emptySubscription<OrganizationOperation>)(
-					(rows) => sendBack({ type: 'ORGANIZATION', rows }),
-					() => sendBack({ type: 'ERROR' })
+					(rows) => sendBack({ type: 'ORGANIZATION' as const, rows }),
+					() => sendBack({ type: 'ERROR' as const })
 				)
 			)
 		},

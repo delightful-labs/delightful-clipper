@@ -1,14 +1,6 @@
-import {
-	and,
-	not,
-	assign,
-	createActor,
-	fromCallback,
-	fromPromise,
-	sendTo,
-	setup,
-	toPromise
-} from 'xstate'
+import type { EventPayload } from '../machines/events.js'
+import { types, createActor, createCallbackLogic, setup, toPromise, createAsyncLogic } from 'xstate'
+
 import type { NoteDraftRecord } from './schema.js'
 import { openDraftDatabase } from './draft-database.js'
 import {
@@ -39,17 +31,17 @@ function recoveryInput(input: Input) {
 	return input
 }
 const actors = {
-	open: fromPromise(() => openDraftDatabase()),
-	storage: fromCallback<Command, { db: IDBDatabase; operation: Input }>(
+	open: createAsyncLogic({ run: () => openDraftDatabase() }),
+	storage: createCallbackLogic<Command, { db: IDBDatabase; operation: Input }>(
 		({ input, sendBack, receive }) => {
 			const tx = input.db.transaction(['noteDrafts', 'drafts'], 'readwrite', {
 				durability: 'strict'
 			})
 			const notes = tx.objectStore('noteDrafts'),
 				legacy = tx.objectStore('drafts')
-			tx.oncomplete = () => sendBack({ type: 'COMPLETED' })
-			tx.onabort = () => sendBack({ type: 'ABORTED' })
-			tx.onerror = () => sendBack({ type: 'STORAGE_ERROR' })
+			tx.oncomplete = () => sendBack({ type: 'COMPLETED' as const })
+			tx.onabort = () => sendBack({ type: 'ABORTED' as const })
+			tx.onerror = () => sendBack({ type: 'STORAGE_ERROR' as const })
 			function read(
 				store: IDBObjectStore,
 				key: string,
@@ -62,7 +54,7 @@ const actors = {
 				try {
 					tx.abort()
 				} catch {
-					sendBack({ type: 'ABORTED' })
+					sendBack({ type: 'ABORTED' as const })
 				}
 			}
 			const commands: Record<Command['type'], () => void> = {
@@ -82,10 +74,10 @@ const actors = {
 				try {
 					commands[command.type]()
 				} catch {
-					sendBack({ type: 'STORAGE_ERROR' })
+					sendBack({ type: 'STORAGE_ERROR' as const })
 				}
 			})
-			sendBack({ type: 'OPENED' })
+			sendBack({ type: 'OPENED' as const })
 			return () => input.db.close()
 		}
 	)
@@ -93,59 +85,53 @@ const actors = {
 /** Request callbacks deliver facts synchronously. Guards select the next command
  * before that callback returns, keeping every compare and mutation in the same
  * active IndexedDB transaction. Completion alone acknowledges durability. */
-export const draftMutationMachine = setup<
-	Context,
-	Event,
-	typeof actors,
-	{},
-	{
-		rememberDatabase: { db: IDBDatabase }
-		readSource: undefined
-		readDestination: undefined
-		readCurrent: undefined
-		move: undefined
-		remove: undefined
-		abort: undefined
-		fail: undefined
+export const draftMutationMachine = setup({
+	schemas: {
+		context: types<Context>(),
+		events: {
+			OPENED: types<EventPayload<Event, 'OPENED'>>(),
+			COMPLETED: types<EventPayload<Event, 'COMPLETED'>>(),
+			ABORTED: types<EventPayload<Event, 'ABORTED'>>(),
+			STORAGE_ERROR: types<EventPayload<Event, 'STORAGE_ERROR'>>(),
+			SOURCE_READ: types<EventPayload<Event, 'SOURCE_READ'>>(),
+			DESTINATION_READ: types<EventPayload<Event, 'DESTINATION_READ'>>(),
+			CURRENT_READ: types<EventPayload<Event, 'CURRENT_READ'>>()
+		},
+		input: types<Input>(),
+		output: types<void>(),
+		tags: types<string>(),
+		children: {
+			open: types<import('xstate').ActorRefFrom<(typeof actors)['open']>>(),
+			storage: types<import('xstate').ActorRefFrom<(typeof actors)['storage']>>()
+		}
 	},
-	{
-		recoveryRequested: undefined
-		recoveryAssociated: undefined
-		sourceUnchanged: { value: unknown }
-		destinationCompatible: { value: unknown }
-		currentMissing: { value: unknown }
-		currentValid: { value: unknown }
-		currentMatches: { value: unknown }
-	},
-	never,
-	string,
-	Input,
-	void
->({
 	actors,
 	guards: {
-		recoveryRequested: ({ context }) => context.input.kind === 'recover',
-		recoveryAssociated: ({ context }) => {
+		recoveryRequested: ({ context }: { context: Context }) => context.input.kind === 'recover',
+		recoveryAssociated: ({ context }: { context: Context }) => {
 			const { recovery } = recoveryInput(context.input)
 			return canRecoverDraft(recovery.source, recovery.note, recovery.libraryId, recovery.aliases)
 		},
-		sourceUnchanged: ({ context }, params) =>
+		sourceUnchanged: ({ context }: { context: Context }, params: { value: unknown }) =>
 			matchesStoredLegacyDraft(params.value, recoveryInput(context.input).recovery.source),
-		destinationCompatible: ({ context }, params) =>
+		destinationCompatible: ({ context }: { context: Context }, params: { value: unknown }) =>
 			canReplaceRecoveredDraft(params.value, context.input.entry.record),
-		currentMissing: (_, params) => params.value === undefined,
-		currentValid: (_, params) => isStoredDraft(params.value),
-		currentMatches: ({ context }, params) =>
+		currentMissing: (
+			_: { context: Context; value: import('xstate').StateValue },
+			params: { value: unknown }
+		) => params.value === undefined,
+		currentValid: (
+			_: { context: Context; value: import('xstate').StateValue },
+			params: { value: unknown }
+		) => isStoredDraft(params.value),
+		currentMatches: ({ context }: { context: Context }, params: { value: unknown }) =>
 			matchesStoredDraft(params.value, context.input.entry.record)
 	},
 	actions: {
-		rememberDatabase: assign({ db: (_, params) => params.db }),
-		readSource: sendTo('storage', { type: 'READ_SOURCE' }),
-		readDestination: sendTo('storage', { type: 'READ_DESTINATION' }),
-		readCurrent: sendTo('storage', { type: 'READ_CURRENT' }),
-		move: sendTo('storage', { type: 'MOVE' }),
-		remove: sendTo('storage', { type: 'DELETE' }),
-		abort: sendTo('storage', { type: 'ABORT' }),
+		rememberDatabase: (args: { context: Context }, params: { db: IDBDatabase }) => ({
+			context: { db: ((_, params: { db: IDBDatabase }) => params.db)(args, params) }
+		}),
+
 		fail: () => {
 			throw new Error('Note draft transaction aborted')
 		}
@@ -156,95 +142,118 @@ export const draftMutationMachine = setup<
 	initial: 'selectingOperation',
 	states: {
 		selectingOperation: {
-			always: [
-				{ guard: and(['recoveryRequested', not('recoveryAssociated')]), target: 'failed' },
-				{ target: 'opening' }
-			]
+			type: 'choice',
+			choice: (args) => {
+				if (args.guards.recoveryRequested(args) && !args.guards.recoveryAssociated(args)) {
+					return { target: 'failed' }
+				}
+				return { target: 'opening' }
+			}
 		},
 		opening: {
 			invoke: {
+				id: 'open',
 				src: 'open',
-				onDone: {
-					target: 'working',
-					actions: { type: 'rememberDatabase', params: ({ event }) => ({ db: event.output }) }
+				onDone: (args) => {
+					return {
+						target: 'working',
+						context: args.actions.rememberDatabase(args, { db: args.event.output }).context
+					}
 				},
-				onError: 'failed'
+				onError: { target: 'failed' }
 			}
 		},
 		working: {
 			invoke: {
 				id: 'storage',
 				src: 'storage',
-				input: ({ context }) => ({ db: required(context.db), operation: context.input }),
-				onError: '#draft-mutation.failed'
+				input: ({ context }: { context: Context }) => ({
+					db: required(context.db),
+					operation: context.input
+				}),
+				onError: { target: '#draft-mutation.failed' }
 			},
 			on: {
-				COMPLETED: '#draft-mutation.done',
-				ABORTED: '#draft-mutation.failed',
-				STORAGE_ERROR: '.aborting'
+				COMPLETED: { target: '#draft-mutation.done' },
+				ABORTED: { target: '#draft-mutation.failed' },
+				STORAGE_ERROR: { target: '.aborting' }
 			},
 			initial: 'starting',
 			states: {
 				starting: {
 					on: {
-						OPENED: [
-							{ guard: 'recoveryRequested', target: 'readingSource' },
-							{ target: 'readingCurrent' }
-						]
+						OPENED: (args) => {
+							if (args.guards.recoveryRequested(args)) {
+								return { target: 'readingSource' }
+							}
+							return { target: 'readingCurrent' }
+						}
 					}
 				},
 				readingSource: {
-					entry: 'readSource',
+					entry: (args, enq) => {
+						enq.sendTo('storage', { type: 'READ_SOURCE' as const })
+					},
 					on: {
-						SOURCE_READ: [
-							{
-								guard: { type: 'sourceUnchanged', params: ({ event }) => event },
-								target: 'readingDestination'
-							},
-							{ target: 'aborting' }
-						]
+						SOURCE_READ: (args) => {
+							const { event } = args
+							if (args.guards.sourceUnchanged(args, event)) {
+								return { target: 'readingDestination' }
+							}
+							return { target: 'aborting' }
+						}
 					}
 				},
 				readingDestination: {
-					entry: 'readDestination',
+					entry: (args, enq) => {
+						enq.sendTo('storage', { type: 'READ_DESTINATION' as const })
+					},
 					on: {
-						DESTINATION_READ: [
-							{
-								guard: { type: 'destinationCompatible', params: ({ event }) => event },
-								target: 'waitingCompletion',
-								actions: 'move'
-							},
-							{ target: 'aborting' }
-						]
+						DESTINATION_READ: (args, enq) => {
+							const { event } = args
+							if (args.guards.destinationCompatible(args, event)) {
+								enq.sendTo('storage', { type: 'MOVE' as const })
+								return { target: 'waitingCompletion' }
+							}
+							return { target: 'aborting' }
+						}
 					}
 				},
 				readingCurrent: {
-					entry: 'readCurrent',
+					entry: (args, enq) => {
+						enq.sendTo('storage', { type: 'READ_CURRENT' as const })
+					},
 					on: {
-						CURRENT_READ: [
-							{
-								guard: { type: 'currentMissing', params: ({ event }) => event },
-								target: 'waitingCompletion'
-							},
-							{
-								guard: { type: 'currentMatches', params: ({ event }) => event },
-								target: 'waitingCompletion',
-								actions: 'remove'
-							},
-							{
-								guard: { type: 'currentValid', params: ({ event }) => event },
-								target: 'waitingCompletion'
-							},
-							{ target: 'aborting' }
-						]
+						CURRENT_READ: (args, enq) => {
+							const { event } = args
+							if (args.guards.currentMissing(args, event)) {
+								return { target: 'waitingCompletion' }
+							}
+							if (args.guards.currentMatches(args, event)) {
+								enq.sendTo('storage', { type: 'DELETE' as const })
+								return { target: 'waitingCompletion' }
+							}
+							if (args.guards.currentValid(args, event)) {
+								return { target: 'waitingCompletion' }
+							}
+							return { target: 'aborting' }
+						}
 					}
 				},
-				aborting: { entry: 'abort' },
+				aborting: {
+					entry: (args, enq) => {
+						enq.sendTo('storage', { type: 'ABORT' as const })
+					}
+				},
 				waitingCompletion: {}
 			}
 		},
-		failed: { entry: 'fail' },
-		done: { type: 'final' }
+		failed: {
+			entry: (args, enq) => {
+				enq(args.actions.fail)
+			}
+		},
+		done: { type: 'final' as const }
 	}
 })
 /** Public promise API boundary; all child actors and transaction commands belong

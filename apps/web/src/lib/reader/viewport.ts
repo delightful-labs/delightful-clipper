@@ -1,4 +1,6 @@
-import { assign, enqueueActions, fromCallback, raise, setup } from 'xstate'
+import type { EventPayload } from '../machines/events.js'
+import { types, createCallbackLogic, setup } from 'xstate'
+
 import type { ReadingPosition } from './schema.js'
 import { positionSchema } from './schema.js'
 import {
@@ -106,86 +108,102 @@ function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Viewport value unavailable')
 	return value
 }
-const frame = fromCallback<FrameEvent, FrameEvent>(({ input, sendBack }) => {
+const frame = createCallbackLogic<FrameEvent, FrameEvent>(({ input, sendBack }) => {
 	const handle = requestAnimationFrame(() => sendBack(input))
 	return () => cancelAnimationFrame(handle)
 })
 // These leases each acquire one native resource. Their invocation scopes own release,
 // including abrupt actor stop; setup order and partial failure are state transitions.
-const controller = fromCallback<Event, Context>(({ input, sendBack }) => {
+const controller = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
 	const controller = new input.root.ownerDocument.defaultView!.AbortController()
-	sendBack({ type: 'CONTROLLER_CREATED', controller })
+	sendBack({ type: 'CONTROLLER_CREATED' as const, controller })
 	return () => controller.abort()
 })
-const observer = fromCallback<Event>(({ sendBack }) => {
-	const observer = new ResizeObserver(() => sendBack({ type: 'RESIZE' }))
-	sendBack({ type: 'OBSERVER_CREATED', observer })
+const observer = createCallbackLogic<Event>(({ sendBack }) => {
+	const observer = new ResizeObserver(() => sendBack({ type: 'RESIZE' as const }))
+	sendBack({ type: 'OBSERVER_CREATED' as const, observer })
 	return () => observer.disconnect()
 })
-const registerObservation = fromCallback<Event, Context>(({ input, sendBack }) => {
+const registerObservation = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
 	for (const target of input.targets) required(input.observer).observe(target)
-	sendBack({ type: 'OBSERVING' })
+	sendBack({ type: 'OBSERVING' as const })
 })
-const registerListeners = fromCallback<Event, { context: Context; report: (event: Event) => void }>(
-	({ input: { context: input, report }, sendBack }) => {
-		const options = { passive: true, signal: required(input.controller).signal }
-		input.scroller.addEventListener('scroll', () => report({ type: 'SCROLL' }), options)
-		for (const name of ['wheel', 'touchstart', 'pointerdown', 'keydown'])
-			input.scroller.addEventListener(name, (event) => report({ type: 'INPUT', event }), options)
-		sendBack({ type: 'LISTENING' })
-	}
-)
-const measureSizes = fromCallback<Event, Context>(({ input, sendBack }) => {
-	sendBack({ type: 'SIZES_MEASURED', sizes: sizes(input.targets) })
-})
-const finalMeasurement = fromCallback<Event, Context>(({ input, sendBack }) => {
-	sendBack({ type: 'FINAL_MEASURED', position: measurePosition(input) })
-})
-
-const measurement = fromCallback<Event, Context>(({ input, sendBack }) => {
-	sendBack({ type: 'MEASURED', position: measurePosition(input) })
-})
-const locateAnchor = fromCallback<Event, Context>(({ input, sendBack }) => {
-	sendBack({ type: 'ANCHOR_LOCATED', anchor: matchingAnchor(input) })
-})
-const scrollToAnchor = fromCallback<Event, Context>(({ input, sendBack }) => {
-	input.scroller.scrollTop += required(input.anchor).top - viewportTop(input.scroller)
-	sendBack({ type: 'SCROLLED' })
-})
-const scrollToStart = fromCallback<Event, Context>(({ input, sendBack }) => {
-	input.scroller.scrollTop = 0
-	sendBack({ type: 'SCROLLED' })
-})
-
-export const viewportMachine = setup<
-	Context,
+const registerListeners = createCallbackLogic<
 	Event,
-	{
-		frame: typeof frame
-		controller: typeof controller
-		observer: typeof observer
-		registerObservation: typeof registerObservation
-		registerListeners: typeof registerListeners
-		measureSizes: typeof measureSizes
-		finalMeasurement: typeof finalMeasurement
-		measurement: typeof measurement
-		locateAnchor: typeof locateAnchor
-		scrollToAnchor: typeof scrollToAnchor
-		scrollToStart: typeof scrollToStart
+	{ context: Context; report: (event: Event) => void }
+>(({ input: { context: input, report }, sendBack }) => {
+	const options = { passive: true, signal: required(input.controller).signal }
+	input.scroller.addEventListener('scroll', () => report({ type: 'SCROLL' as const }), options)
+	for (const name of ['wheel', 'touchstart', 'pointerdown', 'keydown'])
+		input.scroller.addEventListener(
+			name,
+			(event) => report({ type: 'INPUT' as const, event }),
+			options
+		)
+	sendBack({ type: 'LISTENING' as const })
+})
+const measureSizes = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
+	sendBack({ type: 'SIZES_MEASURED' as const, sizes: sizes(input.targets) })
+})
+const finalMeasurement = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
+	sendBack({ type: 'FINAL_MEASURED' as const, position: measurePosition(input) })
+})
+
+const measurement = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
+	sendBack({ type: 'MEASURED' as const, position: measurePosition(input) })
+})
+const locateAnchor = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
+	sendBack({ type: 'ANCHOR_LOCATED' as const, anchor: matchingAnchor(input) })
+})
+const scrollToAnchor = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
+	input.scroller.scrollTop += required(input.anchor).top - viewportTop(input.scroller)
+	sendBack({ type: 'SCROLLED' as const })
+})
+const scrollToStart = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
+	input.scroller.scrollTop = 0
+	sendBack({ type: 'SCROLLED' as const })
+})
+
+export const viewportMachine = setup({
+	schemas: {
+		context: types<Context>(),
+		events: {
+			LAYOUT_FRAME: types<EventPayload<Event, 'LAYOUT_FRAME'>>(),
+			PAINT_FRAME: types<EventPayload<Event, 'PAINT_FRAME'>>(),
+			MEASURE_FRAME: types<EventPayload<Event, 'MEASURE_FRAME'>>(),
+			REFLOW: types<EventPayload<Event, 'REFLOW'>>(),
+			DETACH: types<EventPayload<Event, 'DETACH'>>(),
+			SCROLL: types<EventPayload<Event, 'SCROLL'>>(),
+			USER_INTERACT: types<EventPayload<Event, 'USER_INTERACT'>>(),
+			SCROLLED: types<EventPayload<Event, 'SCROLLED'>>(),
+			RESIZE: types<EventPayload<Event, 'RESIZE'>>(),
+			OBSERVING: types<EventPayload<Event, 'OBSERVING'>>(),
+			LISTENING: types<EventPayload<Event, 'LISTENING'>>(),
+			SIZES_MEASURED: types<EventPayload<Event, 'SIZES_MEASURED'>>(),
+			CONTROLLER_CREATED: types<EventPayload<Event, 'CONTROLLER_CREATED'>>(),
+			OBSERVER_CREATED: types<EventPayload<Event, 'OBSERVER_CREATED'>>(),
+			ANCHOR_LOCATED: types<EventPayload<Event, 'ANCHOR_LOCATED'>>(),
+			INPUT: types<EventPayload<Event, 'INPUT'>>(),
+			MEASURED: types<EventPayload<Event, 'MEASURED'>>(),
+			FINAL_MEASURED: types<EventPayload<Event, 'FINAL_MEASURED'>>()
+		},
+		input: types<Input>(),
+		output: types<ViewportResult>(),
+		tags: types<string>(),
+		children: {
+			frame: types<import('xstate').ActorRefFrom<typeof frame>>(),
+			controller: types<import('xstate').ActorRefFrom<typeof controller>>(),
+			observer: types<import('xstate').ActorRefFrom<typeof observer>>(),
+			registerObservation: types<import('xstate').ActorRefFrom<typeof registerObservation>>(),
+			registerListeners: types<import('xstate').ActorRefFrom<typeof registerListeners>>(),
+			measureSizes: types<import('xstate').ActorRefFrom<typeof measureSizes>>(),
+			finalMeasurement: types<import('xstate').ActorRefFrom<typeof finalMeasurement>>(),
+			measurement: types<import('xstate').ActorRefFrom<typeof measurement>>(),
+			locateAnchor: types<import('xstate').ActorRefFrom<typeof locateAnchor>>(),
+			scrollToAnchor: types<import('xstate').ActorRefFrom<typeof scrollToAnchor>>(),
+			scrollToStart: types<import('xstate').ActorRefFrom<typeof scrollToStart>>()
+		}
 	},
-	{},
-	{ report: ViewportReport },
-	{
-		readingInteraction: undefined
-		changedSizes: { sizes: Context['nextSizes'] }
-		visibleAnchor: { anchor: Context['anchor'] }
-		newPosition: undefined
-	},
-	never,
-	string,
-	Input,
-	ViewportResult
->({
 	actors: {
 		frame,
 		controller,
@@ -200,17 +218,22 @@ export const viewportMachine = setup<
 		scrollToStart
 	},
 	actions: {
-		report: enqueueActions(({ context, enqueue }, report) => {
-			if (context.report) enqueue(() => context.report?.(report))
-			else enqueue.sendParent(report)
-		})
+		report: (
+			{ context, parent }: { context: Context; parent: import('xstate').AnyActorRef | undefined },
+			report: ViewportReport
+		) => {
+			if (context.report) context.report(report)
+			else parent?.send(report)
+		}
 	},
 	guards: {
-		readingInteraction: ({ context, event }) =>
+		readingInteraction: ({ context, event }: { context: Context; event: Event }) =>
 			event.type === 'INPUT' && isReadingInteraction(event.event, context),
-		changedSizes: ({ context }, params) => changedSizes(context, params.sizes),
-		visibleAnchor: (_, params) => !!params.anchor?.height,
-		newPosition: ({ context, event }) =>
+		changedSizes: ({ context }: { context: Context }, params: { sizes: Context['nextSizes'] }) =>
+			changedSizes(context, params.sizes),
+		visibleAnchor: (_: { context: Context }, params: { anchor: Context['anchor'] }) =>
+			!!params.anchor?.height,
+		newPosition: ({ context, event }: { context: Context; event: Event }) =>
 			event.type === 'MEASURED' &&
 			positionSchema.safeParse(event.position).success &&
 			!sameReadingLocation(context.position, required(event.position))
@@ -237,139 +260,157 @@ export const viewportMachine = setup<
 	},
 	initial: 'owningController',
 	output: ({ context }) => ({ position: context.finalPosition }),
-	on: { DETACH: '.disposing' },
+	on: { DETACH: { target: '.disposing' } },
 	states: {
 		owningController: {
 			initial: 'creatingController',
 			invoke: {
+				id: 'controller',
 				src: 'controller',
-				input: ({ context }) => context,
-				onError: '#reader-viewport.disposingFailure'
+				input: ({ context }: { context: Context }) => context,
+				onError: { target: '#reader-viewport.disposingFailure' }
 			},
 			states: {
 				creatingController: {
 					on: {
-						CONTROLLER_CREATED: {
-							target: 'owningObserver',
-							actions: assign({ controller: ({ event }) => event.controller })
+						CONTROLLER_CREATED: (args) => {
+							return { target: 'owningObserver', context: { controller: args.event.controller } }
 						}
 					}
 				},
 				owningObserver: {
 					initial: 'creatingObserver',
-					invoke: { src: 'observer', onError: '#reader-viewport.disposingFailure' },
+					invoke: {
+						id: 'observer',
+						src: 'observer',
+						onError: { target: '#reader-viewport.disposingFailure' }
+					},
 					states: {
 						creatingObserver: {
 							on: {
-								OBSERVER_CREATED: {
-									target: 'registeringObservation',
-									actions: assign({ observer: ({ event }) => event.observer })
+								OBSERVER_CREATED: (args) => {
+									return {
+										target: 'registeringObservation',
+										context: { observer: args.event.observer }
+									}
 								}
 							}
 						},
 						registeringObservation: {
 							invoke: {
+								id: 'registerObservation',
 								src: 'registerObservation',
-								input: ({ context }) => context,
-								onError: '#reader-viewport.disposingFailure'
+								input: ({ context }: { context: Context }) => context,
+								onError: { target: '#reader-viewport.disposingFailure' }
 							},
-							on: { OBSERVING: 'registeringListeners' }
+							on: { OBSERVING: { target: 'registeringListeners' } }
 						},
 						registeringListeners: {
 							invoke: {
+								id: 'registerListeners',
 								src: 'registerListeners',
 								input: ({ context, self }) => ({ context, report: (event) => self.send(event) }),
-								onError: '#reader-viewport.disposingFailure'
+								onError: { target: '#reader-viewport.disposingFailure' }
 							},
-							on: { LISTENING: 'active' }
+							on: { LISTENING: { target: 'active' } }
 						},
 						active: {
-							type: 'parallel',
+							type: 'parallel' as const,
 							on: {
-								INPUT: {
-									guard: 'readingInteraction',
-									actions: [raise({ type: 'USER_INTERACT' }), raise({ type: 'SCROLL' })]
+								INPUT: (args, enq) => {
+									if (!args.guards.readingInteraction(args)) return
+									enq.raise({ type: 'USER_INTERACT' as const })
+									enq.raise({ type: 'SCROLL' as const })
 								},
-								DETACH: '#reader-viewport.disposing'
+								DETACH: { target: '#reader-viewport.disposing' }
 							},
 							states: {
 								flow: {
 									initial: 'waitingForLayout',
-									on: { REFLOW: '.waitingForLayout' },
+									on: { REFLOW: { target: '.waitingForLayout' } },
 									states: {
 										waitingForLayout: {
 											invoke: {
 												src: 'frame',
-												input: { type: 'LAYOUT_FRAME' },
-												onError: '#reader-viewport.disposingFailure'
+												input: { type: 'LAYOUT_FRAME' as const },
+												onError: { target: '#reader-viewport.disposingFailure' }
 											},
-											on: { LAYOUT_FRAME: 'locatingAnchor', USER_INTERACT: 'reading' }
+											on: {
+												LAYOUT_FRAME: { target: 'locatingAnchor' },
+												USER_INTERACT: { target: 'reading' }
+											}
 										},
 										locatingAnchor: {
 											invoke: {
+												id: 'locateAnchor',
 												src: 'locateAnchor',
-												input: ({ context }) => context,
-												onError: '#reader-viewport.disposingFailure'
+												input: ({ context }: { context: Context }) => context,
+												onError: { target: '#reader-viewport.disposingFailure' }
 											},
 											on: {
-												ANCHOR_LOCATED: [
-													{
-														guard: {
-															type: 'visibleAnchor',
-															params: ({ event }) => ({ anchor: event.anchor })
-														},
-														target: 'scrollingToAnchor',
-														actions: assign({ anchor: ({ event }) => event.anchor })
-													},
-													{
-														target: 'scrollingToStart',
-														actions: assign({ anchor: ({ event }) => event.anchor })
+												ANCHOR_LOCATED: (args) => {
+													const { event } = args
+													if (args.guards.visibleAnchor(args, { anchor: event.anchor })) {
+														return {
+															target: 'scrollingToAnchor',
+															context: { anchor: event.anchor }
+														}
 													}
-												]
+													return { target: 'scrollingToStart', context: { anchor: event.anchor } }
+												}
 											}
 										},
 										scrollingToAnchor: {
 											invoke: {
+												id: 'scrollToAnchor',
 												src: 'scrollToAnchor',
-												input: ({ context }) => context,
-												onError: '#reader-viewport.disposingFailure'
+												input: ({ context }: { context: Context }) => context,
+												onError: { target: '#reader-viewport.disposingFailure' }
 											},
-											on: { SCROLLED: 'waitingForPaint' }
+											on: { SCROLLED: { target: 'waitingForPaint' } }
 										},
 										scrollingToStart: {
 											invoke: {
+												id: 'scrollToStart',
 												src: 'scrollToStart',
-												input: ({ context }) => context,
-												onError: '#reader-viewport.disposingFailure'
+												input: ({ context }: { context: Context }) => context,
+												onError: { target: '#reader-viewport.disposingFailure' }
 											},
-											on: { SCROLLED: 'waitingForPaint' }
+											on: { SCROLLED: { target: 'waitingForPaint' } }
 										},
 										waitingForPaint: {
 											invoke: {
 												src: 'frame',
-												input: { type: 'PAINT_FRAME' },
-												onError: '#reader-viewport.disposingFailure'
+												input: { type: 'PAINT_FRAME' as const },
+												onError: { target: '#reader-viewport.disposingFailure' }
 											},
-											on: { PAINT_FRAME: 'passive', USER_INTERACT: 'reading' }
+											on: {
+												PAINT_FRAME: { target: 'passive' },
+												USER_INTERACT: { target: 'reading' }
+											}
 										},
-										passive: { on: { USER_INTERACT: 'reading' } },
+										passive: { on: { USER_INTERACT: { target: 'reading' } } },
 										reading: {
 											on: {
-												MEASURED: {
-													guard: 'newPosition',
-													actions: [
-														assign({ position: ({ event }) => event.position }),
+												MEASURED: (args, enq) => {
+													if (!args.guards.newPosition(args)) return
+													const { event } = args
+													let context = args.context
+													let patch = {}
+													patch = { ...patch, position: event.position }
+													context = { ...args.context, ...patch }
+													enq(
+														args.actions.report,
+														{ ...args, context },
 														{
-															type: 'report',
-															params: ({ context, event }): ViewportReport => ({
-																type: 'MEASURE',
-																attachmentId: context.attachmentId,
-																position: required(event.position)
-															})
+															type: 'MEASURE' as const,
+															attachmentId: context.attachmentId,
+															position: required(event.position)
 														}
-													]
+													)
+													return { context: patch }
 												},
-												DETACH: '#reader-viewport.departing'
+												DETACH: { target: '#reader-viewport.departing' }
 											}
 										}
 									}
@@ -377,34 +418,26 @@ export const viewportMachine = setup<
 								sizeObservation: {
 									initial: 'idle',
 									states: {
-										idle: { on: { RESIZE: 'measuringSizes' } },
+										idle: { on: { RESIZE: { target: 'measuringSizes' } } },
 										measuringSizes: {
 											invoke: {
+												id: 'measureSizes',
 												src: 'measureSizes',
-												input: ({ context }) => context,
-												onError: '#reader-viewport.disposingFailure'
+												input: ({ context }: { context: Context }) => context,
+												onError: { target: '#reader-viewport.disposingFailure' }
 											},
 											on: {
-												SIZES_MEASURED: [
-													{
-														guard: {
-															type: 'changedSizes',
-															params: ({ event }) => ({ sizes: event.sizes })
-														},
-														target: 'idle',
-														actions: [
-															assign({
-																sizes: ({ event }) => event.sizes,
-																nextSizes: ({ event }) => event.sizes
-															}),
-															raise({ type: 'REFLOW' })
-														]
-													},
-													{
-														target: 'idle',
-														actions: assign({ nextSizes: ({ event }) => event.sizes })
+												SIZES_MEASURED: (args, enq) => {
+													const { event } = args
+													if (args.guards.changedSizes(args, { sizes: event.sizes })) {
+														enq.raise({ type: 'REFLOW' as const })
+														return {
+															target: 'idle',
+															context: { sizes: event.sizes, nextSizes: event.sizes }
+														}
 													}
-												]
+													return { target: 'idle', context: { nextSizes: event.sizes } }
+												}
 											}
 										}
 									}
@@ -413,22 +446,23 @@ export const viewportMachine = setup<
 								measurement: {
 									initial: 'idle',
 									states: {
-										idle: { on: { SCROLL: 'framePending' } },
+										idle: { on: { SCROLL: { target: 'framePending' } } },
 										framePending: {
 											invoke: {
 												src: 'frame',
-												input: { type: 'MEASURE_FRAME' },
-												onError: '#reader-viewport.disposingFailure'
+												input: { type: 'MEASURE_FRAME' as const },
+												onError: { target: '#reader-viewport.disposingFailure' }
 											},
-											on: { MEASURE_FRAME: 'measuring', SCROLL: {} }
+											on: { MEASURE_FRAME: { target: 'measuring' }, SCROLL: {} }
 										},
 										measuring: {
 											invoke: {
+												id: 'measurement',
 												src: 'measurement',
-												input: ({ context }) => context,
-												onError: '#reader-viewport.disposingFailure'
+												input: ({ context }: { context: Context }) => context,
+												onError: { target: '#reader-viewport.disposingFailure' }
 											},
-											on: { MEASURED: 'idle' }
+											on: { MEASURED: { target: 'idle' } }
 										}
 									}
 								}
@@ -438,35 +472,34 @@ export const viewportMachine = setup<
 				}
 			}
 		},
-		disposing: { always: 'closed' },
-		disposingFailure: { always: 'failed' },
+		disposing: { always: { target: 'closed' } },
+		disposingFailure: { always: { target: 'failed' } },
 
 		departing: {
 			invoke: {
+				id: 'finalMeasurement',
 				src: 'finalMeasurement',
-				input: ({ context }) => context,
-				onError: {
-					target: 'closed',
-					actions: assign({ finalPosition: ({ context }) => context.position })
+				input: ({ context }: { context: Context }) => context,
+				onError: (args) => {
+					return { target: 'closed', context: { finalPosition: args.context.position } }
 				}
 			},
 			on: {
-				FINAL_MEASURED: {
-					target: 'closed',
-					actions: assign({
-						finalPosition: ({ context, event }) => event.position ?? context.position
-					})
+				FINAL_MEASURED: (args) => {
+					return {
+						target: 'closed',
+						context: { finalPosition: args.event.position ?? args.context.position }
+					}
 				}
 			}
 		},
-		closed: { type: 'final' },
+		closed: { type: 'final' as const },
 		failed: {
-			type: 'final',
-			entry: {
-				type: 'report',
-				params: ({ context }): ViewportReport => ({
-					type: 'VIEWPORT_FAILED',
-					attachmentId: context.attachmentId
+			type: 'final' as const,
+			entry: (args, enq) => {
+				enq(args.actions.report, args, {
+					type: 'VIEWPORT_FAILED' as const,
+					attachmentId: args.context.attachmentId
 				})
 			}
 		}

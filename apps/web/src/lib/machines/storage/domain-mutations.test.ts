@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
-import { createActor, toPromise } from 'xstate'
-import type { AnyStateMachine } from 'xstate'
+import { createActor, toPromise, type AnyStateMachine } from 'xstate'
+
 import { createDomainTransaction } from './domain-transaction.js'
 import { createContentIntentDomain, createContentPublicationDomain } from './content-domains.js'
 import { createArticleAttachmentDomain } from './article-domains.js'

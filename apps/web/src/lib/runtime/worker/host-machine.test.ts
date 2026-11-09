@@ -54,7 +54,11 @@ function fixture() {
 			}
 		})
 	}
-	return { close, owner, actor: createActor(workerHostMachine, { input }) }
+	return {
+		close,
+		owner,
+		actor: createActor(workerHostMachine, { input: { ...input, scope: 'test-scope' } })
+	}
 }
 
 it('closes the SDK only after the application has acknowledged clean shutdown', async () => {

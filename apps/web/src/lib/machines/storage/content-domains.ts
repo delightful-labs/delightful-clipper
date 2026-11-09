@@ -1,4 +1,3 @@
-import { and } from 'xstate'
 import type { PreparedSave } from '../../contracts/storage.js'
 import {
 	canBindStorageIntent,
@@ -28,50 +27,110 @@ export function createContentIntentDomain(io: {
 			articleExists: ({ context }) => hasExistingArticle(required(context.facts))
 		},
 		actions: {
-			insertIntent: ({ context }) => io.insertIntent(context.resource, required(context.facts)),
-			bindArticle: ({ context }) => io.bindArticle(context.resource, required(context.facts)),
-			createArticle: ({ context }) => io.createArticle(context.resource, required(context.facts))
+			insertIntent: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+			}) => io.insertIntent(context.resource, required(context.facts)),
+			bindArticle: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+			}) => io.bindArticle(context.resource, required(context.facts)),
+			createArticle: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+			}) => io.createArticle(context.resource, required(context.facts))
 		}
 	})
 	return model.createMachine({
 		id: 'content-intent-domain',
 		context: domainContext<PreparedSave, ContentFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: { type: 'canBindIntent', params: ({ event }) => ({ facts: event.output }) },
-							target: 'ready',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{
-							target: 'blocked',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+					onDone: (args, _enq) => {
+						let patch = {}
+						if (args.guards.canBindIntent(args, (({ event }) => ({ facts: event.output }))(args))) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'ready', context: patch }
 						}
-					]
+						patch = args.actions.rememberFacts(
+							args,
+							(({ event }) => ({ facts: event.output }))(args)
+						).context
+						return { target: 'blocked', context: patch }
+					}
 				}
 			},
 			ready: {
-				entry: 'allow',
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
 				on: {
-					STAGE: [
-						{
-							guard: and(['articleLinked', 'articleExists']),
-							target: 'done',
-							actions: ['insertIntent', 'bindArticle']
-						},
-						{ guard: 'articleLinked', target: 'done', actions: ['insertIntent', 'createArticle'] },
-						{ target: 'done', actions: 'insertIntent' }
-					]
+					STAGE: (args, _enq) => {
+						let patch = {}
+						if (args.guards.articleLinked(args) && args.guards.articleExists(args)) {
+							return { target: 'insertIntentAndbindArticle', context: patch }
+						}
+						if (args.guards.articleLinked(args)) {
+							return { target: 'insertIntentAndcreateArticle', context: patch }
+						}
+						return { target: 'insertIntent', context: patch }
+					}
 				}
 			},
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' as const },
+			insertIntentAndbindArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertIntent(args)
+						args.actions.bindArticle(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertIntentAndcreateArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertIntent(args)
+						args.actions.createArticle(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertIntent: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertIntent(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }
@@ -90,58 +149,126 @@ export function createContentPublicationDomain(io: {
 			hasSource: ({ context }) => hasContentSource(required(context.facts))
 		},
 		actions: {
-			publishContent: ({ context }) => io.publishContent(context.resource, required(context.facts)),
-			attachContent: ({ context }) => io.attachContent(context.resource, required(context.facts)),
-			publishSource: ({ context }) => io.publishSource(context.resource, required(context.facts))
+			publishContent: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+			}) => io.publishContent(context.resource, required(context.facts)),
+			attachContent: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+			}) => io.attachContent(context.resource, required(context.facts)),
+			publishSource: ({
+				context
+			}: {
+				context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+			}) => io.publishSource(context.resource, required(context.facts))
 		}
 	})
 	return model.createMachine({
 		id: 'content-publication-domain',
 		context: domainContext<PreparedSave, ContentFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('./domain-model.js').DomainContext<PreparedSave, ContentFacts>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: {
-								type: 'canPublishContent',
-								params: ({ event }) => ({ facts: event.output })
-							},
-							target: 'ready',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{
-							target: 'blocked',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
+					onDone: (args, _enq) => {
+						let patch = {}
+						if (
+							args.guards.canPublishContent(args, (({ event }) => ({ facts: event.output }))(args))
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'ready', context: patch }
 						}
-					]
+						patch = args.actions.rememberFacts(
+							args,
+							(({ event }) => ({ facts: event.output }))(args)
+						).context
+						return { target: 'blocked', context: patch }
+					}
 				}
 			},
 			ready: {
-				entry: 'allow',
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
 				on: {
-					STAGE: [
-						{
-							guard: and(['articleLinked', 'hasSource']),
-							target: 'done',
-							actions: ['publishContent', 'attachContent', 'publishSource']
-						},
-						{
-							guard: 'articleLinked',
-							target: 'done',
-							actions: ['publishContent', 'attachContent']
-						},
-						{ guard: 'hasSource', target: 'done', actions: ['publishContent', 'publishSource'] },
-						{ target: 'done', actions: 'publishContent' }
-					]
+					STAGE: (args, _enq) => {
+						let patch = {}
+						if (args.guards.articleLinked(args) && args.guards.hasSource(args)) {
+							return { target: 'publishContentAndattachContentAndpublishSource', context: patch }
+						}
+						if (args.guards.articleLinked(args)) {
+							return { target: 'publishContentAndattachContent', context: patch }
+						}
+						if (args.guards.hasSource(args)) {
+							return { target: 'publishContentAndpublishSource', context: patch }
+						}
+						return { target: 'publishContent', context: patch }
+					}
 				}
 			},
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' as const },
+			publishContentAndattachContentAndpublishSource: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.publishContent(args)
+						args.actions.attachContent(args)
+						args.actions.publishSource(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			publishContentAndattachContent: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.publishContent(args)
+						args.actions.attachContent(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			publishContentAndpublishSource: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.publishContent(args)
+						args.actions.publishSource(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			publishContent: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.publishContent(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }

@@ -1,16 +1,28 @@
+import type { EventPayload } from '../machines/events.js'
+import { types, createActor, setup, waitFor, type InputFrom } from 'xstate'
 import { expect, it, vi } from 'vitest'
-import { createActor, setup, waitFor } from 'xstate'
-import type { InputFrom } from 'xstate'
+
 import { imageViewMachine } from './view-machine.js'
 import type { ImageViewReport } from './view-machine.js'
 import type { ArticleImage } from './schema.js'
 function owner(input: InputFrom<typeof imageViewMachine>) {
 	const reports: ImageViewReport[] = []
-	const model = setup<{}, ImageViewReport, { view: typeof imageViewMachine }, { view: 'view' }>({
+	const model = setup({
+		schemas: {
+			context: types<{}>(),
+			events: { IMAGE_VIEW: types<EventPayload<ImageViewReport, 'IMAGE_VIEW'>>() },
+			children: { view: types<import('xstate').ActorRefFrom<typeof imageViewMachine>>() }
+		},
 		actors: { view: imageViewMachine }
 	}).createMachine({
+		context: {},
 		invoke: { id: 'view', src: 'view', input },
-		on: { IMAGE_VIEW: { actions: ({ event }) => reports.push(event) } }
+		on: {
+			IMAGE_VIEW: (args, enq) => {
+				const { event } = args
+				enq(() => reports.push(event))
+			}
+		}
 	})
 	const actor = createActor(model).start()
 	return { actor, reports, child: actor.getSnapshot().children.view! }

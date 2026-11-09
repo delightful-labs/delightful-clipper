@@ -1,5 +1,6 @@
-import { assign, sendTo, setup, stateIn } from 'xstate'
-import type { AnyActorRef, AnyStateMachine } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup, matchesState, type AnyActorRef, type AnyStateMachine } from 'xstate'
+
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import type {
 	WorkspaceCreationAssessment,
@@ -36,7 +37,7 @@ export function required<Value>(value: Value | undefined): Value {
 function requestRead<Resource>(owner: AnyActorRef, resource: Resource) {
 	return new Promise<WorkspaceCreationAssessment>((resolve, reject) =>
 		owner.send({
-			type: 'READ',
+			type: 'READ' as const,
 			resource,
 			reply: { resolve, reject }
 		} satisfies ReadRequest<Resource>)
@@ -44,7 +45,7 @@ function requestRead<Resource>(owner: AnyActorRef, resource: Resource) {
 }
 function requestStage(owner: AnyActorRef) {
 	return new Promise<SyncReceipt>((resolve, reject) =>
-		owner.send({ type: 'STAGE', reply: { resolve, reject } } satisfies StageRequest)
+		owner.send({ type: 'STAGE' as const, reply: { resolve, reject } } satisfies StageRequest)
 	)
 }
 
@@ -63,11 +64,13 @@ function createDomainTransactionController<Draft, Resource, Write>(
 ) {
 	type Attempt = WorkspaceCreationAttempt<Draft>
 	type Context = {
-		attempt: Attempt
-		resource: Resource | undefined
-		readReply: Reply<WorkspaceCreationAssessment> | undefined
-		stageReply: Reply<SyncReceipt> | undefined
-		result: WorkspaceCreationResult<Draft, SyncReceipt> | undefined
+		record: {
+			attempt: Attempt
+			resource: Resource | undefined
+			readReply: Reply<WorkspaceCreationAssessment> | undefined
+			stageReply: Reply<SyncReceipt> | undefined
+			result: WorkspaceCreationResult<Draft, SyncReceipt> | undefined
+		}
 	}
 	const transaction = createWorkspaceCreationTransaction<
 		{ request: Draft; domain: AnyActorRef },
@@ -82,65 +85,107 @@ function createDomainTransactionController<Draft, Resource, Write>(
 		stage: (_resource, attempt) => requestStage(attempt.draft.domain)
 	})
 	const actors = { transaction, domain }
-	return setup<
-		Context,
-		Event<Resource>,
-		typeof actors,
-		{},
-		{
-			acceptRead: ReadRequest<Resource>
-			acceptStage: StageRequest
-			reportPrepared: Prepared
-			reportStaged: { receipt: SyncReceipt }
-			rejectRead: { error: unknown }
-			rejectStage: { error: unknown }
-			finish: {
-				result: WorkspaceCreationResult<{ request: Draft; domain: AnyActorRef }, SyncReceipt>
+	return setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				STAGE: types<EventPayload<Event<Resource>, 'STAGE'>>(),
+				PREPARED: types<EventPayload<Event<Resource>, 'PREPARED'>>(),
+				SHUTDOWN: types<EventPayload<Event<Resource>, 'SHUTDOWN'>>(),
+				CANCEL: types<EventPayload<Event<Resource>, 'CANCEL'>>(),
+				READ: types<EventPayload<Event<Resource>, 'READ'>>()
+			},
+			input: types<{ attempt: Attempt }>(),
+			output: types<WorkspaceCreationResult<Draft, SyncReceipt>>(),
+			tags: types<string>(),
+			children: {
+				transaction: types<import('xstate').ActorRefFrom<typeof transaction>>(),
+				domain: types<import('xstate').ActorRefFrom<typeof domain>>()
 			}
-			stageDomain: undefined
-			cancel: undefined
-			shutdown: undefined
 		},
-		{ reading: undefined },
-		never,
-		string,
-		{ attempt: Attempt },
-		WorkspaceCreationResult<Draft, SyncReceipt>
-	>({
 		actors,
-		guards: { reading: stateIn({ running: { domain: { processing: 'reading' } } }) },
+		guards: {
+			reading: ({ value }: { value: import('xstate').StateValue }) =>
+				matchesState({ running: { domain: { processing: 'reading' } } }, value)
+		},
 		actions: {
-			acceptRead: assign({
-				resource: (_, request) => request.resource,
-				readReply: (_, request) => request.reply
+			acceptRead: (args: { context: Context }, params: ReadRequest<Resource>) => ({
+				context: {
+					record: {
+						...args.context.record,
+						resource: ((_, request: ReadRequest<Resource>) => request.resource)(args, params),
+						readReply: ((_, request: ReadRequest<Resource>) => request.reply)(args, params)
+					}
+				}
 			}),
-			acceptStage: assign({ stageReply: (_, request) => request.reply }),
-			reportPrepared: ({ context }, event) => required(context.readReply).resolve(event.assessment),
-			reportStaged: ({ context }, event) => required(context.stageReply).resolve(event.receipt),
-			rejectRead: ({ context }, event) => required(context.readReply).reject(event.error),
-			rejectStage: ({ context }, event) => required(context.stageReply).reject(event.error),
-			finish: assign({
-				result: ({ context }, event) => ({ ...event.result, attempt: context.attempt })
+			acceptStage: (args: { context: Context }, params: StageRequest) => ({
+				context: {
+					record: {
+						...args.context.record,
+						stageReply: ((_, request: StageRequest) => request.reply)(args, params)
+					}
+				}
 			}),
-			stageDomain: sendTo('domain', { type: 'STAGE' }),
-			cancel: sendTo('transaction', { type: 'CANCEL' }),
-			shutdown: sendTo('transaction', { type: 'SHUTDOWN' })
+			reportPrepared: ({ context }: { context: Context }, event: Prepared) =>
+				required(context.record.readReply).resolve(event.assessment),
+			reportStaged: ({ context }: { context: Context }, event: { receipt: SyncReceipt }) =>
+				required(context.record.stageReply).resolve(event.receipt),
+			rejectRead: ({ context }: { context: Context }, event: { error: unknown }) =>
+				required(context.record.readReply).reject(event.error),
+			rejectStage: ({ context }: { context: Context }, event: { error: unknown }) =>
+				required(context.record.stageReply).reject(event.error),
+			finish: (
+				args: { context: Context },
+				params: {
+					result: WorkspaceCreationResult<{ request: Draft; domain: AnyActorRef }, SyncReceipt>
+				}
+			) => ({
+				context: {
+					record: {
+						...args.context.record,
+						result: ((
+							{ context },
+							event: {
+								result: WorkspaceCreationResult<
+									{
+										request: Draft
+										domain: AnyActorRef
+									},
+									SyncReceipt
+								>
+							}
+						) => ({
+							...event.result,
+							attempt: context.record.attempt
+						}))(args, params)
+					}
+				}
+			})
 		}
 	}).createMachine({
 		id: 'domain-transaction',
 		context: ({ input }) => ({
-			attempt: input.attempt,
-			resource: undefined,
-			readReply: undefined,
-			stageReply: undefined,
-			result: undefined
+			record: {
+				attempt: input.attempt,
+				resource: undefined,
+				readReply: undefined,
+				stageReply: undefined,
+				result: undefined
+			}
 		}),
 		initial: 'running',
-		output: ({ context }) => required(context.result),
+		output: ({ context }) => required(context.record.result),
 		states: {
 			running: {
-				type: 'parallel',
-				on: { CANCEL: { actions: 'cancel' }, SHUTDOWN: { actions: 'shutdown' } },
+				type: 'parallel' as const,
+				on: {
+					CANCEL: (args, enq) => {
+						enq.sendTo('transaction', { type: 'CANCEL' as const })
+					},
+					SHUTDOWN: (args, enq) => {
+						enq.sendTo('transaction', { type: 'SHUTDOWN' as const })
+					}
+				},
 				states: {
 					transaction: {
 						invoke: {
@@ -148,13 +193,15 @@ function createDomainTransactionController<Draft, Resource, Write>(
 							src: 'transaction',
 							input: ({ context, self }) => ({
 								attempt: {
-									...context.attempt,
-									draft: { request: context.attempt.draft, domain: self }
+									...context.record.attempt,
+									draft: { request: context.record.attempt.draft, domain: self }
 								}
 							}),
-							onDone: {
-								target: '#domain-transaction.completed',
-								actions: { type: 'finish', params: ({ event }) => ({ result: event.output }) }
+							onDone: (args) => {
+								return {
+									target: '#domain-transaction.completed',
+									context: args.actions.finish(args, { result: args.event.output }).context
+								}
 							}
 						}
 					},
@@ -163,9 +210,12 @@ function createDomainTransactionController<Draft, Resource, Write>(
 						states: {
 							waiting: {
 								on: {
-									READ: {
-										target: 'processing',
-										actions: { type: 'acceptRead', params: ({ event }) => event }
+									READ: (args) => {
+										const { event } = args
+										return {
+											target: 'processing',
+											context: args.actions.acceptRead(args, event).context
+										}
 									}
 								}
 							},
@@ -175,53 +225,46 @@ function createDomainTransactionController<Draft, Resource, Write>(
 									src: 'domain',
 									input: ({ context, self }: { context: Context; self: AnyActorRef }) =>
 										({
-											resource: required(context.resource),
-											attempt: context.attempt,
+											resource: required(context.record.resource),
+											attempt: context.record.attempt,
 											owner: self
 										}) satisfies { resource: Resource; attempt: Attempt; owner: AnyActorRef },
-									onDone: {
-										target: 'staged',
-										actions: {
-											type: 'reportStaged',
-											params: ({ event }) => ({ receipt: event.output })
-										}
+									onDone: (args, enq) => {
+										enq(args.actions.reportStaged, args, { receipt: args.event.output })
+										return { target: 'staged' }
 									},
-									onError: [
-										{
-											guard: 'reading',
-											target: 'failed',
-											actions: {
-												type: 'rejectRead',
-												params: ({ event }) => ({ error: event.error })
-											}
-										},
-										{
-											target: 'failed',
-											actions: {
-												type: 'rejectStage',
-												params: ({ event }) => ({ error: event.error })
-											}
+									onError: (args, enq) => {
+										const { event } = args
+										if (
+											matchesState({ running: { domain: { processing: 'reading' } } }, args.value)
+										) {
+											enq(args.actions.rejectRead, args, { error: event.error })
+											return { target: 'failed' }
 										}
-									]
+										enq(args.actions.rejectStage, args, { error: event.error })
+										return { target: 'failed' }
+									}
 								},
 								initial: 'reading',
 								states: {
 									reading: {
 										on: {
-											PREPARED: {
-												target: 'awaitingStage',
-												actions: { type: 'reportPrepared', params: ({ event }) => event }
+											PREPARED: (args, enq) => {
+												const { event } = args
+												enq(args.actions.reportPrepared, args, event)
+												return { target: 'awaitingStage' }
 											}
 										}
 									},
 									awaitingStage: {
 										on: {
-											STAGE: {
-												target: 'staging',
-												actions: [
-													{ type: 'acceptStage', params: ({ event }) => event },
-													'stageDomain'
-												]
+											STAGE: (args, enq) => {
+												const { event } = args
+												enq.sendTo('domain', { type: 'STAGE' as const })
+												return {
+													target: 'staging',
+													context: args.actions.acceptStage(args, event).context
+												}
 											}
 										}
 									},
@@ -234,7 +277,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 					}
 				}
 			},
-			completed: { type: 'final' }
+			completed: { type: 'final' as const }
 		}
 	})
 }
@@ -253,50 +296,65 @@ export function createDomainTransaction<Draft, Resource = TransactionResource, W
 ) {
 	type Input = { attempt: WorkspaceCreationAttempt<Draft> }
 	type Result = WorkspaceCreationResult<Draft, SyncReceipt>
-	type Context = Input & { result: Result | undefined }
+	type Context = { record: Input & { result: Result | undefined } }
 	const actors = {
 		workflow: createDomainTransactionController<Draft, Resource, Write>(domain, lifecycle)
 	}
-	return setup<
-		Context,
-		{ type: 'CANCEL' | 'SHUTDOWN' },
-		typeof actors,
-		{},
-		{
-			cancel: undefined
-			shutdown: undefined
-			finish: { result: Result }
+	return setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				SHUTDOWN: types<EventPayload<{ type: 'CANCEL' | 'SHUTDOWN' }, 'SHUTDOWN'>>(),
+				CANCEL: types<EventPayload<{ type: 'CANCEL' | 'SHUTDOWN' }, 'CANCEL'>>()
+			},
+			input: types<Input>(),
+			output: types<Result>(),
+			tags: types<string>(),
+			children: { workflow: types<import('xstate').ActorRefFrom<typeof actors.workflow>>() }
 		},
-		{},
-		never,
-		string,
-		Input,
-		Result
-	>({
 		actors,
 		actions: {
-			cancel: sendTo('workflow', { type: 'CANCEL' }),
-			shutdown: sendTo('workflow', { type: 'SHUTDOWN' }),
-			finish: assign({ result: (_, params) => params.result })
+			finish: (args: { context: Context }, params: { result: Result }) => ({
+				context: {
+					record: {
+						...args.context.record,
+						result: ((
+							_,
+							params: {
+								result: Result
+							}
+						) => params.result)(args, params)
+					}
+				}
+			})
 		}
 	}).createMachine({
-		context: ({ input }) => ({ ...input, result: undefined }),
+		context: ({ input }) => ({ record: { ...input, result: undefined } }),
 		initial: 'running',
-		output: ({ context }) => required(context.result),
+		output: ({ context }) => required(context.record.result),
 		states: {
 			running: {
 				invoke: {
 					id: 'workflow',
 					src: 'workflow',
-					input: ({ context }) => ({ attempt: context.attempt }),
-					onDone: {
-						target: 'done',
-						actions: { type: 'finish', params: ({ event }) => ({ result: event.output }) }
+					input: ({ context }: { context: Context }) => ({ attempt: context.record.attempt }),
+					onDone: (args) => {
+						return {
+							target: 'done',
+							context: args.actions.finish(args, { result: args.event.output }).context
+						}
 					}
 				},
-				on: { CANCEL: { actions: 'cancel' }, SHUTDOWN: { actions: 'shutdown' } }
+				on: {
+					CANCEL: (args, enq) => {
+						enq.sendTo('workflow', { type: 'CANCEL' as const })
+					},
+					SHUTDOWN: (args, enq) => {
+						enq.sendTo('workflow', { type: 'SHUTDOWN' as const })
+					}
+				}
 			},
-			done: { type: 'final' }
+			done: { type: 'final' as const }
 		}
 	})
 }

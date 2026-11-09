@@ -32,7 +32,7 @@ Keep detailed implementations outside deeply nested state configuration. A reada
 
 ## Make data flow explicit
 
-Return decoded facts from read actors. When those facts determine the next state, evaluate named guards against completion output in `onDone`, retain facts with `assign` on the selected transition, and pass the selected inputs to the next actor/action. Completion guards run before transition actions, so they must not depend on context assigned by that same transition. Mutations must use the facts and payload that were actually validated for that operation.
+Return decoded facts from read actors. When those facts determine the next state, evaluate named guards against completion output in `onDone`, retain facts with a returned `context` patch on the selected transition, and pass the selected inputs to the next actor/action. Completion guards run before transition actions, so they must not depend on context assigned by that same transition. Mutations must use the facts and payload that were actually validated for that operation.
 
 Never mutate machine context directly. Do not pass domain facts between stages through mutable side channels on a transaction resource, closure or shared object. Fields such as `resource.article`, `resource.parents`, `resource.hash` and `resource.imported` hide workflow state and are prohibited. Native transaction and receipt handles are imperative resources; their existence does not justify attaching application decisions or observations to them.
 
@@ -40,7 +40,7 @@ Keep control state in states. Do not reconstruct progress from combinations of `
 
 ## Give actors and effects an owner
 
-Use invoked actors for work whose completion or failure affects the workflow. Actions are fire-and-forget; an `async` action is not awaited by XState. Use named synchronous actions for immediate mutations and `assign`, and invoked actors for asynchronous work that the machine must await.
+Use invoked actors for work whose completion or failure affects the workflow. Actions are fire-and-forget; an `async` action is not awaited by XState. Use named calculation functions for immutable context patches, enqueue native synchronous effects with `enq`, and invoked actors for asynchronous work that the machine must await.
 
 Invoke or explicitly spawn child workflows from their owning machine. Do not manually call `createActor`/`toPromise` from inside a staging callback or I/O leaf to hide a nested workflow. Starting a root actor at a real boundary is appropriate: UI mount, HTTP request, worker realm, browser message or public promise API. That boundary must attach result/error handling and own shutdown or cleanup.
 
@@ -80,7 +80,40 @@ Test meaningful branch selection and mutation order, rejection before side effec
 - [Guards](https://stately.ai/docs/guards): pure synchronous predicates, named guards and guarded transition alternatives.
 - [Actions](https://stately.ai/docs/actions): named implementations, parameters and fire-and-forget effects.
 - [Invoking actors](https://stately.ai/docs/invoke): completion/error handling and parent-controlled actor lifetimes.
-- [Context](https://stately.ai/docs/context): immutable context updates through `assign`.
+- [Context](https://stately.ai/docs/context): immutable context updates (v6 uses returned context patches).
 - [Promise actors](https://stately.ai/docs/promise-actors): cancellation signals and the limits of stopping promise work.
 
 These sources explain XState's mechanisms. The requirements above also record the user's stricter application architecture preferences; do not misrepresent every preference as an XState library restriction.
+
+## Installed v6 contracts
+
+The web, extension and workers use published `xstate@6.0.0-beta.1`. Read the
+installed `xstate/docs` mechanism guides and `xstate/agents.md` when changing a
+chart. `setup({ schemas })` declares context, inputs, event payload maps, outputs
+and children. Selection and `.can()` may evaluate calculation functions: return
+context patches, use `enq` for effects, and obtain native observations through
+owned logic. Only self-originated coordination belongs in `internalEvents`;
+callback, worker and subscribed-child reports belong in `events`.
+
+Use `type: 'choice'` with a total, effect-free `choice` for pure routing. Keep
+conditional waits, context-producing steps and effect-producing transitions as
+`always`. Consume `event.output` from completion; completed children need not
+remain in `children`. Relative state predicates include the full root nesting,
+including `active.flow`, and cancellation joins must observe the correct region.
+
+Generic native capability contracts accept the typed `ChildSpawner` capability
+and return an owned `ActorInstance` with its actual command protocol. This avoids
+pretending that a child with additional internal events has a narrower generic
+`ActorLogic` protocol. Keep the concrete source at its producer and explicitly
+stop retained refs on their owner’s exit. Preserve `.provide()` source injection.
+
+A queued mutation is acknowledged with `STAGED` before producing a receipt;
+terminal output calculation must not assume an entry effect has already run.
+Native commit/receipt handles remain in adapter closures, while domain facts
+remain immutable chart context. See the migration specification for exact shared
+artifact provenance and qualification results.
+
+Use `@xstate/test@2.0.0-beta.0` for generated campaigns against independent
+contracts and real actor SUTs. Keep explicit generators, bounds, seeds and
+coverage requirements, retain shrinking/replay artifacts through the built-in
+failure store, and preserve native browser/Jazz tests.

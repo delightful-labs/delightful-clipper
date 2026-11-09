@@ -1,87 +1,114 @@
-import { createActor, fromPromise, setup, assign, toPromise, stateIn } from 'xstate'
+import type { EventPayload } from '../src/lib/machines/events.js'
+import { types, createActor, setup, toPromise, createAsyncLogic, matchesState } from 'xstate'
+
 import type { Jazz } from 'jazz-tools/backend'
 import { isRunnableDevEnvironment, type Plugin, type ViteDevServer } from 'vite'
 
 type Context = { server: ViteDevServer; backend?: Jazz; failed: boolean }
 const actors = {
-	load: fromPromise<Jazz, ViteDevServer>(async ({ input }) => {
-		// Use the same SSR module graph as hooks and routes, so local requests
-		// share one SDK-owned backend rather than independent memory stores.
-		const environment = input.environments.ssr
-		if (!isRunnableDevEnvironment(environment))
-			throw new Error('Jazz requires the SSR module runner')
-		const module = await environment.runner.import('/src/lib/server/jazz.ts')
-		return module.jazz
+	load: createAsyncLogic<Jazz, ViteDevServer>({
+		run: async ({ input }) => {
+			// Use the same SSR module graph as hooks and routes, so local requests
+			// share one SDK-owned backend rather than independent memory stores.
+			const environment = input.environments.ssr
+			if (!isRunnableDevEnvironment(environment))
+				throw new Error('Jazz requires the SSR module runner')
+			const module = await environment.runner.import('/src/lib/server/jazz.ts')
+			return module.jazz
+		}
 	}),
-	attach: fromPromise(({ input }: { input: Context }) => {
-		if (!input.backend || !input.server.httpServer) throw new Error('Jazz dev backend unavailable')
-		return input.backend.attach(input.server.httpServer)
+	attach: createAsyncLogic({
+		run: ({ input }: { input: Context }) => {
+			if (!input.backend || !input.server.httpServer)
+				throw new Error('Jazz dev backend unavailable')
+			return input.backend.attach(input.server.httpServer)
+		}
 	}),
-	close: fromPromise(({ input }: { input: Jazz }) => input.close())
+	close: createAsyncLogic({ run: ({ input }: { input: Jazz }) => input.close() })
 }
-const lifecycle = setup<
-	Context,
-	{ type: 'CLOSE' } | { type: 'LISTEN' },
-	typeof actors,
-	{},
-	{},
-	{ loadingCancelled: undefined; attachingCancelled: undefined; startupFailed: undefined },
-	never,
-	string,
-	ViteDevServer
->({
+const lifecycle = setup({
+	schemas: {
+		context: types<Context>(),
+		events: {
+			CLOSE: types<EventPayload<{ type: 'CLOSE' } | { type: 'LISTEN' }, 'CLOSE'>>(),
+			LISTEN: types<EventPayload<{ type: 'CLOSE' } | { type: 'LISTEN' }, 'LISTEN'>>()
+		},
+		input: types<ViteDevServer>(),
+		tags: types<string>(),
+		children: {
+			load: types<import('xstate').ActorRefFrom<(typeof actors)['load']>>(),
+			attach: types<import('xstate').ActorRefFrom<(typeof actors)['attach']>>(),
+			close: types<import('xstate').ActorRefFrom<(typeof actors)['close']>>()
+		}
+	},
 	actors,
 	guards: {
-		loadingCancelled: stateIn('#clipper-jazz-dev.loading.stopping'),
-		attachingCancelled: stateIn('#clipper-jazz-dev.attaching.stopping'),
-		startupFailed: ({ context }) => context.failed
+		loadingCancelled: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ loading: 'stopping' }, value),
+		attachingCancelled: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ attaching: 'stopping' }, value),
+		startupFailed: ({ context }: { context: Context }) => context.failed
 	}
 }).createMachine({
 	id: 'clipper-jazz-dev',
 	context: ({ input }) => ({ server: input, failed: false }),
 	initial: 'waiting',
 	states: {
-		waiting: { on: { LISTEN: 'loading', CLOSE: 'closed' } },
+		waiting: { on: { LISTEN: { target: 'loading' }, CLOSE: { target: 'closed' } } },
 		loading: {
 			initial: 'active',
 			states: { active: {}, stopping: {} },
-			on: { CLOSE: '.stopping' },
+			on: { CLOSE: { target: '.stopping' } },
 			invoke: {
+				id: 'load',
 				src: 'load',
-				input: ({ context }) => context.server,
-				onDone: [
-					{
-						guard: 'loadingCancelled',
-						target: 'closing',
-						actions: assign({ backend: ({ event }) => event.output })
-					},
-					{ target: 'attaching', actions: assign({ backend: ({ event }) => event.output }) }
-				],
-				onError: 'failed'
+				input: ({ context }: { context: Context }) => context.server,
+				onDone: (args) => {
+					const { event } = args
+					if (args.guards.loadingCancelled(args)) {
+						return { target: 'closing', context: { backend: event.output } }
+					}
+					return { target: 'attaching', context: { backend: event.output } }
+				},
+				onError: { target: 'failed' }
 			}
 		},
 		attaching: {
 			initial: 'active',
 			states: { active: {}, stopping: {} },
-			on: { CLOSE: '.stopping' },
+			on: { CLOSE: { target: '.stopping' } },
 			invoke: {
+				id: 'attach',
 				src: 'attach',
-				input: ({ context }) => context,
-				onDone: [{ guard: 'attachingCancelled', target: 'closing' }, { target: 'active' }],
-				onError: { target: 'closing', actions: assign({ failed: true }) }
+				input: ({ context }: { context: Context }) => context,
+				onDone: (args) => {
+					if (args.guards.attachingCancelled(args)) {
+						return { target: 'closing' }
+					}
+					return { target: 'active' }
+				},
+				onError: () => {
+					return { target: 'closing', context: { failed: true } }
+				}
 			}
 		},
-		active: { on: { CLOSE: 'closing' } },
+		active: { on: { CLOSE: { target: 'closing' } } },
 		closing: {
 			invoke: {
+				id: 'close',
 				src: 'close',
-				input: ({ context }) => context.backend!,
-				onDone: [{ guard: 'startupFailed', target: 'failed' }, { target: 'closed' }],
-				onError: 'failed'
+				input: ({ context }: { context: Context }) => context.backend!,
+				onDone: (args) => {
+					if (args.guards.startupFailed(args)) {
+						return { target: 'failed' }
+					}
+					return { target: 'closed' }
+				},
+				onError: { target: 'failed' }
 			}
 		},
-		closed: { type: 'final' },
-		failed: { type: 'final' }
+		closed: { type: 'final' as const },
+		failed: { type: 'final' as const }
 	}
 })
 export function jazzDev(enabled: boolean): Plugin {
@@ -106,12 +133,12 @@ export function jazzDev(enabled: boolean): Plugin {
 			owner = createActor(lifecycle, { input: server })
 			settled = toPromise(owner)
 			void settled.catch(() => undefined)
-			server.httpServer?.once('close', () => owner?.send({ type: 'CLOSE' }))
-			server.httpServer?.once('listening', () => owner?.send({ type: 'LISTEN' }))
+			server.httpServer?.once('close', () => owner?.send({ type: 'CLOSE' as const }))
+			server.httpServer?.once('listening', () => owner?.send({ type: 'LISTEN' as const }))
 			owner.start()
 		},
 		async closeBundle() {
-			owner?.send({ type: 'CLOSE' })
+			owner?.send({ type: 'CLOSE' as const })
 			await settled
 		}
 	}

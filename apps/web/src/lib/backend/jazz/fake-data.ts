@@ -70,7 +70,7 @@ export function createFakeDataRecords(db: FakeDataDb, libraryId: string, isCurre
 			enabled,
 			isCurrent,
 			libraryId,
-			stage,
+			stage: (spawn, input) => spawn(stage, { input }),
 			local: () => presence(db, ReadTier.LocalFirst),
 			authority: () => presence(db, ReadTier.Remote)
 		})

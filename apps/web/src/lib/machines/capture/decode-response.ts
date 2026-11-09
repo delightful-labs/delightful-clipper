@@ -1,4 +1,6 @@
-import { assign, fromPromise, setup } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup, createAsyncLogic } from 'xstate'
+
 import type { Hop } from '../../server/capture/transport.js'
 import { CaptureError } from '../../server/capture/errors.js'
 type Input = {
@@ -8,39 +10,26 @@ type Input = {
 	decode: (format: 'gzip' | 'br' | 'deflate', wire: Uint8Array) => Promise<Uint8Array>
 }
 type Context = Input & { body: Uint8Array | undefined; error: unknown }
-const decode = fromPromise(
-	({ input }: { input: { format: 'gzip' | 'br' | 'deflate'; context: Context } }) =>
+const decode = createAsyncLogic({
+	run: ({ input }: { input: { format: 'gzip' | 'br' | 'deflate'; context: Context } }) =>
 		input.context.decode(input.format, input.context.wire)
-)
-const model = setup<
-	Context,
-	{ type: 'UNUSED' },
-	{ decode: typeof decode },
-	{},
-	{},
-	{},
-	never,
-	string,
-	Input,
-	{ hop: Hop; error: unknown }
->({ actors: { decode } }).extend({
+})
+const model = setup({
+	schemas: {
+		context: types<Context>(),
+		events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+		input: types<Input>(),
+		output: types<{ hop: Hop; error: unknown }>(),
+		tags: types<string>(),
+		children: { decode: types<import('xstate').ActorRefFrom<typeof decode>>() }
+	},
+	actors: { decode },
 	actions: {
-		useIdentityBody: assign({ body: ({ context }) => context.wire }),
-		rejectEncoding: assign({ error: () => new CaptureError('unsupportedMedia', 415) })
+		useIdentityBody: ({ context }: { context: Context }) => ({ context: { body: context.wire } }),
+		rejectEncoding: () => ({ context: { error: new CaptureError('unsupportedMedia', 415) } })
 	}
 })
-const compressed = (format: 'gzip' | 'br' | 'deflate') =>
-	model.createStateConfig({
-		invoke: {
-			src: 'decode',
-			input: ({ context }) => ({ context, format }),
-			onDone: { target: 'done', actions: assign({ body: ({ event }) => event.output }) },
-			onError: {
-				target: 'done',
-				actions: assign({ error: () => new CaptureError('sourceTooLarge', 413) })
-			}
-		}
-	})
+
 export const decodeResponseMachine = model.createMachine({
 	id: 'decode-capture-response',
 	context: ({ input }) => ({ ...input, body: undefined, error: undefined }),
@@ -51,21 +40,67 @@ export const decodeResponseMachine = model.createMachine({
 	}),
 	states: {
 		routingEncoding: {
-			always: [
-				{
-					guard: ({ context }) => !context.encoding || context.encoding === 'identity',
-					target: 'done',
-					actions: 'useIdentityBody'
-				},
-				{ guard: ({ context }) => context.encoding === 'gzip', target: 'gzip' },
-				{ guard: ({ context }) => context.encoding === 'br', target: 'brotli' },
-				{ guard: ({ context }) => context.encoding === 'deflate', target: 'deflate' },
-				{ target: 'done', actions: 'rejectEncoding' }
-			]
+			always: (args) => {
+				const { context } = args
+				if (!context.encoding || context.encoding === 'identity') {
+					return { target: 'done', context: args.actions.useIdentityBody(args).context }
+				}
+				if (context.encoding === 'gzip') {
+					return { target: 'gzip' }
+				}
+				if (context.encoding === 'br') {
+					return { target: 'brotli' }
+				}
+				if (context.encoding === 'deflate') {
+					return { target: 'deflate' }
+				}
+				return { target: 'done', context: args.actions.rejectEncoding().context }
+			}
 		},
-		gzip: compressed('gzip'),
-		brotli: compressed('br'),
-		deflate: compressed('deflate'),
-		done: { type: 'final', entry: assign({ wire: () => new Uint8Array() }) }
+		gzip: {
+			invoke: {
+				id: 'decode',
+				src: 'decode',
+				input: ({ context }: { context: Context }) => ({ context, format: 'gzip' }),
+				onDone: (args) => {
+					return { target: 'done', context: { body: args.event.output } }
+				},
+				onError: () => {
+					return { target: 'done', context: { error: new CaptureError('sourceTooLarge', 413) } }
+				}
+			}
+		},
+		brotli: {
+			invoke: {
+				id: 'decode',
+				src: 'decode',
+				input: ({ context }: { context: Context }) => ({ context, format: 'br' }),
+				onDone: (args) => {
+					return { target: 'done', context: { body: args.event.output } }
+				},
+				onError: () => {
+					return { target: 'done', context: { error: new CaptureError('sourceTooLarge', 413) } }
+				}
+			}
+		},
+		deflate: {
+			invoke: {
+				id: 'decode',
+				src: 'decode',
+				input: ({ context }: { context: Context }) => ({ context, format: 'deflate' }),
+				onDone: (args) => {
+					return { target: 'done', context: { body: args.event.output } }
+				},
+				onError: () => {
+					return { target: 'done', context: { error: new CaptureError('sourceTooLarge', 413) } }
+				}
+			}
+		},
+		done: {
+			type: 'final' as const,
+			entry: () => {
+				return { context: { wire: new Uint8Array() } }
+			}
+		}
 	}
 })

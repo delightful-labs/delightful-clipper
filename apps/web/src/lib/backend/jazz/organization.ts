@@ -116,7 +116,7 @@ export function createOrganizationRecords(
 
 	return {
 		machine: createOrganizationMachine(
-			stage,
+			(spawn, input) => spawn(stage, { input }),
 			isCurrent,
 			async (request) => {
 				const rows = await db.all(

@@ -77,8 +77,8 @@ function fixture(
 		debug: false,
 		online: () => true,
 		isCurrent: () => current,
-		save,
-		failure,
+		save: (spawn, input) => spawn(save, { input }),
+		failure: (spawn, input) => spawn(failure, { input }),
 		network,
 		lookup,
 		open: (next) => {

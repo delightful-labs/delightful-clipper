@@ -72,8 +72,8 @@ function fixture(phase: 'prepare' | 'read' | 'document' | 'intent' | 'reread', c
 		prepare: async () => {
 			throw new Error('Unexpected content save')
 		},
-		intent: contentStage,
-		publish: contentStage
+		intent: (spawn, input) => spawn(contentStage, { input }),
+		publish: (spawn, input) => spawn(contentStage, { input })
 	})
 	const stage = transaction<ArticleDraft>(phase === 'reread')
 	const actor = createActor(
@@ -83,9 +83,9 @@ function fixture(phase: 'prepare' | 'read' | 'document' | 'intent' | 'reread', c
 			read,
 			document,
 			intent,
-			ensure: stage,
-			attach: stage,
-			content
+			ensure: (spawn, input) => spawn(stage, { input }),
+			attach: (spawn, input) => spawn(stage, { input }),
+			content: (spawn, input) => spawn(content, { input })
 		}),
 		{ input: { url: draft.article.url } }
 	).start()
@@ -209,8 +209,8 @@ it.each([
 			prepare: async () => {
 				throw new Error('Unexpected content save')
 			},
-			intent: contentStage,
-			publish: contentStage
+			intent: (spawn, input) => spawn(contentStage, { input }),
+			publish: (spawn, input) => spawn(contentStage, { input })
 		})
 		const actor = createActor(
 			createSaveArticleMachine({
@@ -230,9 +230,9 @@ it.each([
 							}
 						: null,
 				intent: async () => false,
-				ensure: stage,
-				attach: stage,
-				content
+				ensure: (spawn, input) => spawn(stage, { input }),
+				attach: (spawn, input) => spawn(stage, { input }),
+				content: (spawn, input) => spawn(content, { input })
 			}),
 			{ input: { url: draft.article.url } }
 		).start()

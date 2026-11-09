@@ -1,9 +1,9 @@
+import { types, type SnapshotFrom, createCallbackLogic, setup, createAsyncLogic } from 'xstate'
 import { t } from '../../localization/index.js'
 import { stateFeedback } from '../../contracts/feedback.js'
+
 import type { NamedState } from '../../contracts/feedback.js'
-import type { WorkflowMessage } from '../../contracts/feedback.js'
-import type { SnapshotFrom } from 'xstate'
-import { assign, fromCallback, fromPromise, setup, raise } from 'xstate'
+
 export type ShellStatus = 'preparing' | 'ready' | 'waiting' | 'failed' | 'unsupported'
 export type ShellWorker = EventTarget & { state: string }
 export type ShellRegistration = EventTarget & {
@@ -28,124 +28,34 @@ const preparing = {
 }
 export function createShellRegistrationMachine(platform: ShellPlatform) {
 	const actors = {
-		register: fromPromise(() => platform.register()),
-		observe: fromCallback<ShellEvent, ShellRegistration>(({ input, sendBack }) =>
+		register: createAsyncLogic({ run: () => platform.register() }),
+		observe: createCallbackLogic<ShellEvent, ShellRegistration>(({ input, sendBack }) =>
 			platform.observe(input, sendBack)
 		)
 	}
-	const model = setup<
-		Context,
-		ShellEvent,
-		typeof actors,
-		{},
-		{},
-		{},
-		never,
-		string,
-		undefined,
-		undefined,
-		{ type: string },
-		NamedState & { status: ShellStatus }
-	>({ actors })
-	const status = (value: ShellStatus, name: string, variant: WorkflowMessage['variant'] = 'info') =>
-		model.createStateConfig({ meta: { status: value, name, variant } })
-	const settled = {
-		guard: ({ event }: { event: ShellEvent }) =>
-			event.type === 'STATUS' && event.status !== 'preparing',
-		target: 'open'
-	}
-	const workflow = model.createStateConfig({
-		id: 'shell-registration-attempt',
-		initial: 'registering',
-		on: { TIMED_OUT: '.failed' },
-		states: {
-			registering: {
-				...status('preparing', t('offline.preparing')),
-				invoke: {
-					src: 'register',
-					onDone: [
-						{
-							guard: ({ event }) => !!event.output,
-							target: 'watching',
-							actions: assign({ registration: ({ event }) => event.output })
-						},
-						{ target: 'unsupported', actions: raise({ type: 'ATTEMPT_SETTLED' }) }
-					],
-					onError: { target: 'failed', actions: raise({ type: 'ATTEMPT_SETTLED' }) }
-				}
+	return setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				STATUS: types<{ status: ShellStatus }>(),
+				RETRY: types(),
+				SHUTDOWN: types(),
+				ATTEMPT_SETTLED: types(),
+				TIMED_OUT: types()
 			},
-			watching: {
-				initial: 'preparing',
-				invoke: {
-					src: 'observe',
-					input: ({ context }) => {
-						if (!context.registration) throw new Error('Missing shell registration')
-						return context.registration
-					},
-					onError: { target: 'failed', actions: raise({ type: 'ATTEMPT_SETTLED' }) }
-				},
-				on: {
-					STATUS: [
-						{ guard: ({ event }) => event.status === 'ready', target: '.ready' },
-						{
-							guard: ({ event }) => event.status === 'waiting',
-							target: '.waiting'
-						},
-						{ guard: ({ event }) => event.status === 'failed', target: '.failed' },
-						{
-							guard: ({ event }) => event.status === 'unsupported',
-							target: '.unsupported'
-						},
-						{ target: '.preparing' }
-					]
-				},
-				states: {
-					preparing: status('preparing', t('offline.preparing')),
-					ready: { meta: { status: 'ready' } },
-					waiting: status('waiting', t('offline.update')),
-					failed: { ...status('failed', t('offline.failed'), 'error'), tags: 'retryable' },
-					unsupported: status('unsupported', t('offline.unsupported'))
-				}
-			},
-			failed: {
-				...status('failed', t('offline.failed'), 'error'),
-				tags: 'retryable',
-				entry: assign({ registration: undefined })
-			},
-			unsupported: {
-				...status('unsupported', t('offline.unsupported')),
-				entry: assign({ registration: undefined })
+			meta: types<NamedState & { status: ShellStatus }>(),
+			tags: types<string>(),
+			children: {
+				register: types<import('xstate').ActorRefFrom<typeof actors.register>>(),
+				observe: types<import('xstate').ActorRefFrom<typeof actors.observe>>()
 			}
-		}
-	})
-	const attempt = model.createStateConfig({
-		type: 'parallel',
-		states: {
-			deadline: {
-				initial: 'pending',
-				states: {
-					pending: {
-						after: {
-							45000: { target: 'settled', actions: raise({ type: 'TIMED_OUT' }) }
-						},
-						on: {
-							STATUS: { ...settled, target: 'settled' },
-							ATTEMPT_SETTLED: 'settled'
-						}
-					},
-					settled: {}
-				}
-			},
-			workflow
-		}
-	})
-	return model.createMachine({
+		},
+		actors
+	}).createMachine({
 		id: 'offline-shell',
 		initial: 'running',
-		context: () => ({
-			registration: undefined
-		}),
-		on: { SHUTDOWN: '.closed' },
+		context: { registration: undefined },
+		on: { SHUTDOWN: { target: '.closed' } },
 		states: {
 			running: {
 				type: 'parallel',
@@ -153,20 +63,141 @@ export function createShellRegistrationMachine(platform: ShellPlatform) {
 					admission: {
 						initial: 'blocked',
 						states: {
-							blocked: { on: { STATUS: settled, ATTEMPT_SETTLED: 'open', TIMED_OUT: 'open' } },
+							blocked: {
+								on: {
+									STATUS: ({ event }) => {
+										if (event.status !== 'preparing') return { target: 'open' }
+									},
+									ATTEMPT_SETTLED: { target: 'open' },
+									TIMED_OUT: { target: 'open' }
+								}
+							},
 							open: {}
 						}
 					},
 					attempt: {
 						initial: 'active',
-						on: { RETRY: '.active' },
+						on: { RETRY: { target: '.active', reenter: true } },
 						states: {
-							active: attempt
+							active: {
+								type: 'parallel',
+								states: {
+									deadline: {
+										initial: 'pending',
+										states: {
+											pending: {
+												after: {
+													45000: (_, enq) => {
+														enq.raise({ type: 'TIMED_OUT' })
+														return { target: 'settled' }
+													}
+												},
+												on: {
+													STATUS: ({ event }) => {
+														if (event.status !== 'preparing') return { target: 'settled' }
+													},
+													ATTEMPT_SETTLED: { target: 'settled' }
+												}
+											},
+											settled: {}
+										}
+									},
+									workflow: {
+										id: 'shell-registration-attempt',
+										initial: 'registering',
+										on: { TIMED_OUT: { target: '.failed' } },
+										states: {
+											registering: {
+												meta: {
+													status: 'preparing',
+													name: t('offline.preparing'),
+													variant: 'info'
+												},
+												invoke: {
+													id: 'register',
+													src: 'register',
+													onDone: ({ event }, enq) => {
+														if (event.output)
+															return { target: 'watching', context: { registration: event.output } }
+														enq.raise({ type: 'ATTEMPT_SETTLED' })
+														return { target: 'unsupported' }
+													},
+													onError: (_, enq) => {
+														enq.raise({ type: 'ATTEMPT_SETTLED' })
+														return { target: 'failed' }
+													}
+												}
+											},
+											watching: {
+												initial: 'preparing',
+												invoke: {
+													id: 'observe',
+													src: 'observe',
+													input: ({ context }) => {
+														if (!context.registration) throw new Error('Missing shell registration')
+														return context.registration
+													},
+													onError: (_, enq) => {
+														enq.raise({ type: 'ATTEMPT_SETTLED' })
+														return { target: 'failed' }
+													}
+												},
+												on: {
+													STATUS: ({ event }) => {
+														if (event.status === 'ready') return { target: '.ready' }
+														if (event.status === 'waiting') return { target: '.waiting' }
+														if (event.status === 'failed') return { target: '.failed' }
+														if (event.status === 'unsupported') return { target: '.unsupported' }
+														return { target: '.preparing' }
+													}
+												},
+												states: {
+													preparing: {
+														meta: {
+															status: 'preparing',
+															name: t('offline.preparing'),
+															variant: 'info'
+														}
+													},
+													ready: { meta: { status: 'ready' } },
+													waiting: {
+														meta: { status: 'waiting', name: t('offline.update'), variant: 'info' }
+													},
+													failed: {
+														meta: { status: 'failed', name: t('offline.failed'), variant: 'error' },
+														tags: ['retryable']
+													},
+													unsupported: {
+														meta: {
+															status: 'unsupported',
+															name: t('offline.unsupported'),
+															variant: 'info'
+														}
+													}
+												}
+											},
+											failed: {
+												meta: { status: 'failed', name: t('offline.failed'), variant: 'error' },
+												tags: ['retryable'],
+												entry: () => ({ context: { registration: undefined } })
+											},
+											unsupported: {
+												meta: {
+													status: 'unsupported',
+													name: t('offline.unsupported'),
+													variant: 'info'
+												},
+												entry: () => ({ context: { registration: undefined } })
+											}
+										}
+									}
+								}
+							}
 						}
 					}
 				}
 			},
-			closed: { type: 'final', entry: assign({ registration: undefined }) }
+			closed: { type: 'final', entry: () => ({ context: { registration: undefined } }) }
 		}
 	})
 }
@@ -179,6 +210,8 @@ export function selectShellView(
 		status: meta.find((state) => state !== undefined)?.status,
 		message: stateFeedback(meta),
 		admitted: snapshot?.matches({ running: { admission: 'open' } }) ?? false,
-		canRetry: snapshot ? snapshot.hasTag('retryable') && snapshot.can({ type: 'RETRY' }) : false
+		canRetry: snapshot
+			? snapshot.hasTag('retryable') && snapshot.can({ type: 'RETRY' as const })
+			: false
 	}
 }

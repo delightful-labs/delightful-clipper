@@ -1,4 +1,4 @@
-import type { ActorLogic, ActorRef, Snapshot } from 'xstate'
+import type { ActorInstance, Snapshot } from 'xstate'
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { SyncReceipt, StoredAsset } from './storage.js'
 import type {
@@ -8,21 +8,11 @@ import type {
 	FailedImageWrite
 } from '../images/schema.js'
 export type ImageStageResult = WorkspaceCreationResult<ImageWrite, SyncReceipt>
-export type ImageStageRef = ActorRef<Snapshot<ImageStageResult>, { type: 'SHUTDOWN' | 'CANCEL' }>
-export type ImageSpawner = <D extends ImageWrite, S extends Snapshot<ImageStageResult>>(
-	logic: ActorLogic<
-		S,
-		{ type: 'SHUTDOWN' | 'CANCEL' },
-		{
-			attempt: { operationId: string; workspaceId: string; membershipId: string; draft: D }
-		}
-	>,
-	options: {
-		input: {
-			attempt: { operationId: string; workspaceId: string; membershipId: string; draft: D }
-		}
-	}
-) => ActorRef<S, { type: 'SHUTDOWN' | 'CANCEL' }>
+export type ImageStageRef = ActorInstance<
+	Snapshot<ImageStageResult>,
+	{ type: 'SHUTDOWN' | 'CANCEL' }
+>
+export type ImageSpawner = import('../machines/children.js').ChildSpawner
 export type ImageCapability = {
 	isCurrent: () => boolean
 	hasIntent: (id: string, signal: AbortSignal) => Promise<boolean>

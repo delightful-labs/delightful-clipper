@@ -12,19 +12,19 @@ import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
 import { ReadTier } from 'jazz-tools'
 import type { Db } from 'jazz-tools'
-import type { ActorLogic, Snapshot } from 'xstate'
+
 import { createSaveArticleMachine } from '../../machines/storage/save-article.js'
 import { articleRecord, prepareArticle, uuid } from '../../capture/articles.js'
 import type { Article, ArticleDraft, LibraryArticle } from '../../contracts/articles.js'
-import type { SaveRequest, SaveResult } from '../../contracts/storage.js'
+
 import { app } from './schema.js'
 /** Reads stay bound to this DB/library; owning actors gate admission and late-result consumption.
  * Native write admission and commit scope protection live in transactionLifecycle. */
-export function createArticleRecords<S extends Snapshot<SaveResult>>(
+export function createArticleRecords(
 	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean,
-	content: ActorLogic<S, { type: 'SHUTDOWN' }, SaveRequest>
+	content: import('../../contracts/articles.js').ContentOperation
 ) {
 	const read = async (id: string) => {
 		const row = await db.one(app.articles.where({ id: uuid(id), libraryId }), {
@@ -146,8 +146,8 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			read,
 			document,
 			intent,
-			ensure,
-			attach,
+			ensure: (spawn, input) => spawn(ensure, { input }),
+			attach: (spawn, input) => spawn(attach, { input }),
 			content
 		}),
 		subscribePending: (next: (rows: Article[]) => void, error: () => void) =>
@@ -168,7 +168,7 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 				{ input: { next, error } }
 			).start()
 			return () => {
-				actor.send({ type: 'STOP' })
+				actor.send({ type: 'STOP' as const })
 				actor.stop()
 			}
 		}

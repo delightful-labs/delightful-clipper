@@ -69,8 +69,8 @@ it.each(['open', 'commit', 'local', 'uncertain', 'account'] as const)(
 			createSaveRecordMachine({
 				isCurrent: () => current,
 				prepare: async () => draft,
-				intent: stage,
-				publish: stage
+				intent: (spawn, input) => spawn(stage, { input }),
+				publish: (spawn, input) => spawn(stage, { input })
 			}),
 			{ input: request }
 		).start()
@@ -136,7 +136,12 @@ it.each(['before', 'resolve', 'reject'] as const)(
 			return draft
 		})
 		const actor = createActor(
-			createSaveRecordMachine({ isCurrent: () => current, prepare, intent: stage, publish: stage }),
+			createSaveRecordMachine({
+				isCurrent: () => current,
+				prepare,
+				intent: (spawn, input) => spawn(stage, { input }),
+				publish: (spawn, input) => spawn(stage, { input })
+			}),
 			{ input: request }
 		).start()
 		if (mode !== 'before') {
@@ -181,7 +186,12 @@ it.each(['resolve', 'reject'] as const)(
 		}
 		const prepare = vi.fn(() => gate.promise)
 		const actor = createActor(
-			createSaveRecordMachine({ isCurrent: () => true, prepare, intent: stage, publish: stage }),
+			createSaveRecordMachine({
+				isCurrent: () => true,
+				prepare,
+				intent: (spawn, input) => spawn(stage, { input }),
+				publish: (spawn, input) => spawn(stage, { input })
+			}),
 			{ input: request }
 		).start()
 		actor.send({ type: 'SHUTDOWN' })
@@ -234,8 +244,8 @@ it.each(['blocked', 'failed', 'saved'] as const)(
 			createSaveRecordMachine({
 				isCurrent: () => true,
 				prepare: (input) => prepareSave(crypto.randomUUID(), input),
-				intent: stage,
-				publish: stage
+				intent: (spawn, input) => spawn(stage, { input }),
+				publish: (spawn, input) => spawn(stage, { input })
 			}),
 			{ input: request }
 		).start()

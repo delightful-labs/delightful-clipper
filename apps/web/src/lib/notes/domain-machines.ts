@@ -33,50 +33,123 @@ export function createNoteCreationMachine(io: {
 				canCreateNote(facts, facts.request.id) && !facts.article && !!facts.document
 		},
 		actions: {
-			insertArticle: ({ context }) =>
-				io.insertArticle(context.resource, required(context.facts).request),
-			insertDocument: ({ context }) =>
-				io.insertDocument(context.resource, required(context.facts).request)
+			insertArticle: ({
+				context
+			}: {
+				context: import('../machines/storage/domain-model.js').DomainContext<
+					NoteCreate,
+					NoteParentFacts
+				>
+			}) => io.insertArticle(context.resource, required(context.facts).request),
+			insertDocument: ({
+				context
+			}: {
+				context: import('../machines/storage/domain-model.js').DomainContext<
+					NoteCreate,
+					NoteParentFacts
+				>
+			}) => io.insertDocument(context.resource, required(context.facts).request)
 		}
 	})
 	return model.createMachine({
 		id: 'note-creation-domain',
 		context: domainContext<NoteCreate, NoteParentFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('../machines/storage/domain-model.js').DomainContext<
+				NoteCreate,
+				NoteParentFacts
+			>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: {
-								type: 'canCreateArticleNote',
-								params: ({ event }) => ({ facts: event.output })
-							},
-							target: 'readyArticle',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{
-							guard: {
-								type: 'canCreateDocumentNote',
-								params: ({ event }) => ({ facts: event.output })
-							},
-							target: 'readyDocument',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{ target: 'blocked' }
-					]
+					onDone: (args, _enq) => {
+						let patch = {}
+						if (
+							args.guards.canCreateArticleNote(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							)
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'readyArticle', context: patch }
+						}
+						if (
+							args.guards.canCreateDocumentNote(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							)
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'readyDocument', context: patch }
+						}
+						return { target: 'blocked', context: patch }
+					}
 				}
 			},
-			readyArticle: { entry: 'allow', on: { STAGE: { target: 'done', actions: 'insertArticle' } } },
-			readyDocument: {
-				entry: 'allow',
-				on: { STAGE: { target: 'done', actions: 'insertDocument' } }
+			readyArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
+				on: {
+					STAGE: (_args, _enq) => {
+						let patch = {}
+						return { target: 'insertArticle', context: patch }
+					}
+				}
 			},
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			readyDocument: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
+				on: {
+					STAGE: (_args, _enq) => {
+						let patch = {}
+						return { target: 'insertDocument', context: patch }
+					}
+				}
+			},
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' as const },
+			insertArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertArticle(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertDocument: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertDocument(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }
@@ -91,33 +164,78 @@ export function createNoteRevisionMachine(io: {
 				canWriteNoteRevision(facts, facts.revision)
 		},
 		actions: {
-			insertRevision: ({ context }) =>
-				io.insertRevision(context.resource, required(context.facts).revision)
+			insertRevision: ({
+				context
+			}: {
+				context: import('../machines/storage/domain-model.js').DomainContext<
+					NoteRevision,
+					NoteRevisionFacts
+				>
+			}) => io.insertRevision(context.resource, required(context.facts).revision)
 		}
 	})
 	return model.createMachine({
 		id: 'note-revision-domain',
 		context: domainContext<NoteRevision, NoteRevisionFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('../machines/storage/domain-model.js').DomainContext<
+				NoteRevision,
+				NoteRevisionFacts
+			>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: { type: 'canWriteRevision', params: ({ event }) => ({ facts: event.output }) },
-							target: 'ready',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{ target: 'blocked' }
-					]
+					onDone: (args, _enq) => {
+						let patch = {}
+						if (
+							args.guards.canWriteRevision(args, (({ event }) => ({ facts: event.output }))(args))
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'ready', context: patch }
+						}
+						return { target: 'blocked', context: patch }
+					}
 				}
 			},
-			ready: { entry: 'allow', on: { STAGE: { target: 'done', actions: 'insertRevision' } } },
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			ready: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
+				on: {
+					STAGE: (_args, _enq) => {
+						let patch = {}
+						return { target: 'insertRevision', context: patch }
+					}
+				}
+			},
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' as const },
+			insertRevision: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertRevision(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }
@@ -141,67 +259,167 @@ export function createLegacyNoteImportMachine(io: {
 				canImportLegacy(facts) && !!facts.document
 		},
 		actions: {
-			insertArticle: ({ context }) =>
-				io.insertArticle(context.resource, required(context.facts).request),
-			insertDocument: ({ context }) =>
-				io.insertDocument(context.resource, required(context.facts).request),
-			insertRevisions: ({ context }) =>
-				io.insertRevisions(context.resource, required(context.facts).missing)
+			insertArticle: ({
+				context
+			}: {
+				context: import('../machines/storage/domain-model.js').DomainContext<
+					NoteCreate,
+					NoteImportFacts
+				>
+			}) => io.insertArticle(context.resource, required(context.facts).request),
+			insertDocument: ({
+				context
+			}: {
+				context: import('../machines/storage/domain-model.js').DomainContext<
+					NoteCreate,
+					NoteImportFacts
+				>
+			}) => io.insertDocument(context.resource, required(context.facts).request),
+			insertRevisions: ({
+				context
+			}: {
+				context: import('../machines/storage/domain-model.js').DomainContext<
+					NoteCreate,
+					NoteImportFacts
+				>
+			}) => io.insertRevisions(context.resource, required(context.facts).missing)
 		}
 	})
 	return model.createMachine({
 		id: 'note-import-domain',
 		context: domainContext<NoteCreate, NoteImportFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('../machines/storage/domain-model.js').DomainContext<
+				NoteCreate,
+				NoteImportFacts
+			>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: {
-								type: 'canImportExistingNote',
-								params: ({ event }) => ({ facts: event.output })
-							},
-							target: 'readyExisting',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{
-							guard: {
-								type: 'canImportArticleNote',
-								params: ({ event }) => ({ facts: event.output })
-							},
-							target: 'readyArticle',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{
-							guard: {
-								type: 'canImportDocumentNote',
-								params: ({ event }) => ({ facts: event.output })
-							},
-							target: 'readyDocument',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{ target: 'blocked' }
-					]
+					onDone: (args, _enq) => {
+						let patch = {}
+						if (
+							args.guards.canImportExistingNote(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							)
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'readyExisting', context: patch }
+						}
+						if (
+							args.guards.canImportArticleNote(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							)
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'readyArticle', context: patch }
+						}
+						if (
+							args.guards.canImportDocumentNote(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							)
+						) {
+							patch = args.actions.rememberFacts(
+								args,
+								(({ event }) => ({ facts: event.output }))(args)
+							).context
+							return { target: 'readyDocument', context: patch }
+						}
+						return { target: 'blocked', context: patch }
+					}
 				}
 			},
 			readyExisting: {
-				entry: 'allow',
-				on: { STAGE: { target: 'done', actions: ['insertRevisions'] } }
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
+				on: {
+					STAGE: (_args, _enq) => {
+						let patch = {}
+						return { target: 'insertRevisions', context: patch }
+					}
+				}
 			},
 			readyArticle: {
-				entry: 'allow',
-				on: { STAGE: { target: 'done', actions: ['insertArticle', 'insertRevisions'] } }
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
+				on: {
+					STAGE: (_args, _enq) => {
+						let patch = {}
+						return { target: 'insertArticleAndinsertRevisions', context: patch }
+					}
+				}
 			},
 			readyDocument: {
-				entry: 'allow',
-				on: { STAGE: { target: 'done', actions: ['insertDocument', 'insertRevisions'] } }
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
+				on: {
+					STAGE: (_args, _enq) => {
+						let patch = {}
+						return { target: 'insertDocumentAndinsertRevisions', context: patch }
+					}
+				}
 			},
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' as const },
+			insertRevisions: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertRevisions(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertArticleAndinsertRevisions: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertArticle(args)
+						args.actions.insertRevisions(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertDocumentAndinsertRevisions: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertDocument(args)
+						args.actions.insertRevisions(args)
+						args.self.send({ type: 'STAGED' as const })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }

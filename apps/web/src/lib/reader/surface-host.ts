@@ -1,7 +1,7 @@
-import { createActor } from 'xstate'
+import { createActor, type ActorRefFrom } from 'xstate'
 import { z } from 'zod'
 import { viewportMachine } from './viewport.js'
-import type { ActorRefFrom } from 'xstate'
+
 import type { ViewportElements } from './viewport.js'
 import { positionSchema } from './schema.js'
 import { nativeReaderSurface } from './native-surface.js'
@@ -22,11 +22,11 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 	let released = false
 	const detach = () => {
 		released = true
-		if (viewport?.getSnapshot().status === 'active') viewport.send({ type: 'DETACH' })
+		if (viewport?.getSnapshot().status === 'active') viewport.send({ type: 'DETACH' as const })
 	}
 	const fullscreen = (id?: string, ok = true) =>
 		port.postMessage({
-			type: 'FULLSCREEN',
+			type: 'FULLSCREEN' as const,
 			id,
 			ok,
 			supported: surface.fullscreen.supported(),
@@ -45,7 +45,7 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 		switch (message.type) {
 			case 'VIEWPORT_OPEN': {
 				if (released) {
-					port.postMessage({ type: 'VIEWPORT_CLOSED' })
+					port.postMessage({ type: 'VIEWPORT_CLOSED' as const })
 					return
 				}
 				if (viewport) return
@@ -61,17 +61,20 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 				actor.subscribe({
 					complete: () =>
 						port.postMessage({
-							type: 'VIEWPORT_CLOSED',
+							type: 'VIEWPORT_CLOSED' as const,
 							position: actor.getSnapshot().output?.position
 						}),
 					error: () =>
-						port.postMessage({ type: 'VIEWPORT_FAILED', attachmentId: message.attachmentId })
+						port.postMessage({
+							type: 'VIEWPORT_FAILED' as const,
+							attachmentId: message.attachmentId
+						})
 				})
 				actor.start()
 				break
 			}
 			case 'REFLOW':
-				viewport?.send({ type: 'REFLOW' })
+				viewport?.send({ type: 'REFLOW' as const })
 				break
 			case 'DETACH':
 				detach()

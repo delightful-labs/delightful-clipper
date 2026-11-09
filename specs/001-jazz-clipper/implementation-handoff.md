@@ -550,3 +550,53 @@ The user clarified that user-facing dev servers must always be reachable on the 
 ## Source capture follow-up on the network frontend
 
 Stately `/docs/invoke` now parses and opens from actual Tailscale Add Link after weighting HTML above plain text in Accept. The supplied Men’s Journal article is blocked upstream by a DataDome HTTP 403 JavaScript challenge; server capture retains the URL instead of saving the challenge as an article. A reader-only DUI default SVG-caret runtime error discovered with Stately headings is fixed using DUI's caret snippet and Icon, with no dependency added. Transport/parser/gateway checks pass (17 cases); full unit/native checks pass (542 plus one platform skip); two existing capture/reader browser cases pass. The original/network user-facing servers and Jazz authority remain running; isolated harnesses were removed. Reader catalog approval and remaining full reader UI/offline qualification are still pending.
+
+## XState v6 connected runtime implementation (2026-11-09)
+
+The web, application worker, reader UI adapter, service worker and extension now
+use published `xstate@6.0.0-beta.1`. The v5 baseline was 626 passing tests on the
+merged migration specification. Shared archives are rebuilt from merged DLF
+`2532309` and DUI `7a7f61b`; exact sources, hashes and the preserved Jazz alpha.60
+adapter delta are recorded under `vendor/`. Existing Jazz and DLF presentation
+patches are unchanged. There is no XState patch, declaration override or new
+untyped actor cast.
+
+The implementation includes manual ownership review beyond syntax conversion:
+state-owned native observation and identity issuance, an acknowledged account
+binding handoff, total pure choices, retained typed child refs and completion
+reports, source injection, full-root state predicates and parallel cancellation
+joins. Domain staging acknowledges its native mutations before receipt output;
+transaction commit/receipt handles stay inside the native adapter closure.
+Reader attachment retains pending surface custody until admission completes, and
+its synchronous identity callback preserves fullscreen user activation. Image
+quota waits use owned timers; wakes do not reset the quota window. Extension
+sign-in/connection IDs are issued before invocation input or storage uses them.
+
+Generated testing uses `@xstate/test@2.0.0-beta.0` and `fast-check@4.10.2` against
+an independent binding/pagination contract and the real worker host and children.
+Seed 60381, 100 runs, at most 60 commands, complete modeled state/event/transition
+coverage and a required A → B → A trace. Probes check predictive calls leave the
+actor unchanged; disposal checks stopped editors and exactly one SDK close.
+The bounded model supplements native coverage. CI retains built-in shrunk
+counterexamples on failure, and all PR check triggers remain enabled.
+
+Qualification uses Node 24.22.2 and pnpm 10.22.0. Frozen installation, vendor
+integrity and `pnpm verify` pass: formatting, lint, strict web/extension/tooling
+checks, 628 tests in 95 files, and production web/service-worker build. The
+extension production build also passes. Browser qualification records 55 account,
+library, capture, discovery, image, organization, reader and startup cases;
+8 Chromium/Firefox schema-upgrade cases; 6 worker cases; 5 production-offline
+cases (including both servers stopped and HTTP cache cleared); and 2 fake-data
+cases. Packaged-extension qualification is being finalized before PR readiness.
+
+The production-offline suite caught early disposal of a pending reader surface;
+the actual worker adapter now retains that custody and the full offline suite
+passes. Native Chrome occasionally replaces its service-worker execution context
+between fixture commands. The extension harness retries only the explicit
+restart error once for idempotent fixture operations; it never retries toolbar
+gestures or issued article writes. Keep failures visible and distinguish this
+fixture accommodation from application retry or unknown-write recovery.
+
+The beta pins remain experimental. Generated coverage is bounded and does not
+prove all native interleavings. Full browser support/release qualification and
+Finance's worker migration remain separate work.

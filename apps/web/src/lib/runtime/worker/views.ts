@@ -81,7 +81,7 @@ export function projectRuntime(snapshot: SnapshotFrom<typeof workerHostMachine>)
 						favorites: context?.favorites ?? false,
 						selectedTags: context?.selectedTags ?? []
 					},
-					canAdd: library?.can({ type: 'ADD', url: '' }) === true,
+					canAdd: library?.can({ type: 'ADD' as const, url: '' }) === true,
 					reader,
 					readerRevision: readerRevision(content),
 					tagArticle: tagArticle ? rowView(tagArticle) : undefined,

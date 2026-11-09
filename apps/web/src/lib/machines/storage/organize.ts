@@ -1,5 +1,7 @@
-import { assign, setup, sendTo, stateIn, fromPromise } from 'xstate'
-import type { ActorLogic, Snapshot } from 'xstate'
+import { identityLogic } from '../identity.js'
+import type { EventPayload } from '../events.js'
+import { types, setup, createAsyncLogic, matchesState, type Snapshot } from 'xstate'
+
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { TagOperation } from '../../capture/tags.js'
 import type { OrganizationRequest, OrganizationOperation } from '../../capture/organization.js'
@@ -7,10 +9,9 @@ import type { SaveResult, SyncReceipt } from '../../contracts/storage.js'
 export type OrganizationHistory = OrganizationOperation | TagOperation
 export type OrganizationDraft = OrganizationRequest & { operations: OrganizationHistory[] }
 export type OrganizationStageResult = WorkspaceCreationResult<OrganizationDraft, SyncReceipt>
-export type OrganizationStage<S extends Snapshot<OrganizationStageResult>> = ActorLogic<
-	S,
-	{ type: 'SHUTDOWN' | 'CANCEL' },
-	{
+export type OrganizationStage = (
+	spawn: import('../children.js').ChildSpawner,
+	input: {
 		attempt: {
 			operationId: string
 			workspaceId: string
@@ -18,161 +19,335 @@ export type OrganizationStage<S extends Snapshot<OrganizationStageResult>> = Act
 			draft: OrganizationDraft
 		}
 	}
+) => import('xstate').ActorInstance<
+	Snapshot<OrganizationStageResult>,
+	{ type: 'SHUTDOWN' | 'CANCEL' }
 >
 function required<T>(v: T | undefined): T {
 	if (v === undefined) throw new Error('Missing organization resource')
 	return v
 }
-export function createOrganizationMachine<S extends Snapshot<OrganizationStageResult>>(
-	stage: OrganizationStage<S>,
+export function createOrganizationMachine(
+	stage: OrganizationStage,
 	isCurrent: () => boolean,
 	observe: (request: OrganizationRequest) => Promise<OrganizationHistory[]> = async () => [],
 	observeTags: (request: OrganizationRequest) => Promise<OrganizationHistory[]> = async () => []
 ) {
-	const history = fromPromise(({ input }: { input: OrganizationRequest }) => observe(input))
-	const tagHistory = fromPromise(({ input }: { input: OrganizationRequest }) => observeTags(input))
-	const model = setup<
-		{
-			request: OrganizationRequest | undefined
-			operations: OrganizationHistory[]
-			operationId: string
-			result: SaveResult | undefined
+	const history = createAsyncLogic({
+		run: ({ input }: { input: OrganizationRequest }) => observe(input)
+	})
+	const tagHistory = createAsyncLogic({
+		run: ({ input }: { input: OrganizationRequest }) => observeTags(input)
+	})
+	const model = setup({
+		schemas: {
+			context: types<{
+				request: OrganizationRequest | undefined
+				operations: OrganizationHistory[]
+				operationId: string
+				result: SaveResult | undefined
+				ownedStage:
+					| import('xstate').ActorInstance<
+							import('xstate').Snapshot<OrganizationStageResult>,
+							{ type: 'SHUTDOWN' | 'CANCEL' }
+					  >
+					| undefined
+			}>(),
+			events: {
+				STAGE_DONE: types<{ actorId: string; output: OrganizationStageResult }>(),
+				STAGE_ERROR: types<{ actorId: string; error: unknown }>(),
+				SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>()
+			},
+			input: types<OrganizationRequest>(),
+			output: types<SaveResult>(),
+			tags: types<string>(),
+			children: {
+				identity: types<import('xstate').ActorRefFrom<typeof identityLogic>>(),
+				history: types<import('xstate').ActorRefFrom<typeof history>>(),
+				tagHistory: types<import('xstate').ActorRefFrom<typeof tagHistory>>()
+			}
 		},
-		{ type: 'SHUTDOWN' },
-		{ stage: typeof stage; history: typeof history; tagHistory: typeof tagHistory },
-		{},
-		{},
-		{ stale: undefined; stopping: undefined; tagRequest: undefined },
-		never,
-		string,
-		OrganizationRequest,
-		SaveResult
-	>({
-		actors: { stage, history, tagHistory },
+		actors: { history, tagHistory, identity: identityLogic },
 		guards: {
-			tagRequest: ({ context }) => context.request?.field === 'tag',
+			tagRequest: ({
+				context
+			}: {
+				context: {
+					request: OrganizationRequest | undefined
+					operations: OrganizationHistory[]
+					operationId: string
+					result: SaveResult | undefined
+				}
+			}) => context.request?.field === 'tag',
 			stale: () => !isCurrent(),
-			stopping: stateIn({ working: { control: 'stopping' } })
+			stopping: ({ value }: { value: import('xstate').StateValue }) =>
+				matchesState({ working: { control: 'stopping' } }, value)
 		}
 	})
-	const terminal = (kind: Exclude<SaveResult['kind'], 'saved'>) =>
-		model.createStateConfig({
-			type: 'final',
-			entry: assign({
-				result: ({ context }) => ({ kind, operationId: context.operationId }),
-				request: undefined,
-				operations: []
-			})
-		})
-	const observeHistory = (src: 'history' | 'tagHistory') =>
-		model.createStateConfig({
-			invoke: {
-				src,
-				input: ({ context }) => required(context.request),
-				onDone: [
-					{ guard: 'stopping', target: '#organization-save.interrupted' },
-					{ guard: 'stale', target: '#organization-save.interrupted' },
-					{
-						target: 'writing',
-						actions: assign({ operations: ({ event }) => event.output })
-					}
-				],
-				onError: [
-					{ guard: 'stopping', target: '#organization-save.interrupted' },
-					{ guard: 'stale', target: '#organization-save.interrupted' },
-					{ target: '#organization-save.failed' }
-				]
-			}
-		})
+
 	return model.createMachine({
 		id: 'organization-save',
-		initial: 'admitting',
+		initial: 'identifying',
 		context: ({ input }) => ({
 			request: { ...input },
 			operations: [],
-			operationId: crypto.randomUUID(),
-			result: undefined
+			operationId: '',
+			result: undefined,
+			ownedStage: undefined
 		}),
 		output: ({ context }) => required(context.result),
 		states: {
-			admitting: { always: [{ guard: 'stale', target: 'interrupted' }, { target: 'working' }] },
+			identifying: {
+				initial: 'active',
+				states: { active: {}, stopping: {} },
+				invoke: {
+					id: 'identity',
+					src: 'identity',
+					onDone: ({ event, value }) => ({
+						target: matchesState({ identifying: 'stopping' }, value) ? 'interrupted' : 'admitting',
+						context: { operationId: event.output }
+					})
+				},
+				on: { SHUTDOWN: { target: '.stopping' } }
+			},
+			admitting: {
+				type: 'choice',
+				choice: (args) => {
+					if (args.guards.stale()) {
+						return { target: 'interrupted' }
+					}
+					return { target: 'working' }
+				}
+			},
 			working: {
-				type: 'parallel',
+				type: 'parallel' as const,
 				states: {
 					control: {
 						initial: 'active',
-						states: { active: { on: { SHUTDOWN: 'stopping' } }, stopping: {} }
+						states: { active: { on: { SHUTDOWN: { target: 'stopping' } } }, stopping: {} }
 					},
 					work: {
 						initial: 'observing',
 						states: {
 							observing: {
-								always: [
-									{ guard: 'tagRequest', target: 'observingTags' },
-									{ target: 'observingProperty' }
-								]
+								type: 'choice',
+								choice: (args) => {
+									if (args.guards.tagRequest(args)) {
+										return { target: 'observingTags' }
+									}
+									return { target: 'observingProperty' }
+								}
 							},
-							observingTags: observeHistory('tagHistory'),
-							observingProperty: observeHistory('history'),
+							observingTags: {
+								invoke: {
+									src: 'tagHistory',
+									input: ({
+										context
+									}: {
+										context: {
+											request: OrganizationRequest | undefined
+											operations: OrganizationHistory[]
+											operationId: string
+											result: SaveResult | undefined
+										}
+									}) => required(context.request),
+									onDone: (args) => {
+										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
+											return { target: '#organization-save.interrupted' }
+										}
+										if (args.guards.stale()) {
+											return { target: '#organization-save.interrupted' }
+										}
+										return { target: 'writing', context: { operations: args.event.output } }
+									},
+									onError: (args) => {
+										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
+											return { target: '#organization-save.interrupted' }
+										}
+										if (args.guards.stale()) {
+											return { target: '#organization-save.interrupted' }
+										}
+										return { target: '#organization-save.failed' }
+									}
+								}
+							},
+							observingProperty: {
+								invoke: {
+									src: 'history',
+									input: ({
+										context
+									}: {
+										context: {
+											request: OrganizationRequest | undefined
+											operations: OrganizationHistory[]
+											operationId: string
+											result: SaveResult | undefined
+										}
+									}) => required(context.request),
+									onDone: (args) => {
+										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
+											return { target: '#organization-save.interrupted' }
+										}
+										if (args.guards.stale()) {
+											return { target: '#organization-save.interrupted' }
+										}
+										return { target: 'writing', context: { operations: args.event.output } }
+									},
+									onError: (args) => {
+										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
+											return { target: '#organization-save.interrupted' }
+										}
+										if (args.guards.stale()) {
+											return { target: '#organization-save.interrupted' }
+										}
+										return { target: '#organization-save.failed' }
+									}
+								}
+							},
 							writing: {
 								initial: 'active',
 								states: {
 									active: {
 										on: {
-											SHUTDOWN: {
-												target: 'stopping',
-												actions: sendTo('stage', { type: 'SHUTDOWN' })
+											SHUTDOWN: (args, enq) => {
+												enq.sendTo(args.context.ownedStage, { type: 'SHUTDOWN' as const })
+												return { target: 'stopping' }
 											}
 										}
 									},
 									stopping: {}
 								},
-								invoke: {
-									id: 'stage',
-									src: 'stage',
-									input: ({ context }) => ({
-										attempt: {
-											operationId: context.operationId,
-											workspaceId: context.operationId,
-											membershipId: context.operationId,
-											draft: { ...required(context.request), operations: context.operations }
+								entry: (args, enq) => {
+									const ref = stage(
+										enq.spawn,
+										(({
+											context
+										}: {
+											context: {
+												request: OrganizationRequest | undefined
+												operations: OrganizationHistory[]
+												operationId: string
+												result: SaveResult | undefined
+											}
+										}) => ({
+											attempt: {
+												operationId: context.operationId,
+												workspaceId: context.operationId,
+												membershipId: context.operationId,
+												draft: { ...required(context.request), operations: context.operations }
+											}
+										}))(args)
+									)
+									enq.subscribeTo(ref, {
+										done: (
+											output
+										):
+											| ({ type: 'STAGE_DONE' } & {
+													actorId: string
+													output: OrganizationStageResult
+											  })
+											| ({ type: 'STAGE_ERROR' } & { actorId: string; error: unknown }) => ({
+											type: 'STAGE_DONE',
+											actorId: ref.id,
+											output
+										}),
+										error: (
+											error
+										):
+											| ({ type: 'STAGE_DONE' } & {
+													actorId: string
+													output: OrganizationStageResult
+											  })
+											| ({ type: 'STAGE_ERROR' } & { actorId: string; error: unknown }) => ({
+											type: 'STAGE_ERROR',
+											actorId: ref.id,
+											error
+										})
+									})
+									return { context: { ownedStage: ref } }
+								},
+								exit: ({ context }, enq) => {
+									enq.stop(context.ownedStage)
+									return { context: { ownedStage: undefined } }
+								},
+								on: {
+									STAGE_DONE: (args) => {
+										const { event } = args
+										if (!event.output || event.output.settlement.kind === 'unresolved') {
+											return { target: '#organization-save.unknown' }
 										}
-									}),
-									onDone: [
-										{
-											guard: ({ event }) =>
-												!event.output || event.output.settlement.kind === 'unresolved',
-											target: '#organization-save.unknown'
-										},
-										{ guard: 'stopping', target: '#organization-save.interrupted' },
-										{ guard: 'stale', target: '#organization-save.interrupted' },
-										{
-											guard: ({ event }) => event.output?.settlement.kind === 'locallyPersisted',
-											target: '#organization-save.saved',
-											actions: assign({
-												result: ({ context, event }) => ({
-													kind: 'saved',
-													operationId: context.operationId,
-													receipts:
-														event.output?.settlement.kind === 'locallyPersisted'
-															? [event.output.settlement.workspace]
-															: []
-												})
-											})
-										},
-										{ target: '#organization-save.failed' }
-									],
-									onError: '#organization-save.unknown'
+										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
+											return { target: '#organization-save.interrupted' }
+										}
+										if (args.guards.stale()) {
+											return { target: '#organization-save.interrupted' }
+										}
+										if (event.output?.settlement.kind === 'locallyPersisted') {
+											return {
+												target: '#organization-save.saved',
+												context: {
+													result: {
+														kind: 'saved' as const,
+														operationId: args.context.operationId,
+														receipts:
+															event.output?.settlement.kind === 'locallyPersisted'
+																? [event.output.settlement.workspace]
+																: []
+													}
+												}
+											}
+										}
+										return { target: '#organization-save.failed' }
+									},
+									STAGE_ERROR: { target: '#organization-save.unknown' }
 								}
 							}
 						}
 					}
 				}
 			},
-			saved: { type: 'final', entry: assign({ request: undefined, operations: [] }) },
-			unknown: terminal('unknown'),
-			interrupted: terminal('interrupted'),
-			failed: terminal('failed')
+			saved: {
+				type: 'final' as const,
+				entry: () => {
+					return { context: { request: undefined, operations: [] } }
+				}
+			},
+			unknown: {
+				type: 'final' as const,
+				entry: (args) => {
+					return {
+						context: {
+							result: { kind: 'unknown', operationId: args.context.operationId },
+							request: undefined,
+							operations: []
+						}
+					}
+				}
+			},
+			interrupted: {
+				type: 'final' as const,
+				entry: (args) => {
+					return {
+						context: {
+							result: { kind: 'interrupted', operationId: args.context.operationId },
+							request: undefined,
+							operations: []
+						}
+					}
+				}
+			},
+			failed: {
+				type: 'final' as const,
+				entry: (args) => {
+					return {
+						context: {
+							result: { kind: 'failed', operationId: args.context.operationId },
+							request: undefined,
+							operations: []
+						}
+					}
+				}
+			}
 		}
 	})
 }

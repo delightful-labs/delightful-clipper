@@ -19,3 +19,5 @@ apps/extension/.test-build/
 .patch-work/
 
 .vercel/
+
+.xstate-test/

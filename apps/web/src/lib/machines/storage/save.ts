@@ -1,5 +1,6 @@
-import type { Snapshot } from 'xstate'
-import { assign, fromPromise, setup, stateIn, sendTo } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup, createAsyncLogic, matchesState } from 'xstate'
+
 import type {
 	PreparedSave,
 	SaveCapabilities,
@@ -15,100 +16,52 @@ type Context = {
 	operationId: string
 	receipts: SyncReceipt[]
 	result: SaveResult | undefined
+	ownedIntent:
+		| import('xstate').ActorInstance<
+				import('xstate').Snapshot<StageResult>,
+				{ type: 'SHUTDOWN' | 'CANCEL' }
+		  >
+		| undefined
+	ownedPublish:
+		| import('xstate').ActorInstance<
+				import('xstate').Snapshot<StageResult>,
+				{ type: 'SHUTDOWN' | 'CANCEL' }
+		  >
+		| undefined
 }
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Missing storage resource')
 	return value
 }
-export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
-	capability: SaveCapabilities<S>
-) {
+export function createSaveRecordMachine(capability: SaveCapabilities) {
 	const actors = {
-		prepare: fromPromise(({ input }: { input: SaveRequest }) => capability.prepare(input)),
-		intent: capability.intent,
-		publish: capability.publish
+		prepare: createAsyncLogic({
+			run: ({ input }: { input: SaveRequest }) => capability.prepare(input)
+		})
 	}
-	const model = setup<
-		Context,
-		{ type: 'SHUTDOWN' },
-		typeof actors,
-		{},
-		{},
-		{ stopping: undefined; scopeLost: undefined },
-		never,
-		string,
-		SaveRequest,
-		SaveResult
-	>({
+	const model = setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				INTENT_DONE: types<{ actorId: string; output: StageResult }>(),
+				INTENT_ERROR: types<{ actorId: string; error: unknown }>(),
+				PUBLISH_DONE: types<{ actorId: string; output: StageResult }>(),
+				PUBLISH_ERROR: types<{ actorId: string; error: unknown }>(),
+				SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>()
+			},
+			input: types<SaveRequest>(),
+			output: types<SaveResult>(),
+			tags: types<string>(),
+			children: { prepare: types<import('xstate').ActorRefFrom<(typeof actors)['prepare']>>() }
+		},
 		actors,
 		guards: {
-			stopping: stateIn({ running: { control: 'stopping' } }),
+			stopping: ({ value }: { value: import('xstate').StateValue }) =>
+				matchesState({ running: { control: 'stopping' } }, value),
 			scopeLost: () => !capability.isCurrent()
 		}
 	})
-	const interrupts = [
-		{ guard: 'stopping' as const, target: '#save-record.interrupted' },
-		{ guard: 'scopeLost' as const, target: '#save-record.scopeChanged' }
-	]
-	const stage = (src: 'intent' | 'publish', next: 'publish' | '#save-record.saved') =>
-		model.createStateConfig({
-			initial: 'active',
-			states: {
-				active: {
-					on: { SHUTDOWN: { target: 'stopping', actions: sendTo(src, { type: 'SHUTDOWN' }) } }
-				},
-				stopping: {}
-			},
-			invoke: {
-				id: src,
-				src,
-				input: ({ context }) => ({
-					attempt: {
-						operationId: context.operationId,
-						workspaceId: context.operationId,
-						membershipId: context.operationId,
-						draft: required(context.prepared)
-					}
-				}),
-				onDone: [
-					{
-						guard: ({ event }) => !event.output || event.output.settlement.kind === 'unresolved',
-						target: '#save-record.unknown'
-					},
-					...interrupts,
-					{
-						guard: ({ event }) => event.output?.outcome === 'succeeded',
-						target: next,
-						actions: assign({
-							receipts: ({ context, event }) =>
-								event.output?.settlement.kind === 'locallyPersisted'
-									? [...context.receipts, event.output.settlement.workspace]
-									: context.receipts
-						})
-					},
-					{
-						guard: ({ event }) => event.output?.outcome === 'blocked',
-						target: '#save-record.blocked'
-					},
-					{
-						guard: ({ event }) => event.output?.outcome === 'closed',
-						target: '#save-record.interrupted'
-					},
-					{ target: '#save-record.failed' }
-				],
-				onError: '#save-record.unknown'
-			}
-		})
-	const terminal = (kind: Exclude<SaveResult['kind'], 'saved'>) =>
-		model.createStateConfig({
-			type: 'final',
-			entry: assign({
-				result: ({ context }) => ({ kind, operationId: context.operationId }),
-				request: undefined,
-				prepared: undefined,
-				receipts: []
-			})
-		})
+
 	return model.createMachine({
 		id: 'save-record',
 		initial: 'running',
@@ -117,59 +70,319 @@ export function createSaveRecordMachine<S extends Snapshot<StageResult>>(
 			prepared: undefined,
 			operationId: input.operationId,
 			receipts: [],
-			result: undefined
+			result: undefined,
+			ownedIntent: undefined,
+			ownedPublish: undefined
 		}),
 		output: ({ context }) => required(context.result),
 		states: {
 			running: {
-				type: 'parallel',
+				type: 'parallel' as const,
 				states: {
 					control: {
 						initial: 'active',
-						states: { active: { on: { SHUTDOWN: 'stopping' } }, stopping: {} }
+						states: { active: { on: { SHUTDOWN: { target: 'stopping' } } }, stopping: {} }
 					},
 					work: {
 						initial: 'admitting',
 						states: {
-							admitting: { always: [...interrupts, { target: 'preparing' }] },
-							preparing: {
-								invoke: {
-									src: 'prepare',
-									input: ({ context }) => required(context.request),
-									onDone: [
-										...interrupts,
-										{
-											target: 'intent',
-											actions: assign({ prepared: ({ event }) => event.output, request: undefined })
-										}
-									],
-									onError: [...interrupts, { target: '#save-record.failed' }]
+							admitting: {
+								type: 'choice',
+								choice: (args) => {
+									if (args.guards.stopping(args)) {
+										return { target: '#save-record.interrupted' }
+									}
+									if (args.guards.scopeLost()) {
+										return { target: '#save-record.scopeChanged' }
+									}
+									return { target: 'preparing' }
 								}
 							},
-							intent: stage('intent', 'publish'),
-							publish: stage('publish', '#save-record.saved')
+							preparing: {
+								invoke: {
+									id: 'prepare',
+									src: 'prepare',
+									input: ({ context }: { context: Context }) => required(context.request),
+									onDone: (args) => {
+										if (args.guards.stopping(args)) {
+											return { target: '#save-record.interrupted' }
+										}
+										if (args.guards.scopeLost()) {
+											return { target: '#save-record.scopeChanged' }
+										}
+										return {
+											target: 'intent',
+											context: { prepared: args.event.output, request: undefined }
+										}
+									},
+									onError: (args) => {
+										if (args.guards.stopping(args)) {
+											return { target: '#save-record.interrupted' }
+										}
+										if (args.guards.scopeLost()) {
+											return { target: '#save-record.scopeChanged' }
+										}
+										return { target: '#save-record.failed' }
+									}
+								}
+							},
+							intent: {
+								initial: 'active',
+								states: {
+									active: {
+										on: {
+											SHUTDOWN: (args, enq) => {
+												enq.sendTo(args.context.ownedIntent, { type: 'SHUTDOWN' as const })
+												return { target: 'stopping' }
+											}
+										}
+									},
+									stopping: {}
+								},
+								entry: (args, enq) => {
+									const ref = capability.intent(
+										enq.spawn,
+										(({ context }: { context: Context }) => ({
+											attempt: {
+												operationId: context.operationId,
+												workspaceId: context.operationId,
+												membershipId: context.operationId,
+												draft: required(context.prepared)
+											}
+										}))(args)
+									)
+									enq.subscribeTo(ref, {
+										done: (
+											output
+										):
+											| ({ type: 'INTENT_DONE' } & { actorId: string; output: StageResult })
+											| ({ type: 'INTENT_ERROR' } & { actorId: string; error: unknown }) => ({
+											type: 'INTENT_DONE',
+											actorId: ref.id,
+											output
+										}),
+										error: (
+											error
+										):
+											| ({ type: 'INTENT_DONE' } & { actorId: string; output: StageResult })
+											| ({ type: 'INTENT_ERROR' } & { actorId: string; error: unknown }) => ({
+											type: 'INTENT_ERROR',
+											actorId: ref.id,
+											error
+										})
+									})
+									return { context: { ownedIntent: ref } }
+								},
+								exit: ({ context }, enq) => {
+									enq.stop(context.ownedIntent)
+									return { context: { ownedIntent: undefined } }
+								},
+								on: {
+									INTENT_DONE: (args) => {
+										const { context, event } = args
+										if (!event.output || event.output.settlement.kind === 'unresolved') {
+											return { target: '#save-record.unknown' }
+										}
+										if (args.guards.stopping(args)) {
+											return { target: '#save-record.interrupted' }
+										}
+										if (args.guards.scopeLost()) {
+											return { target: '#save-record.scopeChanged' }
+										}
+										if (event.output?.outcome === 'succeeded') {
+											return {
+												target: 'publish',
+												context: {
+													receipts:
+														event.output?.settlement.kind === 'locallyPersisted'
+															? [...context.receipts, event.output.settlement.workspace]
+															: context.receipts
+												}
+											}
+										}
+										if (event.output?.outcome === 'blocked') {
+											return { target: '#save-record.blocked' }
+										}
+										if (event.output?.outcome === 'closed') {
+											return { target: '#save-record.interrupted' }
+										}
+										return { target: '#save-record.failed' }
+									},
+									INTENT_ERROR: { target: '#save-record.unknown' }
+								}
+							},
+							publish: {
+								initial: 'active',
+								states: {
+									active: {
+										on: {
+											SHUTDOWN: (args, enq) => {
+												enq.sendTo(args.context.ownedPublish, { type: 'SHUTDOWN' as const })
+												return { target: 'stopping' }
+											}
+										}
+									},
+									stopping: {}
+								},
+								entry: (args, enq) => {
+									const ref = capability.publish(
+										enq.spawn,
+										(({ context }: { context: Context }) => ({
+											attempt: {
+												operationId: context.operationId,
+												workspaceId: context.operationId,
+												membershipId: context.operationId,
+												draft: required(context.prepared)
+											}
+										}))(args)
+									)
+									enq.subscribeTo(ref, {
+										done: (
+											output
+										):
+											| ({ type: 'PUBLISH_DONE' } & { actorId: string; output: StageResult })
+											| ({ type: 'PUBLISH_ERROR' } & { actorId: string; error: unknown }) => ({
+											type: 'PUBLISH_DONE',
+											actorId: ref.id,
+											output
+										}),
+										error: (
+											error
+										):
+											| ({ type: 'PUBLISH_DONE' } & { actorId: string; output: StageResult })
+											| ({ type: 'PUBLISH_ERROR' } & { actorId: string; error: unknown }) => ({
+											type: 'PUBLISH_ERROR',
+											actorId: ref.id,
+											error
+										})
+									})
+									return { context: { ownedPublish: ref } }
+								},
+								exit: ({ context }, enq) => {
+									enq.stop(context.ownedPublish)
+									return { context: { ownedPublish: undefined } }
+								},
+								on: {
+									PUBLISH_DONE: (args) => {
+										const { context, event } = args
+										if (!event.output || event.output.settlement.kind === 'unresolved') {
+											return { target: '#save-record.unknown' }
+										}
+										if (args.guards.stopping(args)) {
+											return { target: '#save-record.interrupted' }
+										}
+										if (args.guards.scopeLost()) {
+											return { target: '#save-record.scopeChanged' }
+										}
+										if (event.output?.outcome === 'succeeded') {
+											return {
+												target: '#save-record.saved',
+												context: {
+													receipts:
+														event.output?.settlement.kind === 'locallyPersisted'
+															? [...context.receipts, event.output.settlement.workspace]
+															: context.receipts
+												}
+											}
+										}
+										if (event.output?.outcome === 'blocked') {
+											return { target: '#save-record.blocked' }
+										}
+										if (event.output?.outcome === 'closed') {
+											return { target: '#save-record.interrupted' }
+										}
+										return { target: '#save-record.failed' }
+									},
+									PUBLISH_ERROR: { target: '#save-record.unknown' }
+								}
+							}
 						}
 					}
 				}
 			},
 			saved: {
-				type: 'final',
-				entry: assign({
-					result: ({ context }) => ({
-						kind: 'saved',
-						operationId: context.operationId,
-						receipts: context.receipts
-					}),
-					request: undefined,
-					prepared: undefined,
-					receipts: []
-				})
+				type: 'final' as const,
+				entry: (args) => {
+					const { context } = args
+					return {
+						context: {
+							result: {
+								kind: 'saved' as const,
+								operationId: context.operationId,
+								receipts: context.receipts
+							},
+							request: undefined,
+							prepared: undefined,
+							receipts: []
+						}
+					}
+				}
 			},
-			unknown: terminal('unknown'),
-			interrupted: terminal('interrupted'),
-			scopeChanged: terminal('scopeChanged'),
-			blocked: terminal('blocked'),
-			failed: terminal('failed')
+			unknown: {
+				type: 'final' as const,
+				entry: (args) => {
+					return {
+						context: {
+							result: { kind: 'unknown', operationId: args.context.operationId },
+							request: undefined,
+							prepared: undefined,
+							receipts: []
+						}
+					}
+				}
+			},
+			interrupted: {
+				type: 'final' as const,
+				entry: (args) => {
+					return {
+						context: {
+							result: { kind: 'interrupted', operationId: args.context.operationId },
+							request: undefined,
+							prepared: undefined,
+							receipts: []
+						}
+					}
+				}
+			},
+			scopeChanged: {
+				type: 'final' as const,
+				entry: (args) => {
+					return {
+						context: {
+							result: { kind: 'scopeChanged', operationId: args.context.operationId },
+							request: undefined,
+							prepared: undefined,
+							receipts: []
+						}
+					}
+				}
+			},
+			blocked: {
+				type: 'final' as const,
+				entry: (args) => {
+					return {
+						context: {
+							result: { kind: 'blocked', operationId: args.context.operationId },
+							request: undefined,
+							prepared: undefined,
+							receipts: []
+						}
+					}
+				}
+			},
+			failed: {
+				type: 'final' as const,
+				entry: (args) => {
+					return {
+						context: {
+							result: { kind: 'failed', operationId: args.context.operationId },
+							request: undefined,
+							prepared: undefined,
+							receipts: []
+						}
+					}
+				}
+			}
 		}
 	})
 }

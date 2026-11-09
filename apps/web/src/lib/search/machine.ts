@@ -1,5 +1,13 @@
-import { assign, fromCallback, fromPromise, sendTo, setup, not, and, stateIn } from 'xstate'
-import type { SnapshotFrom } from 'xstate'
+import type { EventPayload } from '../machines/events.js'
+import {
+	types,
+	createCallbackLogic,
+	setup,
+	createAsyncLogic,
+	matchesState,
+	type SnapshotFrom
+} from 'xstate'
+
 import { stateFeedback } from '../contracts/feedback.js'
 import type { SearchResource } from '../contracts/search.js'
 import type { SearchCapability } from '../contracts/search.js'
@@ -40,7 +48,7 @@ function sameSearchRows(a: LibraryArticle[], b: LibraryArticle[]) {
 	})
 }
 export function createSearchMachine() {
-	const resource = fromCallback<SearchWorkerInput, SearchCapability>(
+	const resource = createCallbackLogic<SearchWorkerInput, SearchCapability>(
 		({ input, receive, sendBack }) => {
 			let worker: SearchResource | undefined
 			let unsubscribe: (() => void) | undefined
@@ -48,12 +56,12 @@ export function createSearchMachine() {
 				const opened = input.open(sendBack)
 				worker = opened
 				unsubscribe = input.observe(
-					() => sendBack({ type: 'DIRTY' }),
-					() => sendBack({ type: 'WORKER_ERROR' })
+					() => sendBack({ type: 'DIRTY' as const }),
+					() => sendBack({ type: 'WORKER_ERROR' as const })
 				)
 				receive((event) => opened.post(event))
 			} catch {
-				sendBack({ type: 'WORKER_ERROR' })
+				sendBack({ type: 'WORKER_ERROR' as const })
 			}
 			return () => {
 				try {
@@ -64,61 +72,60 @@ export function createSearchMachine() {
 			}
 		}
 	)
-	const load = fromPromise<SearchDocument[], { cap: SearchCapability; rows: LibraryArticle[] }>(
-		({ input, signal }) => input.cap.load(input.rows, signal)
-	)
-	const model = setup<
-		Context,
-		Event,
-		{ resource: typeof resource; load: typeof load },
-		{},
-		{ rememberQuery: undefined; queryWorker: undefined },
-		{
-			supported: undefined
-			validQuery: undefined
-			hasQuery: undefined
-			loadStale: undefined
-			currentGeneration: undefined
-			currentResult: undefined
-			unchangedRows: undefined
+	const load = createAsyncLogic<
+		SearchDocument[],
+		{ cap: SearchCapability; rows: LibraryArticle[] }
+	>({ run: ({ input, signal }) => input.cap.load(input.rows, signal) })
+	const model = setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				INDEX_READY: types<EventPayload<Event, 'INDEX_READY'>>(),
+				RESULT: types<EventPayload<Event, 'RESULT'>>(),
+				WORKER_ERROR: types<EventPayload<Event, 'WORKER_ERROR'>>(),
+				ROWS: types<EventPayload<Event, 'ROWS'>>(),
+				QUERY: types<EventPayload<Event, 'QUERY'>>(),
+				RETRY: types<EventPayload<Event, 'RETRY'>>(),
+				STOP: types<EventPayload<Event, 'STOP'>>(),
+				DIRTY: types<EventPayload<Event, 'DIRTY'>>(),
+				ACTIVATE: types<EventPayload<Event, 'ACTIVATE'>>()
+			},
+			input: types<Input>(),
+			output: types<undefined>(),
+			meta: types<{ name?: string; variant?: 'info' | 'error' }>(),
+			tags: types<string>(),
+			children: {
+				resource: types<import('xstate').ActorRefFrom<typeof resource>>(),
+				load: types<import('xstate').ActorRefFrom<typeof load>>()
+			}
 		},
-		never,
-		string,
-		Input,
-		undefined,
-		{ type: string },
-		{ name?: string; variant?: 'info' | 'error' }
-	>({
 		actors: { resource, load },
 		guards: {
-			loadStale: stateIn({ running: { loading: 'stale' } }),
-			supported: ({ context }) => context.capability?.isCurrent() === true,
-			hasQuery: ({ event }) => event.type === 'QUERY' && event.query.trim().length > 0,
-			validQuery: ({ context, event }) =>
+			loadStale: ({ value }: { value: import('xstate').StateValue }) =>
+				matchesState({ running: { loading: 'stale' } }, value),
+			supported: ({ context }: { context: Context }) => context.capability?.isCurrent() === true,
+			hasQuery: ({ event }: { event: Event }) =>
+				event.type === 'QUERY' && event.query.trim().length > 0,
+			validQuery: ({ context, event }: { context: Context; event: Event }) =>
 				event.type === 'QUERY' &&
 				context.capability?.isCurrent() === true &&
 				querySchema.safeParse(event.query).success,
-			currentGeneration: ({ context, event }) =>
+			currentGeneration: ({ context, event }: { context: Context; event: Event }) =>
 				context.capability?.isCurrent() === true &&
 				'generation' in event &&
 				event.generation === context.generation,
-			currentResult: ({ context, event }) =>
+			currentResult: ({ context, event }: { context: Context; event: Event }) =>
 				context.capability?.isCurrent() === true &&
 				event.type === 'RESULT' &&
 				event.generation === context.generation &&
 				event.query === context.query,
-			unchangedRows: ({ context, event }) =>
+			unchangedRows: ({ context, event }: { context: Context; event: Event }) =>
 				event.type === 'ROWS' && sameSearchRows(context.rows, event.rows)
 		},
 		actions: {
-			rememberQuery: assign({
-				query: ({ context, event }) => (event.type === 'QUERY' ? event.query : context.query)
-			}),
-			queryWorker: sendTo('resource', ({ context }) => ({
-				type: 'QUERY',
-				generation: context.generation,
-				query: context.query
-			}))
+			rememberQuery: ({ context, event }: { context: Context; event: Event }) => ({
+				context: { query: event.type === 'QUERY' ? event.query : context.query }
+			})
 		}
 	})
 	return model.createMachine({
@@ -131,57 +138,79 @@ export function createSearchMachine() {
 			generation: 0,
 			ids: []
 		}),
-		on: { STOP: '.closed' },
+		on: { STOP: { target: '.closed' } },
 		states: {
-			admitting: { always: [{ guard: 'supported', target: 'dormant' }, { target: 'disabled' }] },
+			admitting: {
+				type: 'choice',
+				choice: (args) => {
+					if (args.guards.supported(args)) {
+						return { target: 'dormant' }
+					}
+					return { target: 'disabled' }
+				}
+			},
 			dormant: {
 				on: {
-					ROWS: [
-						{ guard: not('supported'), target: '#library-search.closed' },
-						{ actions: assign({ rows: ({ event }) => event.rows }) }
-					],
-					ACTIVATE: { guard: 'supported', target: 'running' },
-					QUERY: [
-						{ guard: and(['validQuery', 'hasQuery']), target: 'running', actions: 'rememberQuery' },
-						{ guard: 'validQuery', actions: 'rememberQuery' }
-					]
+					ROWS: (args) => {
+						if (!args.guards.supported(args)) {
+							return { target: '#library-search.closed' }
+						}
+						return { context: { rows: args.event.rows } }
+					},
+					ACTIVATE: (args) => {
+						if (!args.guards.supported(args)) return
+						return { target: 'running' }
+					},
+					QUERY: (args) => {
+						if (args.guards.validQuery(args) && args.guards.hasQuery(args)) {
+							return { target: 'running', context: args.actions.rememberQuery(args).context }
+						}
+						if (args.guards.validQuery(args)) {
+							return { context: args.actions.rememberQuery(args).context }
+						}
+					}
 				}
 			},
 			running: {
 				invoke: {
 					id: 'resource',
 					src: 'resource',
-					input: ({ context }) => required(context.capability)
+					input: ({ context }: { context: Context }) => required(context.capability)
 				},
 				initial: 'scheduling',
 				on: {
-					ROWS: [
-						{ guard: not('supported'), target: '#library-search.closed' },
-						{ guard: 'unchangedRows', actions: assign({ rows: ({ event }) => event.rows }) },
-						{
+					ROWS: (args) => {
+						const { event } = args
+						if (!args.guards.supported(args)) {
+							return { target: '#library-search.closed' }
+						}
+						if (args.guards.unchangedRows(args)) {
+							return { context: { rows: event.rows } }
+						}
+						return {
 							target: '.scheduling',
 							reenter: false,
-							actions: assign({
-								rows: ({ event }) => event.rows,
-								generation: ({ context }) => context.generation + 1
-							})
+							context: { rows: event.rows, generation: args.context.generation + 1 }
 						}
-					],
-					DIRTY: [
-						{
-							guard: 'supported',
-							target: '.scheduling',
-							actions: assign({ generation: ({ context }) => context.generation + 1 })
-						},
-						{ target: '#library-search.closed' }
-					],
-					QUERY: { guard: 'validQuery', actions: 'rememberQuery' },
-					WORKER_ERROR: '#library-search.failed'
+					},
+					DIRTY: (args) => {
+						if (args.guards.supported(args)) {
+							return { target: '.scheduling', context: { generation: args.context.generation + 1 } }
+						}
+						return { target: '#library-search.closed' }
+					},
+					QUERY: (args) => {
+						if (!args.guards.validQuery(args)) return
+						return { context: args.actions.rememberQuery(args).context }
+					},
+					WORKER_ERROR: { target: '#library-search.failed' }
 				},
 				states: {
 					scheduling: {
-						entry: assign({ ids: [] }),
-						after: { 16: 'loading' }
+						entry: () => {
+							return { context: { ids: [] } }
+						},
+						after: { 16: { target: 'loading' } }
 					},
 					loading: {
 						initial: 'current',
@@ -190,97 +219,130 @@ export function createSearchMachine() {
 						// Jazz's public read API has no AbortSignal; invalidation must not
 						// start overlapping whole-library reads.
 						on: {
-							ROWS: [
-								{ guard: not('supported'), target: '#library-search.closed' },
-								{ guard: 'unchangedRows', actions: assign({ rows: ({ event }) => event.rows }) },
-								{
-									target: '.stale',
-									actions: assign({
-										rows: ({ event }) => event.rows,
-										generation: ({ context }) => context.generation + 1
-									})
+							ROWS: (args) => {
+								const { event } = args
+								if (!args.guards.supported(args)) {
+									return { target: '#library-search.closed' }
 								}
-							],
-							DIRTY: [
-								{
-									guard: 'supported',
+								if (args.guards.unchangedRows(args)) {
+									return { context: { rows: event.rows } }
+								}
+								return {
 									target: '.stale',
-									actions: assign({ generation: ({ context }) => context.generation + 1 })
-								},
-								{ target: '#library-search.closed' }
-							]
+									context: { rows: event.rows, generation: args.context.generation + 1 }
+								}
+							},
+							DIRTY: (args) => {
+								if (args.guards.supported(args)) {
+									return { target: '.stale', context: { generation: args.context.generation + 1 } }
+								}
+								return { target: '#library-search.closed' }
+							}
 						},
-						entry: assign({ ids: [] }),
+						entry: () => {
+							return { context: { ids: [] } }
+						},
 						invoke: {
+							id: 'load',
 							src: 'load',
-							input: ({ context }) => ({ cap: required(context.capability), rows: context.rows }),
-							onDone: [
-								{ guard: and(['supported', 'loadStale']), target: 'scheduling' },
-								{
-									guard: 'supported',
-									target: 'indexing',
-									actions: sendTo('resource', ({ context, event }) => ({
-										type: 'INDEX',
+							input: ({ context }: { context: Context }) => ({
+								cap: required(context.capability),
+								rows: context.rows
+							}),
+							onDone: (args, enq) => {
+								const { context } = args
+								if (
+									args.guards.supported(args) &&
+									matchesState({ running: { loading: 'stale' } }, args.value)
+								) {
+									return { target: 'scheduling' }
+								}
+								if (args.guards.supported(args)) {
+									enq.sendTo('resource', {
+										type: 'INDEX' as const,
 										key: 'clipper-search-v1:' + required(context.capability).libraryId,
 										generation: context.generation,
-										documents: event.output
-									}))
-								},
-								{ target: '#library-search.closed' }
-							],
-							onError: [
-								{ guard: and(['supported', 'loadStale']), target: 'scheduling' },
-								{ target: '#library-search.failed' }
-							]
+										documents: args.event.output
+									})
+									return { target: 'indexing' }
+								}
+								return { target: '#library-search.closed' }
+							},
+							onError: (args) => {
+								if (
+									args.guards.supported(args) &&
+									matchesState({ running: { loading: 'stale' } }, args.value)
+								) {
+									return { target: 'scheduling' }
+								}
+								return { target: '#library-search.failed' }
+							}
 						}
 					},
 					indexing: {
-						on: { INDEX_READY: { guard: 'currentGeneration', target: 'querying' } }
+						on: {
+							INDEX_READY: (args) => {
+								if (!args.guards.currentGeneration(args)) return
+								return { target: 'querying' }
+							}
+						}
 					},
 					querying: {
-						entry: 'queryWorker',
+						entry: (args, enq) => {
+							const { context } = args
+							enq.sendTo('resource', {
+								type: 'QUERY' as const,
+								generation: context.generation,
+								query: context.query
+							})
+						},
 						on: {
-							QUERY: {
-								guard: 'validQuery',
-								target: 'querying',
-								reenter: true,
-								actions: 'rememberQuery'
+							QUERY: (args) => {
+								if (!args.guards.validQuery(args)) return
+								return {
+									target: 'querying',
+									reenter: true,
+									context: args.actions.rememberQuery(args).context
+								}
 							},
-							RESULT: {
-								guard: 'currentResult',
-								target: 'ready',
-								actions: assign({
-									ids: ({ event }) => event.ids
-								})
+							RESULT: (args) => {
+								if (!args.guards.currentResult(args)) return
+								return { target: 'ready', context: { ids: args.event.ids } }
 							}
 						}
 					},
 					ready: {
-						on: { QUERY: { guard: 'validQuery', target: 'querying', actions: 'rememberQuery' } }
+						on: {
+							QUERY: (args) => {
+								if (!args.guards.validQuery(args)) return
+								return { target: 'querying', context: args.actions.rememberQuery(args).context }
+							}
+						}
 					}
 				}
 			},
 			failed: {
-				meta: { name: t('library.search_failed'), variant: 'error' },
+				meta: { name: t('library.search_failed'), variant: 'error' as const },
 				on: {
-					RETRY: {
-						guard: 'supported',
-						target: 'running',
-						actions: assign({ generation: ({ context }) => context.generation + 1 })
+					RETRY: (args) => {
+						if (!args.guards.supported(args)) return
+						return { target: 'running', context: { generation: args.context.generation + 1 } }
 					},
-					ROWS: { actions: assign({ rows: ({ event }) => event.rows }) },
-					QUERY: { guard: 'validQuery', actions: 'rememberQuery' }
+					ROWS: (args) => {
+						return { context: { rows: args.event.rows } }
+					},
+					QUERY: (args) => {
+						if (!args.guards.validQuery(args)) return
+						return { context: args.actions.rememberQuery(args).context }
+					}
 				}
 			},
 			disabled: {},
 			closed: {
-				type: 'final',
-				entry: assign({
-					capability: undefined,
-					rows: [],
-					query: '',
-					ids: []
-				})
+				type: 'final' as const,
+				entry: () => {
+					return { context: { capability: undefined, rows: [], query: '', ids: [] } }
+				}
 			}
 		}
 	})
@@ -293,7 +355,7 @@ export function selectSearchView(
 		query: current ? snapshot.context.query : '',
 		ids: current && snapshot.matches({ running: 'ready' }) ? snapshot.context.ids : undefined,
 		message: current ? stateFeedback(Object.values(snapshot.getMeta())) : undefined,
-		canRetry: current && snapshot.can({ type: 'RETRY' }),
+		canRetry: current && snapshot.can({ type: 'RETRY' as const }),
 		enabled: snapshot?.context.capability?.isCurrent() ?? false
 	}
 }
