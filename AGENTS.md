@@ -31,3 +31,5 @@
 - Compose related Zod schemas from their canonical schemas with `pick`, `omit`, `extend` and `shape` references instead of redeclaring shared fields and constraints. Derive DTO types with `z.infer`. Apply whole-record refinements at the appropriate composed boundary so related forms share field validation without inheriting unrelated invariants.
 
 - XState v6 migration follows [the migration/design specification](specs/001-jazz-clipper/xstate-v6-migration.md), including its installed-documentation review and source/native acceptance gates. Use published XState without patches or declaration overrides; the separately qualified Jazz patches retain their own ownership.
+
+- For v6 machine testing, follow the generated-testing section in `specs/001-jazz-clipper/xstate-v6-migration.md`: prefer `@xstate/test` campaigns with independent behavioral oracles; preserve integration tests and existing implementation-review gates.

@@ -26,15 +26,15 @@ from converting XState. Rebuild compatible shared artifacts before their adoptio
 
 ## Ownership and migration units
 
-| Unit / source | Owner and behavior to preserve |
-| --- | --- |
-| `runtime/worker/host-machine.ts`, `application.worker.ts` | Worker realm owns the application graph. Account replacement invalidates scopes; domain drain, pending acquisition, SDK close and detached custody govern clean termination. |
-| `runtime/worker/account-store.ts`, `storage-channel.ts`, `broker-channel.ts` | Account update holds the existing shared Web Lock across read/transform/write/release. Window brokers only required native storage/SharedWorker operations. Reuse identity/storage namespace across realms and tabs. |
-| `machines/runtime/application-readiness.ts`, recovery owner | DLF owns shared identity/recovery contracts; browser navigation remains host-supplied. Completed children disappear from `children` after their lifecycle event. Preserve result/error facts before then. |
-| `machines/storage/domain-transaction.ts`, `domain-model.ts`, save/organize/read | DLF retains native transaction lifetime/settlement. Domain guards select reads/staging within that owner. Keep explicit partial, cancelled and unknown settlement; no procedural promise rewrite. |
-| Capture, reader, image, tag and note charts | Worker domain state and UI interaction capabilities remain separate. Release ImageBitmap/ports/object URLs/listeners in their owning realm. Keep native IDB commands synchronous where transaction liveness requires it. |
-| Extension launch/sign-in/authorization/capture/notification charts | Preserve trusted sender admission, explicit account confirmation, popup lifetime, original user gesture, display acknowledgment and drain of issued writes. |
-| Offline registration/cache/asset and diagnostics | Service-worker lifecycle differs from dedicated-worker lifecycle. Preserve offline shell/runtime assets and upgrade v5 inspection consumers. |
+| Unit / source                                                                   | Owner and behavior to preserve                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `runtime/worker/host-machine.ts`, `application.worker.ts`                       | Worker realm owns the application graph. Account replacement invalidates scopes; domain drain, pending acquisition, SDK close and detached custody govern clean termination.                                             |
+| `runtime/worker/account-store.ts`, `storage-channel.ts`, `broker-channel.ts`    | Account update holds the existing shared Web Lock across read/transform/write/release. Window brokers only required native storage/SharedWorker operations. Reuse identity/storage namespace across realms and tabs.     |
+| `machines/runtime/application-readiness.ts`, recovery owner                     | DLF owns shared identity/recovery contracts; browser navigation remains host-supplied. Completed children disappear from `children` after their lifecycle event. Preserve result/error facts before then.                |
+| `machines/storage/domain-transaction.ts`, `domain-model.ts`, save/organize/read | DLF retains native transaction lifetime/settlement. Domain guards select reads/staging within that owner. Keep explicit partial, cancelled and unknown settlement; no procedural promise rewrite.                        |
+| Capture, reader, image, tag and note charts                                     | Worker domain state and UI interaction capabilities remain separate. Release ImageBitmap/ports/object URLs/listeners in their owning realm. Keep native IDB commands synchronous where transaction liveness requires it. |
+| Extension launch/sign-in/authorization/capture/notification charts              | Preserve trusted sender admission, explicit account confirmation, popup lifetime, original user gesture, display acknowledgment and drain of issued writes.                                                              |
+| Offline registration/cache/asset and diagnostics                                | Service-worker lifecycle differs from dedicated-worker lifecycle. Preserve offline shell/runtime assets and upgrade v5 inspection consumers.                                                                             |
 
 All paths above are under `apps/web/src/lib` unless explicitly extension-owned
 under `apps/extension/src`. The public native promise boundary in account-store
@@ -132,3 +132,37 @@ Existing native coverage provides test intent, not a fresh v6 qualification.
 Finance may reuse the broker/storage mechanisms only after exact-version
 qualification; Clipper domain protocols remain Clipper-owned. The coordinated
 scope is DUI, DLF, Clipper and Finance; local-first-ux-patterns is excluded.
+
+## Generated testing with the v6 test beta
+
+Use the published `@xstate/test@2.0.0-beta.0` with its required peer
+`fast-check@4.10.2` for generated machine coverage. These are experimental APIs;
+keep exact versions and review changes on upgrade. Zod and Effect are optional,
+not prerequisites. See the [model-based testing guide](https://stately.ai/docs/xstate/v6/model-based-testing)
+and the README shipped with the installed test package.
+
+Prefer `propertyTest` for varied command sequences and shrinking, and `testPaths`
+for bounded reachable paths. Use an independent product contract with a real actor
+or adapter as `sut`; compare observed behavior through `read` and `projectModel`.
+Do not implement the SUT by copying the expected model snapshot. Declare generators
+explicitly for type-only event schemas. Keep bounds, seeds and coverage thresholds
+visible, and distinguish generated coverage from exhaustive proof. Shortest paths
+omit ignored/self-loop commands; exercise rejection and duplicates in generated
+sequences and targeted regressions.
+
+For asynchronous actors use executed mode with generated outcomes where appropriate.
+Scheduler exploration covers only work instrumented through that scheduler; it does
+not prove all browser, worker, Jazz or native interleavings. Preserve integration
+coverage for actual cleanup, cancellation, persistence and realm boundaries.
+
+Use the library failure store (`failures` with a stable key) to retain shrunk traces,
+ignore `.xstate-test/` in source control, and upload it on CI failure once campaigns
+are enabled. Promote meaningful fixed failures into tracked regression fixtures
+using `replayTest` with `expect: 'pass'`; the automatic store removes fixed failures.
+Do not build another custom sequence runner or patch XState/test declarations.
+
+This repository still uses XState v5. Install the v6 test beta when the connected
+actor graph moves to v6, rather than introducing incompatible peers now. Plan
+independent UI/worker contract models for cancellation, stale replies, duplicate
+completion, account switches and disposal, then verify actual worker/Jazz adapters
+with integration tests. Preserve existing implementation-review gates.
