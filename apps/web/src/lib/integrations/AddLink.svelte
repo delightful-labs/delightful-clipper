@@ -1,17 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte'
-	import type { ActorRefFrom, SnapshotFrom } from 'xstate'
+	import type { LibraryClient } from '../runtime/worker/client.js'
+	import type { LibraryRender } from '../runtime/worker/views.js'
 	import { Button, Dialog, FloatingActionButton, InputText, StatusMessage } from 'delightful-ui'
-	import { libraryMachine, selectLibraryView } from '../machines/capture/library.js'
 	import { action, t } from '../localization/index.js'
 
-	let { actor }: { actor: ActorRefFrom<typeof libraryMachine> } = $props()
+	let { actor }: { actor: LibraryClient } = $props()
 	const dialogId = $props.id()
-	let snapshot = $state<SnapshotFrom<typeof libraryMachine>>()
+	let snapshot = $state<LibraryRender>()
 	let open = $state(false)
 	let url = $state('')
-	const canAdd = $derived(snapshot?.can({ type: 'ADD', url }) ?? false)
-	const view = $derived(selectLibraryView(snapshot))
+	const canAdd = $derived(snapshot?.canAdd ?? false)
+	const view = $derived(snapshot?.view ?? actor.getView().view)
 
 	onMount(() => {
 		const subscription = actor.subscribe((next) => (snapshot = next))

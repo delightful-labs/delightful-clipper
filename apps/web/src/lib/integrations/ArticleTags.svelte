@@ -1,15 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte'
-	import { createActor, type ActorRefFrom, type SnapshotFrom } from 'xstate'
+	import type { LibraryClient } from '../runtime/worker/client.js'
+	import type { LibraryRender } from '../runtime/worker/views.js'
 	import { Button, Dialog, TagInput } from 'delightful-ui'
-	import { libraryMachine } from '../machines/capture/library.js'
 	import type { LibraryArticle } from '../contracts/articles.js'
 	import { tagComparisonKey, type Tag } from '../capture/tags.js'
-	import {
-		tagFormMachine,
-		selectTagFormView,
-		type TagFormEvent
-	} from '../machines/capture/tag-form.js'
+
 	import { action, noun, t } from '../localization/index.js'
 	let {
 		actor,
@@ -19,35 +15,36 @@
 		onclose,
 		open = $bindable(false)
 	}: {
-		actor: ActorRefFrom<typeof libraryMachine>
+		actor: LibraryClient
 		row: LibraryArticle | undefined
 		tags: Tag[]
 		enabled: boolean
 		onclose?: () => void
 		open?: boolean
 	} = $props()
-	let snapshot = $state<SnapshotFrom<typeof tagFormMachine>>()
-	let send: (event: TagFormEvent) => void = () => {}
-	const form = $derived(selectTagFormView(snapshot))
+	let snapshot = $state<LibraryRender>()
+	const send = (event: Parameters<LibraryClient['tags']>[0]) => actor.tags(event)
+	const form = $derived(snapshot?.tagForm ?? actor.getView().tagForm)
 	let inputHost = $state<HTMLDivElement>()
-	let pendingFocus = $state<HTMLElement>()
+	let pendingFocus = $state<{ target: HTMLElement; keys: string[] }>()
 	$effect(() => {
 		if (!enabled || !pendingFocus) return
-		const target = pendingFocus
+		const pending = pendingFocus
+		const selected = (row?.tags ?? []).map((tag) => tagComparisonKey(tag.name)).sort()
+		if (
+			selected.length !== pending.keys.length ||
+			selected.some((key, index) => key !== pending.keys[index])
+		)
+			return
+		const target = pending.target
 		pendingFocus = undefined
 		if (document.activeElement !== document.body) return
 		if (target.isConnected) target.focus()
 		else inputHost?.querySelector<HTMLInputElement>('input[type="text"]')?.focus()
 	})
 	onMount(() => {
-		const validation = createActor(tagFormMachine, { input: { library: actor } })
-		const subscription = validation.subscribe((next) => (snapshot = next))
-		send = (event) => validation.send(event)
-		validation.start()
-		return () => {
-			subscription.unsubscribe()
-			validation.stop()
-		}
+		const subscription = actor.subscribe((next) => (snapshot = next))
+		return () => subscription.unsubscribe()
 	})
 </script>
 
@@ -86,8 +83,10 @@
 						},
 						(names) => {
 							pendingFocus =
-								document.activeElement instanceof HTMLElement ? document.activeElement : undefined
-							send({ type: 'SELECT', id: article.id, names, previous: article.tags ?? [], enabled })
+								document.activeElement instanceof HTMLElement
+									? { target: document.activeElement, keys: names.map(tagComparisonKey).sort() }
+									: undefined
+							send({ type: 'SELECT', id: article.id, names })
 						}
 					}
 				/>

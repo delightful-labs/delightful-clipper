@@ -1,5 +1,30 @@
 # Article notes — implementation started
 
+## Startup performance
+
+Existing compatible libraries now take a read-only readiness path; only missing roots issue a write and track local/remote settlement. Search resources and full-text reads start on demand, while the collection coalesces initialized subscription results and search drains stale native loads before refreshing. Reader snapshot/asset/source reads run in parallel after header validation. Narrow selectors, immutable projection caching and 50-article rendering batches reduce main-thread work; keyboard focus is preserved through batching and coalesced tag updates. No catalogs, dependency pins, schema or service worker admission policy change.
+
+Production observations and ownership details are in [startup-performance.md](startup-performance.md). With 120 saved articles, a controlled 4× CPU comparison improved the median first list from 1,440 ms to 994 ms, rendering an initial batch of 50 rather than all 120. These localhost observations do not predict network/device performance. Search still reads full text once activated; capture worker coordination and automatic resumption remain intact.
+
+Validation: source verification passes 650 tests plus one platform skip, formatting, lint, strict types and production build. All five production offline, eleven packaged-extension and two sample-data cases pass. All 62 web cases are qualified across the complete run and targeted follow-ups: an obsolete repeated-root-write assertion was corrected, and one Firefox live-upgrade timeout passed in an isolated traced rerun without application changes. The initial full web run was 60/62, not green; see the detailed validation record in startup-performance.md.
+
+
+## Explicit persistence and notification workflow ownership
+
+Create, revision and legacy-import decisions now live in invoked domain charts in `notes/domain-machines.ts`. Read actors return decoded facts; `assign` stores them in chart context. Named guards admit the operation and select an existing note, article parent or legacy document parent. States order the selected mutations. The obsolete manually started parent-selection actor is removed, and the native adapter no longer stores article/note/import facts on its transaction resource.
+
+`machines/storage/domain-transaction.ts` bridges DLF's existing callback contract with typed read/stage messages. It invokes both the DLF transaction owner and the domain chart. DLF remains the sole owner of acquisition, cancellation/shutdown draining, commit, local persistence, rollback and unknown settlements. An assessment reply completes DLF's read callback; an explicit stage request permits mutations. The original attempt is returned unchanged and remote acceptance remains a separate receipt. No shared-library source or dependency pin changes are required.
+
+Draft recovery and exact-acknowledgment removal similarly use `draft-mutation-machine.ts`. A callback actor owns the native IndexedDB transaction and reports request results. Named guards select source validation, destination validation, atomic move, exact removal, no-op or abort. Follow-up commands run synchronously before the native request callback returns, preserving the same active transaction. Only transaction completion acknowledges durability. The public promise adapter starts one operation actor; I/O leaves do not manually start actors.
+
+The same shared transaction/domain boundary now owns article intent/publication, article creation/attachment/failure, organization/tag writes and image publication/failure. Native reads return article rows, causal parents and computed hashes as facts; only imperative transaction/receipt handles remain on `TransactionResource`. The old manually started staging helpers in `storage/mutations.ts` are removed. Each chart selects its mutation path and preserves DLF settlement and remote-receipt behavior.
+
+Extension WAITING/PROGRESS notifications now use `notification-machine.ts`. Named guards admit the message and sender; waiting messages read and validate the exact capture before display, while progress messages carry their own validated capture. The actor acknowledges only after the display operation completes and rejects storage/display failures. Existing rendering revision checks, document targeting and localized wording remain intact.
+
+Focused ownership, mutation-selection and notification regressions supplement the existing native policy, storage, image, organization and extension suites. Full verification results are recorded on PR #19 after publication.
+
+Local evidence includes 31 focused model/draft/ownership/native-offline tests, eight real native policy/migration tests and both browser draft cases on an isolated test port. Ownership regressions cover cancellation during acquisition/read/staging/commit, rollback failure and unknown commit/persistence outcomes without replay. Full verification and hosted results are recorded on PR #19 after publication.
+
 ## Independent note entities — current implementation
 
 Following the user's AT Protocol/DLF clarification, the persistence layer now has an independent `notes` table (`id`, `libraryId`, nullable article/document references, exactly one current association) and immutable `noteRevisions` linked by `noteId`. Note IDs are caller-allocated operation identities, not article IDs, DIDs, provider subjects or AT record keys. Notes can be read by their own ID and their content projected without loading the article. Article/legacy-content aliases find associated entities without rewriting IDs. Highlight attachment remains a future entity relationship; no placeholder highlight table or AT publishing/account-linking system is added.

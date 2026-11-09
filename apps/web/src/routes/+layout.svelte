@@ -8,13 +8,13 @@
 	} from '$app/env/public'
 	import 'delightful-ui/theme.css'
 	import AppShell from '../lib/integrations/AppShell.svelte'
-	import Account from '../lib/integrations/Account.svelte'
+	import Account from '../lib/integrations/Application.svelte'
 	import { t } from '../lib/localization/index.js'
 	let { children }: { children: Snippet } = $props()
 	let admitted = $state(false)
 	const serverUrl = $derived(
-		import.meta.env.DEV && PUBLIC_JAZZ_SERVER_URL === 'same-origin'
-			? window.location.origin
+		PUBLIC_JAZZ_SERVER_URL === 'same-origin'
+			? new URL('/jazz', window.location.origin).href
 			: PUBLIC_JAZZ_SERVER_URL
 	)
 </script>

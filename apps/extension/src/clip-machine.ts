@@ -1,4 +1,4 @@
-import { assign, fromCallback, fromPromise, sendTo, setup, stateIn } from 'xstate'
+import { not, assign, fromCallback, fromPromise, sendTo, setup, stateIn } from 'xstate'
 import type { ActorRefFrom, SnapshotFrom } from 'xstate'
 import { z } from 'zod'
 import { captureSchema, contentSchema, sourceSchema, matchingContent } from './protocol.js'
@@ -69,6 +69,22 @@ export function createClipMachine(cap: ClipCapability) {
 	>({
 		actors,
 		guards: { stopping: stateIn({ running: { issuing: 'stopping' } }), current: cap.current }
+	}).extend({
+		guards: {
+			validReply: (_, { value }: { value: unknown }) => replySchema.safeParse(value).success,
+			issuedReply: (_, { value }: { value: unknown }) =>
+				replySchema.safeParse(value).success && replySchema.parse(value).capture.phase === 'issued',
+			sourceReply: (_, { value }: { value: unknown }) =>
+				replySchema.safeParse(value).success && !!replySchema.parse(value).source,
+			matchingContent: ({ context }, { value }: { value: unknown }) =>
+				matchingContent(value, context.capture!)
+		},
+		actions: {
+			rememberReply: assign((_, { value }: { value: unknown }) => {
+				const reply = replySchema.parse(value)
+				return { capture: reply.capture, source: reply.source }
+			})
+		}
 	})
 	const message = (key: Parameters<typeof t>[0], variant: WorkflowMessage['variant'] = 'info') =>
 		model.assign({ message: (): WorkflowMessage => ({ text: t(key), variant }) })
@@ -81,27 +97,24 @@ export function createClipMachine(cap: ClipCapability) {
 					input: ({ context }) => context.id,
 					onDone: [
 						{
-							guard: ({ event }) => replySchema.safeParse(event.output).success,
-							target: 'routing',
-							actions: assign(({ event }) => {
-								const reply = replySchema.parse(event.output)
-								return { capture: reply.capture, source: reply.source }
-							})
+							guard: { type: 'issuedReply', params: ({ event }) => ({ value: event.output }) },
+							target: '#extension-clip.unknown',
+							actions: { type: 'rememberReply', params: ({ event }) => ({ value: event.output }) }
+						},
+						{
+							guard: { type: 'sourceReply', params: ({ event }) => ({ value: event.output }) },
+							target: 'extracting',
+							actions: { type: 'rememberReply', params: ({ event }) => ({ value: event.output }) }
+						},
+						{
+							guard: { type: 'validReply', params: ({ event }) => ({ value: event.output }) },
+							target: 'linkOnly',
+							actions: { type: 'rememberReply', params: ({ event }) => ({ value: event.output }) }
 						},
 						{ target: '#extension-clip.unknown' }
 					],
 					onError: '#extension-clip.unknown'
 				}
-			},
-			routing: {
-				always: [
-					{
-						guard: ({ context }) => context.capture?.phase === 'issued',
-						target: '#extension-clip.unknown'
-					},
-					{ guard: ({ context }) => !!context.source, target: 'extracting' },
-					{ target: 'linkOnly' }
-				]
 			},
 			extracting: {
 				after: { 15000: 'linkOnly' },
@@ -111,9 +124,10 @@ export function createClipMachine(cap: ClipCapability) {
 					src: 'extract',
 					input: ({ context }) => context.source!,
 					onDone: [
+						{ guard: not('current'), target: '#extension-clip.closed' },
 						{
-							guard: ({ context, event }) => matchingContent(event.output, context.capture!),
-							target: 'ready',
+							guard: { type: 'matchingContent', params: ({ event }) => ({ value: event.output }) },
+							target: 'issuing',
 							actions: assign({
 								content: ({ event }) => contentSchema.parse(event.output),
 								source: undefined
@@ -123,9 +137,6 @@ export function createClipMachine(cap: ClipCapability) {
 					],
 					onError: 'linkOnly'
 				}
-			},
-			ready: {
-				always: [{ guard: 'current', target: 'issuing' }, { target: '#extension-clip.closed' }]
 			},
 			linkOnly: {
 				entry: assign({ source: undefined }),

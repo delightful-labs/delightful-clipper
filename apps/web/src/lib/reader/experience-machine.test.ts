@@ -30,6 +30,7 @@ function fixture(local = async () => {}, global = async () => {}) {
 		dispose = vi.fn()
 	const stage = createWorkspaceCreationTransaction<ReaderChange, object, null, SyncReceipt, object>(
 		{
+			retainDetached: vi.fn(),
 			open: () => ({}),
 			readLocal: async () => null,
 			assess: () => ({ outcome: 'eligible' }),

@@ -46,6 +46,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium firefox
       - run: pnpm test:e2e
+      - run: pnpm test:schema
+      - run: pnpm test:worker
       - run: pnpm test:offline
       - run: pnpm test:extension
       - run: pnpm test:fake-data

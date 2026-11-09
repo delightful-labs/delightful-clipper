@@ -1,5 +1,5 @@
 import { createActor, toPromise } from 'xstate'
-import { currentLibraryRecords } from '../src/lib/backend/jazz/account.js'
+import { currentLibraryRecords } from './fixture-records.js'
 import { articleId } from '../src/lib/capture/source.js'
 export async function inspect(urls: string[]) {
 	const records = currentLibraryRecords()

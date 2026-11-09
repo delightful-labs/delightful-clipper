@@ -1,0 +1,33 @@
+[build]
+base = "."
+command = "pnpm build"
+publish = "apps/web/build"
+
+[build.environment]
+NODE_VERSION = "24.22.2"
+PNPM_VERSION = "10.22.0"
+
+[context.production]
+command = "pnpm deploy:jazz && pnpm build"
+
+[context.deploy-preview]
+command = "pnpm build:deploy-preview"
+
+[context.deploy-preview.environment]
+# Qualify the gateway against disposable Jazz; production remains gated off.
+CAPTURE_GATEWAY_ENABLED = "true"
+
+[functions]
+node_bundler = "esbuild"
+external_node_modules = ["jazz-napi", "jsdom", "@mozilla/readability", "dompurify"]
+# The pinned package ships all platforms inline; keep Netlify's Linux x64 binary.
+included_files = [
+	"apps/web/.netlify/v1/parser/**",
+	"!**/jazz-napi.darwin-*.node",
+	"!**/jazz-napi.win32-*.node",
+	"!**/jazz-napi.linux-arm64-gnu.node",
+	"!node_modules/.pnpm/**/jazz-napi.darwin-*.node",
+	"!node_modules/.pnpm/**/jazz-napi.win32-*.node",
+	"!node_modules/.pnpm/**/jazz-napi.linux-arm64-gnu.node",
+	"!node_modules/.pnpm/@garden-co+jazz-napi-*/**/*.node"
+]

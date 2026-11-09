@@ -3,9 +3,13 @@ import { readCompletion } from './completion.js'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { afterEach, expect, it, vi } from 'vitest'
-import { betterAuth } from 'better-auth'
-import { memoryAdapter } from 'better-auth/adapters/memory'
-import { atproto } from '@kingironman2011/better-auth-bsky'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createJazz, sqlite } from 'jazz-tools/backend'
+import { createAuthServer } from './server.js'
+import { app } from '../../backend/jazz/schema.js'
+import permissions from '../../backend/jazz/permissions.js'
 
 const pluginRequire = createRequire(import.meta.resolve('@kingironman2011/better-auth-bsky'))
 const oauthPath = pathToFileURL(pluginRequire.resolve('@atcute/oauth-node-client')).href
@@ -20,7 +24,7 @@ const oauth: {
 
 afterEach(() => vi.restoreAllMocks())
 
-it('completes new-user and returning-user callbacks with the installed Better Auth adapter', async () => {
+it('persists callback users and sessions in Jazz across backend restart', async () => {
 	const attemptId = crypto.randomUUID()
 	const did = 'did:plc:abcdefghijklmnopqrstuvwx'
 	vi.spyOn(oauth.OAuthClient.prototype, 'callback').mockResolvedValue({
@@ -31,42 +35,54 @@ it('completes new-user and returning-user callbacks with the installed Better Au
 		handle: async () =>
 			Response.json({ did, handle: 'proof.example.invalid', displayName: 'Callback proof' })
 	})
-	const rows: Record<string, unknown[]> = {
-		user: [],
-		session: [],
-		account: [],
-		verification: [],
-		atprotoSession: [],
-		atprotoState: []
-	}
-	const auth = betterAuth({
-		baseURL: 'https://example.invalid',
-		secret: 'local-callback-proof-secret-longer-than-32',
-		database: memoryAdapter(rows),
-		plugins: [atproto({ clientName: 'Delightful Clipper' })]
-	})
-	for (let attempt = 0; attempt < 2; attempt++) {
-		const response = await handleConfiguredAuth(
-			auth,
-			new Request(
-				'https://example.invalid/api/auth/atproto/callback?code=synthetic&state=synthetic&iss=https%3A%2F%2Fpds.example.invalid'
-			),
-			{ origin: 'https://example.invalid', secret: 'local-callback-proof-secret-longer-than-32' }
-		)
-		expect(response.status).toBe(302)
-		expect(response.headers.get('location')).toBe('/?atproto_attempt=' + attemptId)
-		expect(response.headers.getSetCookie().length).toBeGreaterThan(0)
-		const receipt = response.headers
-			.getSetCookie()
-			.find((cookie) => cookie.startsWith('clipper.oauth-completion='))!
-		expect(
-			readCompletion(
-				new Request('https://example.invalid', { headers: { cookie: receipt.split(';')[0]! } }),
-				'local-callback-proof-secret-longer-than-32'
+	const directory = await mkdtemp(join(tmpdir(), 'clipper-auth-'))
+	const store = () => createJazz({ app, permissions, store: sqlite({ path: directory }) })
+	let jazz = store()
+	let auth = createAuthServer(
+		{ db: () => jazz.db, schema: app },
+		{
+			origin: 'https://example.invalid',
+			secret: 'local-callback-proof-secret-longer-than-32'
+		}
+	)
+	try {
+		for (let attempt = 0; attempt < 2; attempt++) {
+			if (attempt > 0) {
+				await jazz.close()
+				jazz = store()
+				auth = createAuthServer(
+					{ db: () => jazz.db, schema: app },
+					{
+						origin: 'https://example.invalid',
+						secret: 'local-callback-proof-secret-longer-than-32'
+					}
+				)
+			}
+			const response = await handleConfiguredAuth(
+				auth,
+				new Request(
+					'https://example.invalid/api/auth/atproto/callback?code=synthetic&state=synthetic&iss=https%3A%2F%2Fpds.example.invalid'
+				),
+				{ origin: 'https://example.invalid', secret: 'local-callback-proof-secret-longer-than-32' }
 			)
-		).toMatchObject({ attemptId })
-		expect(rows.user).toHaveLength(1)
-		expect(rows.account).toHaveLength(1)
-		expect(rows.session).toHaveLength(attempt + 1)
+			expect(response.status).toBe(302)
+			expect(response.headers.get('location')).toBe('/?atproto_attempt=' + attemptId)
+			expect(response.headers.getSetCookie().length).toBeGreaterThan(0)
+			const receipt = response.headers
+				.getSetCookie()
+				.find((cookie) => cookie.startsWith('clipper.oauth-completion='))!
+			expect(
+				readCompletion(
+					new Request('https://example.invalid', { headers: { cookie: receipt.split(';')[0]! } }),
+					'local-callback-proof-secret-longer-than-32'
+				)
+			).toMatchObject({ attemptId })
+			expect(await jazz.db.all(app.better_auth_user)).toHaveLength(1)
+			expect(await jazz.db.all(app.better_auth_account)).toHaveLength(1)
+			expect(await jazz.db.all(app.better_auth_session)).toHaveLength(attempt + 1)
+		}
+	} finally {
+		await jazz.close()
+		await rm(directory, { recursive: true, force: true })
 	}
 })

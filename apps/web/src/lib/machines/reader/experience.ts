@@ -19,8 +19,11 @@ import {
 	readerChangeKey
 } from '../../reader/schema.js'
 import { positionSchema } from '../../reader/schema.js'
-import { viewportMachine, type ViewportElements } from '../../reader/viewport.js'
-import { supportsReaderFullscreen, isReaderFullscreen } from '../../reader/fullscreen.js'
+import type { ViewportElements } from '../../reader/viewport.js'
+import { surfaceViewportMachine as viewportMachine } from '../../reader/surface-viewport.js'
+import type { ReaderSurface, FullscreenSurface } from '../../reader/surface.js'
+import { nativeReaderSurface } from '../../reader/native-surface.js'
+
 import { syncOwnerMachine } from '../storage/sync-owner.js'
 import type { SyncReport } from '../../contracts/storage.js'
 import { t } from '../../localization/index.js'
@@ -28,14 +31,15 @@ import { stateFeedback } from '../../contracts/feedback.js'
 import type { SnapshotFrom } from 'xstate'
 
 type Input = { capability: ReaderCapability | undefined }
-type Attachment = ViewportElements & { documentId: string }
+type Attachment = { documentId: string; surface: ReaderSurface }
 type OwnedAttachment = Attachment & { id: string }
 export type ReaderExperienceEvent =
 	| { type: 'MEASURE'; position: ReadingPosition; attachmentId: string }
 	| { type: 'VIEWPORT_FAILED'; attachmentId: string }
 	| { type: 'CHANGE'; change: ReaderChange }
 	| { type: 'ROWS'; rows: ReaderOperation[] }
-	| ({ type: 'ATTACH' } & Attachment)
+	| ({ type: 'ATTACH' } & ViewportElements & { documentId: string })
+	| ({ type: 'ATTACH_SURFACE'; sources: string[] } & Attachment)
 	| {
 			type:
 				| 'REFLOW'
@@ -60,7 +64,7 @@ type Context = Input & {
 	issued: ReaderChange | undefined
 	attachment: OwnedAttachment | undefined
 	progress: Record<string, number>
-	display: Document | undefined
+	display: FullscreenSurface | undefined
 	sync: Record<string, 'pending' | 'accepted' | 'rejected'>
 }
 const observation = fromCallback<ReaderExperienceEvent, ReaderCapability | undefined>(
@@ -70,16 +74,14 @@ const observation = fromCallback<ReaderExperienceEvent, ReaderCapability | undef
 			() => sendBack({ type: 'OBSERVATION_FAILED' })
 		)
 )
-const fullscreenEntry = fromPromise<void, Document>(({ input }) =>
-	input.documentElement.requestFullscreen()
-)
-const fullscreenExit = fromPromise<void, Document>(({ input }) => input.exitFullscreen())
-const fullscreenObservation = fromCallback<ReaderExperienceEvent, Document>(
+const fullscreenEntry = fromPromise<void, FullscreenSurface>(({ input }) => input.enter())
+const fullscreenExit = fromPromise<void, FullscreenSurface>(({ input }) => input.exit())
+const fullscreenObservation = fromCallback<ReaderExperienceEvent, FullscreenSurface>(
 	({ input, sendBack }) => {
 		const change = () => sendBack({ type: 'FULLSCREEN_CHANGED' })
-		input.addEventListener('fullscreenchange', change)
+		const release = input.observe(change)
 		sendBack({ type: 'FULLSCREEN_OBSERVED' })
-		return () => input.removeEventListener('fullscreenchange', change)
+		return release
 	}
 )
 
@@ -140,9 +142,9 @@ const model = setup<
 		fullscreenObservation
 	},
 	guards: {
-		fullscreenSupported: ({ context }) => supportsReaderFullscreen(context.display),
-		fullscreenActive: ({ context }) => isReaderFullscreen(context.display),
-		fullscreenInactive: ({ context }) => !isReaderFullscreen(context.display),
+		fullscreenSupported: ({ context }) => context.display?.supported() === true,
+		fullscreenActive: ({ context }) => context.display?.active() === true,
+		fullscreenInactive: ({ context }) => context.display?.active() !== true,
 		currentViewport: ({ context, event }) =>
 			'attachmentId' in event && event.attachmentId === context.attachment?.id,
 		current: ({ context }) => !!context.capability?.isCurrent(),
@@ -272,7 +274,7 @@ export const readerExperienceMachine = model.createMachine({
 									guard: and(['accepting', 'current']),
 									target: 'focused',
 									actions: assign({
-										display: ({ context }) => context.attachment?.root.ownerDocument
+										display: ({ context }) => context.attachment?.surface.fullscreen
 									})
 								}
 							}
@@ -315,7 +317,8 @@ export const readerExperienceMachine = model.createMachine({
 														}),
 														target: 'exiting'
 													},
-													{ target: 'confirming' }
+													{ guard: 'fullscreenActive', target: 'fullscreen' },
+													{ target: '#reader-fallback' }
 												],
 												onError: [
 													{
@@ -345,12 +348,6 @@ export const readerExperienceMachine = model.createMachine({
 													target: '#reader-experience.active.focus.normal'
 												}
 											}
-										},
-										confirming: {
-											always: [
-												{ guard: 'fullscreenActive', target: 'fullscreen' },
-												{ target: '#reader-fallback' }
-											]
 										},
 										exiting: {
 											initial: 'checking',
@@ -396,8 +393,18 @@ export const readerExperienceMachine = model.createMachine({
 									target: 'waiting',
 									actions: assign({
 										attachment: ({ event }) => ({
-											root: event.root,
-											scroller: event.scroller,
+											surface: nativeReaderSurface(event),
+											documentId: event.documentId,
+											id: crypto.randomUUID()
+										})
+									})
+								},
+								ATTACH_SURFACE: {
+									guard: and(['accepting', 'current']),
+									target: 'waiting',
+									actions: assign({
+										attachment: ({ event }) => ({
+											surface: event.surface,
 											documentId: event.documentId,
 											id: crypto.randomUUID()
 										})
@@ -418,8 +425,7 @@ export const readerExperienceMachine = model.createMachine({
 								id: 'viewport',
 								src: 'viewport',
 								input: ({ context }) => ({
-									root: required(context.attachment).root,
-									scroller: required(context.attachment).scroller,
+									...required(context.attachment).surface.viewport,
 									attachmentId: required(context.attachment).id,
 									position: projectReaderState(context.rows).positions[
 										required(context.attachment).documentId
@@ -663,7 +669,7 @@ export const readerExperienceMachine = model.createMachine({
 		}
 	}
 })
-export function selectReaderExperience(
+function projectReaderExperience(
 	snapshot: SnapshotFrom<typeof readerExperienceMachine> | undefined
 ) {
 	const current = snapshot?.context.capability?.isCurrent() === true
@@ -684,4 +690,22 @@ export function selectReaderExperience(
 			!snapshot.matches({ active: { writer: 'uncertain' } }),
 		message: stateFeedback(current ? Object.values(snapshot.getMeta()) : [])
 	}
+}
+
+// Immutable snapshots share one projection across the shell, reader and library.
+// Recheck the account boundary before consulting the cache.
+const readerViews = new WeakMap<
+	SnapshotFrom<typeof readerExperienceMachine>,
+	ReturnType<typeof projectReaderExperience>
+>()
+const emptyReaderView = projectReaderExperience(undefined)
+export function selectReaderExperience(
+	snapshot: SnapshotFrom<typeof readerExperienceMachine> | undefined
+) {
+	if (!snapshot?.context.capability?.isCurrent()) return emptyReaderView
+	const cached = readerViews.get(snapshot)
+	if (cached) return cached
+	const view = projectReaderExperience(snapshot)
+	readerViews.set(snapshot, view)
+	return view
 }

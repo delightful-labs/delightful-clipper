@@ -20,13 +20,13 @@
 		"verify:vendor": "node tooling/verify-vendor.mjs --installed",
 		"verify": "pnpm verify:vendor && pnpm format:check && pnpm lint && pnpm check && pnpm test:unit && pnpm build",
 		"test:unit": "pnpm --filter @delightful-clipper/web build:parser-worker && vitest run",
-		"test:e2e": "playwright test",
+		"test:e2e": "node tooling/test-browser.mjs",
+		"test:schema": "playwright test --config playwright.schema.config.ts",
 		"dev:agent": "pnpm --filter @delightful-clipper/web dev:agent",
-		"build:deploy-preview": "pnpm --filter @delightful-clipper/web build:deploy-preview",
-		"deploy:jazz": "pnpm --filter @delightful-clipper/web deploy:jazz",
 		"test:offline": "node --experimental-strip-types apps/web/tests/offline-build.ts && playwright test --config playwright.offline.config.ts",
 		"build:extension": "pnpm --filter @delightful-clipper/extension build",
 		"test:extension": "node --experimental-strip-types apps/extension/tooling/test-build.ts && playwright test --config playwright.extension.config.ts",
+		"test:worker": "playwright test --config playwright.worker.config.ts",
 		"test:fake-data": "playwright test --config playwright.fake-data.config.ts"
 	},
 	"devDependencies": {

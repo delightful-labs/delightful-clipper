@@ -1,14 +1,17 @@
 import { createImageRecords } from './images.js'
 import { createNoteRecords } from './notes.js'
-import { canBindArticleIntent, canPublishArticleContent } from '../../capture/article-policy.js'
-import { stageIntent, stagePublication } from '../../machines/storage/mutations.js'
+import {
+	createContentIntentDomain,
+	createContentPublicationDomain
+} from '../../machines/storage/content-domains.js'
+import { createDomainTransaction, required } from '../../machines/storage/domain-transaction.js'
+import type { ContentFacts } from '../../capture/content-policy.js'
 import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
 import type { ReadCapabilities } from '../../contracts/storage.js'
 import { ReadTier } from 'jazz-tools'
-import type { Db, WriteHandle } from 'jazz-tools'
-import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
-import type { PreparedSave, StorageIntent, SyncReceipt } from '../../contracts/storage.js'
+import type { Db } from 'jazz-tools'
+import type { PreparedSave } from '../../contracts/storage.js'
 import { createSaveRecordMachine } from '../../machines/storage/save.js'
 import { prepareSave } from '../../storage/prepare.js'
 import { app } from './schema.js'
@@ -18,125 +21,80 @@ import { createFakeDataRecords } from './fake-data.js'
 import { createArticleRecords } from './articles.js'
 import type { SearchDocument } from '../../search/schema.js'
 import type { LibraryArticle } from '../../contracts/articles.js'
-import type { Article } from '../../contracts/articles.js'
-
-type Resource = TransactionResource
-type StageRows = { intent: StorageIntent | null; article: Article | null }
-function required<T>(value: T | undefined): T {
-	if (value === undefined) throw new Error('Missing storage mutation input')
-	return value
-}
-/** Evaluated against rows read inside the same transaction as the mutation. */
-function canBindIntent(rows: StageRows, draft: PreparedSave) {
-	return rows.intent === null && canBindArticleIntent(rows.article, draft)
-}
-function canPublishContent(rows: StageRows, draft: PreparedSave, operationId: string) {
-	return (
-		rows.intent?.payloadHash === draft.intent.payloadHash &&
-		canPublishArticleContent(rows.article, draft, operationId)
-	)
-}
 
 /** Reads stay bound to this DB/library; owning actors gate admission and late-result consumption.
  * Native write admission and commit scope protection live in transactionLifecycle. */
 export function createLibraryRecords(
-	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'beginExclusiveTransaction' | 'subscribe'>,
+	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'beginSerializableTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
 	const readLocal = async (
-		resource: Resource,
-		attempt: { operationId: string; draft: PreparedSave }
-	) => {
-		const row = await resource.tx.one(
-			app.storageOperations.where({ id: attempt.operationId, libraryId }),
+		resource: TransactionResource,
+		draft: PreparedSave,
+		operationId: string
+	): Promise<ContentFacts> => {
+		const intent = await resource.tx.one(
+			app.storageOperations.where({ id: operationId, libraryId }),
 			{ tier: ReadTier.LocalFirst }
 		)
-
-		const article = attempt.draft.articleId
-			? await resource.tx.one(app.articles.where({ id: attempt.draft.articleId, libraryId }), {
+		const article = draft.articleId
+			? await resource.tx.one(app.articles.where({ id: draft.articleId, libraryId }), {
 					tier: ReadTier.LocalFirst
 				})
 			: null
-
-		resource.article = article
-		return { intent: row, article }
+		return { draft, operationId, intent, article }
 	}
-	const intent = createWorkspaceCreationTransaction<
-		PreparedSave,
-		Resource,
-		StageRows,
-		SyncReceipt,
-		WriteHandle
-	>({
-		...transactionLifecycle(db, isCurrent),
-		readLocal,
-		assess: (rows, attempt) =>
-			canBindIntent(rows, attempt.draft)
-				? { outcome: 'eligible' }
-				: { outcome: 'blocked', reason: 'Operation identity is not eligible' },
-		stage: (resource, { draft }) =>
-			stageIntent({
-				articleLinked: !!draft.articleId,
-				existingArticle: !!resource.article,
-				insertIntent: () => {
-					const { id, ...intent } = draft.intent
-					resource.tx.insert(app.storageOperations, intent, { id })
-				},
-				bindArticle: () => {
-					resource.tx.update(app.articles, required(draft.articleId), {
+	const lifecycle = transactionLifecycle(db, isCurrent)
+	const intent = createDomainTransaction<PreparedSave>(
+		createContentIntentDomain({
+			read: readLocal,
+			insertIntent: (resource, { draft }) => {
+				const { id, ...intent } = draft.intent
+				resource.tx.insert(app.storageOperations, intent, { id })
+			},
+			bindArticle: (resource, { draft }) => {
+				resource.tx.update(app.articles, required(draft.articleId), {
+					operationId: draft.intent.id,
+					failure: null
+				})
+			},
+			createArticle: (resource, { draft }) => {
+				resource.tx.insert(
+					app.articles,
+					{
+						libraryId,
+						url: required(draft.source).submittedUrl,
+						originalSavedAt: draft.intent.createdAt,
+						contentId: null,
 						operationId: draft.intent.id,
 						failure: null
-					})
-				},
-				createArticle: () => {
-					resource.tx.insert(
-						app.articles,
-						{
-							libraryId,
-							url: required(draft.source).submittedUrl,
-							originalSavedAt: draft.intent.createdAt,
-							contentId: null,
-							operationId: draft.intent.id,
-							failure: null
-						},
-						{ id: required(draft.articleId) }
-					)
-				},
-				receipt: () => transactionReceipt(resource)
-			})
-	})
-	const publish = createWorkspaceCreationTransaction<
-		PreparedSave,
-		Resource,
-		StageRows,
-		SyncReceipt,
-		WriteHandle
-	>({
-		...transactionLifecycle(db, isCurrent),
-		readLocal,
-		assess: (rows, attempt) =>
-			canPublishContent(rows, attempt.draft, attempt.operationId)
-				? { outcome: 'eligible' }
-				: { outcome: 'blocked', reason: 'Operation identity is not eligible' },
-		stage: (resource, { draft }) =>
-			stagePublication({
-				articleLinked: !!draft.articleId,
-				hasSource: !!draft.source,
-				publishContent: () => insertPreparedContent(resource.tx, draft),
-				attachContent: () => {
-					resource.tx.update(app.articles, required(draft.articleId), {
-						contentId: draft.document.id,
-						failure: null
-					})
-				},
-				publishSource: () => {
-					const { id, ...source } = required(draft.source)
-					resource.tx.insert(app.articleSources, source, { id })
-				},
-				receipt: () => transactionReceipt(resource)
-			})
-	})
+					},
+					{ id: required(draft.articleId) }
+				)
+			},
+			receipt: transactionReceipt
+		}),
+		lifecycle
+	)
+	const publish = createDomainTransaction<PreparedSave>(
+		createContentPublicationDomain({
+			read: readLocal,
+			publishContent: (resource, { draft }) => insertPreparedContent(resource.tx, draft),
+			attachContent: (resource, { draft }) => {
+				resource.tx.update(app.articles, required(draft.articleId), {
+					contentId: draft.document.id,
+					failure: null
+				})
+			},
+			publishSource: (resource, { draft }) => {
+				const { id, ...source } = required(draft.source)
+				resource.tx.insert(app.articleSources, source, { id })
+			},
+			receipt: transactionReceipt
+		}),
+		lifecycle
+	)
 
 	const records = {
 		binding: Object.freeze({}),
@@ -153,21 +111,24 @@ export function createLibraryRecords(
 					tier: ReadTier.LocalFirst
 				})
 				const row = await db.one(app.documents.where({ id: article?.contentId ?? id, libraryId }), {
-					tier: ReadTier.LocalFirstUnlessEmpty
+					tier: ReadTier.LocalFirst,
+					firstLoadRemoteWaitMs: 5_000
 				})
 
 				return row && article ? { ...row, id: article.id } : row
 			},
 			snapshot: async (id) => {
 				const row = await db.one(app.snapshots.where({ id, libraryId }), {
-					tier: ReadTier.LocalFirstUnlessEmpty
+					tier: ReadTier.LocalFirst,
+					firstLoadRemoteWaitMs: 5_000
 				})
 
 				return row
 			},
 			asset: async (id) => {
 				const row = await db.one(app.assets.where({ id, libraryId }), {
-					tier: ReadTier.LocalFirstUnlessEmpty
+					tier: ReadTier.LocalFirst,
+					firstLoadRemoteWaitMs: 5_000
 				})
 
 				return row
@@ -197,14 +158,18 @@ export function createLibraryRecords(
 		fakeData: createFakeDataRecords(db, libraryId, isCurrent),
 		searchDocuments: async (
 			rows: LibraryArticle[],
-			_signal: AbortSignal
+			signal: AbortSignal
 		): Promise<SearchDocument[]> => {
-			const [documents, snapshots] = await Promise.all([
+			signal.throwIfAborted()
+			const [documents, snapshots] = await Promise.allSettled([
 				db.all(app.documents.where({ libraryId }), { tier: ReadTier.LocalFirst }),
 				db.all(app.snapshots.where({ libraryId }), { tier: ReadTier.LocalFirst })
 			])
-			const docs = new Map(documents.map((document) => [document.id, document]))
-			const texts = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot.text]))
+			signal.throwIfAborted()
+			if (documents.status === 'rejected') throw documents.reason
+			if (snapshots.status === 'rejected') throw snapshots.reason
+			const docs = new Map(documents.value.map((document) => [document.id, document]))
+			const texts = new Map(snapshots.value.map((snapshot) => [snapshot.id, snapshot.text]))
 			return rows.map((row) => ({
 				id: row.id,
 				title: row.title,
@@ -224,14 +189,16 @@ export function createLibraryRecords(
 		isCurrent,
 		hasDocument: async (id: string) => {
 			const row = await db.one(app.documents.where({ id, libraryId }), {
-				tier: ReadTier.LocalFirstUnlessEmpty
+				tier: ReadTier.LocalFirst,
+				firstLoadRemoteWaitMs: 5_000
 			})
 
 			return row !== null
 		},
 		hasIntent: async (id: string) => {
 			const row = await db.one(app.storageOperations.where({ id, libraryId }), {
-				tier: ReadTier.LocalFirstUnlessEmpty
+				tier: ReadTier.LocalFirst,
+				firstLoadRemoteWaitMs: 5_000
 			})
 
 			return row !== null

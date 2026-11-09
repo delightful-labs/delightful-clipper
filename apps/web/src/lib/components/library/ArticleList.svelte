@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { tick } from 'svelte'
+	import { Button } from 'delightful-ui'
+	import { action } from '../../localization/index.js'
 	import type { LibraryArticle } from '../../contracts/articles.js'
 	import type { OrganizationRequest } from '../../capture/organization.js'
 	import ArticleListItem from './ArticleListItem.svelte'
@@ -9,7 +12,10 @@
 		onorganize,
 		onretry,
 		ontags,
-		onemptyfocus
+		onemptyfocus,
+		resetKey,
+		hasMore,
+		onmore
 	}: {
 		rows: LibraryArticle[]
 		readable: Record<string, boolean>
@@ -18,8 +24,23 @@
 		onretry: (id: string) => void
 		ontags: (row: LibraryArticle, trigger: HTMLElement) => void
 		onemptyfocus: () => void
+		hasMore: boolean
+		onmore: () => void
+		resetKey: string
 	} = $props()
 	const listId = $props.id()
+	let pendingIndex = $state<number>()
+	$effect(() => {
+		if (pendingIndex === undefined || !rows[pendingIndex]) return
+		const first = rows[pendingIndex]
+		if (!first) return
+		pendingIndex = undefined
+		void tick().then(() => document.getElementById(listId + '-' + first.id)?.focus())
+	})
+	$effect(() => {
+		void resetKey
+		pendingIndex = undefined
+	})
 	let removedAction = $state<{ id: string; candidates: string[]; trigger: HTMLElement }>()
 
 	$effect(() => {
@@ -35,6 +56,11 @@
 		removedAction = undefined
 	})
 
+	function showNext() {
+		pendingIndex = rows.length
+		onmore()
+	}
+
 	function changeTrash(row: LibraryArticle, trigger: HTMLElement) {
 		const index = rows.findIndex((item) => item.id === row.id)
 		removedAction = {
@@ -49,7 +75,7 @@
 </script>
 
 {#if rows.length}
-	<ul class="article-list">
+	<ul id={listId} class="article-list">
 		{#each rows as row (row.id)}
 			<ArticleListItem
 				{row}
@@ -63,6 +89,11 @@
 			/>
 		{/each}
 	</ul>
+	{#if hasMore}
+		<Button type="button" aria-controls={listId} onclick={showNext}
+			>{action('show', 'article', 2)}</Button
+		>
+	{/if}
 {/if}
 
 <style>

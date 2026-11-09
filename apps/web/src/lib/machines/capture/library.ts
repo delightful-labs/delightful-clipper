@@ -357,6 +357,7 @@ export const libraryMachine = setup<
 						sendTo('search', ({ event }) => ({ type: 'QUERY', query: event.query }))
 					]
 				},
+				SEARCH_OPEN: { guard: 'canUseLibrary', actions: sendTo('search', { type: 'ACTIVATE' }) },
 				RETRY_SEARCH: { guard: 'canUseLibrary', actions: sendTo('search', { type: 'RETRY' }) },
 				TAG_FILTER: {
 					guard: and([
@@ -1017,6 +1018,83 @@ export const libraryMachine = setup<
 		}
 	}
 })
+type LibrarySnapshot = SnapshotFrom<typeof libraryMachine>
+function visibleLibrary(snapshot: LibrarySnapshot | undefined) {
+	return (
+		snapshot?.status === 'active' &&
+		snapshot.matches({ running: { control: 'active' } }) &&
+		snapshot.context.capability?.isCurrent() === true
+	)
+}
+export function selectLibraryReaderExperience(snapshot: LibrarySnapshot | undefined) {
+	return selectReaderExperience(
+		visibleLibrary(snapshot) ? snapshot?.children.readerExperience?.getSnapshot() : undefined
+	)
+}
+export function selectLibraryReaderView(snapshot: LibrarySnapshot | undefined) {
+	const visible = visibleLibrary(snapshot)
+	return {
+		readerExperience: selectLibraryReaderExperience(snapshot),
+		imageViews: visible ? (snapshot?.children.images?.getSnapshot().context.views ?? {}) : {},
+		readerMessage: !snapshot
+			? { text: t('reader.loading'), variant: 'info' as const }
+			: visible
+				? stateFeedback(Object.values(snapshot.getMeta()), 'reader')
+				: undefined,
+		canOrganize:
+			visible &&
+			!!snapshot?.context.capability?.spawnOrganization &&
+			!snapshot?.matches({ running: { organization: 'writing' } })
+	}
+}
+export function selectLibraryCaptureView(snapshot: LibrarySnapshot | undefined) {
+	const visible = visibleLibrary(snapshot)
+	const c = snapshot?.context
+	const meta = visible && snapshot ? Object.values(snapshot.getMeta()) : []
+	const captured =
+		visible && c?.captureId
+			? c.rows.find((row) => row.id === c.captureId || row.contentId === c.captureId)
+			: undefined
+	return {
+		restoreCaptureId: captured?.trashed ? captured.id : undefined,
+		canOrganize:
+			visible &&
+			!!c?.capability?.spawnOrganization &&
+			!snapshot?.matches({ running: { organization: 'writing' } }),
+		duplicateMessage: stateFeedback(meta, 'duplicate'),
+		captureProblemMessage: stateFeedback(meta, 'capture-problem')
+	}
+}
+type RowView = { rows: LibraryArticle[]; readable: Record<string, boolean> }
+const rowViews = new WeakMap<LibraryArticle[], { inputs: readonly unknown[]; view: RowView }>()
+function selectRows(
+	c: Context,
+	resultIds: string[] | undefined,
+	progress: ReturnType<typeof selectReaderExperience>['progress']
+): RowView {
+	const inputs = [c.view, c.favorites, c.selectedTags, c.query, resultIds, progress]
+	const cached = rowViews.get(c.rows)
+	if (cached?.inputs.every((value, i) => value === inputs[i])) return cached.view
+	const matches = c.rows.filter(
+		(row) => matchesLibraryFilter(row, c.view, c.favorites) && matchesTags(row, c.selectedTags)
+	)
+	const byId = new Map(matches.map((row) => [row.id, row]))
+	const filtered = c.query.trim()
+		? (resultIds?.flatMap((id) => {
+				const row = byId.get(id)
+				return row ? [row] : []
+			}) ?? [])
+		: matches
+	const view = {
+		rows: filtered.map((row) => ({
+			...row,
+			readingProgress: row.contentId ? progress[row.contentId] : undefined
+		})),
+		readable: Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId]))
+	}
+	rowViews.set(c.rows, { inputs, view })
+	return view
+}
 export function selectLibraryView(
 	snapshot: SnapshotFrom<typeof libraryMachine> | undefined,
 	_gatewayEnabled = true
@@ -1031,30 +1109,19 @@ export function selectLibraryView(
 	const forwardedState = meta.find((state) => state?.message)
 	const search = selectSearchView(visible ? snapshot.children.search?.getSnapshot() : undefined)
 	const resultIds = search.query === c?.query ? search.ids : undefined
-	const matches = visible
-		? c.rows.filter(
-				(row) => matchesLibraryFilter(row, c.view, c.favorites) && matchesTags(row, c.selectedTags)
-			)
-		: []
-	const byId = new Map(matches.map((row) => [row.id, row]))
-	const rows =
-		visible && c.query.trim()
-			? (resultIds?.flatMap((id) => (byId.has(id) ? [required(byId.get(id))] : [])) ?? [])
-			: matches
 	const captured = visible
 		? c.rows.find((row) => row.id === c.captureId || row.contentId === c.captureId)
 		: undefined
 
-	const readerExperience = selectReaderExperience(
-		visible ? snapshot?.children.readerExperience?.getSnapshot() : undefined
-	)
+	const readerExperience = selectLibraryReaderExperience(snapshot)
+	const { rows, readable } = visible
+		? selectRows(c, resultIds, readerExperience.progress)
+		: { rows: [], readable: {} }
+
 	return {
 		imageViews: visible ? (snapshot?.children.images?.getSnapshot().context.views ?? {}) : {},
 		readerExperience,
-		rows: rows.map((row) => ({
-			...row,
-			readingProgress: row.contentId ? readerExperience.progress[row.contentId] : undefined
-		})),
+		rows,
 		search,
 		restoreCaptureId: captured?.trashed ? captured.id : undefined,
 		tags: visible ? (c.rows[0]?.tagVocabulary ?? []) : [],
@@ -1086,7 +1153,7 @@ export function selectLibraryView(
 						variant: 'info' as const
 					}
 				: undefined,
-		readable: visible ? Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId])) : {},
+		readable,
 		canOpenCapture:
 			visible && c.captureReady && !c.background[c.captureId] && captured?.trashed !== true,
 		canCancel:

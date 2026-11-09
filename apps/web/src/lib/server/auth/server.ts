@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth'
-import { jwt } from 'better-auth/plugins'
 import { atproto } from '@kingironman2011/better-auth-bsky'
-import type { Pool } from 'pg'
+import { jazzAdapter } from 'jazz-tools/better-auth-adapter'
+import type { Db, BackendSchemaInput } from 'jazz-tools/backend'
 import { z } from 'zod'
 
 export const authConfiguration = z.object({
@@ -24,18 +24,18 @@ export const authConfiguration = z.object({
 	secret: z.string().min(32)
 })
 
-export function createAuthServer(database: Pool, input: { origin: string; secret: string }) {
+export function createAuthServer(
+	storage: { db: () => Db | Promise<Db>; schema: BackendSchemaInput },
+	input: { origin: string; secret: string }
+) {
 	const parsed = authConfiguration.safeParse(input)
 	if (!parsed.success) throw new Error('Invalid auth server configuration')
 	const { origin, secret } = parsed.data
 	return betterAuth({
-		database,
+		database: jazzAdapter(storage),
 		baseURL: origin,
 		basePath: '/api/auth',
 		secret,
-		plugins: [
-			atproto({ clientName: 'Delightful Clipper' }),
-			jwt({ jwt: { issuer: origin, audience: origin, definePayload: () => ({}) } })
-		]
+		plugins: [atproto({ clientName: 'Delightful Clipper' })]
 	})
 }

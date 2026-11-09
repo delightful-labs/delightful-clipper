@@ -1,3 +1,4 @@
+import { policySchema } from './schema-permissions.test-support.js'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import { createPolicyTestApp } from 'jazz-tools/testing'
@@ -8,7 +9,7 @@ import { createFakeDataRecords } from './fake-data.js'
 import { createLibraryRecords } from './records.js'
 let fixture: PolicyTestApp
 beforeAll(async () => {
-	fixture = await createPolicyTestApp(app, permissions, expect)
+	fixture = await createPolicyTestApp(policySchema(), permissions, expect)
 })
 afterAll(async () => {
 	await fixture?.shutdown()
@@ -48,7 +49,7 @@ it('seeds complete private native records and independent metadata once, includi
 it('does no reads or writes when disabled or scope has expired', async () => {
 	const { db, id } = await owner('fake-disabled')
 	const read = vi.spyOn(db, 'all'),
-		open = vi.spyOn(db, 'beginExclusiveTransaction')
+		open = vi.spyOn(db, 'beginSerializableTransaction')
 	expect(await toPromise(seed(db, id, false))).toBe('skipped')
 	expect(await toPromise(seed(db, id, true, () => false))).toBe('skipped')
 	expect(read).not.toHaveBeenCalled()
@@ -65,7 +66,7 @@ it('preserves existing native URL-only data', async () => {
 	expect(await toPromise(seed(db, id))).toBe('skipped')
 	expect(await db.all(app.articles.where({ libraryId: id }))).toHaveLength(1)
 })
-it('rechecks under the exclusive transaction so racing seeders do not duplicate or overwrite', async () => {
+it('rechecks under the serializable transaction so racing seeders do not duplicate or overwrite', async () => {
 	const { db, id } = await owner('fake-race')
 	const results = await Promise.all([toPromise(seed(db, id)), toPromise(seed(db, id))])
 	expect(results).toContain('seeded')
@@ -79,12 +80,12 @@ it('does not seed or disclose another account library', async () => {
 	expect(await toPromise(seed(b.db, a.id))).toBe('skipped')
 	expect(await b.db.all(app.articles.where({ libraryId: a.id }))).toHaveLength(0)
 })
-it('drains an issued exclusive settlement on shutdown without replaying it', async () => {
+it('drains an issued serializable settlement on shutdown without replaying it', async () => {
 	const { db, id } = await owner('fake-drain')
 	const released = Promise.withResolvers<void>(),
 		entered = Promise.withResolvers<void>()
-	const begin = db.beginExclusiveTransaction.bind(db)
-	vi.spyOn(db, 'beginExclusiveTransaction').mockImplementation(() => {
+	const begin = db.beginSerializableTransaction.bind(db)
+	vi.spyOn(db, 'beginSerializableTransaction').mockImplementation(() => {
 		const tx = begin(),
 			commit = tx.commit.bind(tx)
 		vi.spyOn(tx, 'commit').mockImplementation(() => {

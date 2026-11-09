@@ -1,16 +1,16 @@
 import { z } from 'zod'
 import { tagOperationSchema, tagRequestSchema, tagKey } from '../../capture/tags.js'
 import type { TagOperation } from '../../capture/tags.js'
-import { stageOrganization } from '../../machines/storage/mutations.js'
+import { createOrganizationDomain } from '../../machines/storage/organization-domain.js'
+import type { OrganizationFacts } from '../../machines/storage/organization-domain.js'
+import { createDomainTransaction } from '../../machines/storage/domain-transaction.js'
 import { ReadTier } from 'jazz-tools'
-import type { Db, WriteHandle } from 'jazz-tools'
-import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
+import type { Db } from 'jazz-tools'
 import {
 	organizationOperationSchema,
 	organizationHeads,
 	organizationTargets,
-	organizationRequestSchema,
-	canOrganizeArticle
+	organizationRequestSchema
 } from '../../capture/organization.js'
 import type { OrganizationOperation } from '../../capture/organization.js'
 import {
@@ -19,7 +19,6 @@ import {
 } from '../../machines/storage/organize.js'
 import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
-import type { SyncReceipt } from '../../contracts/storage.js'
 import { app } from './schema.js'
 const tagHistorySchema = z.array(tagOperationSchema)
 const organizationHistorySchema = z.array(organizationOperationSchema)
@@ -42,88 +41,79 @@ export function createOrganizationRecords(
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
-	type Resource = TransactionResource & { parents?: string[] }
-	const stage = createWorkspaceCreationTransaction<
-		OrganizationDraft,
-		Resource,
-		{ article: unknown; document: unknown },
-		SyncReceipt,
-		WriteHandle
-	>({
-		...transactionLifecycle(db, isCurrent),
-		readLocal: async (r, a) => {
-			const request = organizationRequestSchema.parse(a.draft)
-			const article = await r.tx.one(app.articles.where({ id: request.id, libraryId }), {
-				tier: ReadTier.LocalFirst
-			})
-			r.article = article
-			const document = await r.tx.one(app.documents.where({ id: request.id, libraryId }), {
-				tier: ReadTier.LocalFirst
-			})
-			const aliases = await r.tx.all(
-				app.articles.where({
-					libraryId,
-					contentId: article?.contentId ?? document?.id ?? request.id
-				}),
-				{ tier: ReadTier.LocalFirst }
-			)
-			const targets = organizationTargets(
-				request.id,
-				article?.contentId ?? document?.id ?? null,
-				aliases
-			)
-			r.parents = organizationHeads(
-				a.draft.operations.filter((row) => targets.has(row.articleId))
-			).map((row) => row.id)
-			return { article, document }
-		},
-		assess: (rows) =>
-			canOrganizeArticle(rows.article, rows.document)
-				? { outcome: 'eligible' }
-				: { outcome: 'blocked', reason: 'Article unavailable' },
-		stage: (r, a) => {
-			if (!r.parents) throw new Error('Missing organization observation')
-			const parents = r.parents
-			const values = {
+	const readLocal = async (
+		resource: TransactionResource,
+		input: OrganizationDraft,
+		operationId: string
+	): Promise<OrganizationFacts> => {
+		const request = organizationRequestSchema.parse(input)
+		const draft = { ...request, operations: input.operations }
+		const article = await resource.tx.one(app.articles.where({ id: request.id, libraryId }), {
+			tier: ReadTier.LocalFirst
+		})
+		const document = await resource.tx.one(app.documents.where({ id: request.id, libraryId }), {
+			tier: ReadTier.LocalFirst
+		})
+		const aliases = await resource.tx.all(
+			app.articles.where({
 				libraryId,
-				field: a.draft.field,
-				value: String(a.draft.value),
-				parents: JSON.stringify(r.parents)
-			}
-			const insertTag = (reference: 'articleId' | 'documentId') =>
-				r.tx.insert(
-					app.tagOperations,
-					{
-						articleId: null,
-						documentId: null,
-						[reference]: a.draft.id,
-						...tagAssignmentValues(a.draft, libraryId, parents)
-					},
-					{ id: a.operationId }
-				)
-			return stageOrganization({
-				hasArticle: !!r.article,
-				tagAssignment: a.draft.field === 'tag',
-				insertTagArticle: () => insertTag('articleId'),
-				insertTagDocument: () => insertTag('documentId'),
-				insertArticle: () => {
-					r.tx.insert(
-						app.organizationOperations,
-						{ ...values, articleId: a.draft.id, documentId: null },
-						{ id: a.operationId }
-					)
+				contentId: article?.contentId ?? document?.id ?? request.id
+			}),
+			{ tier: ReadTier.LocalFirst }
+		)
+		const targets = organizationTargets(
+			request.id,
+			article?.contentId ?? document?.id ?? null,
+			aliases
+		)
+		const parents = organizationHeads(
+			draft.operations.filter((row) => targets.has(row.articleId))
+		).map((row) => row.id)
+		return { draft, operationId, article, document, parents }
+	}
+	const insertTag =
+		(reference: 'articleId' | 'documentId') =>
+		(resource: TransactionResource, facts: OrganizationFacts) => {
+			resource.tx.insert(
+				app.tagOperations,
+				{
+					articleId: null,
+					documentId: null,
+					[reference]: facts.draft.id,
+					...tagAssignmentValues(facts.draft, libraryId, facts.parents)
 				},
-				insertDocument: () => {
-					r.tx.insert(
-						app.organizationOperations,
-						{ ...values, articleId: null, documentId: a.draft.id },
-						{ id: a.operationId }
-					)
-				},
-				receipt: () => transactionReceipt(r)
-			})
+				{ id: facts.operationId }
+			)
 		}
-	})
+	const insertOrganization =
+		(reference: 'articleId' | 'documentId') =>
+		(resource: TransactionResource, facts: OrganizationFacts) => {
+			resource.tx.insert(
+				app.organizationOperations,
+				{
+					libraryId,
+					field: facts.draft.field,
+					value: String(facts.draft.value),
+					parents: JSON.stringify(facts.parents),
+					articleId: null,
+					documentId: null,
+					[reference]: facts.draft.id
+				},
+				{ id: facts.operationId }
+			)
+		}
+	const stage = createDomainTransaction<OrganizationDraft>(
+		createOrganizationDomain({
+			read: readLocal,
+			insertArticle: insertOrganization('articleId'),
+			insertDocument: insertOrganization('documentId'),
+			insertTagArticle: insertTag('articleId'),
+			insertTagDocument: insertTag('documentId'),
+			receipt: transactionReceipt
+		}),
+		transactionLifecycle(db, isCurrent)
+	)
+
 	return {
 		machine: createOrganizationMachine(
 			stage,

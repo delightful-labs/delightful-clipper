@@ -1,5 +1,6 @@
+import { policySchema } from './schema-permissions.test-support.js'
 import { readRecord } from '../../machines/storage/read.test-support.js'
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import { createPolicyTestApp } from 'jazz-tools/testing'
 import type { PolicyTestApp } from 'jazz-tools/testing'
@@ -11,7 +12,7 @@ import { BYTE_LIMIT, prepareSave } from '../../storage/prepare.js'
 
 let fixture: PolicyTestApp
 beforeAll(async () => {
-	fixture = await createPolicyTestApp(app, permissions, expect)
+	fixture = await createPolicyTestApp(policySchema(), permissions, expect)
 })
 afterAll(async () => {
 	await fixture?.shutdown()
@@ -199,4 +200,35 @@ it('publishes immutable source provenance with its document and denies foreign o
 			})
 			.wait({ tier: 'global' })
 	).rejects.toThrow(/denied|rejected/i)
+})
+
+it('drains both issued search queries before reporting a failed native load', async () => {
+	const { db, store } = await owner('search-failed-load')
+	const pending = Promise.withResolvers<never[]>()
+	const reads = vi
+		.spyOn(db, 'all')
+		.mockRejectedValueOnce(new Error('Document read failed'))
+		.mockImplementationOnce(() => pending.promise)
+	let settled = false
+	const result = store.searchDocuments([], new AbortController().signal).then(
+		() => {
+			settled = true
+			return 'ready'
+		},
+		() => {
+			settled = true
+			return 'failed'
+		}
+	)
+	try {
+		await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(2))
+		await Promise.resolve()
+		expect(settled).toBe(false)
+		pending.resolve([])
+		expect(await result).toBe('failed')
+	} finally {
+		pending.resolve([])
+		await result
+		reads.mockRestore()
+	}
 })

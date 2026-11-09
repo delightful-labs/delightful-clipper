@@ -1,6 +1,6 @@
 # AT Protocol: consolidated research and decisions
 
-Consolidated 2026-11-07 on `research/atproto-jwt-proof`. This is the entry point for the AT Protocol research. It replaces the overlapping offline/hosting/Jazz investigation reports and publication-question checkpoints from the separate experiment worktrees. Existing JWT proof code remains historical proof code; consolidation does not upgrade it or establish usability.
+Consolidated 2026-11-07 on `research/atproto-jwt-proof`. This is the entry point for the AT Protocol research. It replaces the overlapping offline/hosting/Jazz investigation reports and publication-question checkpoints from the separate experiment worktrees. The November 9 update is replacing the historical JWT/Postgres proof with the alpha.60 backend and Jazz Better Auth adapter; see [deployment notes](atproto-proof-deployment.md). Integration qualification remains open.
 
 ## Current direction
 
@@ -100,11 +100,11 @@ AT sign-in does not grant repo-write authority. Publication needs reviewed scope
 
 DLF can reuse safety lessons from backup work—binding/generation, exact coverage, retained unknown outcomes and credential exclusion—without making its restore journal a live publication queue. A public repo export does not cover private Jazz originals/assets. Public content is not encrypted from operators, and a PDS deletion request cannot erase all downstream copies.
 
-The app backend’s `accountFor`/request-user helper does not automatically authorize guest capture. Preserve the no-signup parser behavior when adopting the released integration. Also read tagged examples alongside declarations: some examples still name removed helpers. Backend selection and actual upgrade remain the other agent’s work.
+The app backend’s `accountFor`/request-user helper does not automatically authorize guest capture. Preserve the no-signup parser behavior when adopting the released integration. Also read tagged examples alongside declarations: some examples still name removed helpers. The alpha.60/Vercel baseline has now landed; the native auth update uses it.
 
 ## Consolidation and resumption
 
-The target branch keeps its existing JWT proof code and historical [OAuth ownership review](reviews/atproto-attempt-refactor.md) and [startup restoration review](reviews/atproto-startup-restoration.md). The later machine audit’s counterexamples are already addressed by the subsequent commits/tests in this branch; its stale test additions are not reapplied.
+The November 9 native implementation supersedes the JWT proof code while retaining the historical [OAuth ownership review](reviews/atproto-attempt-refactor.md) and [startup restoration review](reviews/atproto-startup-restoration.md). The later machine audit’s counterexamples are already addressed by the subsequent commits/tests in this branch; its stale test additions are not reapplied.
 
 The redundant offline and machine-audit worktrees, their uncommitted source/tests/reports and the target’s pre-consolidation state were checksum-archived locally before cleanup. A verified Git bundle preserves the AT-related branch refs and commit history. The archive excludes reinstallable `node_modules` and Git worktree pointer files; it retains other files, including ignored local artifacts. Recovery metadata stays in that private local archive, not in the repository. No remote branches or deployments are changed by cleanup.
 

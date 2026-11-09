@@ -45,11 +45,15 @@ export type LibraryEvent =
 	| { type: 'TAG_FILTER'; keys: string[] }
 	| { type: 'QUERY'; query: string }
 	| { type: 'RETRY_SEARCH' }
+	| { type: 'SEARCH_OPEN' }
 	| ReadReport
 	| SyncReport
 	| QueueReport
 	| ({ type: 'ADD' } & SaveArticleRequest)
-	| { type: 'CANCEL' | 'SHUTDOWN' | 'CLOSE_READER' }
-	| { type: 'OPEN' | 'RETRY'; id: string }
+	| { type: 'CANCEL' }
+	| { type: 'SHUTDOWN' }
+	| { type: 'CLOSE_READER' }
+	| { type: 'OPEN'; id: string }
+	| { type: 'RETRY'; id: string }
 	| { type: 'ROWS'; rows: LibraryArticle[] }
 	| { type: 'LIST_FAILED' }

@@ -49,6 +49,7 @@ function fixture(
 		SyncReceipt,
 		object
 	>({
+		retainDetached: vi.fn(),
 		open: () => ({}),
 		readLocal: async () => true,
 		assess: () => ({ outcome: 'eligible' }),

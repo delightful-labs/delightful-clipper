@@ -1,4 +1,4 @@
-import { assign, fromPromise, setup } from 'xstate'
+import { and, assign, fromPromise, setup } from 'xstate'
 import { captureFor, captureSchema, referenceMessageSchema, trustedSender } from './protocol.js'
 import type { Capture } from './protocol.js'
 type Input = { message: unknown; sender: chrome.runtime.MessageSender }
@@ -15,7 +15,7 @@ export function createReferenceMachine(cap: {
 		write: fromPromise(({ input }: { input: Capture }) => cap.write(input)),
 		remove: fromPromise(({ input }: { input: string }) => cap.remove(input))
 	}
-	return setup<
+	const model = setup<
 		Context,
 		{ type: 'UNUSED' },
 		typeof actors,
@@ -26,29 +26,25 @@ export function createReferenceMachine(cap: {
 		string,
 		Input,
 		{ accepted: boolean }
-	>({ actors }).createMachine({
+	>({ actors }).extend({
+		guards: {
+			admitted: ({ context }) =>
+				trustedSender(context.sender, cap.id, cap.page) &&
+				referenceMessageSchema.safeParse(context.message).success,
+			removalRequested: ({ context }) =>
+				referenceMessageSchema.parse(context.message).type === 'REMOVE'
+		}
+	})
+	return model.createMachine({
 		initial: 'admitting',
 		context: ({ input }) => ({ ...input, capture: undefined, accepted: false }),
 		output: ({ context }) => ({ accepted: context.accepted }),
 		states: {
 			admitting: {
 				always: [
-					{
-						guard: ({ context }) =>
-							trustedSender(context.sender, cap.id, cap.page) &&
-							referenceMessageSchema.safeParse(context.message).success,
-						target: 'routing'
-					},
+					{ guard: and(['admitted', 'removalRequested']), target: 'removing' },
+					{ guard: 'admitted', target: 'reading' },
 					{ target: 'failed' }
-				]
-			},
-			routing: {
-				always: [
-					{
-						guard: ({ context }) => referenceMessageSchema.parse(context.message).type === 'REMOVE',
-						target: 'removing'
-					},
-					{ target: 'reading' }
 				]
 			},
 			reading: {

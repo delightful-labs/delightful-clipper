@@ -1,5 +1,4 @@
 import { createActor, toPromise, waitFor } from 'xstate'
-import { z } from 'zod'
 import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 import {
 	createApplicationReadinessMachine,
@@ -9,19 +8,20 @@ import {
 import { existingAccountInput, type Session } from '../../web/src/lib/backend/jazz/account.js'
 import { extensionLibrary } from './library.js'
 import { createRuntimeMachine } from './runtime-machine.js'
-import { authorizationRequestSchema, backgroundSender, runtimeMessageSchema } from './protocol.js'
+import {
+	acceptedAcknowledgmentSchema,
+	authorizationRequestSchema,
+	backgroundSender,
+	runtimeMessageSchema
+} from './protocol.js'
 import { createAuthorizationMachine, selectAccountAccess } from './authorization-machine.js'
 import { extractSource } from './worker.js'
-const acceptedSchema = z.object({ accepted: z.literal(true) })
 async function command(message: unknown) {
-	if (!acceptedSchema.safeParse(await chrome.runtime.sendMessage(message)).success)
+	if (!acceptedAcknowledgmentSchema.safeParse(await chrome.runtime.sendMessage(message)).success)
 		throw new Error('invalidResponse')
 }
 const owner = createActor(createApplicationReadinessMachine<Session>(), {
-	input: existingAccountInput(
-		{ appId: __CLIPPER_APP_ID__, serverUrl: __CLIPPER_SERVER__, env: 'clipper' },
-		extensionLibrary
-	)
+	input: existingAccountInput({ serverUrl: __CLIPPER_SERVER__, env: 'clipper' }, extensionLibrary)
 })
 
 const runtime = createActor(

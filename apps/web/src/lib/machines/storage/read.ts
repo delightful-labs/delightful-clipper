@@ -76,7 +76,13 @@ const model = setup<
 	typeof actors,
 	{},
 	{ report: { result: ReadResult } },
-	{ scopeLost: undefined },
+	{
+		scopeLost: undefined
+		missingSnapshot: { snapshot: TextSnapshot | null }
+		invalidSnapshot: { snapshot: TextSnapshot | null }
+		missingDocument: { document: DocumentHeader | null }
+		invalidDocument: { document: DocumentHeader | null }
+	},
 	never,
 	string,
 	ReadInput,
@@ -84,7 +90,14 @@ const model = setup<
 	{ type: 'record'; result: ReadResult }
 >({
 	actors,
-	guards: { scopeLost: ({ context }) => !context.capability?.isCurrent() },
+	guards: {
+		scopeLost: ({ context }) => !context.capability?.isCurrent(),
+		missingDocument: (_args, { document }) => document === null,
+		invalidDocument: ({ context }, { document }) => !isValidDocument(document, context.id),
+		missingSnapshot: (_args, { snapshot }) => snapshot === null,
+		invalidSnapshot: ({ context }, { snapshot }) =>
+			!isValidSnapshot(snapshot, required(context.document))
+	},
 	actions: {
 		report: enqueueActions(({ context, enqueue }, { result }) => {
 			enqueue.emit({ type: 'record', result })
@@ -120,62 +133,108 @@ export const readRecordMachine = model.createMachine({
 				input,
 				onDone: [
 					{ guard: 'scopeLost', target: 'unavailable' },
-					{ guard: ({ event }) => event.output === null, target: 'missing' },
 					{
-						guard: ({ context, event }) => !isValidDocument(event.output, context.id),
+						guard: { type: 'missingDocument', params: ({ event }) => ({ document: event.output }) },
+						target: 'missing'
+					},
+					{
+						guard: { type: 'invalidDocument', params: ({ event }) => ({ document: event.output }) },
 						target: 'corrupt'
 					},
 					{
-						target: 'snapshot',
+						target: 'resources',
 						actions: assign({ document: ({ event }) => event.output ?? undefined })
 					}
 				],
 				onError: 'unavailable'
 			}
 		},
-		snapshot: {
-			invoke: {
-				src: 'snapshot',
-				input,
-				onDone: [
-					{ guard: 'scopeLost', target: 'unavailable' },
-					{ guard: ({ event }) => event.output === null, target: 'unavailable' },
-					{
-						guard: ({ context, event }) =>
-							!isValidSnapshot(event.output, required(context.document)),
-						target: 'corrupt'
-					},
-					{
-						target: 'asset',
-						actions: assign({ snapshot: ({ event }) => event.output ?? undefined })
+		// Once the header is validated, these independent reads share one owner.
+		// Only the required snapshot can fail the read; asset/source remain optional.
+		resources: {
+			type: 'parallel',
+			onDone: 'available',
+			states: {
+				snapshot: {
+					initial: 'reading',
+					states: {
+						reading: {
+							invoke: {
+								src: 'snapshot',
+								input,
+								onDone: [
+									{ guard: 'scopeLost', target: '#read-record.unavailable' },
+									{
+										guard: {
+											type: 'missingSnapshot',
+											params: ({ event }) => ({ snapshot: event.output })
+										},
+										target: '#read-record.unavailable'
+									},
+									{
+										guard: {
+											type: 'invalidSnapshot',
+											params: ({ event }) => ({ snapshot: event.output })
+										},
+										target: '#read-record.corrupt'
+									},
+									{
+										target: 'ready',
+										actions: assign({ snapshot: ({ event }) => event.output ?? undefined })
+									}
+								],
+								onError: '#read-record.unavailable'
+							}
+						},
+						ready: { type: 'final' }
 					}
-				],
-				onError: 'unavailable'
-			}
-		},
-		asset: {
-			invoke: {
-				src: 'asset',
-				input,
-				onDone: [
-					{ guard: 'scopeLost', target: 'unavailable' },
-					{ target: 'source', actions: assign({ asset: ({ event }) => event.output ?? undefined }) }
-				],
-				onError: [{ guard: 'scopeLost', target: 'unavailable' }, { target: 'source' }]
-			}
-		},
-		source: {
-			invoke: {
-				src: 'source',
-				input,
-				onDone: [
-					{ guard: 'scopeLost', target: 'unavailable' },
-					{
-						target: 'available',
-						actions: assign({ source: ({ event }) => event.output ?? undefined })
+				},
+				asset: {
+					initial: 'reading',
+					states: {
+						reading: {
+							invoke: {
+								src: 'asset',
+								input,
+								onDone: [
+									{ guard: 'scopeLost', target: '#read-record.unavailable' },
+									{
+										target: 'ready',
+										actions: assign({ asset: ({ event }) => event.output ?? undefined })
+									}
+								],
+								onError: [
+									{ guard: 'scopeLost', target: '#read-record.unavailable' },
+									{ target: 'ready' }
+								]
+							}
+						},
+						ready: { type: 'final' }
 					}
-				],
-				onError: [{ guard: 'scopeLost', target: 'unavailable' }, { target: 'available' }]
+				},
+				source: {
+					initial: 'reading',
+					states: {
+						reading: {
+							invoke: {
+								src: 'source',
+								input,
+								onDone: [
+									{ guard: 'scopeLost', target: '#read-record.unavailable' },
+									{
+										target: 'ready',
+										actions: assign({ source: ({ event }) => event.output ?? undefined })
+									}
+								],
+								onError: [
+									{ guard: 'scopeLost', target: '#read-record.unavailable' },
+									{ target: 'ready' }
+								]
+							}
+						},
+						ready: { type: 'final' }
+					}
+				}
 			}
 		},
 		available: {

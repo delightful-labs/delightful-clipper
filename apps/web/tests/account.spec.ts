@@ -1,6 +1,6 @@
 import { openAddLink } from './add-link.js'
 import { test, expect, chromium } from '@playwright/test'
-import { startLocalJazzServer } from 'jazz-tools/testing'
+import { startLocalJazzServer } from './browser-core.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -32,6 +32,13 @@ test('starts locally without signup, reloads and restores the same account into 
 	page,
 	browser
 }) => {
+	let devServerReloads = 0
+	page.on('websocket', (socket) => {
+		socket.on('framereceived', ({ payload }) => {
+			if (typeof payload === 'string' && payload.includes('"type":"full-reload"'))
+				devServerReloads++
+		})
+	})
 	await page.goto('/')
 	// Cold module/WASM startup must reach the usable local library before the
 	// separate remote-acceptance assertion starts its timeout.
@@ -42,7 +49,8 @@ test('starts locally without signup, reloads and restores the same account into 
 	await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	await page.reload()
-	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
+	await expect(page.getByText('Private library synced.', { exact: true })).toHaveCount(0)
 	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
 	const dialog = page.getByRole('dialog')
 	await expect(dialog).toBeVisible()
@@ -54,7 +62,9 @@ test('starts locally without signup, reloads and restores the same account into 
 		await restored.goto('http://127.0.0.1:5180')
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
-		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect(
+			restored.getByRole('region', { name: 'Saved articles', exact: true })
+		).toBeVisible()
 		await restored.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
 		const recoveredPhrase = await restored
 			.getByRole('dialog')
@@ -67,11 +77,14 @@ test('starts locally without signup, reloads and restores the same account into 
 		await authority.stop()
 		await restored.reload()
 		await expect(
-			restored.getByText('Library saved on this device. Sync pending.', { exact: true })
+			restored.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
 		authority = await startAuthority()
 		await restored.reload()
-		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect(
+			restored.getByRole('region', { name: 'Saved articles', exact: true })
+		).toBeVisible()
+		expect(devServerReloads, 'Account navigation must not race a Vite full-page reload').toBe(0)
 	} finally {
 		await second.close()
 	}
@@ -102,11 +115,13 @@ test('retains the account and library after closing every page and browser proce
 		const reopened = await context.newPage()
 		await reopened.goto('http://127.0.0.1:5180')
 		await expect(
-			reopened.getByText('Library saved on this device. Sync pending.', { exact: true })
+			reopened.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
 		authority = await startAuthority()
 		await reopened.reload()
-		await expect(reopened.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect(
+			reopened.getByRole('button', { name: 'Show recovery phrase', exact: true })
+		).toBeVisible()
 	} finally {
 		await context.close()
 		await rm(profile, { recursive: true, force: true })
@@ -141,7 +156,9 @@ test('saves new content offline, restarts the browser, and syncs to a restored p
 		await restored.goto('http://127.0.0.1:5180')
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
-		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect(
+			restored.getByRole('region', { name: 'Saved articles', exact: true })
+		).toBeVisible()
 		await authority.stop()
 		expect(
 			await page.evaluate(async (id) => {
@@ -154,7 +171,7 @@ test('saves new content offline, restarts the browser, and syncs to a restored p
 		const reopened = await context.newPage()
 		await reopened.goto('http://127.0.0.1:5180')
 		await expect(
-			reopened.getByText('Library saved on this device. Sync pending.', { exact: true })
+			reopened.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
 		expect(
 			await reopened.evaluate(async (id) => {
@@ -165,7 +182,9 @@ test('saves new content offline, restarts the browser, and syncs to a restored p
 		authority = await startAuthority()
 		await reopened.reload()
 		await restored.reload()
-		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect(
+			restored.getByRole('region', { name: 'Saved articles', exact: true })
+		).toBeVisible()
 		await expect
 			.poll(
 				() =>
@@ -393,7 +412,9 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 		await restored.goto('http://127.0.0.1:5180')
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
-		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect(
+			restored.getByRole('region', { name: 'Saved articles', exact: true })
+		).toBeVisible()
 		await openAddLink(page)
 		await page
 			.getByLabel('Article URL', { exact: true })
@@ -503,7 +524,7 @@ test('first use opens a stable local library with the authority unavailable and 
 		await page.goto('/')
 		await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
 		await expect(
-			page.getByText('Library saved on this device. Sync pending.', { exact: true })
+			page.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
 		await expect(page.getByRole('button', { name: 'Create account', exact: true })).toHaveCount(0)
 		await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)

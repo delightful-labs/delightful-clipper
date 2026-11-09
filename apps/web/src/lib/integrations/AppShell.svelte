@@ -3,11 +3,10 @@
 	import { onMount, type Snippet } from 'svelte'
 	import { page } from '$app/state'
 	import { Button, Drawer, Heading, Navigation, TopNavigation } from 'delightful-ui'
-	import { selectLibraryView } from '../machines/capture/library.js'
 	import type { ReaderPreferences } from '../reader/schema.js'
 	import AddLink from './AddLink.svelte'
 	import ConnectionStatus from './ConnectionStatus.svelte'
-	import { useLibrary } from '../runtime/library-context.js'
+	import { useWorkerLibrary } from '../runtime/worker/context.js'
 	import { action, noun, t } from '../localization/index.js'
 
 	let {
@@ -16,7 +15,7 @@
 		connectionMessage
 	}: { account: Snippet; children: Snippet; connectionMessage: WorkflowMessage | undefined } =
 		$props()
-	const library = useLibrary()
+	const library = useWorkerLibrary()
 	const id = $props.id()
 	const drawerId = `${id}-account`
 	let drawerOpen = $state(false)
@@ -31,7 +30,7 @@
 			return
 		}
 		const subscription = actor.subscribe((snapshot) => {
-			const view = selectLibraryView(snapshot).readerExperience
+			const view = snapshot.view.readerExperience
 			readerFocused = view.focused
 			theme = view.preferences.theme
 		})

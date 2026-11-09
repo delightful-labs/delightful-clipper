@@ -13,7 +13,7 @@ function membership(change: TagSelectionChange) {
 	return change
 }
 /** DUI owns editing/chips/suggestions; this actor validates and delegates one native membership change. */
-export const tagFormMachine = setup<
+const tagFormModel = setup<
 	Context,
 	TagFormEvent,
 	{},
@@ -23,7 +23,24 @@ export const tagFormMachine = setup<
 	never,
 	string,
 	{ library: Library }
->({}).createMachine({
+>({}).extend({
+	actions: {
+		submitMembership: sendTo(
+			({ context }) => context.library,
+			({ context }) =>
+				({
+					type: 'ORGANIZE',
+					request: {
+						id: context.id,
+						field: 'tag',
+						value: membership(context.change).name,
+						assigned: membership(context.change).assigned
+					}
+				}) satisfies LibraryEvent
+		)
+	}
+})
+export const tagFormMachine = tagFormModel.createMachine({
 	id: 'article-tag-form',
 	initial: 'editing',
 	context: ({ input }) => ({
@@ -51,25 +68,13 @@ export const tagFormMachine = setup<
 		validating: {
 			always: [
 				{ guard: ({ context }) => context.change.kind === 'invalid', target: 'invalid' },
-				{ guard: ({ context }) => context.change.kind === 'changed', target: 'submitting' },
+				{
+					guard: ({ context }) => context.change.kind === 'changed',
+					target: 'editing',
+					actions: 'submitMembership'
+				},
 				{ target: 'editing' }
 			]
-		},
-		submitting: {
-			entry: sendTo(
-				({ context }) => context.library,
-				({ context }) =>
-					({
-						type: 'ORGANIZE',
-						request: {
-							id: context.id,
-							field: 'tag',
-							value: membership(context.change).name,
-							assigned: membership(context.change).assigned
-						}
-					}) satisfies LibraryEvent
-			),
-			always: 'editing'
 		},
 		invalid: {
 			meta: { name: t('forms.enter_subject', { subject: noun('tag') }), variant: 'error' }

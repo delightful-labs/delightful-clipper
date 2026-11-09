@@ -1,3 +1,4 @@
+import { connectivityEvents, isOnline } from '../offline/connectivity.js'
 import { t } from '../localization/index.js'
 import { canRetryImageFetch, imageRetryDelay } from './failure.js'
 import {
@@ -64,13 +65,13 @@ const observe = fromCallback<Event, ImageCapability>(({ input, sendBack }) =>
 	)
 )
 const connectivity = fromCallback<Event>(({ sendBack }) => {
-	const report = () => sendBack({ type: 'CONNECTIVITY', online: navigator.onLine })
-	window.addEventListener('online', report)
-	window.addEventListener('offline', report)
+	const report = () => sendBack({ type: 'CONNECTIVITY', online: isOnline() })
+	connectivityEvents().addEventListener('online', report)
+	connectivityEvents().addEventListener('offline', report)
 	report()
 	return () => {
-		window.removeEventListener('online', report)
-		window.removeEventListener('offline', report)
+		connectivityEvents().removeEventListener('online', report)
+		connectivityEvents().removeEventListener('offline', report)
 	}
 })
 const reconcile = fromPromise<boolean, Context>(({ input, signal }) =>
@@ -230,9 +231,9 @@ const model = setup<
 			enqueue.assign({ slots: [], views: {}, documentId: '' })
 		}),
 		attach: enqueueActions(({ context, event, enqueue }) => {
-			if (event.type !== 'ATTACH') return
+			if (event.type !== 'ATTACH' && event.type !== 'ATTACH_SURFACE') return
 			for (const slot of context.slots) enqueue.stopChild(slot)
-			const urls = imageSources(event.root.innerHTML)
+			const urls = event.type === 'ATTACH' ? imageSources(event.root.innerHTML) : event.sources
 			enqueue.assign(({ context, spawn }) => ({
 				documentId: event.documentId,
 				views: {},
@@ -242,6 +243,20 @@ const model = setup<
 					})
 				)
 			}))
+		})
+	}
+}).extend({
+	actions: {
+		notifyUncertain: ({ context }) => {
+			for (const slot of context.slots)
+				slot.send({ type: 'UNKNOWN', sourceUrl: context.selected!.sourceUrl })
+		},
+		recordUncertain: assign({
+			blocked: ({ context }) => [...context.blocked, context.selected!.id],
+			uncertain: ({ context }) => [...context.uncertain, context.selected!.id],
+			write: undefined,
+			fetched: undefined,
+			result: undefined
 		})
 	}
 })
@@ -259,7 +274,8 @@ const writing = (start: 'startReady' | 'startFailure', settled: 'recordReady' | 
 						'ownCompletion',
 						({ event }) => !event.output || event.output.settlement.kind === 'unresolved'
 					]),
-					target: 'uncertain'
+					target: 'routing',
+					actions: ['notifyUncertain', 'recordUncertain']
 				},
 				{
 					guard: and([
@@ -279,9 +295,13 @@ const writing = (start: 'startReady' | 'startFailure', settled: 'recordReady' | 
 						settled
 					]
 				},
-				{ guard: 'ownCompletion', target: 'blocked' }
+				{ guard: 'ownCompletion', target: 'routing', actions: 'recordUncertain' }
 			],
-			'xstate.error.actor.*': { guard: 'ownCompletion', target: 'uncertain' }
+			'xstate.error.actor.*': {
+				guard: 'ownCompletion',
+				target: 'routing',
+				actions: ['notifyUncertain', 'recordUncertain']
+			}
 		}
 	})
 export const imageQueueMachine = model.createMachine({
@@ -371,6 +391,7 @@ export const imageQueueMachine = model.createMachine({
 					}
 				},
 				ATTACH: { guard: 'current', actions: 'attach' },
+				ATTACH_SURFACE: { guard: 'current', actions: 'attach' },
 				DETACH: { actions: 'detach' },
 				IMAGE_VIEW: [
 					{
@@ -466,10 +487,14 @@ export const imageQueueMachine = model.createMachine({
 								onDone: [
 									{ guard: not('current'), target: 'idle' },
 									{ guard: not('online'), target: 'idle' },
-									{ guard: ({ event }) => event.output, target: 'uncertain' },
+									{
+										guard: ({ event }) => event.output,
+										target: 'routing',
+										actions: ['notifyUncertain', 'recordUncertain']
+									},
 									{ target: 'fetching' }
 								],
-								onError: 'uncertain'
+								onError: { target: 'routing', actions: ['notifyUncertain', 'recordUncertain'] }
 							}
 						},
 						fetching: {
@@ -561,32 +586,6 @@ export const imageQueueMachine = model.createMachine({
 						},
 						savingReady: writing('startReady', 'recordReady'),
 						savingFailure: writing('startFailure', 'recordFailure'),
-						uncertain: {
-							entry: [
-								({ context }) => {
-									for (const slot of context.slots)
-										slot.send({ type: 'UNKNOWN', sourceUrl: context.selected!.sourceUrl })
-								},
-								assign({
-									blocked: ({ context }) => [...context.blocked, context.selected!.id],
-									uncertain: ({ context }) => [...context.uncertain, context.selected!.id],
-									write: undefined,
-									fetched: undefined,
-									result: undefined
-								})
-							],
-							always: 'routing'
-						},
-						blocked: {
-							entry: assign({
-								blocked: ({ context }) => [...context.blocked, context.selected!.id],
-								uncertain: ({ context }) => [...context.uncertain, context.selected!.id],
-								write: undefined,
-								fetched: undefined,
-								result: undefined
-							}),
-							always: 'routing'
-						},
 						unavailable: {}
 					}
 				}

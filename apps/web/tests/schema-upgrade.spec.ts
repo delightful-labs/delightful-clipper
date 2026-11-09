@@ -1,27 +1,27 @@
 import { permissionsForSchema } from '../src/lib/backend/jazz/schema-permissions.test-support.js'
-import entityMigration from '../src/lib/backend/jazz/migrations/20261106T161431-independent-notes-b7805d9b30d2-92a26a023aa5.js'
-import { app as preEntitiesApp } from '../src/lib/backend/jazz/prenote-entities-schema.test-support.js'
-import noteMigration from '../src/lib/backend/jazz/migrations/20261106T144240-article-notes-with-parent-references-dc1365b4b2ec-b7805d9b30d2.js'
-import { app as preNotesApp } from '../src/lib/backend/jazz/prenotes-schema.test-support.js'
-import { app as preImageApp } from '../src/lib/backend/jazz/preimages-schema.test-support.js'
-import imageMigration from '../src/lib/backend/jazz/migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
-import readerMigration from '../src/lib/backend/jazz/migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
-import { app as preReaderApp } from '../src/lib/backend/jazz/prereader-schema.test-support.js'
-import discoveryMigration from '../src/lib/backend/jazz/migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
-import { app as preDiscoveryApp } from '../src/lib/backend/jazz/prediscovery-schema.test-support.js'
+import entityMigration from './fixtures/schema-history/migrations/20261106T161431-independent-notes-b7805d9b30d2-92a26a023aa5.js'
+import { app as preEntitiesApp } from './fixtures/schema-history/prenote-entities-schema.test-support.js'
+import noteMigration from './fixtures/schema-history/migrations/20261106T144240-article-notes-with-parent-references-dc1365b4b2ec-b7805d9b30d2.js'
+import { app as preNotesApp } from './fixtures/schema-history/prenotes-schema.test-support.js'
+import { app as preImageApp } from './fixtures/schema-history/preimages-schema.test-support.js'
+import imageMigration from './fixtures/schema-history/migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
+import readerMigration from './fixtures/schema-history/migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
+import { app as preReaderApp } from './fixtures/schema-history/prereader-schema.test-support.js'
+import discoveryMigration from './fixtures/schema-history/migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
+import { app as preDiscoveryApp } from './fixtures/schema-history/prediscovery-schema.test-support.js'
 import { openAddLink } from './add-link.js'
 import { test, expect, chromium, firefox } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { startLocalJazzServer, deploy } from 'jazz-tools/dev'
+import { deploy, startLocalJazzServer } from './migration-authority.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { legacyApp } from '../src/lib/backend/jazz/legacy-schema.test-support.js'
+import { legacyApp } from './fixtures/schema-history/legacy-schema.test-support.js'
 import { app } from '../src/lib/backend/jazz/schema.js'
 import permissions from '../src/lib/backend/jazz/permissions.js'
-import { app as preOrganizationApp } from '../src/lib/backend/jazz/preorganization-schema.test-support.js'
-import organizationMigration from '../src/lib/backend/jazz/migrations/20261105T033336-library-organization-80988faa7219-5315ce57b805.js'
-import migration from '../src/lib/backend/jazz/migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
+import { app as preOrganizationApp } from './fixtures/schema-history/preorganization-schema.test-support.js'
+import organizationMigration from './fixtures/schema-history/migrations/20261105T033336-library-organization-80988faa7219-5315ce57b805.js'
+import migration from './fixtures/schema-history/migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
 const appId = '2db98ae3-fcf1-41e8-b7d3-9818496bde60'
 const baseURL = 'http://127.0.0.1:5180'
 const legacyPermissions = permissionsForSchema(legacyApp)
@@ -59,15 +59,17 @@ for (const browser of [chromium, firefox]) {
 			test(`${browser.name()}: ${keepOpen ? 'live' : 'cold'} schema upgrade ${rejectedFirst ? 'after rejected deployment and refresh' : 'with migration before new client'}`, async () => {
 				test.setTimeout(90000)
 				const directory = await mkdtemp(join(tmpdir(), 'clipper-browser-upgrade-'))
-				const authority = await startLocalJazzServer({
-					appId,
-					host: '127.0.0.1',
-					port: 5181,
-					dataDir: join(directory, 'authority')
-				})
-				let context = await browser.launchPersistentContext(join(directory, 'profile'), {
-					headless: true
-				})
+				const authority = await test.step('Start isolated Jazz authority', () =>
+					startLocalJazzServer({
+						appId,
+						host: '127.0.0.1',
+						port: 5181,
+						dataDir: join(directory, 'authority')
+					}))
+				let context = await test.step('Open legacy browser profile', () =>
+					browser.launchPersistentContext(join(directory, 'profile'), {
+						headless: true
+					}))
 				const upgrade = {
 					appId,
 					serverUrl: authority.url,
@@ -88,7 +90,8 @@ for (const browser of [chromium, firefox]) {
 
 				try {
 					// Match the managed dev server: start empty, then publish the old catalogue and permissions.
-					await deploy({ ...upgrade, schema: legacyApp, permissions: legacyPermissions })
+					await test.step('Publish legacy schema and permissions', () =>
+						deploy({ ...upgrade, schema: legacyApp, permissions: legacyPermissions }))
 					let page = await context.newPage()
 					await observe(page)
 					await page.route(baseURL + '/tests/schema-upgrade-fixture', (route) =>
@@ -98,11 +101,13 @@ for (const browser of [chromium, firefox]) {
 						})
 					)
 					await page.goto(baseURL + '/tests/schema-upgrade-fixture')
-					const before = await page.evaluate(async (keepOpen) => {
-						const path = '/tests/schema-upgrade-driver.ts'
-						return (await import(/* @vite-ignore */ path)).seedLegacy(keepOpen)
-					}, keepOpen)
-					if (!keepOpen) await context.close()
+					const before = await test.step('Persist legacy records', () =>
+						page.evaluate(async (keepOpen) => {
+							const path = '/tests/schema-upgrade-driver.ts'
+							return (await import(/* @vite-ignore */ path)).seedLegacy(keepOpen)
+						}, keepOpen))
+					if (!keepOpen)
+						await test.step('Close legacy browser before upgrade', () => context.close())
 					if (rejectedFirst) {
 						await expect(deploy(upgrade)).rejects.toThrow(/migration|connect/i)
 						if (!keepOpen)
@@ -262,7 +267,7 @@ for (const browser of [chromium, firefox]) {
 						)
 					).toBe(false)
 				} finally {
-					await context.close()
+					await test.step('Close final browser context', () => context.close())
 					await authority.stop()
 					await rm(directory, { recursive: true, force: true })
 				}

@@ -1,7 +1,8 @@
+import { closeLibraryPopovers, openLibraryFilters } from './library-popovers.js'
 import { openAddLink } from './add-link.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { startLocalJazzServer } from 'jazz-tools/testing'
+import { startLocalJazzServer } from './browser-core.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -45,6 +46,7 @@ test('changes all statuses, keeps favorites independent, combines filters, and p
 	const first = await supplied(page, 'organize-first'),
 		second = await supplied(page, 'organize-second')
 	await expect(first.getByLabel('Status', { exact: true })).toHaveValue('inbox')
+	await closeLibraryPopovers(page)
 	await first.getByRole('button', { name: 'Favorite', exact: true }).click()
 	await expect(first.getByRole('button', { name: 'Remove favorite', exact: true })).toBeEnabled()
 	for (const status of ['later', 'archive', 'inbox']) {
@@ -57,13 +59,17 @@ test('changes all statuses, keeps favorites independent, combines filters, and p
 	await expect(first.getByRole('status')).toHaveCount(0)
 	await first.getByLabel('Status', { exact: true }).selectOption('later')
 	await expect(first.getByLabel('Status', { exact: true })).toBeEnabled()
+	await openLibraryFilters(page)
 	await page.getByRole('radio', { name: 'Later', exact: true }).check()
 	await expect(second).toHaveCount(0)
+	await openLibraryFilters(page)
 	await page.getByRole('button', { name: 'Favorites', exact: true }).click()
 	await expect(first).toBeVisible()
+	await closeLibraryPopovers(page)
 	await first.getByRole('button', { name: 'Remove favorite', exact: true }).click()
 	await expect(first).toHaveCount(0)
 	await expect(page.getByText('No articles match this view.', { exact: true })).toBeVisible()
+	await openLibraryFilters(page)
 	await page.getByRole('button', { name: 'Favorites', exact: true }).click()
 	await expect(first.getByLabel('Status', { exact: true })).toHaveValue('later')
 	await expect(first.getByRole('button', { name: 'Favorite', exact: true })).toBeEnabled()
@@ -145,6 +151,7 @@ test('persists offline edits across complete browser restart and synchronizes on
 		await authority.stop()
 		await row.getByLabel('Status', { exact: true }).selectOption('archive')
 		await expect(row.getByLabel('Status', { exact: true })).toBeEnabled()
+		await closeLibraryPopovers(page)
 		await row.getByRole('button', { name: 'Favorite', exact: true }).click()
 		await expect(row.getByRole('button', { name: 'Remove favorite', exact: true })).toBeEnabled()
 		await context.close()
@@ -194,6 +201,7 @@ test('organizes a link-only article and retains its values when supplied content
 	await expect(row).toBeVisible()
 	await row.getByLabel('Status', { exact: true }).selectOption('later')
 	await expect(row.getByLabel('Status', { exact: true })).toBeEnabled()
+	await closeLibraryPopovers(page)
 	await row.getByRole('button', { name: 'Favorite', exact: true }).click()
 	await expect(row.getByRole('button', { name: 'Remove favorite', exact: true })).toBeEnabled()
 	const id = await row.getAttribute('data-article-id')
@@ -219,7 +227,9 @@ test('native status radios support keyboard navigation and mobile wrapping while
 	const archived = await supplied(page, 'radio-archive')
 	await archived.getByLabel('Status', { exact: true }).selectOption('archive')
 	await expect(archived.getByLabel('Status', { exact: true })).toBeEnabled()
+	await closeLibraryPopovers(page)
 	await inbox.getByRole('button', { name: 'Favorite', exact: true }).click()
+	await openLibraryFilters(page)
 	const favorites = page.getByRole('button', { name: 'Favorites', exact: true })
 	await favorites.click()
 	const group = page.getByRole('group', { name: 'Status', exact: true })

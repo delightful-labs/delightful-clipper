@@ -3,15 +3,41 @@ import type { RowRefValue } from 'jazz-tools/permissions'
 import { app } from './schema.js'
 
 export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
+	policy.better_auth_user.allowRead.never()
+	policy.better_auth_user.allowInsert.never()
+	policy.better_auth_user.allowUpdate.never()
+	policy.better_auth_user.allowDelete.never()
+
+	policy.better_auth_session.allowRead.never()
+	policy.better_auth_session.allowInsert.never()
+	policy.better_auth_session.allowUpdate.never()
+	policy.better_auth_session.allowDelete.never()
+
+	policy.better_auth_account.allowRead.never()
+	policy.better_auth_account.allowInsert.never()
+	policy.better_auth_account.allowUpdate.never()
+	policy.better_auth_account.allowDelete.never()
+
+	policy.better_auth_verification.allowRead.never()
+	policy.better_auth_verification.allowInsert.never()
+	policy.better_auth_verification.allowUpdate.never()
+	policy.better_auth_verification.allowDelete.never()
+
+	policy.better_auth_atprotoSession.allowRead.never()
+	policy.better_auth_atprotoSession.allowInsert.never()
+	policy.better_auth_atprotoSession.allowUpdate.never()
+	policy.better_auth_atprotoSession.allowDelete.never()
+
+	policy.better_auth_atprotoState.allowRead.never()
+	policy.better_auth_atprotoState.allowInsert.never()
+	policy.better_auth_atprotoState.allowUpdate.never()
+	policy.better_auth_atprotoState.allowDelete.never()
+
 	const canonical = () =>
-		allOf([
-			{ id: session.user.account },
-			{ ownerId: session.user.account },
-			{ bootstrapVersion: '1' }
-		])
+		allOf([{ id: session.user }, { ownerId: session.user }, { bootstrapVersion: '1' }])
 	const owns = (libraryId: string | RowRefValue) =>
-		policy.libraries.exists.where({ id: libraryId, ownerId: session.user.account })
-	policy.libraries.allowRead.where({ ownerId: session.user.account })
+		policy.libraries.exists.where({ id: libraryId, ownerId: session.user })
+	policy.libraries.allowRead.where({ ownerId: session.user })
 	policy.libraries.allowInsert.where(canonical)
 	policy.libraries.allowUpdate.whereOld(canonical).whereNew(canonical)
 	policy.libraries.allowDelete.never()

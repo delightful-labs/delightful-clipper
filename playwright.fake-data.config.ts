@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test'
+import { browserCoreSecret } from './apps/web/tests/browser-core.js'
 export default defineConfig({
 	testDir: './apps/web/tests/fake-data',
 	workers: 1,
@@ -12,6 +13,8 @@ export default defineConfig({
 		timeout: 60000,
 		env: {
 			CLIPPER_TEST: 'true',
+			CLIPPER_TEST_CORE_URL: 'http://127.0.0.1:5183',
+			CLIPPER_TEST_CORE_SECRET: browserCoreSecret,
 			PUBLIC_FAKE_DATA: 'true',
 			PUBLIC_DEBUG: 'false',
 			CAPTURE_GATEWAY_ENABLED: 'true',

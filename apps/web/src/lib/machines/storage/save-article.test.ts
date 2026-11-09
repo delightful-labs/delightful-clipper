@@ -19,6 +19,7 @@ const draft: ArticleDraft = {
 }
 function transaction<Draft>(blocked = false) {
 	return createWorkspaceCreationTransaction<Draft, object, null, SyncReceipt, object>({
+		retainDetached: vi.fn(),
 		open: () => ({}),
 		readLocal: async () => null,
 		assess: () =>
@@ -193,6 +194,7 @@ it.each([
 			SyncReceipt,
 			object
 		>({
+			retainDetached: vi.fn(),
 			open: () => ({}),
 			readLocal: async () => null,
 			assess: () => ({ outcome: 'eligible' }),

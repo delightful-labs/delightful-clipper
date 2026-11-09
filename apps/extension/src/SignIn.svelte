@@ -15,10 +15,7 @@
 	const requestId = request.success ? request.data : undefined
 	const application = createApplicationReadinessMachine<Session>()
 	const owner = createActor(application, {
-		input: existingAccountInput(
-			{ appId: __CLIPPER_APP_ID__, serverUrl: __CLIPPER_SERVER__, env: 'clipper' },
-			extensionLibrary
-		)
+		input: existingAccountInput({ serverUrl: __CLIPPER_SERVER__, env: 'clipper' }, extensionLibrary)
 	})
 	const machine = createSignInMachine({
 		connect: (accountId) => confirmConnection(accountId, requestId),
@@ -29,8 +26,8 @@
 		}
 	})
 	const connection = createActor(machine)
-	let snapshot = $state<SnapshotFrom<typeof application>>()
-	let confirmation = $state(connection.getSnapshot())
+	let snapshot = $state.raw<SnapshotFrom<typeof application>>()
+	let confirmation = $state.raw(connection.getSnapshot())
 	let phrase = $state('')
 	const view = $derived(signInView(snapshot, confirmation))
 	onMount(() => {

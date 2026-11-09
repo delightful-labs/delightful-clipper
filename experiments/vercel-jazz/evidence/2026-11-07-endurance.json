@@ -1,0 +1,35 @@
+{
+	"observedOn": "2026-11-07",
+	"deployment": {
+		"project": "delightful-jazz-proof",
+		"id": "dpl_D2xJCU6sXKKc6E8BQTZKZRGrLHGU",
+		"url": "https://delightful-jazz-proof.vercel.app",
+		"data": "synthetic only"
+	},
+	"sdkCondition": {
+		"patch": "patches/jazz-tools-guest-core.patch",
+		"reason": "Published alpha.60 Vercel core options omit allowLocalFirstAuth; unpatched deployed guest authentication fails.",
+		"securityGate": "Deployed direct unauthenticated core WebSocket upgrade rejected HTTP 401 on exact app route; backend guard retained."
+	},
+	"data": "synthetic only",
+	"verifierExitCode": 0,
+	"sustainedRunSeconds": 3000,
+	"successfulWriteReadSamples": 99,
+	"sampleTimesSeconds": [
+		30, 60, 90, 120, 150, 180, 211, 241, 271, 301, 331, 369, 399, 429, 460, 490, 520, 550, 580, 610,
+		640, 670, 700, 730, 760, 790, 831, 861, 891, 921, 951, 981, 1011, 1041, 1071, 1101, 1131, 1161,
+		1191, 1221, 1252, 1282, 1312, 1342, 1372, 1402, 1432, 1462, 1493, 1523, 1553, 1583, 1613, 1643,
+		1673, 1703, 1733, 1763, 1793, 1823, 1853, 1884, 1914, 1944, 1974, 2004, 2034, 2064, 2094, 2124,
+		2155, 2185, 2215, 2245, 2285, 2315, 2345, 2375, 2405, 2435, 2465, 2495, 2525, 2555, 2585, 2615,
+		2645, 2676, 2706, 2736, 2766, 2796, 2826, 2856, 2886, 2916, 2946, 2976, 3000
+	],
+	"quietIntervalSeconds": 120,
+	"stoppedCoreSessionObserved": "sbx_m1ZqKC8yRaq3wXIVi8ASrRbOCHpL",
+	"resumedCoreSessionObserved": "sbx_BuvrcULpYfiifz7f0MqTGTPV4XUQ",
+	"recoveredSameAcknowledgedRecord": true,
+	"limitations": [
+		"Native client proof; application browser worker/offline qualification is separate.",
+		"Function deadline events and uninterrupted Sandbox hard-expiry were not separately forced.",
+		"This workload does not establish production capacity or combined Hobby budget."
+	]
+}

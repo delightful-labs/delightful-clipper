@@ -1,0 +1,67 @@
+{
+	"status": "deployed protocol and endurance qualified with scoped SDK patch; application migration pending",
+	"observedOn": "2026-11-07",
+	"scope": "Disposable Vercel deployment proof; no Finance or Clipper production data",
+	"jazz": "2.0.0-alpha.60",
+	"functionMaxDurationSeconds": 300,
+	"core": {
+		"vcpus": 1,
+		"driveLimitBytes": 1073741824,
+		"idleMilliseconds": 60000
+	},
+	"checks": {
+		"sourceLint": "passed",
+		"typecheck": "passed",
+		"build": "passed locally and Vercel Linux Node 24",
+		"deployedWebSocket": "passed against deployed backend with proof-only SDK patch",
+		"localAndRemoteReceipts": "passed locally and deployed",
+		"recoveryReplica": "passed locally and deployed",
+		"crossIdentityDenial": "passed locally and deployed",
+		"functionExpiryReconnect": "50-minute deployed write/read run passed; exact Function deadline events were not separately instrumented",
+		"sandboxExpiryReconnect": "50-minute deployed run passed across multiple resumed Sandbox sessions; uninterrupted 45-minute hard expiry was not separately forced",
+		"idleWakeAndPersistence": "passed: management API observed sbx_m1ZqKC8yRaq3wXIVi8ASrRbOCHpL stopped during 120 seconds with no client requests; fresh client recovered the saved record through resumed session sbx_BuvrcULpYfiifz7f0MqTGTPV4XUQ",
+		"workerOfflineStartup": "passed: 5 production browser cases, including cold restart with web and Jazz servers stopped and HTTP cache cleared, retained reader data, later recovery/sync, update failures and one WASM binary per build",
+		"sharedHobbyBudget": "synthetic core usage captured; real Finance/Clipper usage and combined budget remain unqualified",
+		"workerConfiguration": "6 dedicated-worker browser tests passed on alpha.60, including identity reuse, first use without a Window application instance, zero UI-thread WASM initialization, drain during acquisition and stale-intent refusal.",
+		"observedCoreLifecycle": "multiple stopped/resumed sessions verified by management API during sustained remote writes; final quiet interval stop and wake confirmed"
+	},
+	"finance": {
+		"baseline": "699e6d9",
+		"backupImplementation": "Merged workspace backup and restore from PRs 54 and 57; qualification notes in PR 59",
+		"migrationGate": "Completed: existing backup restored and verified before production cutover; original backup retained privately.",
+		"firstSlice": "Complete application migration and live Vercel verification passed. User saved the recovery phrase and deferred SimpleFIN setup."
+	},
+	"clipper": {
+		"dataMigration": "Not required by user; fresh disposable alpha.60 data is permitted",
+		"compatibility": "54 main web browser cases, 8 historical-schema Chromium/Firefox cases, 6 worker cases, 5 production offline cases, 2 sample-data cases and 11 packaged-extension cases passed. The affected 21 account and 6 worker cases were repeated after the recovery correction.",
+		"guestApi": "8 native admission/origin tests passed, retaining signature/audience/registry/revocation and client cross-identity checks. Guest backend database access remains disabled. Patch deployed to the Clipper Vercel project.",
+		"fullUnitRun": "677 passed, 1 platform skip across 98 files. Schema fixtures qualify alpha.60 structural hashes and connected historical bundles, not alpha.59 database-file upgrades.",
+		"vercelBuild": "passed; parser worker from the actual traced Vercel function artifact executed successfully in a Node Worker",
+		"offline": "5 production offline tests passed on alpha.60, using a real persistent SQLite createJazz backend",
+		"quality": "Final pnpm verify passed: archive integrity, format, lint, strict web/extension/service-worker types, 677 native/unit tests and production build.",
+		"workerBrowser": "6 passed using the actual application backend and worker-host bridge; test drivers use the canonical endpoint and current account-storage namespace.",
+		"liveVercel": "Public production-target address qualified before hostname cutover: private library synced, resolve/extract HTTP 200, reader content retained after reload and zero UI-thread WASM loads. Only synthetic data used.",
+		"extension": "11 packaged Chromium cases passed using independent web-account restoration, including cold offline capture/restart, duplicates, trusted sign-in and stale-account refusal. Live Vercel extension restoration, toolbar capture, web sync, reader and reload also passed using synthetic data."
+	},
+	"deployment": {
+		"project": "delightful-jazz-proof",
+		"id": "dpl_D2xJCU6sXKKc6E8BQTZKZRGrLHGU",
+		"url": "https://delightful-jazz-proof.vercel.app",
+		"data": "synthetic only"
+	},
+	"sdkCondition": {
+		"patch": "patches/jazz-tools-guest-core.patch",
+		"reason": "Published alpha.60 Vercel core options omit allowLocalFirstAuth; unpatched deployed guest authentication fails.",
+		"securityGate": "Deployed direct unauthenticated core WebSocket upgrade rejected HTTP 401 on exact app route; backend guard retained."
+	},
+	"dlf": {
+		"unitTests": "932 passed across 42 files",
+		"typescript": "passed",
+		"svelteCheck": "0 errors, 0 warnings",
+		"package": "build and publint passed",
+		"consumerChecks": "passed including archive reader and test-app archive checks",
+		"browserRestore": "69 passed, 7 optional cases skipped; alpha.60 browser restore/reload/identity/cancellation qualification",
+		"format": "passed",
+		"fullVerify": "passed: formatting, lint, types, 932 unit tests, packaging, consumer checks and Storybook"
+	}
+}

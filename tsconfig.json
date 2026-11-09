@@ -17,8 +17,10 @@
 		"tooling/**/*.mjs",
 		"vitest.config.ts",
 		"playwright.config.ts",
+		"playwright.schema.config.ts",
 		"apps/web/tooling/**/*.ts",
 		"playwright.offline.config.ts",
+		"playwright.worker.config.ts",
 		"playwright.extension.config.ts",
 		"apps/extension/tooling/**/*.ts"
 	]

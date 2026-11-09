@@ -1,18 +1,24 @@
-import { createJazzSession } from 'jazz-tools/client'
-import { legacyApp } from '../src/lib/backend/jazz/legacy-schema.test-support.js'
+import { browserAccountStore, fixtureServerUrl } from './browser-account-store.js'
+import { createJazzClient } from 'jazz-tools/client'
+import { legacyApp } from './fixtures/schema-history/legacy-schema.test-support.js'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { JAZZ_RUNTIME_VERSION } from '../src/lib/offline/runtime-version.js'
 // Retain old clients only for the live-upgrade fixture; browser-process closure owns cleanup.
-const liveSessions = new Set<Awaited<ReturnType<typeof createJazzSession>>>()
+const liveSessions = new Set<Awaited<ReturnType<typeof createJazzClient>>>()
 export async function seedLegacy(keepOpen = false) {
-	const session = await createJazzSession({
-		appId: '2db98ae3-fcf1-41e8-b7d3-9818496bde60',
-		serverUrl: 'http://127.0.0.1:5181',
+	const serverUrl = fixtureServerUrl()
+	const session = await createJazzClient({
+		serverUrl,
+		store: browserAccountStore(serverUrl),
+		client: () => import('jazz-tools/local-first'),
 		env: 'clipper',
 		initial: 'local-first',
 		runtimeSources: { wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION }
 	})
 	try {
+		await session
+			.getSnapshot()
+			.client?.db.upgradeToLocalFirst(() => import('jazz-tools/local-first'))
 		const { account, client } = session.getSnapshot()
 		if (!account || !client) throw new Error('Legacy account unavailable')
 		const db = client.db,
@@ -62,6 +68,6 @@ export async function seedLegacy(keepOpen = false) {
 	}
 }
 export async function sameAccount(accountId: string) {
-	const { currentLibraryRecords } = await import('../src/lib/backend/jazz/account.js')
+	const { currentLibraryRecords } = await import('./fixture-records.js')
 	return currentLibraryRecords().articles.libraryId === accountId
 }

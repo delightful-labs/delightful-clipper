@@ -1,36 +1,189 @@
 import { permissionsForSchema } from './schema-permissions.test-support.js'
 import preEntityPermissions from './prenote-entities-permissions.test-support.js'
-import entityMigration from './migrations/20261106T161431-independent-notes-b7805d9b30d2-92a26a023aa5.js'
-import { app as preEntitiesApp } from './prenote-entities-schema.test-support.js'
-import noteMigration from './migrations/20261106T144240-article-notes-with-parent-references-dc1365b4b2ec-b7805d9b30d2.js'
-import { app as preNotesApp } from './prenotes-schema.test-support.js'
-import { app as preImageApp } from './preimages-schema.test-support.js'
-import imageMigration from './migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
+import entityMigration from '../../../../tests/fixtures/schema-history/migrations/20261106T161431-independent-notes-b7805d9b30d2-92a26a023aa5.js'
+import { app as preEntitiesApp } from '../../../../tests/fixtures/schema-history/prenote-entities-schema.test-support.js'
+import noteMigration from '../../../../tests/fixtures/schema-history/migrations/20261106T144240-article-notes-with-parent-references-dc1365b4b2ec-b7805d9b30d2.js'
+import { app as preNotesApp } from '../../../../tests/fixtures/schema-history/prenotes-schema.test-support.js'
+import { app as preImageApp } from '../../../../tests/fixtures/schema-history/preimages-schema.test-support.js'
+import imageMigration from '../../../../tests/fixtures/schema-history/migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
 import { ReadTier } from 'jazz-tools'
-import readerMigration from './migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
-import { app as preReaderApp } from './prereader-schema.test-support.js'
-import discoveryMigration from './migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
-import { app as preDiscoveryApp } from './prediscovery-schema.test-support.js'
+import readerMigration from '../../../../tests/fixtures/schema-history/migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
+import { app as preReaderApp } from '../../../../tests/fixtures/schema-history/prereader-schema.test-support.js'
+import discoveryMigration from '../../../../tests/fixtures/schema-history/migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
+import { app as preDiscoveryApp } from '../../../../tests/fixtures/schema-history/prediscovery-schema.test-support.js'
 import { it, expect } from 'vitest'
 import { readFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 import { createActor, toPromise } from 'xstate'
-import { createJazzSession } from 'jazz-tools/backend'
-import { startLocalJazzServer, deploy } from 'jazz-tools/dev'
+import {
+	createJazzClient as createCoreClient,
+	createJazz,
+	remote,
+	acceptLocalFirstAuth
+} from 'jazz-tools/backend'
+import { createServer } from 'node:http'
+import { startLocalJazzServer as startCore, deploy as deployCore } from 'jazz-tools/dev'
 import { app } from './schema.js'
-import { legacyApp } from './legacy-schema.test-support.js'
+import { app as beforeAuth } from '../../../../tests/fixtures/schema-history/preauth-schema.test-support.js'
+import authMigration from './migrations/20261109T125137-better-auth-native-bb82b0448a9f-7c74c142a5dc.js'
+import { legacyApp } from '../../../../tests/fixtures/schema-history/legacy-schema.test-support.js'
 import permissions from './permissions.js'
-import { app as preOrganizationApp } from './preorganization-schema.test-support.js'
-import organizationMigration from './migrations/20261105T033336-library-organization-80988faa7219-5315ce57b805.js'
-import migration from './migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
+import { app as preOrganizationApp } from '../../../../tests/fixtures/schema-history/preorganization-schema.test-support.js'
+import organizationMigration from '../../../../tests/fixtures/schema-history/migrations/20261105T033336-library-organization-80988faa7219-5315ce57b805.js'
+import migration from '../../../../tests/fixtures/schema-history/migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
 import { createLibraryRecords } from './records.js'
 import { readRecord } from '../../machines/storage/read.test-support.js'
+
+// Use the SDK's own hash implementation; it is not publicly re-exported.
+const sdkRoot = dirname(createRequire(import.meta.url).resolve('jazz-tools'))
+const { computeSchemaHash }: { computeSchemaHash(schema: typeof app.wasmSchema): Promise<string> } =
+	await import(pathToFileURL(join(sdkRoot, 'schema-hash.js')).href)
+type MigrationEdge = { fromHash: string; toHash: string; forward: unknown[] }
+const {
+	serializeForwardLenses
+}: { serializeForwardLenses(lenses: typeof migration.forward): unknown[] } = await import(
+	pathToFileURL(join(sdkRoot, 'dev/catalogue.js')).href
+)
+const {
+	resolveSchemaSource
+}: {
+	resolveSchemaSource(source: Parameters<typeof createCoreClient>[0]['app']): typeof app.wasmSchema
+} = await import(pathToFileURL(join(sdkRoot, 'schema-source.js')).href)
+const {
+	shipMigrations
+}: {
+	shipMigrations(
+		schema: typeof app.wasmSchema,
+		bundle: { schemas: { hash: string; schema: unknown }[]; migrations: MigrationEdge[] }
+	): void
+} = await import(pathToFileURL(join(sdkRoot, 'runtime/client-migrations.js')).href)
+const deployedEdges = new Map<string, MigrationEdge[]>()
+const guestPorts = new Map<string, number>()
+// Alpha.60 uses a different structural schema hash. Preserve the historical
+// witnesses and lenses, resolving their endpoints to the same full fixture
+// schemas compiled by the current SDK. This does not claim a cross-SDK upgrade.
+const historicalSchemas: Record<string, { wasmSchema: typeof app.wasmSchema }> = {
+	'9251313c0afe': legacyApp,
+	'80988faa7219': preOrganizationApp,
+	'5315ce57b805': preDiscoveryApp,
+	'86d3840835d8': preReaderApp,
+	'3d99c179e109': preImageApp,
+	dc1365b4b2ec: preNotesApp,
+	b7805d9b30d2: preEntitiesApp,
+	'92a26a023aa5': beforeAuth,
+	'current-auth': app
+}
+async function deploy(input: Parameters<typeof deployCore>[0]) {
+	if (!input.migration) return deployCore(input)
+	const from = input.migration.fromHash && historicalSchemas[input.migration.fromHash]
+	const to = input.migration.toHash && historicalSchemas[input.migration.toHash]
+	if (!from || !to) throw new Error('Unknown historical migration fixture endpoint')
+	const fromHash = await computeSchemaHash(from.wasmSchema)
+	const toHash = await computeSchemaHash(to.wasmSchema)
+	const result = await deployCore({
+		...input,
+		schemas: to === beforeAuth ? [from, to, app] : [from, to],
+		...(to === beforeAuth ? { migrations: [authMigration] } : {}),
+		migration: { ...input.migration, fromHash, toHash }
+	})
+	const edges = deployedEdges.get(input.appId) ?? []
+	if (!edges.some((edge) => edge.fromHash === fromHash && edge.toHash === toHash)) {
+		edges.push({ fromHash, toHash, forward: serializeForwardLenses(input.migration.forward) })
+		deployedEdges.set(input.appId, edges)
+	}
+	if (to === beforeAuth) {
+		edges.push({
+			fromHash: toHash,
+			toHash: await computeSchemaHash(app.wasmSchema),
+			forward: serializeForwardLenses(authMigration.forward)
+		})
+	}
+	return result
+}
+// Exercise the public backend path: alpha.60's account registry and guest
+// admission live here, rather than at the raw core's transport endpoint.
+const cores = new Map<string, Awaited<ReturnType<typeof startCore>>>()
+async function startLocalJazzServer(input: Parameters<typeof startCore>[0]) {
+	const core = await startCore(input)
+	if (cores.get(core.appId)?.dataDir !== core.dataDir) {
+		deployedEdges.delete(core.appId)
+		guestPorts.delete(core.appId)
+	}
+	cores.set(core.appId, core)
+	return core
+}
+async function createJazzClient(input: Parameters<typeof createCoreClient>[0]) {
+	const core = input.appId && cores.get(input.appId)
+	if (!core) throw new Error('Missing disposable migration authority')
+	const declared = resolveSchemaSource(input.app)
+	const edges = deployedEdges.get(core.appId) ?? []
+	const connected = new Set([
+		await computeSchemaHash(declared),
+		...edges.flatMap((edge) => [edge.fromHash, edge.toHash])
+	])
+	const schemas = await Promise.all(
+		Object.values(historicalSchemas).map(async ({ wasmSchema }) => ({
+			hash: await computeSchemaHash(wasmSchema),
+			schema: { tables: wasmSchema }
+		}))
+	)
+	shipMigrations(declared, {
+		schemas: schemas.filter(({ hash }) => connected.has(hash)),
+		migrations: edges
+	})
+	const backend = createJazz({
+		app: declared,
+		permissions: input.permissions,
+		store: remote({ url: core.url, appId: core.appId, secret: core.adminSecret }),
+		authenticate: acceptLocalFirstAuth
+	})
+	const http = createServer((request, response) => backend.nodeHandler(request, response))
+	const close = async () => {
+		await backend.close()
+		http.closeAllConnections()
+		await new Promise<void>((resolve) => http.close(() => resolve()))
+	}
+	try {
+		await backend.attach(http)
+		await backend.ready()
+		await new Promise<void>((resolve, reject) => {
+			http.once('error', reject)
+			http.listen(guestPorts.get(core.appId) ?? 0, '127.0.0.1', resolve)
+		})
+		const address = http.address()
+		if (!address || typeof address === 'string') throw new Error('Missing migration guest listener')
+		guestPorts.set(core.appId, address.port)
+		const client = await createCoreClient({
+			...input,
+			app: declared,
+			serverUrl: `http://127.0.0.1:${address.port}/jazz`
+		})
+		return {
+			...client,
+			close: async (options?: Parameters<typeof client.close>[0]) => {
+				try {
+					await client.close(options)
+				} finally {
+					await close()
+				}
+			}
+		}
+	} catch (error) {
+		await close()
+		throw error
+	}
+}
 
 it('upgrades a persisted pre-article library without resetting its root or readable content', async () => {
 	const legacySchema: typeof app.wasmSchema = JSON.parse(
 		await readFile(
-			new URL('./migrations/snapshots/20261103T173927-9251313c0afe.json', import.meta.url),
+			new URL(
+				'../../../../tests/fixtures/schema-history/migrations/snapshots/20261103T173927-9251313c0afe.json',
+				import.meta.url
+			),
 			'utf8'
 		)
 	)
@@ -40,7 +193,10 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		appId: crypto.randomUUID(),
 		dataDir: join(dataDir, 'authority'),
 		backendSecret: 'upgrade-test-backend',
-		adminSecret: 'upgrade-test-admin'
+		adminSecret: 'upgrade-test-admin',
+		allowLocalFirstAuth: true,
+		schema: legacySchema,
+		permissions: legacyPermissions
 	}
 	let server = await startLocalJazzServer(serverOptions)
 	const config = {
@@ -56,7 +212,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			storedAccount = transform(storedAccount)
 		}
 	}
-	let context: Awaited<ReturnType<typeof createJazzSession>> | undefined
+	let context: Awaited<ReturnType<typeof createJazzClient>> | undefined
 	const documentId = crypto.randomUUID()
 	try {
 		await deploy({
@@ -66,7 +222,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			schema: legacySchema,
 			permissions: legacyPermissions
 		})
-		context = await createJazzSession({
+		context = await createJazzClient({
 			...config,
 			app: legacyApp,
 			permissions: legacyPermissions,
@@ -161,7 +317,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 		})
 		await deploy({ ...upgrade, migration: entityMigration })
 		await deploy({ ...upgrade, migration: entityMigration })
-		context = await createJazzSession({
+		context = await createJazzClient({
 			...config,
 			serverUrl: server.url,
 			app,
@@ -230,7 +386,7 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			throw new Error('Expected note revision after upgrade')
 		await note.settlement.workspace.global()
 		await context.close()
-		context = await createJazzSession({
+		context = await createJazzClient({
 			...config,
 			serverUrl: server.url,
 			app,
@@ -257,8 +413,13 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 
 it('adds tags to a populated organization-era replica without resetting identity, favorites or status', async () => {
 	const dataDir = await mkdtemp(join(tmpdir(), 'clipper-discovery-upgrade-'))
-	const server = await startLocalJazzServer({ dataDir: join(dataDir, 'authority') })
 	const oldPermissions = permissionsForSchema(preDiscoveryApp)
+	const server = await startLocalJazzServer({
+		dataDir: join(dataDir, 'authority'),
+		schema: preDiscoveryApp,
+		permissions: oldPermissions,
+		allowLocalFirstAuth: true
+	})
 	const config = {
 		appId: server.appId,
 		serverUrl: server.url,
@@ -272,7 +433,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 			identity = transform(identity)
 		}
 	}
-	let context: Awaited<ReturnType<typeof createJazzSession>> | undefined
+	let context: Awaited<ReturnType<typeof createJazzClient>> | undefined
 	try {
 		await deploy({
 			appId: server.appId,
@@ -281,7 +442,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 			schema: preDiscoveryApp,
 			permissions: oldPermissions
 		})
-		context = await createJazzSession({
+		context = await createJazzClient({
 			...config,
 			app: preDiscoveryApp,
 			permissions: oldPermissions,
@@ -332,7 +493,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 			permissions: permissionsForSchema(preReaderApp),
 			migration: discoveryMigration
 		})
-		context = await createJazzSession({
+		context = await createJazzClient({
 			...config,
 			app: preReaderApp,
 			permissions: permissionsForSchema(preReaderApp),
@@ -364,7 +525,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 			permissions: permissionsForSchema(preImageApp),
 			migration: readerMigration
 		})
-		context = await createJazzSession({
+		context = await createJazzClient({
 			...config,
 			app: preImageApp,
 			permissions: permissionsForSchema(preImageApp),
@@ -410,7 +571,7 @@ it('adds tags to a populated organization-era replica without resetting identity
 			permissions,
 			migration: entityMigration
 		})
-		context = await createJazzSession({
+		context = await createJazzClient({
 			...config,
 			app,
 			permissions,
@@ -475,7 +636,12 @@ it('adds tags to a populated organization-era replica without resetting identity
 
 it('imports article-keyed note history into one independent entity without losing versions or replaying imports', async () => {
 	const directory = await mkdtemp(join(tmpdir(), 'clipper-note-entity-upgrade-'))
-	const server = await startLocalJazzServer({ dataDir: join(directory, 'authority') })
+	const server = await startLocalJazzServer({
+		dataDir: join(directory, 'authority'),
+		schema: preEntitiesApp,
+		permissions: preEntityPermissions,
+		allowLocalFirstAuth: true
+	})
 	let identity: string | null = null
 	const store = {
 		read: async () => identity,
@@ -491,7 +657,7 @@ it('imports article-keyed note history into one independent entity without losin
 		initial: 'local-first' as const,
 		store
 	}
-	let context: Awaited<ReturnType<typeof createJazzSession>> | undefined
+	let context: Awaited<ReturnType<typeof createJazzClient>> | undefined
 	try {
 		await deploy({
 			appId: server.appId,
@@ -500,7 +666,7 @@ it('imports article-keyed note history into one independent entity without losin
 			schema: preEntitiesApp,
 			permissions: preEntityPermissions
 		})
-		context = await createJazzSession({
+		context = await createJazzClient({
 			...config,
 			app: preEntitiesApp,
 			permissions: preEntityPermissions
@@ -559,7 +725,7 @@ it('imports article-keyed note history into one independent entity without losin
 			permissions,
 			migration: entityMigration
 		})
-		context = await createJazzSession({ ...config, app, permissions })
+		context = await createJazzClient({ ...config, app, permissions })
 		const records = createLibraryRecords(context.getSnapshot().client!.db, owner, () => true)
 		await expect.poll(async () => (await records.notes.legacy()).length).toBe(3)
 		const noteId = crypto.randomUUID(),
@@ -606,7 +772,7 @@ it('imports article-keyed note history into one independent entity without losin
 		expect(repeated.outcome).toBe('blocked')
 		expect(await records.notes.forArticle(articleId)).toHaveLength(1)
 		await context.close()
-		context = await createJazzSession({ ...config, app, permissions })
+		context = await createJazzClient({ ...config, app, permissions })
 		const reopened = createLibraryRecords(context.getSnapshot().client!.db, owner, () => true)
 		expect((await reopened.notes.content(noteId)).conflicted).toBe(true)
 		expect((await reopened.notes.forArticle(articleId))[0]?.id).toBe(noteId)

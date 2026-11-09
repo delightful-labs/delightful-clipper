@@ -1,14 +1,5 @@
-import {
-	createBrowserTokenSelection,
-	type TokenSelectionStore
-} from 'delightful-local-first/identity/token/selection'
+import { assign, fromPromise, sendParent, setup, type SnapshotFrom } from 'xstate'
 import { z } from 'zod'
-import {
-	createOAuthAttemptMachine,
-	type OAuthAttemptInput,
-	oauthAccountChangeAllowed,
-	oauthRequiresReload
-} from 'delightful-local-first/identity/oauth/workflow'
 import { t } from '../../localization/index.js'
 
 async function requestJSON(path: string, init: RequestInit): Promise<unknown> {
@@ -21,75 +12,129 @@ async function requestJSON(path: string, init: RequestInit): Promise<unknown> {
 	if (!response.ok) throw new Error('Authentication request failed')
 	return response.json()
 }
-function tokenSource(userId: string, origin: string) {
-	return {
-		getToken: async () => {
-			const { token } = tokenSchema.parse(await requestJSON('/api/auth/token', { method: 'GET' }))
-			const payload = token.split('.')[1]
-			if (!payload) throw new Error('Authentication token unavailable')
-			const claims = claimsSchema.parse(
-				JSON.parse(atob(payload.replaceAll('-', '+').replaceAll('_', '/')))
-			)
-			if (claims.sub !== userId || claims.iss !== origin || claims.aud !== origin)
-				throw new Error('Authentication identity changed')
-			return token
-		}
-	}
-}
-
 const completionSchema = z.object({ attemptId: z.uuid(), userId: z.string().min(1) })
-const tokenSchema = z.object({ token: z.string().min(1) })
-const claimsSchema = z.object({ sub: z.string(), iss: z.string(), aud: z.string() })
-export const atprotoMachine = createOAuthAttemptMachine({
-	working: { name: t('account.status.working'), variant: 'info' },
-	failed: { name: t('account.feedback.identityFailed'), variant: 'error' }
+const redirectSchema = z.object({
+	url: z.url().refine((value) => new URL(value).protocol === 'https:')
 })
-export type AtprotoInput = Pick<OAuthAttemptInput, 'storage' | 'navigate' | 'dispatch'> & {
-	origin: string
-	selection: TokenSelectionStore
-}
-export function atprotoInput(input: AtprotoInput): OAuthAttemptInput {
-	return {
-		storage: input.storage,
-		issuer: input.origin,
-		selection: input.selection,
-		providerSession: async (signal) => {
-			const value = await requestJSON('/api/auth/get-session', { method: 'GET', signal })
-			if (value === null) return undefined
-			const parsed = z.object({ user: z.object({ id: z.string().min(1) }) }).parse(value)
-			return { issuer: input.origin, userId: parsed.user.id }
-		},
-		navigate: input.navigate,
-		dispatch: input.dispatch,
-		storageKey: 'clipper.atproto.pending.v1',
-		authorize: async (handle, attemptId, signal) => {
-			const body = await requestJSON('/api/auth/sign-in/atproto', {
+type Input = { callbackAttempt?: string | null | undefined }
+type Context = Input & { attemptId: string; handle: string; url: string }
+type Event = { type: 'BEGIN'; handle: string }
+const actors = {
+	authorize: fromPromise(
+		async ({
+			input,
+			signal
+		}: {
+			input: { handle: string; attemptId: string }
+			signal: AbortSignal
+		}) => {
+			const value = await requestJSON('/api/auth/sign-in/atproto', {
 				method: 'POST',
 				signal,
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ handle, callbackURL: '/?atproto_attempt=' + attemptId })
+				body: JSON.stringify({
+					handle: input.handle,
+					callbackURL: '/?atproto_attempt=' + input.attemptId
+				})
 			})
-			return z.object({ url: z.url().refine((value) => value.startsWith('https://')) }).parse(body)
-				.url
-		},
-		complete: async (attemptId, signal) => {
-			const completion = completionSchema.parse(
-				await requestJSON('/api/auth/atproto/completion', { method: 'POST', signal })
-			)
-			if (completion.attemptId !== attemptId) throw new Error('OAuth attempt did not complete')
-			return completion.userId
-		},
-		tokenSource: (userId) => tokenSource(userId, input.origin)
-	}
+			return redirectSchema.parse(value).url
+		}
+	),
+	complete: fromPromise(async ({ input, signal }: { input: string; signal: AbortSignal }) => {
+		const attempt = z.uuid().parse(input)
+		const completion = completionSchema.parse(
+			await requestJSON('/api/auth/atproto/completion', { method: 'POST', signal })
+		)
+		if (completion.attemptId !== attempt) throw new Error('OAuth attempt did not complete')
+	})
 }
-
-export { oauthAccountChangeAllowed, oauthRequiresReload }
-export function atprotoSelectionStore(
-	config: { appId: string; serverUrl: string; env: string },
-	storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
-) {
-	return createBrowserTokenSelection(
-		storage,
-		'clipper.atproto.selection.v1:' + JSON.stringify([config.appId, config.serverUrl, config.env])
-	)
+/** Only the provider redirect belongs to Clipper. Jazz follows the verified backend
+ * cookie itself; there are no JWT sources, saved selections or manual links here. */
+export const atprotoMachine = setup<
+	Context,
+	Event,
+	typeof actors,
+	{},
+	{},
+	{
+		returning: undefined
+		validHandle: undefined
+	},
+	never,
+	string,
+	Input
+>({
+	actors,
+	guards: {
+		returning: ({ context }) => context.callbackAttempt != null,
+		validHandle: ({ event }) => event.handle.trim().length > 0
+	}
+}).createMachine({
+	id: 'atproto',
+	context: ({ input }) => ({
+		...input,
+		attemptId: input.callbackAttempt ?? '',
+		handle: '',
+		url: ''
+	}),
+	initial: 'starting',
+	states: {
+		starting: { always: [{ guard: 'returning', target: 'completing' }, { target: 'idle' }] },
+		idle: {
+			on: {
+				BEGIN: {
+					guard: 'validHandle',
+					target: 'authorizing',
+					actions: assign({
+						handle: ({ event }) => event.handle.trim(),
+						attemptId: () => crypto.randomUUID()
+					})
+				}
+			}
+		},
+		authorizing: {
+			tags: 'busy',
+			invoke: {
+				src: 'authorize',
+				input: ({ context }) => ({ handle: context.handle, attemptId: context.attemptId }),
+				onDone: { target: 'redirecting', actions: assign({ url: ({ event }) => event.output }) },
+				onError: 'failed'
+			}
+		},
+		redirecting: {
+			tags: 'busy',
+			entry: sendParent(({ context }) => ({ type: 'OAUTH_REDIRECT' as const, url: context.url }))
+		},
+		completing: {
+			tags: 'busy',
+			invoke: {
+				src: 'complete',
+				input: ({ context }) => context.attemptId,
+				onDone: { target: 'idle', actions: sendParent({ type: 'OAUTH_RETURNED' }) },
+				onError: 'failed'
+			}
+		},
+		failed: {
+			on: {
+				BEGIN: {
+					guard: 'validHandle',
+					target: 'authorizing',
+					actions: assign({
+						handle: ({ event }) => event.handle.trim(),
+						attemptId: () => crypto.randomUUID()
+					})
+				}
+			}
+		}
+	}
+})
+export function selectAtprotoView(snapshot: SnapshotFrom<typeof atprotoMachine> | undefined) {
+	return {
+		busy: snapshot?.hasTag('busy') === true,
+		message: snapshot?.matches('failed')
+			? { text: t('account.feedback.identityFailed'), variant: 'error' as const }
+			: snapshot?.hasTag('busy')
+				? { text: t('account.status.working'), variant: 'info' as const }
+				: undefined
+	}
 }

@@ -1,3 +1,4 @@
+import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { openAddLink } from '../add-link.js'
 import { readingControls, visibleReadingParagraph } from '../reader-ui.js'
 import { test, expect, chromium } from '@playwright/test'
@@ -6,27 +7,19 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { startLocalJazzServer } from 'jazz-tools/testing'
-import { app } from '../../src/lib/backend/jazz/schema.js'
-import permissions from '../../src/lib/backend/jazz/permissions.js'
+import { startJazzAuthority } from '../jazz-authority.js'
 import { staticShellServer } from './server.js'
 const buildA = fileURLToPath(new URL('../../.offline-test-builds/a/', import.meta.url))
 const buildB = fileURLToPath(new URL('../../.offline-test-builds/b/', import.meta.url))
 const prefix = 'delightful-clipper-shell-v1-'
 const ui = staticShellServer(buildA)
-let authority: Awaited<ReturnType<typeof startLocalJazzServer>>,
+let authority: Awaited<ReturnType<typeof startJazzAuthority>>,
 	dataDir: string,
 	authorityUp = false
 async function startAuthority() {
 	if (authorityUp) return
-	authority = await startLocalJazzServer({
-		appId: '2db98ae3-fcf1-41e8-b7d3-9818496bde60',
-		host: '127.0.0.1',
-		port: 5191,
-		dataDir,
-		schema: app,
-		permissions
-	})
+	authority = await startJazzAuthority({ port: 5191, origin: 'http://127.0.0.1:5190', dataDir })
+	await ui.useJazz(authority.backend)
 	authorityUp = true
 }
 async function stopAuthority() {
@@ -159,7 +152,9 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await ready(restored)
 		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
-		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
+		await expect(
+			restored.getByRole('region', { name: 'Saved articles', exact: true })
+		).toBeVisible()
 		await openAddLink(page)
 		await page.getByLabel('Article URL', { exact: true }).fill('https://example.com/offline')
 		await page
@@ -204,6 +199,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			tagDialog.getByRole('button', { name: 'Remove RestartOnlyTag', exact: true })
 		).toBeVisible()
 		await tagDialog.getByRole('button', { name: 'Close', exact: true }).click()
+		await openLibrarySearch(page)
 		await page
 			.getByRole('searchbox', { name: 'Search articles', exact: true })
 			.fill('offline shell')
@@ -215,6 +211,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 				request.onerror = () => reject(new Error('Cache deletion failed'))
 			})
 		})
+		await closeLibraryPopovers(page)
 		await page.getByRole('link', { name: 'Completely offline article', exact: true }).click()
 		await expect
 			.poll(() =>
@@ -240,6 +237,7 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		expect(readingParagraph).toBeTruthy()
 		// Leaving flushes the debounced position; live progress is not a persistence receipt.
 		await page.getByRole('link', { name: 'Open library', exact: true }).click()
+		await closeLibraryPopovers(page)
 		await page.getByRole('link', { name: 'Completely offline article', exact: true }).click()
 		await expect.poll(() => visibleReadingParagraph(page)).toBe(readingParagraph)
 		await page.reload()
@@ -308,24 +306,34 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await expect(
 			offlineRow.getByRole('button', { name: 'Remove favorite', exact: true })
 		).toHaveAttribute('aria-pressed', 'true')
+		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Inbox', exact: true }).check()
 		await expect(reopened.getByText('No articles match this view.', { exact: true })).toBeVisible()
+		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
+		await openLibrarySearch(reopened)
 		const search = reopened.getByRole('searchbox', { name: 'Search articles', exact: true })
+		await openLibrarySearch(reopened)
 		await search.fill('RESTARTONLYTAGS shel')
 		await expect(offlineRow).toBeVisible()
+		await openLibrarySearch(reopened)
 		await search.fill('no-such-keyword')
 		await expect(offlineRow).toHaveCount(0)
+		await openLibrarySearch(reopened)
 		await search.fill('RESTARTONLYTAGS shel')
 		await expect(offlineRow).toBeVisible()
+		await closeLibraryPopovers(reopened)
 		await offlineRow.getByRole('button', { name: 'Move to Trash', exact: true }).click()
 		await expect(offlineRow).toHaveCount(0)
+		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Trash', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
 		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
+		await closeLibraryPopovers(reopened)
 		await offlineRow.getByRole('button', { name: 'Restore article', exact: true }).click()
 		await expect(offlineRow).toHaveCount(0)
+		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
 		await context.setOffline(false)
@@ -381,6 +389,7 @@ test('updates wait for all old tabs, reuse immutable bytes and delete only obsol
 		})
 		const wasmBefore = ui.requests.filter((request) => request.path.endsWith('.wasm')).length
 		ui.setRoot(buildB)
+		const replacementStarted = context.waitForEvent('serviceworker')
 		await page.evaluate(async () => {
 			await (await navigator.serviceWorker.getRegistration())?.update()
 		})
@@ -389,6 +398,7 @@ test('updates wait for all old tabs, reuse immutable bytes and delete only obsol
 				exact: true
 			})
 		).toBeVisible({ timeout: 45000 })
+		const replacement = await replacementStarted
 		const before = await page.evaluate(() => caches.keys())
 		expect(before).toEqual(
 			expect.arrayContaining([prefix + 'offline-a', prefix + 'offline-b', 'unrelated-cache'])
@@ -406,6 +416,11 @@ test('updates wait for all old tabs, reuse immutable bytes and delete only obsol
 			)
 		).toBe(true)
 		await second.close()
+		// Reopening too early can give the old worker another controlled client.
+		// Observe cleanup from the replacement worker while no Clipper tab is open.
+		await expect
+			.poll(() => replacement.evaluate(() => caches.keys()))
+			.not.toContain(prefix + 'offline-a')
 		const next = await context.newPage()
 		await next.goto('http://127.0.0.1:5190')
 		await ready(next)

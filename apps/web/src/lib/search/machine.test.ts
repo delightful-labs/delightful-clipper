@@ -40,6 +40,7 @@ function fixture() {
 		}
 	}
 	const actor = createActor(machine, { input: { capability: cap } }).start()
+	actor.send({ type: 'ACTIVATE' })
 	return {
 		actor,
 		posted,
@@ -113,6 +114,7 @@ it('contains worker construction failure inside the search workflow', async () =
 			}
 		}
 	}).start()
+	actor.send({ type: 'ACTIVATE' })
 	await waitFor(actor, (s) => s.matches('failed'))
 	expect(actor.getSnapshot().status).toBe('active')
 	actor.send({ type: 'STOP' })
@@ -139,7 +141,8 @@ it('cancels observation of an old bound read and cannot publish after shutdown',
 		}
 	}).start()
 	actor.send({ type: 'ROWS', rows: [row] })
-	expect(signals[0]?.aborted).toBe(true)
+	actor.send({ type: 'ACTIVATE' })
+	await waitFor(actor, () => signals.length === 1)
 	actor.send({ type: 'STOP' })
 	await toPromise(actor)
 	expect(signals.at(-1)?.aborted).toBe(true)
@@ -168,6 +171,8 @@ it('discards a native read after its fixed account scope expires and releases it
 	const actor = createActor(machine, {
 		input: { capability: { ...f.cap, isCurrent: () => current, load: () => gate.promise } }
 	}).start()
+	actor.send({ type: 'ACTIVATE' })
+	await waitFor(actor, (s) => s.matches({ running: 'loading' }))
 	current = false
 	gate.resolve([])
 	await toPromise(actor)
@@ -198,4 +203,54 @@ it('reindexes tag additions, display changes and removals while keeping the quer
 	}
 	f.actor.send({ type: 'STOP' })
 	await toPromise(f.actor)
+})
+
+it('does not acquire a worker, observe snapshots or load article text until search is requested', async () => {
+	const f = fixture()
+	f.actor.send({ type: 'STOP' })
+	await toPromise(f.actor)
+	const open = vi.fn(f.cap.open),
+		observe = vi.fn(f.cap.observe)
+	f.load.mockClear()
+	const actor = createActor(machine, { input: { capability: { ...f.cap, open, observe } } }).start()
+	actor.send({ type: 'ROWS', rows: [row] })
+	actor.send({ type: 'QUERY', query: '' })
+	expect(actor.getSnapshot().matches('dormant')).toBe(true)
+	expect(open).not.toHaveBeenCalled()
+	expect(observe).not.toHaveBeenCalled()
+	expect(f.load).not.toHaveBeenCalled()
+	actor.send({ type: 'QUERY', query: 'needle' })
+	await waitFor(actor, (s) => s.matches({ running: 'indexing' }))
+	expect(f.load).toHaveBeenCalledOnce()
+	expect(f.load.mock.calls[0]?.[0]).toEqual([row])
+	expect(actor.getSnapshot().context.query).toBe('needle')
+	actor.send({ type: 'STOP' })
+	await toPromise(actor)
+})
+
+it('drains one native load and coalesces invalidations into one load of the latest rows', async () => {
+	const f = fixture()
+	f.actor.send({ type: 'STOP' })
+	await toPromise(f.actor)
+	const pending = Promise.withResolvers<import('./schema.js').SearchDocument[]>()
+	const load = vi
+		.fn<SearchCapability['load']>()
+		.mockImplementationOnce(() => pending.promise)
+		.mockResolvedValue([])
+	f.posted.length = 0
+	const actor = createActor(machine, { input: { capability: { ...f.cap, load } } }).start()
+	actor.send({ type: 'ACTIVATE' })
+	await waitFor(actor, () => load.mock.calls.length === 1)
+	actor.send({ type: 'ROWS', rows: [row] })
+	actor.send({ type: 'DIRTY' })
+	const latest = { ...row, title: 'Latest' }
+	actor.send({ type: 'ROWS', rows: [latest] })
+	expect(load).toHaveBeenCalledOnce()
+	pending.resolve([])
+	await waitFor(actor, (s) => s.matches({ running: 'indexing' }))
+	expect(load).toHaveBeenCalledTimes(2)
+	expect(load.mock.calls[1]?.[0]).toEqual([latest])
+	expect(f.posted.filter((e) => e.type === 'INDEX')).toHaveLength(1)
+	actor.send({ type: 'STOP' })
+	await toPromise(actor)
 })

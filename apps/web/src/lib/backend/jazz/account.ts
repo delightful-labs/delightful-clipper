@@ -1,11 +1,9 @@
-import { draftTransaction, readDraftRequest } from '../../notes/draft-database.js'
-import { createJazzTokenIdentityAdapter } from 'delightful-local-first/backend/jazz/token-identity'
 import { JAZZ_RUNTIME_VERSION } from '../../offline/runtime-version.js'
 import { createLibraryCapability } from './library.js'
 import { createLibraryRecords } from './records.js'
 import { ReadTier } from 'jazz-tools'
 import wasmUrl from '#jazz-wasm-binary?url'
-import type { JazzSession, JazzSessionConfig } from 'jazz-tools/svelte'
+import type { JazzSession, JazzClientConfig } from 'jazz-tools/client'
 import type { JazzClient } from 'jazz-tools/client'
 import { createJazzStartupRegistry } from 'delightful-local-first/backend/jazz/startup'
 import { createJazzSessionReadinessAdapter } from 'delightful-local-first/backend/jazz/session-readiness'
@@ -23,7 +21,6 @@ function bindHost(
 	cacheNamespace: string
 ): AccountHost {
 	const readiness = createJazzSessionReadinessAdapter(session)
-	const tokenIdentity = createJazzTokenIdentityAdapter(session, () => session)
 	const recovery = createJazzRecoveryAdapter(() => session.getSnapshot().account)
 	let current: AccountObservation = { status: 'signed-out' }
 	let client: JazzClient | undefined
@@ -35,7 +32,12 @@ function bindHost(
 			current = { status: snapshot.status === 'ready' ? 'error' : snapshot.status }
 			return current
 		}
-		if (client === snapshot.client && current.status === 'ready') return current
+		if (
+			client === snapshot.client &&
+			current.status === 'ready' &&
+			current.localFirst === snapshot.client.db.isLocalFirst()
+		)
+			return current
 		client = snapshot.client
 		const account = snapshot.account
 		const db = snapshot.client.db
@@ -46,6 +48,7 @@ function bindHost(
 		}
 		current = {
 			status: 'ready',
+			localFirst: db.isLocalFirst(),
 			binding: Object.freeze({}),
 			accountId: account.id,
 			signedIn: !['urn:jazz:local-first', 'urn:jazz:anonymous'].includes(account.identity.issuer),
@@ -101,45 +104,27 @@ function bindHost(
 	const restored = createJazzRestorationAdapter(session, () => session)
 	return {
 		read,
-		tokenIdentity: {
-			...tokenIdentity,
-			canSignInExisting: async () => {
-				const snapshot = session.getSnapshot()
-				if (snapshot.status !== 'ready' || !snapshot.account || !snapshot.client) return false
-				const id = snapshot.account.id
-				const db = snapshot.client.db
-				const rows = await Promise.all([
-					db.all(app.articles.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.notes.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.noteRevisions.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.articleNoteRevisions.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.documents.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.storageOperations.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.articleImages.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.readerOperations.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.tagOperations.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.organizationOperations.where({ libraryId: id }), {
-						tier: ReadTier.LocalFirst
-					}),
-					db.all(app.articleSources.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.assets.where({ libraryId: id }), { tier: ReadTier.LocalFirst }),
-					db.all(app.snapshots.where({ libraryId: id }), { tier: ReadTier.LocalFirst })
-				])
-				const draftCount = await draftTransaction<number>('readonly', (stores, complete) => {
-					readDraftRequest(stores.notes.count(), stores.notes, (notes) => {
-						readDraftRequest(stores.legacy.count(), stores.legacy, (legacy) =>
-							complete(notes + legacy)
-						)
-					})
-				})
-				return rows.every((items) => items.length === 0) && draftCount === 0
-			}
+		prepare: () => {
+			const snapshot = session.getSnapshot()
+			if (snapshot.status !== 'ready' || !snapshot.client)
+				throw new Error('Account scope unavailable')
+			return snapshot.client.db.upgradeToLocalFirst(localFirst)
 		},
 		readiness,
 		create: () => session.createLocalFirst(),
+		signOut: async () => {
+			const response = await fetch('/api/auth/sign-out', {
+				method: 'POST',
+				credentials: 'same-origin',
+				redirect: 'error',
+				cache: 'no-store',
+				headers: { 'Content-Type': 'application/json' },
+				body: '{}'
+			})
+			if (!response.ok) throw new Error('Provider sign-out failed')
+		},
 		logout: () => session.logout(),
 		release: () => {
-			tokenIdentity.invalidate()
 			recovery.invalidate()
 			restored.invalidate()
 		},
@@ -149,35 +134,45 @@ function bindHost(
 
 // Constructing the registry is inert; only browser mount requests an attachment.
 const registry = createJazzStartupRegistry()
+const localFirst = () => import('jazz-tools/local-first')
 const runtimeSources = Object.freeze({ wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION })
 export function accountInput(
-	config: JazzSessionConfig,
+	config: JazzClientConfig,
 	libraryFactory: LibraryFactory = createLibraryCapability
 ): AccountInput<Session> {
 	// Match Finance: provision a local identity silently when no saved identity exists.
 	return {
-		startup: registry.getJazzStartupBinding({ ...config, initial: 'local-first', runtimeSources }),
+		startup: registry.getJazzStartupBinding({
+			...config,
+			client: localFirst,
+			initial: 'local-first',
+			runtimeSources: config.runtimeSources ?? runtimeSources
+		}),
 		bind: (session) =>
 			bindHost(
 				session,
 				libraryFactory,
-				JSON.stringify([config.appId, config.serverUrl, config.env])
+				JSON.stringify([config.scope, config.serverUrl, config.env])
 			)
 	}
 }
 
 /** Existing identities/restoration only; extension sign-in must not create an unrelated account. */
 export function existingAccountInput(
-	config: JazzSessionConfig,
+	config: JazzClientConfig,
 	libraryFactory: LibraryFactory = createLibraryCapability
 ): AccountInput<Session> {
 	return {
-		startup: registry.getJazzStartupBinding({ ...config, runtimeSources }),
+		startup: registry.getJazzStartupBinding({
+			...config,
+			client: localFirst,
+			runtimeSources: config.runtimeSources ?? runtimeSources
+		}),
 		bind: (session) =>
 			bindHost(
 				session,
 				libraryFactory,
-				JSON.stringify([config.appId, config.serverUrl, config.env])
+				JSON.stringify([config.scope, config.serverUrl, config.env])
 			)
 	}
 }
@@ -195,7 +190,7 @@ export function currentLibraryRecords() {
 	})
 }
 
-/** Read the managed bearer immediately before dispatch; results belong to this binding. */
+/** Guests send their native proof; backend users send their same-origin cookie. */
 export async function requestCapture(
 	operation: 'resolve' | 'extract' | 'asset',
 	body: unknown,
@@ -207,14 +202,16 @@ export async function requestCapture(
 		throw new Error('Account scope unavailable')
 	const { account, client } = snapshot
 	const token = client.db.getConfig().jwtToken
-	if (!token) throw new Error('Authentication unavailable')
 	const response = await fetch(`/api/capture/${operation}`, {
 		method: 'POST',
-		credentials: 'omit',
+		credentials: 'same-origin',
 		redirect: 'error',
 		cache: 'no-store',
 		signal: signal ?? null,
-		headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+		headers: {
+			...(token ? { Authorization: `Bearer ${token}` } : {}),
+			'Content-Type': 'application/json'
+		},
 		body: JSON.stringify(body)
 	})
 	const now = session.getSnapshot()

@@ -1,0 +1,9 @@
+packages:
+  - .
+nodeVersion: 24.22.2
+useNodeVersion: 24.22.2
+onlyBuiltDependencies:
+  - esbuild
+
+patchedDependencies:
+  jazz-tools@2.0.0-alpha.60: patches/jazz-tools-guest-core.patch

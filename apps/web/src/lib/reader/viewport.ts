@@ -1,4 +1,4 @@
-import { assign, fromCallback, raise, sendParent, setup } from 'xstate'
+import { assign, enqueueActions, fromCallback, raise, setup } from 'xstate'
 import type { ReadingPosition } from './schema.js'
 import { positionSchema } from './schema.js'
 import {
@@ -12,7 +12,12 @@ import type { ReadingTextIndex } from './anchors.js'
 import type { ReaderExperienceEvent } from '../machines/reader/experience.js'
 
 export type ViewportElements = { root: HTMLElement; scroller: HTMLElement }
-type Input = ViewportElements & { attachmentId: string; position: ReadingPosition | undefined }
+type ViewportReport = Extract<ReaderExperienceEvent, { type: 'MEASURE' | 'VIEWPORT_FAILED' }>
+type Input = ViewportElements & {
+	attachmentId: string
+	position: ReadingPosition | undefined
+	report?: (event: ViewportReport) => void
+}
 type FrameEvent = { type: 'LAYOUT_FRAME' | 'PAINT_FRAME' | 'MEASURE_FRAME' }
 type Event =
 	| FrameEvent
@@ -169,11 +174,11 @@ export const viewportMachine = setup<
 		scrollToStart: typeof scrollToStart
 	},
 	{},
-	{},
+	{ report: ViewportReport },
 	{
 		readingInteraction: undefined
-		changedSizes: undefined
-		visibleAnchor: undefined
+		changedSizes: { sizes: Context['nextSizes'] }
+		visibleAnchor: { anchor: Context['anchor'] }
 		newPosition: undefined
 	},
 	never,
@@ -194,11 +199,17 @@ export const viewportMachine = setup<
 		scrollToAnchor,
 		scrollToStart
 	},
+	actions: {
+		report: enqueueActions(({ context, enqueue }, report) => {
+			if (context.report) enqueue(() => context.report?.(report))
+			else enqueue.sendParent(report)
+		})
+	},
 	guards: {
 		readingInteraction: ({ context, event }) =>
 			event.type === 'INPUT' && isReadingInteraction(event.event, context),
-		changedSizes: ({ context }) => changedSizes(context, context.nextSizes),
-		visibleAnchor: ({ context }) => !!context.anchor?.height,
+		changedSizes: ({ context }, params) => changedSizes(context, params.sizes),
+		visibleAnchor: (_, params) => !!params.anchor?.height,
 		newPosition: ({ context, event }) =>
 			event.type === 'MEASURED' &&
 			positionSchema.safeParse(event.position).success &&
@@ -301,17 +312,21 @@ export const viewportMachine = setup<
 												onError: '#reader-viewport.disposingFailure'
 											},
 											on: {
-												ANCHOR_LOCATED: {
-													target: 'choosingAnchor',
-													actions: assign({ anchor: ({ event }) => event.anchor })
-												}
+												ANCHOR_LOCATED: [
+													{
+														guard: {
+															type: 'visibleAnchor',
+															params: ({ event }) => ({ anchor: event.anchor })
+														},
+														target: 'scrollingToAnchor',
+														actions: assign({ anchor: ({ event }) => event.anchor })
+													},
+													{
+														target: 'scrollingToStart',
+														actions: assign({ anchor: ({ event }) => event.anchor })
+													}
+												]
 											}
-										},
-										choosingAnchor: {
-											always: [
-												{ guard: 'visibleAnchor', target: 'scrollingToAnchor' },
-												{ target: 'scrollingToStart' }
-											]
 										},
 										scrollingToAnchor: {
 											invoke: {
@@ -344,11 +359,14 @@ export const viewportMachine = setup<
 													guard: 'newPosition',
 													actions: [
 														assign({ position: ({ event }) => event.position }),
-														sendParent(({ context, event }): ReaderExperienceEvent => ({
-															type: 'MEASURE',
-															attachmentId: context.attachmentId,
-															position: required(event.position)
-														}))
+														{
+															type: 'report',
+															params: ({ context, event }): ViewportReport => ({
+																type: 'MEASURE',
+																attachmentId: context.attachmentId,
+																position: required(event.position)
+															})
+														}
 													]
 												},
 												DETACH: '#reader-viewport.departing'
@@ -367,24 +385,27 @@ export const viewportMachine = setup<
 												onError: '#reader-viewport.disposingFailure'
 											},
 											on: {
-												SIZES_MEASURED: {
-													target: 'comparingSizes',
-													actions: assign({ nextSizes: ({ event }) => event.sizes })
-												}
+												SIZES_MEASURED: [
+													{
+														guard: {
+															type: 'changedSizes',
+															params: ({ event }) => ({ sizes: event.sizes })
+														},
+														target: 'idle',
+														actions: [
+															assign({
+																sizes: ({ event }) => event.sizes,
+																nextSizes: ({ event }) => event.sizes
+															}),
+															raise({ type: 'REFLOW' })
+														]
+													},
+													{
+														target: 'idle',
+														actions: assign({ nextSizes: ({ event }) => event.sizes })
+													}
+												]
 											}
-										},
-										comparingSizes: {
-											always: [
-												{
-													guard: 'changedSizes',
-													target: 'idle',
-													actions: [
-														assign({ sizes: ({ context }) => context.nextSizes }),
-														raise({ type: 'REFLOW' })
-													]
-												},
-												{ target: 'idle' }
-											]
 										}
 									}
 								},
@@ -441,10 +462,13 @@ export const viewportMachine = setup<
 		closed: { type: 'final' },
 		failed: {
 			type: 'final',
-			entry: sendParent(({ context }): ReaderExperienceEvent => ({
-				type: 'VIEWPORT_FAILED',
-				attachmentId: context.attachmentId
-			}))
+			entry: {
+				type: 'report',
+				params: ({ context }): ViewportReport => ({
+					type: 'VIEWPORT_FAILED',
+					attachmentId: context.attachmentId
+				})
+			}
 		}
 	}
 })

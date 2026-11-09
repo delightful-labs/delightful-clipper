@@ -33,11 +33,7 @@ if (process.argv.includes('--installed')) {
 		'delightful-local-first/backend/jazz/session',
 		'delightful-local-first/backend/jazz/session-readiness',
 		'delightful-local-first/backend/jazz/recovery',
-		'delightful-local-first/backend/jazz/restoration',
-		'delightful-local-first/identity/token/contracts',
-		'delightful-local-first/identity/oauth/workflow',
-		'delightful-local-first/identity/token/selection',
-		'delightful-local-first/backend/jazz/token-identity'
+		'delightful-local-first/backend/jazz/restoration'
 	]) {
 		await import(pathToFileURL(require.resolve(name)).href)
 	}

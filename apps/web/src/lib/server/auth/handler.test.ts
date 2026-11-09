@@ -7,17 +7,15 @@ afterEach(() => vi.unstubAllEnvs())
 test('configuration diagnostics expose setting names without credential values', async () => {
 	vi.stubEnv('AUTH_BASE_URL', 'not-an-origin')
 	vi.stubEnv('AUTH_SECRET', 'private-marker')
-	vi.stubEnv('AUTH_DATABASE_URL', 'invalid-credential-marker')
 	const response = await handleAuth(new Request('https://example.invalid/api/auth/jwks'))
 	const text = await response.text()
 	expect(response.status).toBe(503)
 	expect(response.headers.get('cache-control')).toBe('no-store')
 	expect(JSON.parse(text)).toEqual({
 		error: 'invalid_auth_configuration',
-		fields: ['AUTH_BASE_URL', 'AUTH_SECRET', 'AUTH_DATABASE_URL']
+		fields: ['AUTH_BASE_URL', 'AUTH_SECRET']
 	})
 	expect(text).not.toContain('private-marker')
-	expect(text).not.toContain('invalid-credential-marker')
 	expect(text).not.toContain('not-an-origin')
 })
 

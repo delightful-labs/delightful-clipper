@@ -1,3 +1,4 @@
+import { policySchema } from './schema-permissions.test-support.js'
 import { beforeAll, afterAll, expect, it, vi } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import { createPolicyTestApp } from 'jazz-tools/testing'
@@ -9,7 +10,7 @@ import { readerHistorySchema, projectReaderState } from '../../reader/schema.js'
 import type { ReaderChange } from '../../reader/schema.js'
 let fixture: PolicyTestApp
 beforeAll(async () => {
-	fixture = await createPolicyTestApp(app, permissions, expect)
+	fixture = await createPolicyTestApp(policySchema(), permissions, expect)
 })
 afterAll(async () => {
 	await fixture?.shutdown()

@@ -1,0 +1,32 @@
+{
+	"name": "delightful-vercel-jazz-proof",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@10.22.0",
+	"engines": {
+		"node": "24.x"
+	},
+	"scripts": {
+		"dev": "vite dev --host 0.0.0.0",
+		"build": "vite build",
+		"check": "svelte-kit sync && tsc --noEmit",
+		"verify:remote": "node --experimental-strip-types verify.ts"
+	},
+	"dependencies": {
+		"@vercel/functions": "3.11.0",
+		"@vercel/sandbox": "3.9.1",
+		"jazz-napi": "2.0.0-alpha.60",
+		"jazz-tools": "2.0.0-alpha.60",
+		"svelte": "5.57.2",
+		"ws": "8.22.1"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-vercel": "7.0.2",
+		"@sveltejs/kit": "3.0.1",
+		"@sveltejs/vite-plugin-svelte": "7.2.0",
+		"@types/node": "24.19.2",
+		"typescript": "6.0.3",
+		"vercel": "65.12.1",
+		"vite": "8.3.4"
+	}
+}

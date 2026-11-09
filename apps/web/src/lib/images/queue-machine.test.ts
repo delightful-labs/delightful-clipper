@@ -46,6 +46,7 @@ function fixture(
 	const writes: ImageWrite[] = [],
 		dispose = vi.fn()
 	const stage = createWorkspaceCreationTransaction<ImageWrite, object, null, SyncReceipt, object>({
+		retainDetached: vi.fn(),
 		open: () => ({}),
 		readLocal: async () => null,
 		assess: () => ({ outcome: 'eligible' }),

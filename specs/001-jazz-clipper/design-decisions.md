@@ -148,3 +148,18 @@ The current batch implements a serial library-owned image queue, private native 
 The user approved the candidate fields and grouped synchronization approach in the [Clipper companion proposal](../../docs/reviews/clipper-companion-lexicon-proposal.md): Margin retains shared quotation/commentary; separately addressable highlight and note companions carry required `subject` (Margin URI and CID) and public `article` URI, with optional highlight-to-note `note` and note-to-highlight `highlight` relationships. Private Jazz identities and organizational data remain private. Attached note identity remains independent of highlight identity and revisions.
 
 The approved approach groups common/companion changes in conditional repository batches, with durable group attempt evidence, recovery before retry, and verification of stale observations rather than automatic repair. A companion conflict pauses the entire outgoing group. The actual namespace remains unselected. Specific key/discovery conventions, external-deletion cleanup, backfill, credential upgrade and release-dependent implementation APIs are not selected by this approval. No implementation, schema publication, dependency installation, migration or deployment is authorized by this decision alone.
+
+### AT Protocol native Jazz direction — 2026-11-09
+
+After the alpha.60/Vercel update, the user selected Jazz's native account following
+and requested removing Neon. Better Auth uses Jazz's bundled adapter and the
+existing backend store. The default SDK guest linking, existing-user sign-in and
+remembered-account persistence replace the manual JWT source, Clipper selection
+record and separate connect/sign-in account operations in the earlier proof.
+Those earlier workflow/storage notes are historical and are superseded here.
+
+Clipper retains its worker-owned provider redirect and callback feedback, drains
+before navigation and clears the provider cookie before native logout. Generated
+Jazz migrations add private backend-only auth tables without resetting existing
+libraries. No publication/lexicon work is implemented in this update. See
+[the native auth review](../../docs/reviews/atproto-native-alpha60.md).

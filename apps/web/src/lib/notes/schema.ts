@@ -2,7 +2,11 @@ import { z } from 'zod'
 import { lowercaseUuidSchema, utf8StringSchema } from '../validation/values.js'
 import { causalHeads, causalParentsSchema, hasSingleParent } from '../capture/causal.js'
 
-export const noteTextSchema = z.string().max(262144).pipe(utf8StringSchema(262144))
+const NOTE_TEXT_LIMIT = 262144
+export const noteTextSchema = z
+	.string()
+	.max(NOTE_TEXT_LIMIT)
+	.pipe(utf8StringSchema(NOTE_TEXT_LIMIT))
 const revisionIdsSchema = z
 	.array(lowercaseUuidSchema)
 	.max(4096)
@@ -10,49 +14,46 @@ const revisionIdsSchema = z
 
 /** Independent identity and an explicit article association. Highlight attachment
  * can extend this entity when highlight records are implemented. */
-export const noteSchema = z
-	.object({
-		id: lowercaseUuidSchema,
-		libraryId: lowercaseUuidSchema,
-		articleId: lowercaseUuidSchema.nullable(),
-		documentId: lowercaseUuidSchema.nullable()
-	})
-	.refine(hasSingleParent)
-export type Note = z.infer<typeof noteSchema>
-export const noteCreateSchema = z.object({
+// Compose field subsets before applying the complete entity's parent invariant.
+const noteFieldsSchema = z.object({
 	id: lowercaseUuidSchema,
 	libraryId: lowercaseUuidSchema,
-	articleId: lowercaseUuidSchema
+	articleId: lowercaseUuidSchema.nullable(),
+	documentId: lowercaseUuidSchema.nullable()
+})
+export const noteSchema = noteFieldsSchema.refine(hasSingleParent)
+export type Note = z.infer<typeof noteSchema>
+const noteIdentitySchema = noteFieldsSchema.pick({ id: true, libraryId: true })
+export const noteCreateSchema = noteIdentitySchema.extend({
+	articleId: noteFieldsSchema.shape.articleId.unwrap()
 })
 export type NoteCreate = z.infer<typeof noteCreateSchema>
-export const noteRevisionSchema = z.object({
-	id: lowercaseUuidSchema,
-	libraryId: lowercaseUuidSchema,
-	noteId: lowercaseUuidSchema,
+export const noteRevisionSchema = noteIdentitySchema.extend({
+	noteId: noteFieldsSchema.shape.id,
 	text: noteTextSchema,
 	parents: revisionIdsSchema,
 	editedAt: z.iso.datetime()
 })
 export type NoteRevision = z.infer<typeof noteRevisionSchema>
+export const noteTargetSchema = noteRevisionSchema.pick({ libraryId: true, noteId: true })
+export type NoteTarget = z.infer<typeof noteTargetSchema>
 export const storedNoteRevisionSchema = noteRevisionSchema.extend({
-	parents: causalParentsSchema.pipe(revisionIdsSchema)
+	parents: causalParentsSchema.pipe(noteRevisionSchema.shape.parents)
 })
 export const storedNoteHistorySchema = z.array(storedNoteRevisionSchema)
 export const noteHistorySchema = z.array(noteSchema)
-export const noteDraftSchema = z.object({
-	libraryId: lowercaseUuidSchema,
-	noteId: lowercaseUuidSchema,
-	sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-	text: noteTextSchema,
-	baseRevisionIds: revisionIdsSchema
-})
+export const noteDraftSchema = noteRevisionSchema
+	.pick({ libraryId: true, noteId: true, text: true })
+	.extend({
+		sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+		baseRevisionIds: noteRevisionSchema.shape.parents
+	})
 export type NoteDraft = z.infer<typeof noteDraftSchema>
 export const noteDraftRecordSchema = z.object({
 	writerId: lowercaseUuidSchema,
 	draft: noteDraftSchema
 })
 export type NoteDraftRecord = z.infer<typeof noteDraftRecordSchema>
-export type NoteTarget = Pick<NoteRevision, 'libraryId' | 'noteId'>
 export function sameNote(a: NoteTarget, b: NoteTarget) {
 	return a.libraryId === b.libraryId && a.noteId === b.noteId
 }

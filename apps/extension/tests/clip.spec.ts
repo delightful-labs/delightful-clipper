@@ -1,13 +1,16 @@
+import { extensionId, extensionPublicKey } from '../../../tooling/extension-identity.js'
 /// <reference types="chrome" />
 import { test, expect, chromium } from '@playwright/test'
+import { openLibraryFilters } from '../../web/tests/library-popovers.js'
 import type { BrowserContext, Page } from '@playwright/test'
-import { startLocalJazzServer } from 'jazz-tools/testing'
+import { startLocalJazzServer } from '../../web/tests/browser-core.js'
 import { createServer } from 'node:http'
 import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { app } from '../../web/src/lib/backend/jazz/schema.js'
 import permissions from '../../web/src/lib/backend/jazz/permissions.js'
+import { connectionSchema } from '../src/connection.js'
 let authority: Awaited<ReturnType<typeof startLocalJazzServer>>
 let directory: string
 const startAuthority = () =>
@@ -51,24 +54,47 @@ async function extension(profile: string, connected = true) {
 	const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'))
 	await expect.poll(() => worker.evaluate(() => chrome.action.onClicked.hasListeners())).toBe(true)
 	const id = new URL(worker.url()).host
+	expect(id).toBe(extensionId)
 	if (
 		connected &&
 		!(await worker.evaluate(
 			async () => !!(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
 		))
 	) {
-		const phrase = await recovery(context, id)
-		const options = await context.newPage()
-		await options.goto(`chrome-extension://${id}/index.html`)
+		// Connect an independently provisioned web account, as in the user flow.
+		const web = await context.newPage()
+		let phrase: string
+		try {
+			await web.goto('http://127.0.0.1:5180/')
+			phrase = await readRecovery(web)
+		} finally {
+			await web.close()
+		}
+		const options = await openOptions(context, id)
 		await options.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		await options.getByRole('button', { name: 'Restore account', exact: true }).click()
-		await expect
-			.poll(() =>
-				worker.evaluate(
-					async () => !!(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+		try {
+			await expect
+				.poll(() =>
+					worker.evaluate(
+						async () =>
+							!!(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+					)
 				)
+				.toBe(true)
+		} catch (error) {
+			console.info(
+				'Extension connection diagnostics',
+				JSON.stringify({
+					statuses: await options.getByRole('status').allTextContents(),
+					alerts: await options.getByRole('alert').allTextContents(),
+					storageKeys: await worker.evaluate(async () =>
+						Object.keys(await chrome.storage.local.get(null))
+					)
+				})
 			)
-			.toBe(true)
+			throw error
+		}
 		await options.close()
 	}
 	return { context, id, worker }
@@ -90,15 +116,33 @@ async function invokeToolbar(context: BrowserContext, id: string, source: Page) 
 async function clip(context: BrowserContext, id: string, source: Page) {
 	const pages = context.pages().length
 	await invokeToolbar(context, id, source)
-	await expect(source.locator('delightful-clipper-bar')).toBeVisible()
+	// Native authorization may wait up to 15 seconds for the cold offscreen owner.
+	await expect(source.locator('delightful-clipper-bar')).toBeVisible({ timeout: 20000 })
 	expect(context.pages()).toHaveLength(pages)
 }
 
+async function openOptions(context: BrowserContext, id: string) {
+	const url = `chrome-extension://${id}/index.html`
+	const worker = context.serviceWorkers().find((worker) => new URL(worker.url()).host === id)!
+	await worker.evaluate(() => chrome.runtime.openOptionsPage())
+	await expect.poll(() => context.pages().some((page) => page.url() === url)).toBe(true)
+	const page = context.pages().find((page) => page.url() === url)!
+	await page.waitForLoadState('domcontentloaded')
+	return page
+}
 async function recovery(context: BrowserContext, id: string) {
-	const page = await context.newPage()
-	await page.goto(`chrome-extension://${id}/index.html`)
-	// This helper is used online; wait for the account/root binding to settle before revealing.
-	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	const page = await openOptions(context, id)
+	try {
+		return await readRecovery(page)
+	} finally {
+		await page.close()
+	}
+}
+async function readRecovery(page: Page) {
+	// Wait for a usable binding; an existing root has no new write receipt.
+	await expect(
+		page.getByRole('button', { name: 'Show recovery phrase', exact: true })
+	).toBeVisible()
 	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
 	const dialog = page.getByRole('dialog')
 	try {
@@ -118,7 +162,6 @@ async function recovery(context: BrowserContext, id: string) {
 	}
 	const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
-	await page.close()
 	return phrase
 }
 const saved = /^(Article saved on this device\. Sync pending\.|Article synced\.)$/
@@ -212,6 +255,7 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 						source.getByRole('link', { name: 'Open article', exact: true })
 					).toHaveAttribute('href', readerURL)
 					await expect(row).toHaveCount(0)
+					await openLibraryFilters(reader)
 					await reader.getByRole('radio', { name: 'Trash', exact: true }).check()
 					await expect(row).toHaveCount(1)
 					await reader.goto(readerURL)
@@ -246,8 +290,7 @@ test('source messages cannot issue saves and navigation removes the old document
 		)
 		await source.reload()
 		await expect(source.locator('delightful-clipper-bar')).toHaveCount(0)
-		const options = await context.newPage()
-		await options.goto(`chrome-extension://${id}/index.html`)
+		const options = await openOptions(context, id)
 		// Even another trusted extension page cannot impersonate the offscreen writer.
 		const reply = await options.evaluate(() =>
 			chrome.runtime.sendMessage({
@@ -393,6 +436,7 @@ test('Close dismisses only the bar, keeps the source and saved article, and allo
 
 test('packages workers locally with offscreen ownership and only gesture-scoped source access', async () => {
 	const manifest = JSON.parse(await readFile('apps/extension/.test-build/manifest.json', 'utf8'))
+	expect(manifest.key).toBe(extensionPublicKey)
 	expect(manifest.permissions).toEqual(['activeTab', 'scripting', 'storage', 'offscreen'])
 	expect(manifest.host_permissions).toBeUndefined()
 	expect(manifest.content_scripts).toBeUndefined()
@@ -413,57 +457,71 @@ test('restoring an account in options moves subsequent automatic clips to that l
 }) => {
 	const { context, id, worker } = await extension(join(directory, 'restore-profile'))
 	const web = await browser.newContext()
+	web.setDefaultTimeout(15000)
+	let cleanup: PromiseSettledResult<void>[] = []
 	try {
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/before-restore')
-		await clip(context, id, source)
-		await expect(source.getByRole('status')).toHaveText(saved)
-		const previous = await worker.evaluate(
-			async () =>
-				(
-					await chrome.runtime.getContexts({
-						contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT]
-					})
-				)[0]?.contextId
+		await test.step('save into the original extension account', async () => {
+			await source.goto('http://127.0.0.1:5230/before-restore')
+			await clip(context, id, source)
+			await expect(source.getByRole('status')).toHaveText(saved)
+		})
+		const previous = connectionSchema.parse(
+			await worker.evaluate(
+				async () => (await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+			)
 		)
 		const reader = await web.newPage()
-		await reader.goto('/')
-		await reader.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const recoveryDialog = reader.getByRole('dialog')
-		const phrase = await recoveryDialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-		await recoveryDialog.getByRole('button', { name: 'Close', exact: true }).click()
-		const options = await context.newPage()
-		await options.goto(`chrome-extension://${id}/index.html`)
-		await options.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await options.getByRole('button', { name: 'Restore account', exact: true }).click()
-		await expect
-			.poll(
-				async () =>
-					(await worker.evaluate(
-						async () =>
-							(
-								await chrome.runtime.getContexts({
-									contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT]
-								})
-							)[0]?.contextId
-					)) !== previous
-			)
-			.toBe(true)
-		await source.goto('http://127.0.0.1:5230/after-restore')
-		await clip(context, id, source)
-		await expect(source.getByRole('status')).toHaveText(saved)
-		await reader.reload()
-		await expect(
-			reader.getByRole('link', { name: 'Rendered browser article', exact: true })
-		).toHaveCount(1)
-		await reader.getByRole('link', { name: 'Rendered browser article', exact: true }).click()
-		await expect(
-			reader.getByText('Only present after JavaScript rendering.', { exact: false })
-		).toBeVisible()
+		const phrase =
+			await test.step('reveal the independent web account recovery phrase', async () => {
+				await reader.goto('/')
+				await reader.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
+				const dialog = reader.getByRole('dialog')
+				await expect(dialog).toBeVisible()
+				const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
+				await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+				return phrase
+			})
+		await test.step('restore and confirm the new extension connection', async () => {
+			const options = await context.newPage()
+			await options.goto(`chrome-extension://${id}/index.html`)
+			await options.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+			await options.getByRole('button', { name: 'Restore account', exact: true }).click()
+			await expect
+				.poll(async () => {
+					const connection = connectionSchema.safeParse(
+						await worker.evaluate(
+							async () =>
+								(await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+						)
+					)
+					return (
+						connection.success &&
+						connection.data.confirmationId !== previous.confirmationId &&
+						connection.data.accountId !== previous.accountId
+					)
+				})
+				.toBe(true)
+		})
+		await test.step('save into the restored account and read it in the web replica', async () => {
+			await source.goto('http://127.0.0.1:5230/after-restore')
+			await clip(context, id, source)
+			await expect(source.getByRole('status')).toHaveText(saved)
+			await reader.reload()
+			await expect(
+				reader.getByRole('link', { name: 'Rendered browser article', exact: true })
+			).toHaveCount(1)
+			await reader.getByRole('link', { name: 'Rendered browser article', exact: true }).click()
+			await expect(
+				reader.getByText('Only present after JavaScript rendering.', { exact: false })
+			).toBeVisible()
+		})
 	} finally {
-		await web.close()
-		await context.close()
+		// A timeout can already have disposed the fixture browser context. Preserve
+		// the failed operation instead of replacing it with a protocol cleanup error.
+		cleanup = await Promise.allSettled([web.close(), context.close()])
 	}
+	for (const result of cleanup) if (result.status === 'rejected') throw result.reason
 })
 
 test('successive toolbar clicks save different tabs through one hidden runtime', async () => {
