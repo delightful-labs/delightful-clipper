@@ -587,7 +587,13 @@ extension production build also passes. Browser qualification records 55 account
 library, capture, discovery, image, organization, reader and startup cases;
 8 Chromium/Firefox schema-upgrade cases; 6 worker cases; 5 production-offline
 cases (including both servers stopped and HTTP cache cleared); and 2 fake-data
-cases. Packaged-extension qualification is being finalized before PR readiness.
+cases. All 11 packaged-extension cases also pass in Linux CI.
+
+Implementation commit `48ca801c1572fd6ea8d0de34b35cbc5994f20f31` passed
+[CI run 42673651355, attempt 2](https://github.com/delightful-labs/delightful-clipper/actions/runs/42673651355):
+628 unit/native tests and all 87 browser cases above. The title check and Vercel
+preview also passed. Attempt 1 failed with a GitHub internal server error before
+creating jobs; the unchanged rerun completed successfully.
 
 The production-offline suite caught early disposal of a pending reader surface;
 the actual worker adapter now retains that custody and the full offline suite
@@ -596,6 +602,12 @@ between fixture commands. The extension harness retries only the explicit
 restart error once for idempotent fixture operations; it never retries toolbar
 gestures or issued article writes. Keep failures visible and distinguish this
 fixture accommodation from application retry or unknown-write recovery.
+Local macOS extension runs remained intermittent despite passing isolated cases;
+do not represent Linux CI as complete macOS release qualification. The unchanged
+main baseline `787ef25` also has an extension failure in
+[run 42644535410](https://github.com/delightful-labs/delightful-clipper/actions/runs/42644535410),
+where the stale-connection popup did not appear. No assertion or native case was
+removed, and no speculative account-admission or persistence change was retained.
 
 The beta pins remain experimental. Generated coverage is bounded and does not
 prove all native interleavings. Full browser support/release qualification and
