@@ -29,6 +29,7 @@ it.each(['open', 'read', 'stage', 'commit', 'local', 'unknown', 'scope'] as cons
 			SyncReceipt,
 			object
 		>({
+			retainDetached: vi.fn(),
 			open: async () => {
 				await hold('open')
 				return {}
@@ -71,6 +72,7 @@ it('rejects stale admission before opening a transaction', async () => {
 		SyncReceipt,
 		object
 	>({
+		retainDetached: vi.fn(),
 		open,
 		readLocal: async () => null,
 		assess: () => ({ outcome: 'eligible' }),
@@ -103,6 +105,7 @@ it('snapshots the desired scalar before asynchronous transaction work', async ()
 		SyncReceipt,
 		object
 	>({
+		retainDetached: vi.fn(),
 		open: () => ({}),
 		readLocal: async () => {
 			entered.resolve()
@@ -142,6 +145,7 @@ it.each(['shutdown', 'scope', 'failure'] as const)(
 			SyncReceipt,
 			object
 		>({
+			retainDetached: vi.fn(),
 			open,
 			readLocal: async () => null,
 			assess: () => ({ outcome: 'eligible' }),

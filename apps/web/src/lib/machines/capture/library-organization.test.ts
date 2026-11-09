@@ -35,6 +35,7 @@ function fixture(local = async () => {}, global = async () => {}) {
 		SyncReceipt,
 		object
 	>({
+		retainDetached: vi.fn(),
 		open: () => ({}),
 		readLocal: async () => null,
 		assess: () => ({ outcome: 'eligible' }),

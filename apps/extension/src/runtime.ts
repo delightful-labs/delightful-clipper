@@ -21,10 +21,7 @@ async function command(message: unknown) {
 		throw new Error('invalidResponse')
 }
 const owner = createActor(createApplicationReadinessMachine<Session>(), {
-	input: existingAccountInput(
-		{ appId: __CLIPPER_APP_ID__, serverUrl: __CLIPPER_SERVER__, env: 'clipper' },
-		extensionLibrary
-	)
+	input: existingAccountInput({ serverUrl: __CLIPPER_SERVER__, env: 'clipper' }, extensionLibrary)
 })
 
 const runtime = createActor(

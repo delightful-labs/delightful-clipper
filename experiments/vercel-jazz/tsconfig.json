@@ -1,0 +1,11 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"strict": true,
+		"skipLibCheck": true,
+		"allowImportingTsExtensions": true,
+		"moduleResolution": "bundler",
+		"types": ["$app/types", "node"]
+	},
+	"include": ["src", "verify.ts", "vite.config.ts"]
+}

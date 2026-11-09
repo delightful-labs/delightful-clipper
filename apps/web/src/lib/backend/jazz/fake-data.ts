@@ -1,3 +1,4 @@
+import { retainDetachedTransaction } from './transaction.js'
 import { ReadTier } from 'jazz-tools'
 import type { Db } from 'jazz-tools'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
@@ -6,8 +7,8 @@ import type { SeedRows } from '../../samples/machine.js'
 import type { FakeDataPlan } from '../../samples/plan.js'
 import { insertPreparedContent } from './content.js'
 import { app } from './schema.js'
-export type FakeDataDb = Pick<Db, 'one' | 'all' | 'beginExclusiveTransaction'>
-type Resource = { tx: ReturnType<FakeDataDb['beginExclusiveTransaction']> }
+export type FakeDataDb = Pick<Db, 'one' | 'all' | 'beginSerializableTransaction'>
+type Resource = { tx: ReturnType<FakeDataDb['beginSerializableTransaction']> }
 type Write = ReturnType<Resource['tx']['commit']>
 export function createFakeDataRecords(db: FakeDataDb, libraryId: string, isCurrent: () => boolean) {
 	async function presence(reader: Pick<Db, 'one' | 'all'>, tier?: ReadTier): Promise<SeedRows> {
@@ -28,9 +29,10 @@ export function createFakeDataRecords(db: FakeDataDb, libraryId: string, isCurre
 	}
 	const stage = createWorkspaceCreationTransaction<FakeDataPlan, Resource, SeedRows, number, Write>(
 		{
+			retainDetached: retainDetachedTransaction<Resource, Write>,
 			open: () => {
 				admit()
-				return { tx: db.beginExclusiveTransaction() }
+				return { tx: db.beginSerializableTransaction() }
 			},
 			readLocal: (resource) => presence(resource.tx),
 			assess: (rows) =>

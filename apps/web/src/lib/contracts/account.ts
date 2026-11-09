@@ -25,6 +25,7 @@ export type RecoveryBinding = Readonly<{
 export type AccountObservation =
 	| Readonly<{
 			status: 'ready'
+			localFirst?: boolean
 			binding: object
 			accountId: string
 			signedIn?: boolean
@@ -35,6 +36,7 @@ export type AccountObservation =
 	| Readonly<{ status: 'signed-out' | 'transitioning' | 'error' | 'closed' }>
 export type AccountHost = Readonly<{
 	read: () => AccountObservation
+	prepare?: () => Promise<void>
 	readiness: SessionReadinessBinding
 	create: () => Promise<void>
 	logout: () => Promise<void>

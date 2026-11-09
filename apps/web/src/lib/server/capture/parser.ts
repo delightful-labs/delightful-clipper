@@ -12,8 +12,9 @@ function workerOpen(body: Uint8Array, mediaType: string, url: string): WorkerOpe
 		const relativePath = import.meta.env.DEV
 			? '../../../../.netlify/v1/parser/extract-worker.mjs'
 			: '../parser/extract-worker.mjs'
-		const workerUrl =
-			import.meta.env.DEV || process.env.LAMBDA_TASK_ROOT
+		const workerUrl = process.env.VERCEL
+			? new URL('../../../../.netlify/v1/parser/extract-worker.mjs', import.meta.url)
+			: import.meta.env.DEV || process.env.LAMBDA_TASK_ROOT
 				? new URL(relativePath, import.meta.url)
 				: pathToFileURL(resolve('.netlify/v1/parser/extract-worker.mjs'))
 		const payload = new Uint8Array(body)

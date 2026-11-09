@@ -1,8 +1,9 @@
 import { defineConfig } from '@playwright/test'
+import { browserCoreSecret } from './apps/web/tests/browser-core.js'
 
 export default defineConfig({
 	testDir: './apps/web/tests',
-	testIgnore: ['**/offline/**', '**/fake-data/**'],
+	testIgnore: ['**/offline/**', '**/fake-data/**', '**/worker/**', '**/schema-upgrade.spec.ts'],
 	fullyParallel: false,
 	workers: 1,
 	timeout: 45000,
@@ -13,6 +14,8 @@ export default defineConfig({
 		reuseExistingServer: false,
 		env: {
 			CLIPPER_TEST: 'true',
+			CLIPPER_TEST_CORE_URL: 'http://127.0.0.1:5181',
+			CLIPPER_TEST_CORE_SECRET: browserCoreSecret,
 			PUBLIC_FAKE_DATA: 'false',
 			PUBLIC_DEBUG: 'true',
 			CAPTURE_GATEWAY_ENABLED: 'true',

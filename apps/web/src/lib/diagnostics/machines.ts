@@ -61,9 +61,15 @@ export function createMachineObserver(logger: Logger, enabled: boolean) {
 		if (!enabled || (event.type !== '@xstate.snapshot' && event.type !== '@xstate.event')) return
 		try {
 			const actor = event.actorRef
+			const machine = identifier(field(field(field(actor, 'logic'), 'config'), 'id'))
+			if (
+				machine === 'recovery-phrase' ||
+				machine === 'worker-recovery-owner' ||
+				String(field(actor, 'id')).includes('recovery-phrase')
+			)
+				return
 			const snapshot: unknown =
 				event.type === '@xstate.snapshot' ? event.snapshot : actor.getSnapshot()
-			const machine = identifier(field(field(field(actor, 'logic'), 'config'), 'id'))
 			const errorEvent = event.event.type.startsWith('xstate.error.actor.')
 			const error =
 				field(snapshot, 'error') ?? (errorEvent ? field(event.event, 'error') : undefined)

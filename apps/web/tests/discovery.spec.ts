@@ -1,7 +1,7 @@
 import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from './library-popovers.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { startLocalJazzServer } from 'jazz-tools/testing'
+import { startLocalJazzServer } from './browser-core.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -419,10 +419,14 @@ test('search input combines title, URL and body keywords with status, favorites,
 test('search failure is localized, leaves the library usable and retries with a fresh worker', async ({
 	page
 }) => {
-	await page.addInitScript(() => {
-		const OriginalWorker = window.Worker
+	await page.goto('/')
+	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
+	const application = page.workers().find((worker) => worker.url().includes('application.worker'))
+	if (!application) throw new Error('Application worker unavailable')
+	await application.evaluate(() => {
+		const NativeWorker = globalThis.Worker
 		let failed = false
-		window.Worker = class extends OriginalWorker {
+		globalThis.Worker = class extends NativeWorker {
 			constructor(url: string | URL, options?: WorkerOptions) {
 				if (!failed && String(url).includes('/search/worker')) {
 					failed = true
@@ -432,8 +436,6 @@ test('search failure is localized, leaves the library usable and retries with a 
 			}
 		}
 	})
-	await page.goto('/')
-	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
 	await expect(page.getByText('Search is unavailable.', { exact: true })).toHaveCount(0)
 	await openLibrarySearch(page)
 	await expect(page.getByText('Search is unavailable.', { exact: true })).toBeVisible()

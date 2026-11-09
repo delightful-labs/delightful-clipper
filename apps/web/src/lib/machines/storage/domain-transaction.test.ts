@@ -74,6 +74,7 @@ function fixture(
 		return !options.rollbackFails
 	})
 	const logic = createDomainTransaction<Draft, object, object>(domain, {
+		retainDetached: vi.fn(),
 		open: async () => {
 			await step('open')
 			return resource

@@ -27,6 +27,7 @@ function fixture(
 		number,
 		{ issued: boolean }
 	>({
+		retainDetached: vi.fn(),
 		open: () => ({ opened: true }),
 		readLocal: () => null,
 		assess: () => ({ outcome: 'eligible' }),
@@ -96,6 +97,7 @@ it('keeps the library owner alive until an issued seed settles during shutdown',
 		number,
 		{ issued: boolean }
 	>({
+		retainDetached: vi.fn(),
 		open: () => ({ opened: true }),
 		readLocal: () => null,
 		assess: () => ({ outcome: 'eligible' }),

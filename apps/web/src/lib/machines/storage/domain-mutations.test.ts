@@ -21,6 +21,7 @@ function fixture() {
 		})
 	async function run<Draft>(domain: AnyStateMachine, draft: Draft) {
 		const logic = createDomainTransaction<Draft, object, object>(domain, {
+			retainDetached: vi.fn(),
 			open: () => ({}),
 			commit,
 			persistLocal: async () => {},

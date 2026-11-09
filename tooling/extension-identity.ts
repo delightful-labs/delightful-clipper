@@ -1,0 +1,5 @@
+// Public manifest identity only; no signing secret or account credential.
+export const extensionPublicKey =
+	'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqJ6U7xRbGlovkRXdbMrKnjsD5mFmSfarL7mlQggOVlYJM5O7TGb5vPx+FJHgLB7rR1p2BexTN71EVCxn+K4WohC+V2O5/gZFCVHJ1f8O9AGlqvltzFeV1IeYwJ+wlR2ZaUZFVoqtsIhQhDV6Heo/arVTxiKxcG7rigMu7v0ZpXf1CK1cEyuKHqsRe58nu1rMKjKi1mzmpO1VOeTbvHwUpC2lCagMCEYncjQs5faiyZfRxq4X4iad0A63Z8UxBx+Jm+TMJm6DJfHoe3Glb2sUB3nr1QiL8w2rh/pnyET/p82SE99Vt2hFU3ENwGaCva/ba3r28k/i++SDNdbH2fV6+wIDAQAB'
+export const extensionId = 'inbajlgglggigfebfkmlkfbdenddpphf'
+export const extensionOrigin = 'chrome-extension://' + extensionId

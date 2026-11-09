@@ -13,7 +13,9 @@
 		onretry,
 		ontags,
 		onemptyfocus,
-		resetKey
+		resetKey,
+		hasMore,
+		onmore
 	}: {
 		rows: LibraryArticle[]
 		readable: Record<string, boolean>
@@ -22,15 +24,22 @@
 		onretry: (id: string) => void
 		ontags: (row: LibraryArticle, trigger: HTMLElement) => void
 		onemptyfocus: () => void
+		hasMore: boolean
+		onmore: () => void
 		resetKey: string
 	} = $props()
 	const listId = $props.id()
-	const batchSize = 50
-	let limit = $state(batchSize)
-	const renderedRows = $derived(rows.slice(0, limit))
+	let pendingIndex = $state<number>()
+	$effect(() => {
+		if (pendingIndex === undefined || !rows[pendingIndex]) return
+		const first = rows[pendingIndex]
+		if (!first) return
+		pendingIndex = undefined
+		void tick().then(() => document.getElementById(listId + '-' + first.id)?.focus())
+	})
 	$effect(() => {
 		void resetKey
-		limit = batchSize
+		pendingIndex = undefined
 	})
 	let removedAction = $state<{ id: string; candidates: string[]; trigger: HTMLElement }>()
 
@@ -47,11 +56,9 @@
 		removedAction = undefined
 	})
 
-	async function showNext() {
-		const first = rows[limit]
-		limit += batchSize
-		await tick()
-		if (first) document.getElementById(listId + '-' + first.id)?.focus()
+	function showNext() {
+		pendingIndex = rows.length
+		onmore()
 	}
 
 	function changeTrash(row: LibraryArticle, trigger: HTMLElement) {
@@ -69,7 +76,7 @@
 
 {#if rows.length}
 	<ul id={listId} class="article-list">
-		{#each renderedRows as row (row.id)}
+		{#each rows as row (row.id)}
 			<ArticleListItem
 				{row}
 				id={listId + '-' + row.id}
@@ -82,7 +89,7 @@
 			/>
 		{/each}
 	</ul>
-	{#if rows.length > limit}
+	{#if hasMore}
 		<Button type="button" aria-controls={listId} onclick={showNext}
 			>{action('show', 'article', 2)}</Button
 		>

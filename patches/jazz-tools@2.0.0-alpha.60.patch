@@ -1,0 +1,289 @@
+diff --git a/dist/backend/create-jazz.js b/dist/backend/create-jazz.js
+index 7b68b73a36ad31c12703f1bfee9dd86483a84dce..2dee25c710fb8f400574031212055b08c028549a 100644
+--- a/dist/backend/create-jazz.js
++++ b/dist/backend/create-jazz.js
+@@ -692,7 +692,16 @@ function jazzSettings(options) {
+     const allowedOrigins = new Set((options.allowedOrigins ?? []).map((origin) => {
+         let parsed;
+         try {
+-            parsed = new URL(origin).origin;
++            const url = new URL(origin);
++            parsed = url.origin;
++            // Only explicitly configured Chrome extension identities are admitted.
++            // Opaque origins, wildcard IDs and arbitrary extension URLs stay refused.
++            if (url.protocol === "chrome-extension:" &&
++                /^[a-p]{32}$/.test(url.hostname) && url.host === url.hostname &&
++                !url.username && !url.password && !url.search && !url.hash &&
++                (url.pathname === "" || url.pathname === "/")) {
++                parsed = `chrome-extension://${url.hostname}`;
++            }
+         }
+         catch {
+             // Not a URL: refused below.
+@@ -2077,6 +2086,25 @@ async function openJazz(initial, store) {
+             return backendDbAttributedTo(backend, await sessionFor(user, "withAttribution"));
+         },
+         async accountFor(request) {
++            // Admission only: do not expose a database or create an account.
++            // Reuse sync's signature/audience checks and refresh registry state.
++            const token = /^Bearer\s+(\S+)\s*$/i.exec(request.headers.get("authorization") ?? "")?.[1];
++            const payload = token && parseJwtPayload(token);
++            if (payload?.iss === LOCAL_FIRST_JWT_ISSUER) {
++                if (!guestAudience(request, token) || !(await acceptsGuest(request)))
++                    return null;
++                try {
++                    return (await adminAccounts("resolve", {
++                        identity: { issuer: payload.iss, subject: payload.sub },
++                    })).account;
++                }
++                catch (error) {
++                    if ((error.status === 404 && error.code === "identity_not_assigned") ||
++                        (error.status === 403 && error.code === "identity_not_authorized"))
++                        return null;
++                    throw error;
++                }
++            }
+             const user = await authenticate(request);
+             return user ? await existingAccountOf(user.userId) : null;
+         },
+diff --git a/dist/backend/vercel-store.js b/dist/backend/vercel-store.js
+index 65704133755d80eee1c9d1ffeadc71544759f801..10fc8bb8bd1f36330bebe10aa38285495ea359ad 100644
+--- a/dist/backend/vercel-store.js
++++ b/dist/backend/vercel-store.js
+@@ -246,6 +246,8 @@ function coreOptions(dataDir, trust, blobs) {
+     const claim = environment === undefined ? {} : { environment };
+     return {
+         port: VERCEL_CORE_PORT,
++        // Guest proofs still require the app backend credential and app admission.
++        allowLocalFirstAuth: true,
+         dataDir,
+         blobs: !blobs
+             ? { kind: "sqlite" }
+diff --git a/dist/runtime/client.js b/dist/runtime/client.js
+index 88068a9f0c33b363e66979393f5853f335127a7e..674135c3ce3af5b716c5024fe215b82d715963f6 100644
+--- a/dist/runtime/client.js
++++ b/dist/runtime/client.js
+@@ -205,7 +205,7 @@ export function resolveEffectiveQueryExecutionOptions(context, options) {
+     };
+ }
+ function isBrowserRuntime() {
+-    return typeof window !== "undefined" && typeof document !== "undefined";
++    return (typeof window !== "undefined" && typeof document !== "undefined") || typeof WorkerGlobalScope !== "undefined";
+ }
+ function isReactNativeRuntime() {
+     return typeof navigator !== "undefined" && navigator.product === "ReactNative";
+diff --git a/dist/runtime/context.d.ts b/dist/runtime/context.d.ts
+index d8e5086d082326109830bc5153e8184021219966..cfae406d94a938b437c3d71d890e4e78487a3ca3 100644
+--- a/dist/runtime/context.d.ts
++++ b/dist/runtime/context.d.ts
+@@ -14,6 +14,13 @@ export interface RuntimeSourcesConfig {
+      * When set, Jazz derives `jazz_wasm_bg.wasm` and the browser broker worker.
+      */
+     baseUrl?: string;
++    /** Window-only native primitives for a dedicated-worker foreground client.
++     * Not forwarded to the broker; the caller owns the private port lifetime. */
++    browserWorkerHost?: {
++        open(url: string, name: string): Promise<{ port: MessagePort }>;
++        readGeneration(key: string): Promise<string | null>;
++        writeGeneration(key: string, value: string): Promise<void>;
++    };
+     /** Explicit URL for the WASM binary. Overrides `baseUrl`. */
+     wasmUrl?: string;
+     /** Explicit URL for the browser broker SharedWorker entry script. Overrides `baseUrl`. */
+diff --git a/dist/runtime/db.js b/dist/runtime/db.js
+index 944126da68bca809d29b1748d31d32a615f8379c..99cee40ed5a5b11f062a3235072134f6cb1ca965 100644
+--- a/dist/runtime/db.js
++++ b/dist/runtime/db.js
+@@ -2075,7 +2075,7 @@ export class Db {
+     getConfig() {
+         // Return a copy without internal live transport handles. MessagePorts are
+         // neither configuration nor cloneable unless transferred.
+-        const { browserWorkerPort: _browserWorkerPort, browserWorkerSession: _browserWorkerSession, ...runtimeSources } = this.config.runtimeSources ?? {};
++        const { browserWorkerHost: _browserWorkerHost, browserWorkerPort: _browserWorkerPort, browserWorkerSession: _browserWorkerSession, ...runtimeSources } = this.config.runtimeSources ?? {};
+         return structuredClone({
+             ...this.config,
+             runtimeSources: Object.keys(runtimeSources).length > 0 ? runtimeSources : undefined,
+@@ -3456,7 +3456,7 @@ export function assertNoClientBackendSecret(config) {
+     }
+ }
+ function isBrowserRuntime() {
+-    return typeof window !== "undefined" && typeof Worker !== "undefined";
++    return (typeof window !== "undefined" || typeof WorkerGlobalScope !== "undefined") && typeof Worker !== "undefined";
+ }
+ const credentialRenewers = new WeakMap();
+ /**
+diff --git a/dist/runtime/default-runtime-source.js b/dist/runtime/default-runtime-source.js
+index 99a3516d69bb9cb3d4d3559a34deb4d07e6daa70..8206c0fdb3ddebfbfa9e08f129cd4dad11467622 100644
+--- a/dist/runtime/default-runtime-source.js
++++ b/dist/runtime/default-runtime-source.js
+@@ -294,7 +294,7 @@ export class DefaultRuntimeSource extends RuntimeSource {
+     }
+ }
+ function isBrowserRuntime() {
+-    return typeof window !== "undefined" && typeof Worker !== "undefined";
++    return (typeof window !== "undefined" || typeof WorkerGlobalScope !== "undefined") && typeof Worker !== "undefined";
+ }
+ function isNodeRuntime() {
+     return typeof process !== "undefined" && Boolean(process.versions?.node);
+diff --git a/dist/runtime/native-runtime/browser-shared-worker-connection.js b/dist/runtime/native-runtime/browser-shared-worker-connection.js
+index e291bc6907967d1d89a79e26d8924b0e833cb191..d2090edb8211a2f41fb98f931092026faf14c2ed 100644
+--- a/dist/runtime/native-runtime/browser-shared-worker-connection.js
++++ b/dist/runtime/native-runtime/browser-shared-worker-connection.js
+@@ -15,6 +15,9 @@ import { toError } from "../util.js";
+  * construction here so every bundler emits a single broker worker chunk.
+  */
+ function createBrokerSharedWorker(runtimeSources, name) {
++    if (runtimeSources?.browserWorkerHost) {
++        return runtimeSources.browserWorkerHost.open(resolveBrowserWorkerUrl(runtimeSources), name);
++    }
+     if (runtimeSources?.brokerWorkerUrl || runtimeSources?.baseUrl || runtimeSources?.wasmVersion) {
+         return new SharedWorker(resolveBrowserWorkerUrl(runtimeSources), { type: "module", name });
+     }
+@@ -52,7 +55,8 @@ const pendingForegroundLeaseCleanups = new Map();
+ function workerWasmPrefetch(runtimeSources) {
+     if (runtimeSources?.wasmModule || runtimeSources?.wasmSource)
+         return undefined;
+-    return { runtimeSources };
++    const { browserWorkerHost: _host, browserWorkerPort: _port, browserWorkerSession: _session, ...sources } = runtimeSources ?? {};
++    return { runtimeSources: runtimeSources ? sources : undefined };
+ }
+ /**
+  * The one physical SharedWorker realm that may own a browser persistence root.
+@@ -107,7 +111,7 @@ export class SharedBrowserForegroundNodeLease {
+         // that explicitly reports it is closing can be skipped without creating
+         // an orphan-risking durable operation in it.
+         const admissionDeadline = Date.now() + FOREGROUND_NODE_LEASE_ADMISSION_TIMEOUT_MS;
+-        let generation = readWorkerGeneration(workerName);
++        let generation = await readWorkerGeneration(workerName, runtimeSources);
+         let busyAttempt = 0;
+         let lastBusyMessage = null;
+         for (let generationAttempt = 0; generationAttempt < MAX_SHARED_WORKER_GENERATION_ATTEMPTS; generationAttempt += 1) {
+@@ -116,7 +120,7 @@ export class SharedBrowserForegroundNodeLease {
+                 if (remainingAdmissionMs <= 0) {
+                     throw new Error(lastBusyMessage ?? "Shared browser runtime did not issue a foreground node lease");
+                 }
+-                const worker = createWorker(`${workerName}:generation-${generation}`);
++                const worker = await createWorker(`${workerName}:generation-${generation}`);
+                 const outcome = await this.acquireFromWorkerGeneration(worker, options, cleanupKey, crypto.randomUUID(), remainingAdmissionMs, workerWasmPrefetch(runtimeSources));
+                 if (outcome.type === "ready")
+                     return outcome.lease;
+@@ -124,7 +128,7 @@ export class SharedBrowserForegroundNodeLease {
+                     // Only an explicitly terminating realm sends this receipt. Idle
+                     // close is still cancelable by its bootstrap reservation and never
+                     // forces a generation jump.
+-                    generation = advanceWorkerGeneration(workerName, generation);
++                    generation = await advanceWorkerGeneration(workerName, generation, runtimeSources);
+                     break;
+                 }
+                 lastBusyMessage = outcome.message;
+@@ -395,6 +399,7 @@ export class SharedBrowserWorkerConnection {
+         const runtimeSources = resolveBrowserWorkerRuntimeSources(options.runtimeSources);
+         const workerName = createBrowserSharedWorkerBaseName(runtimeSources, options.dbName);
+         this.workerName = workerName;
++        this.browserWorkerHost = runtimeSources?.browserWorkerHost;
+         const createWorker = (name) => createBrokerSharedWorker(runtimeSources, name);
+         // Retain admission failures as state rather than leaving a process-wide
+         // bootstrap promise rejected. The manager converts this state back into
+@@ -450,7 +455,7 @@ export class SharedBrowserWorkerConnection {
+     }
+     async connect(runtime, options, fingerprint, workerName, createWorker) {
+         const livenessLock = this.holdLivenessLock();
+-        let generation = readWorkerGeneration(workerName);
++        let generation = await readWorkerGeneration(workerName, options.runtimeSources);
+         for (let attempt = 0; attempt < MAX_SHARED_WORKER_GENERATION_ATTEMPTS; attempt += 1) {
+             if (this.closed)
+                 return;
+@@ -466,12 +471,16 @@ export class SharedBrowserWorkerConnection {
+                     this.announceLivenessLock(livenessLock, this.worker.port);
+                 return;
+             }
+-            generation = advanceWorkerGeneration(workerName, generation);
++            generation = await advanceWorkerGeneration(workerName, generation, options.runtimeSources);
+         }
+         throw new Error("Shared browser runtime did not answer after its previous realm closed");
+     }
+-    connectOnce(runtime, options, fingerprint, workerName, createWorker) {
+-        const worker = createWorker(workerName);
++    async connectOnce(runtime, options, fingerprint, workerName, createWorker) {
++        const worker = await createWorker(workerName);
++        if (this.closed) {
++            worker.port.close();
++            return { connected: false };
++        }
+         this.worker = worker;
+         const port = worker.port;
+         port.start();
+@@ -656,7 +665,7 @@ export class SharedBrowserWorkerConnection {
+                     type: "connect-runtime",
+                     tabId: crypto.randomUUID(),
+                     fingerprint,
+-                    options,
++                    options: { ...options, runtimeSources: { ...options.runtimeSources, browserWorkerHost: undefined } },
+                 });
+             }
+             catch (error) {
+@@ -739,36 +748,42 @@ export class SharedBrowserWorkerConnection {
+         const port = await this.connection.openInspectorControlPort(signal);
+         const generation = this.connectedGeneration;
+         if (generation !== null) {
+-            installWorkerTerminationGenerationHandoff(port, this.workerName, generation);
++            installWorkerTerminationGenerationHandoff(port, this.workerName, generation, { browserWorkerHost: this.browserWorkerHost });
+         }
+         return port;
+     }
+ }
+ /** @internal Keeps an acknowledged inspector restart out of its closing realm. */
+-export function installWorkerTerminationGenerationHandoff(port, workerName, generation) {
++export function installWorkerTerminationGenerationHandoff(port, workerName, generation, runtimeSources) {
+     port.addEventListener("message", (event) => {
+         if (event.data?.type !== "result" || event.data.workerTerminated !== true)
+             return;
+-        advanceWorkerGeneration(workerName, generation);
++        void advanceWorkerGeneration(workerName, generation, runtimeSources).catch(() => {});
+     });
+ }
+-function readWorkerGeneration(workerName) {
++async function readWorkerGeneration(workerName, runtimeSources) {
+     try {
+-        const generation = Number.parseInt(localStorage.getItem(workerGenerationKey(workerName)) ?? "0", 10);
++        const value = runtimeSources?.browserWorkerHost
++            ? await runtimeSources.browserWorkerHost.readGeneration(workerGenerationKey(workerName))
++            : localStorage.getItem(workerGenerationKey(workerName));
++        const generation = Number.parseInt(value ?? "0", 10);
+         return Number.isSafeInteger(generation) && generation >= 0 ? generation : 0;
+     }
+     catch {
+         return 0;
+     }
+ }
+-function advanceWorkerGeneration(workerName, failedGeneration) {
++async function advanceWorkerGeneration(workerName, failedGeneration, runtimeSources) {
+     try {
+         const key = workerGenerationKey(workerName);
+-        const current = readWorkerGeneration(workerName);
++        const current = await readWorkerGeneration(workerName, runtimeSources);
+         if (current === failedGeneration) {
+-            localStorage.setItem(key, String(failedGeneration + 1));
++            if (runtimeSources?.browserWorkerHost)
++                await runtimeSources.browserWorkerHost.writeGeneration(key, String(failedGeneration + 1));
++            else
++                localStorage.setItem(key, String(failedGeneration + 1));
+         }
+-        return readWorkerGeneration(workerName);
++        return await readWorkerGeneration(workerName, runtimeSources);
+     }
+     catch {
+         return failedGeneration + 1;
+diff --git a/dist/session/create-jazz-session.js b/dist/session/create-jazz-session.js
+index db558187ab9a067135f1f329ab4264f9f0703360..65efeeadf41d64253bfb9bbf297d5df807e371b0 100644
+--- a/dist/session/create-jazz-session.js
++++ b/dist/session/create-jazz-session.js
+@@ -20,7 +20,7 @@ function refuseUnkeptOptions(clientConfig) {
+         let kept = value;
+         if (key === "runtimeSources" && value && typeof value === "object") {
+             // Live handles the Db leaves out of its config.
+-            const { browserWorkerPort: _port, browserWorkerSession: _session, ...sources } = value;
++            const { browserWorkerHost: _host, browserWorkerPort: _port, browserWorkerSession: _session, ...sources } = value;
+             kept = sources;
+         }
+         try {

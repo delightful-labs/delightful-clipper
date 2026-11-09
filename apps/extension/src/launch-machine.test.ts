@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { createActor, waitFor } from 'xstate'
 import type { Capture } from './protocol.js'
+import type { Authorization } from './connection.js'
 import { createLaunchMachine } from './launch-machine.js'
 const id = '77777777-7777-4777-8777-777777777777'
 const url = 'https://example.com/article'
@@ -15,7 +16,8 @@ const capture = {
 function fixture(
 	pending: Capture[] = [],
 	inspect?: Promise<unknown>,
-	deliver: () => Promise<boolean> = async () => true
+	deliver: () => Promise<boolean> = async () => true,
+	authorize: () => Promise<Authorization> = async () => 'connected'
 ) {
 	const persisted = vi.fn(async () => {})
 	const dispatch = vi.fn(deliver)
@@ -29,7 +31,7 @@ function fixture(
 				appId: id,
 				serverUrl: 'https://sync.test/'
 			}),
-			authorize: async () => 'connected',
+			authorize,
 			openSignIn: async () => 1,
 			watchPopup: () => () => {},
 			focusPopup: async () => {},
@@ -142,4 +144,22 @@ it('opens one sign-in popup and saves nothing when it is canceled', async () => 
 	await waitFor(actor, (s) => s.matches('idle'))
 	expect(persist).not.toHaveBeenCalled()
 	actor.stop()
+})
+
+it('waits for a cold offscreen listener before admitting capture without replaying a write', async () => {
+	let attempts = 0
+	const authorize = vi.fn(async () => {
+		if (++attempts < 5) throw new Error('Receiving end does not exist yet')
+		return 'connected' as const
+	})
+	const f = fixture([], undefined, async () => true, authorize)
+	try {
+		f.actor.send({ type: 'CLIP', tab: { id: 7, url } })
+		await waitFor(f.actor, (snapshot) => snapshot.matches('idle'))
+		expect(authorize).toHaveBeenCalledTimes(5)
+		expect(f.persisted).toHaveBeenCalledOnce()
+		expect(f.dispatch).toHaveBeenCalledOnce()
+	} finally {
+		f.actor.stop()
+	}
 })

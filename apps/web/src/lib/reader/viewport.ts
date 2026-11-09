@@ -1,4 +1,4 @@
-import { assign, fromCallback, raise, sendParent, setup } from 'xstate'
+import { assign, enqueueActions, fromCallback, raise, setup } from 'xstate'
 import type { ReadingPosition } from './schema.js'
 import { positionSchema } from './schema.js'
 import {
@@ -12,7 +12,12 @@ import type { ReadingTextIndex } from './anchors.js'
 import type { ReaderExperienceEvent } from '../machines/reader/experience.js'
 
 export type ViewportElements = { root: HTMLElement; scroller: HTMLElement }
-type Input = ViewportElements & { attachmentId: string; position: ReadingPosition | undefined }
+type ViewportReport = Extract<ReaderExperienceEvent, { type: 'MEASURE' | 'VIEWPORT_FAILED' }>
+type Input = ViewportElements & {
+	attachmentId: string
+	position: ReadingPosition | undefined
+	report?: (event: ViewportReport) => void
+}
 type FrameEvent = { type: 'LAYOUT_FRAME' | 'PAINT_FRAME' | 'MEASURE_FRAME' }
 type Event =
 	| FrameEvent
@@ -169,7 +174,7 @@ export const viewportMachine = setup<
 		scrollToStart: typeof scrollToStart
 	},
 	{},
-	{},
+	{ report: ViewportReport },
 	{
 		readingInteraction: undefined
 		changedSizes: { sizes: Context['nextSizes'] }
@@ -193,6 +198,12 @@ export const viewportMachine = setup<
 		locateAnchor,
 		scrollToAnchor,
 		scrollToStart
+	},
+	actions: {
+		report: enqueueActions(({ context, enqueue }, report) => {
+			if (context.report) enqueue(() => context.report?.(report))
+			else enqueue.sendParent(report)
+		})
 	},
 	guards: {
 		readingInteraction: ({ context, event }) =>
@@ -348,11 +359,14 @@ export const viewportMachine = setup<
 													guard: 'newPosition',
 													actions: [
 														assign({ position: ({ event }) => event.position }),
-														sendParent(({ context, event }): ReaderExperienceEvent => ({
-															type: 'MEASURE',
-															attachmentId: context.attachmentId,
-															position: required(event.position)
-														}))
+														{
+															type: 'report',
+															params: ({ context, event }): ViewportReport => ({
+																type: 'MEASURE',
+																attachmentId: context.attachmentId,
+																position: required(event.position)
+															})
+														}
 													]
 												},
 												DETACH: '#reader-viewport.departing'
@@ -448,10 +462,13 @@ export const viewportMachine = setup<
 		closed: { type: 'final' },
 		failed: {
 			type: 'final',
-			entry: sendParent(({ context }): ReaderExperienceEvent => ({
-				type: 'VIEWPORT_FAILED',
-				attachmentId: context.attachmentId
-			}))
+			entry: {
+				type: 'report',
+				params: ({ context }): ViewportReport => ({
+					type: 'VIEWPORT_FAILED',
+					attachmentId: context.attachmentId
+				})
+			}
 		}
 	}
 })

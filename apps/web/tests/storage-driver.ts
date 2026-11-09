@@ -1,6 +1,6 @@
 import { readRecord } from '../src/lib/machines/storage/read.test-support.js'
 import { createActor, toPromise } from 'xstate'
-import { currentLibraryRecords } from '../src/lib/backend/jazz/account.js'
+import { currentLibraryRecords } from './fixture-records.js'
 export async function save(operationId: string) {
 	const records = currentLibraryRecords()
 	const result = await toPromise(
@@ -33,4 +33,4 @@ export async function read(id: string) {
 				: null
 	}
 }
-export { requestCapture } from '../src/lib/backend/jazz/account.js'
+export { requestCapture } from './fixture-records.js'

@@ -37,6 +37,7 @@ it.each(['open', 'commit', 'local', 'uncertain', 'account'] as const)(
 			SyncReceipt,
 			object
 		>({
+			retainDetached: vi.fn(),
 			open: async () => {
 				if (mode === 'open') {
 					entered.resolve()
@@ -120,6 +121,7 @@ it.each(['before', 'resolve', 'reject'] as const)(
 			SyncReceipt,
 			object
 		>({
+			retainDetached: vi.fn(),
 			open,
 			readLocal: async () => null,
 			assess: () => ({ outcome: 'eligible' }),
@@ -161,6 +163,7 @@ it.each(['resolve', 'reject'] as const)(
 			SyncReceipt,
 			object
 		>({
+			retainDetached: vi.fn(),
 			open,
 			readLocal: async () => null,
 			assess: () => ({ outcome: 'eligible' }),
@@ -205,6 +208,7 @@ it.each(['blocked', 'failed', 'saved'] as const)(
 			SyncReceipt,
 			object
 		>({
+			retainDetached: vi.fn(),
 			open: () => ({}),
 			readLocal: async () => null,
 			assess: () =>

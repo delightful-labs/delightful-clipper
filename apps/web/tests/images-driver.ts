@@ -1,5 +1,5 @@
 import { createActor, toPromise } from 'xstate'
-import { currentLibraryRecords } from '../src/lib/backend/jazz/account.js'
+import { currentLibraryRecords } from './fixture-records.js'
 import type { ArticleImage } from '../src/lib/images/schema.js'
 export async function seedImages(urls: string[]) {
 	const records = currentLibraryRecords(),

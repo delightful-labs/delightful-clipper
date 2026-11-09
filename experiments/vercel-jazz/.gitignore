@@ -1,0 +1,10 @@
+node_modules/
+.svelte-kit/
+.vercel/
+.jazz/
+.env
+.env.*
+.vercel
+.env*
+
+.jazz-sdk-patch/

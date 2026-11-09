@@ -138,7 +138,8 @@ export function createImageRecords(
 			isCurrent,
 			hasIntent: async (id: string, _signal: AbortSignal) =>
 				!!(await db.one(app.storageOperations.where({ id, libraryId }), {
-					tier: ReadTier.LocalFirstUnlessEmpty
+					tier: ReadTier.LocalFirst,
+					firstLoadRemoteWaitMs: 5_000
 				})),
 			spawnReady,
 			spawnFailure,
@@ -146,7 +147,10 @@ export function createImageRecords(
 			subscribeImage: (documentId, sourceUrl, next, error) =>
 				subscribe(app.articleImages.where({ libraryId, documentId, sourceUrl }), next, error),
 			asset: async (id: string, _signal: AbortSignal) =>
-				db.one(app.assets.where({ id, libraryId }), { tier: ReadTier.LocalFirstUnlessEmpty })
+				db.one(app.assets.where({ id, libraryId }), {
+					tier: ReadTier.LocalFirst,
+					firstLoadRemoteWaitMs: 5_000
+				})
 		} satisfies Omit<ImageCapability, 'request'>
 	}
 }

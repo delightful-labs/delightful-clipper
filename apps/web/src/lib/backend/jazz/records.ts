@@ -25,7 +25,7 @@ import type { LibraryArticle } from '../../contracts/articles.js'
 /** Reads stay bound to this DB/library; owning actors gate admission and late-result consumption.
  * Native write admission and commit scope protection live in transactionLifecycle. */
 export function createLibraryRecords(
-	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'beginExclusiveTransaction' | 'subscribe'>,
+	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'beginSerializableTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean
 ) {
@@ -111,21 +111,24 @@ export function createLibraryRecords(
 					tier: ReadTier.LocalFirst
 				})
 				const row = await db.one(app.documents.where({ id: article?.contentId ?? id, libraryId }), {
-					tier: ReadTier.LocalFirstUnlessEmpty
+					tier: ReadTier.LocalFirst,
+					firstLoadRemoteWaitMs: 5_000
 				})
 
 				return row && article ? { ...row, id: article.id } : row
 			},
 			snapshot: async (id) => {
 				const row = await db.one(app.snapshots.where({ id, libraryId }), {
-					tier: ReadTier.LocalFirstUnlessEmpty
+					tier: ReadTier.LocalFirst,
+					firstLoadRemoteWaitMs: 5_000
 				})
 
 				return row
 			},
 			asset: async (id) => {
 				const row = await db.one(app.assets.where({ id, libraryId }), {
-					tier: ReadTier.LocalFirstUnlessEmpty
+					tier: ReadTier.LocalFirst,
+					firstLoadRemoteWaitMs: 5_000
 				})
 
 				return row
@@ -186,14 +189,16 @@ export function createLibraryRecords(
 		isCurrent,
 		hasDocument: async (id: string) => {
 			const row = await db.one(app.documents.where({ id, libraryId }), {
-				tier: ReadTier.LocalFirstUnlessEmpty
+				tier: ReadTier.LocalFirst,
+				firstLoadRemoteWaitMs: 5_000
 			})
 
 			return row !== null
 		},
 		hasIntent: async (id: string) => {
 			const row = await db.one(app.storageOperations.where({ id, libraryId }), {
-				tier: ReadTier.LocalFirstUnlessEmpty
+				tier: ReadTier.LocalFirst,
+				firstLoadRemoteWaitMs: 5_000
 			})
 
 			return row !== null

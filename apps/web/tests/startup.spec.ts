@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { startLocalJazzServer } from 'jazz-tools/testing'
+import { startLocalJazzServer } from './browser-core.js'
 import { app } from '../src/lib/backend/jazz/schema.js'
 import permissions from '../src/lib/backend/jazz/permissions.js'
 import { openLibrarySearch, closeLibraryPopovers, openLibraryFilters } from './library-popovers.js'
@@ -27,16 +27,10 @@ test('populated restart bounds rendering, starts search on demand and reads dire
 	page
 }) => {
 	test.setTimeout(90000)
-	await page.addInitScript(() => {
-		const workers: string[] = []
-		Object.assign(window, { startupWorkers: workers })
-		const NativeWorker = window.Worker
-		window.Worker = class extends NativeWorker {
-			constructor(url: string | URL, options?: WorkerOptions) {
-				workers.push(String(url))
-				super(url, options)
-			}
-		}
+
+	let searchStarted = false
+	page.on('request', (request) => {
+		if (request.url().includes('/search/worker.ts')) searchStarted = true
 	})
 	const rootStates: string[] = []
 	page.on('console', (message) => {
@@ -54,8 +48,7 @@ test('populated restart bounds rendering, starts search on demand and reads dire
 	const rows = page.locator('[data-article-id]')
 	await expect(rows).toHaveCount(50)
 	await expect(page.locator(`[data-article-id="${ids[0]}"]`)).toHaveCount(0)
-	const hasSearchWorker = () =>
-		page.evaluate(() => window.startupWorkers.some((path) => path.includes('/search/worker.ts')))
+	const hasSearchWorker = () => Promise.resolve(searchStarted)
 	expect(await hasSearchWorker()).toBe(false)
 	await expect(page.getByText('Private library synced.', { exact: true })).toHaveCount(0)
 	await expect.poll(() => rootStates.some((state) => state.includes('existing'))).toBe(true)
@@ -83,6 +76,7 @@ test('populated restart bounds rendering, starts search on demand and reads dire
 	await page.getByRole('radio', { name: 'All', exact: true }).check()
 	await expect(rows).toHaveCount(50)
 	await closeLibraryPopovers(page)
+	searchStarted = false
 	await page.goto('/articles/' + ids[0])
 	await expect(page.getByRole('article')).toContainText('uniquestartupneedle')
 	expect(await hasSearchWorker()).toBe(false)

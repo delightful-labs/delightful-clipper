@@ -3,6 +3,7 @@ import type { AnyActorRef, AnyStateMachine } from 'xstate'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import type {
 	WorkspaceCreationAssessment,
+	DetachedTransaction,
 	WorkspaceCreationAttempt,
 	WorkspaceCreationResult
 } from 'delightful-local-first/workspace/creation/contracts'
@@ -53,6 +54,7 @@ function requestStage(owner: AnyActorRef) {
 function createDomainTransactionController<Draft, Resource, Write>(
 	domain: AnyStateMachine,
 	lifecycle: {
+		retainDetached: (custody: DetachedTransaction<Resource, Write>) => void
 		open: () => Resource | PromiseLike<Resource>
 		commit: (resource: Resource) => Write | PromiseLike<Write>
 		persistLocal: (write: Write) => void | PromiseLike<void>
@@ -242,6 +244,7 @@ function createDomainTransactionController<Draft, Resource, Write>(
 export function createDomainTransaction<Draft, Resource = TransactionResource, Write = WriteHandle>(
 	domain: AnyStateMachine,
 	lifecycle: {
+		retainDetached: (custody: DetachedTransaction<Resource, Write>) => void
 		open: () => Resource | PromiseLike<Resource>
 		commit: (resource: Resource) => Write | PromiseLike<Write>
 		persistLocal: (write: Write) => void | PromiseLike<void>
