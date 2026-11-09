@@ -18,7 +18,7 @@
 		"@vercel/functions": "3.11.0",
 		"@vercel/sandbox": "3.9.1",
 		"delightful-local-first": "file:../../vendor/delightful-local-first-jazz-alpha60.tgz",
-		"delightful-ui": "file:../../vendor/delightful-ui-20ef7be-tag-normalization.tgz",
+		"delightful-ui": "file:../../vendor/delightful-ui-dd358b8-typography.tgz",
 		"dompurify": "3.4.17",
 		"i18next": "26.7.1",
 		"ipaddr.js": "2.3.0",
