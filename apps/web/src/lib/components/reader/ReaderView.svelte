@@ -84,7 +84,6 @@
 	onMount(() => {
 		const viewport = window.matchMedia('(max-width: 48rem)')
 		mobile = viewport.matches
-		drawerOpen = !mobile
 		const resize = () => {
 			mobile = viewport.matches
 		}

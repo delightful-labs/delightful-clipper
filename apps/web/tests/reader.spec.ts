@@ -272,6 +272,7 @@ test('reader drawer replaces the top toolbar with persistent controls and indepe
 	await expect(page.locator('.reader-toolbar')).toHaveCount(0)
 	const main = page.getByRole('main')
 	const toggle = page.getByRole('button', { name: 'Reading controls', exact: true })
+	await expect(toggle).toHaveAttribute('aria-expanded', 'false')
 	const drawer = await controls(page)
 	await expect(drawer.getByRole('link', { name: 'Open original', exact: true })).toBeVisible()
 	await expect(drawer.getByRole('radio', { name: 'System', exact: true })).toBeChecked()
