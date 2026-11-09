@@ -1,6 +1,6 @@
-import { schema as s, defineMigration } from 'jazz-tools'
+import { schema as s } from 'jazz-tools'
 
-export default defineMigration({
+export default s.defineMigration({
 	createTables: {
 		articleNoteRevisions: true
 	},

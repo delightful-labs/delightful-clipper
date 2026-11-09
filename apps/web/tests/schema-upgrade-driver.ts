@@ -1,6 +1,6 @@
 import { browserAccountStore, fixtureServerUrl } from './browser-account-store.js'
 import { createJazzClient } from 'jazz-tools/client'
-import { legacyApp } from '../src/lib/backend/jazz/legacy-schema.test-support.js'
+import { legacyApp } from './fixtures/schema-history/legacy-schema.test-support.js'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { JAZZ_RUNTIME_VERSION } from '../src/lib/offline/runtime-version.js'
 // Retain old clients only for the live-upgrade fixture; browser-process closure owns cleanup.

@@ -13,7 +13,12 @@ export function browserMigrations(enabled: boolean): Plugin {
 		transform(source, id) {
 			if (!bundle) return
 			const path = id.split('?')[0]
-			if (!path?.includes('/src/lib/backend/jazz/')) return
+			if (
+				!path ||
+				(!path.includes('/src/lib/backend/jazz/') &&
+					!path.includes('/tests/fixtures/schema-history/'))
+			)
+				return
 			const legacy = path.endsWith('/legacy-schema.test-support.ts')
 			const version =
 				path.endsWith('/schema.ts') || /\/pre[a-z-]+schema\.test-support\.ts$/.test(path)

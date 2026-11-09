@@ -1,16 +1,16 @@
 import { permissionsForSchema } from './schema-permissions.test-support.js'
 import preEntityPermissions from './prenote-entities-permissions.test-support.js'
-import entityMigration from './migrations/20261106T161431-independent-notes-b7805d9b30d2-92a26a023aa5.js'
-import { app as preEntitiesApp } from './prenote-entities-schema.test-support.js'
-import noteMigration from './migrations/20261106T144240-article-notes-with-parent-references-dc1365b4b2ec-b7805d9b30d2.js'
-import { app as preNotesApp } from './prenotes-schema.test-support.js'
-import { app as preImageApp } from './preimages-schema.test-support.js'
-import imageMigration from './migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
+import entityMigration from '../../../../tests/fixtures/schema-history/migrations/20261106T161431-independent-notes-b7805d9b30d2-92a26a023aa5.js'
+import { app as preEntitiesApp } from '../../../../tests/fixtures/schema-history/prenote-entities-schema.test-support.js'
+import noteMigration from '../../../../tests/fixtures/schema-history/migrations/20261106T144240-article-notes-with-parent-references-dc1365b4b2ec-b7805d9b30d2.js'
+import { app as preNotesApp } from '../../../../tests/fixtures/schema-history/prenotes-schema.test-support.js'
+import { app as preImageApp } from '../../../../tests/fixtures/schema-history/preimages-schema.test-support.js'
+import imageMigration from '../../../../tests/fixtures/schema-history/migrations/20261106T025204-offline-images-3d99c179e109-dc1365b4b2ec.js'
 import { ReadTier } from 'jazz-tools'
-import readerMigration from './migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
-import { app as preReaderApp } from './prereader-schema.test-support.js'
-import discoveryMigration from './migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
-import { app as preDiscoveryApp } from './prediscovery-schema.test-support.js'
+import readerMigration from '../../../../tests/fixtures/schema-history/migrations/20261105T215835-reader-experience-86d3840835d8-3d99c179e109.js'
+import { app as preReaderApp } from '../../../../tests/fixtures/schema-history/prereader-schema.test-support.js'
+import discoveryMigration from '../../../../tests/fixtures/schema-history/migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
+import { app as preDiscoveryApp } from '../../../../tests/fixtures/schema-history/prediscovery-schema.test-support.js'
 import { it, expect } from 'vitest'
 import { readFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -27,11 +27,11 @@ import {
 import { createServer } from 'node:http'
 import { startLocalJazzServer as startCore, deploy as deployCore } from 'jazz-tools/dev'
 import { app } from './schema.js'
-import { legacyApp } from './legacy-schema.test-support.js'
+import { legacyApp } from '../../../../tests/fixtures/schema-history/legacy-schema.test-support.js'
 import permissions from './permissions.js'
-import { app as preOrganizationApp } from './preorganization-schema.test-support.js'
-import organizationMigration from './migrations/20261105T033336-library-organization-80988faa7219-5315ce57b805.js'
-import migration from './migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
+import { app as preOrganizationApp } from '../../../../tests/fixtures/schema-history/preorganization-schema.test-support.js'
+import organizationMigration from '../../../../tests/fixtures/schema-history/migrations/20261105T033336-library-organization-80988faa7219-5315ce57b805.js'
+import migration from '../../../../tests/fixtures/schema-history/migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
 import { createLibraryRecords } from './records.js'
 import { readRecord } from '../../machines/storage/read.test-support.js'
 
@@ -169,7 +169,10 @@ async function createJazzClient(input: Parameters<typeof createCoreClient>[0]) {
 it('upgrades a persisted pre-article library without resetting its root or readable content', async () => {
 	const legacySchema: typeof app.wasmSchema = JSON.parse(
 		await readFile(
-			new URL('./migrations/snapshots/20261103T173927-9251313c0afe.json', import.meta.url),
+			new URL(
+				'../../../../tests/fixtures/schema-history/migrations/snapshots/20261103T173927-9251313c0afe.json',
+				import.meta.url
+			),
 			'utf8'
 		)
 	)

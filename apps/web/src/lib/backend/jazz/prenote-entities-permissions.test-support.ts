@@ -1,6 +1,6 @@
 import { schema as s } from 'jazz-tools'
 import type { RowRefValue } from 'jazz-tools/permissions'
-import { app } from './prenote-entities-schema.test-support.js'
+import { app } from '../../../../tests/fixtures/schema-history/prenote-entities-schema.test-support.js'
 
 export default s.definePermissions(app, ({ policy, session, allOf, anyOf }) => {
 	const canonical = () =>

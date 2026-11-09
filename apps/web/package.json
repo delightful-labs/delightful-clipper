@@ -9,9 +9,7 @@
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig tsconfig.json --fail-on-warnings && tsc --project src/service-worker/tsconfig.json",
 		"prepare": "svelte-kit sync",
-		"deploy:jazz": "jazz-tools deploy --schema-dir src/lib/backend/jazz",
 		"dev:agent": "pnpm build:parser-worker && vite dev --mode agent --port 5180",
-		"build:deploy-preview": "node --experimental-strip-types tooling/netlify-preview.ts",
 		"build:parser-worker": "esbuild src/lib/server/capture/extract-worker.ts --bundle --platform=node --format=esm --target=node24 --external:jsdom --external:@mozilla/readability --external:dompurify --outfile=.netlify/v1/parser/extract-worker.mjs"
 	},
 	"dependencies": {

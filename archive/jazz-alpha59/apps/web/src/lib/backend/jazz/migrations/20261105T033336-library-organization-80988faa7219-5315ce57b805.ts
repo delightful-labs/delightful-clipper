@@ -1,27 +1,12 @@
-import { schema as s, defineMigration, migration as m } from 'jazz-tools'
+import { schema as s } from 'jazz-tools'
 
-export default defineMigration({
-	migrate: {
-		articleNoteRevisions: {
-			articleParentId: m.add.ref('articles', { default: null }),
-			documentParentId: m.add.ref('documents', { default: null })
-		}
+export default s.defineMigration({
+	createTables: {
+		organizationOperations: true
 	},
-	fromHash: 'd7f861eae955',
-	toHash: 'b7805d9b30d2',
+	fromHash: '80988faa7219',
+	toHash: '5315ce57b805',
 	from: {
-		articleNoteRevisions: s.table(
-			{
-				libraryId: s.uuid(),
-				articleId: s.uuid(),
-				text: s.string(),
-				parents: s.string(),
-				editedAt: s.string()
-			},
-			{
-				library: s.rel('libraries', 'libraryId')
-			}
-		),
 		articles: s.table(
 			{
 				libraryId: s.uuid(),
@@ -95,22 +80,6 @@ export default defineMigration({
 		)
 	},
 	to: {
-		articleNoteRevisions: s.table(
-			{
-				libraryId: s.uuid(),
-				articleId: s.uuid(),
-				articleParentId: s.uuid().optional(),
-				documentParentId: s.uuid().optional(),
-				text: s.string(),
-				parents: s.string(),
-				editedAt: s.string()
-			},
-			{
-				library: s.rel('libraries', 'libraryId'),
-				articleParent: s.rel('articles', 'articleParentId'),
-				documentParent: s.rel('documents', 'documentParentId')
-			}
-		),
 		articles: s.table(
 			{
 				libraryId: s.uuid(),
@@ -159,6 +128,21 @@ export default defineMigration({
 				bootstrapVersion: s.string()
 			},
 			{}
+		),
+		organizationOperations: s.table(
+			{
+				libraryId: s.uuid(),
+				articleId: s.uuid().optional(),
+				documentId: s.uuid().optional(),
+				field: s.string(),
+				value: s.string(),
+				parents: s.string()
+			},
+			{
+				library: s.rel('libraries', 'libraryId'),
+				article: s.rel('articles', 'articleId'),
+				document: s.rel('documents', 'documentId')
+			}
 		),
 		snapshots: s.table(
 			{
