@@ -1,3 +1,4 @@
+import { readingControls } from './reader-ui.js'
 import { closeLibraryPopovers, openLibraryFilters } from './library-popovers.js'
 import { openAddLink } from './add-link.js'
 import { test, expect, chromium } from '@playwright/test'
@@ -82,6 +83,7 @@ test('changes all statuses, keeps favorites independent, combines filters, and p
 	await expect(first.getByLabel('Status', { exact: true })).toHaveValue('later')
 	await first.getByRole('link', { name: 'Supplied clip', exact: true }).click()
 	await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
+	await readingControls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	await expect(first.getByLabel('Status', { exact: true })).toHaveValue('later')
 })

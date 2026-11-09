@@ -1,3 +1,4 @@
+import { readingControls } from './reader-ui.js'
 import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from './library-popovers.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
@@ -285,6 +286,7 @@ test('persists tags and Trash across a complete offline browser restart and rest
 		await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
 		await page.getByRole('button', { name: 'Restore article', exact: true }).click()
 		await expect(page.getByRole('button', { name: 'Restore article', exact: true })).toHaveCount(0)
+		await readingControls(page)
 		await page.getByRole('link', { name: 'Open library', exact: true }).click()
 		const restored = page.locator(`[data-article-id="${item.id}"]`)
 		await expect(restored).toBeVisible()
