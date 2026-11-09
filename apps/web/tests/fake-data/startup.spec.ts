@@ -1,3 +1,4 @@
+import { readingControls } from '../reader-ui.js'
 import { openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { test, expect } from '@playwright/test'
 import { startLocalJazzServer } from '../browser-core.js'
@@ -56,6 +57,7 @@ test('flag-enabled startup populates a real library once and preserves edits, re
 	await expect
 		.poll(async () => (await page.getByRole('article').textContent())?.length ?? 0)
 		.toBeGreaterThan(200)
+	await readingControls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	await openLibrarySearch(page)
 	const search = page.getByRole('searchbox', { name: 'Search articles', exact: true })

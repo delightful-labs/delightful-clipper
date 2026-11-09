@@ -1,3 +1,4 @@
+import { readingControls } from './reader-ui.js'
 import { openAddLink } from './add-link.js'
 import { test, expect, chromium } from '@playwright/test'
 import { startLocalJazzServer } from './browser-core.js'
@@ -330,7 +331,10 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await page.getByRole('link', { name: 'UI saved article', exact: true }).click()
 	await expect(page.getByRole('article')).toContainText('Literal <script> stays text.')
 	const reader = page.getByRole('article')
-	await expect(page.getByRole('link', { name: 'Open original', exact: true })).toBeVisible()
+	await expect(
+		(await readingControls(page)).getByRole('link', { name: 'Open original', exact: true })
+	).toBeVisible()
+	await page.getByRole('button', { name: 'Reading controls', exact: true }).click()
 	await expect(reader.getByRole('heading', { name: 'Structured heading' })).toBeVisible()
 	await expect(reader.locator('code')).toHaveText('const safe = true')
 	await expect(reader.locator('svg')).toBeHidden()
@@ -352,6 +356,7 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	await expect(reader.locator('li')).toBeFocused()
 	await expect(page).toHaveURL(/\/articles\/[0-9a-f-]+/)
 	await expect(page.getByRole('region', { name: 'Saved articles' })).toHaveCount(0)
+	await readingControls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	expect(await page.evaluate(() => Reflect.get(globalThis, 'readerCompromised'))).toBeUndefined()
 
@@ -384,6 +389,7 @@ test('Add Link automatically saves and detects a resolved duplicate without repl
 	expect(page.context().pages()).toHaveLength(pagesBefore)
 	await page.goBack()
 	await expect(page.getByRole('article')).toContainText('Exact UI text café 🦊')
+	await readingControls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
 	await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)
@@ -512,6 +518,7 @@ test('reader falls back to exact text when a saved asset is not HTML', async ({ 
 		.click()
 	await expect(page.getByRole('article')).toContainText('Exact offline text café 🦊')
 	await expect(page.getByRole('article').locator('.reader')).toHaveClass(/plain/)
+	await readingControls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	await expect(page.getByRole('article')).toHaveCount(0)
 })
@@ -632,6 +639,7 @@ test('capture continues when the initiating library page is replaced by a reader
 	await first.click()
 	await expect(page.getByRole('article')).toContainText('Exact UI text café 🦊')
 	gate.resolve()
+	await readingControls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	await expect(
 		page
@@ -848,10 +856,10 @@ test('keeps account controls in the desktop drawer without replacing the library
 	await expect(
 		page.getByRole('main').getByRole('button', { name: 'Restore account', exact: true })
 	).toHaveCount(0)
-	await page.locator('header').getByRole('button', { name: 'Close account', exact: true }).click()
+	await page.getByRole('button', { name: 'Close account', exact: true }).click()
 	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
 	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
-	await page.locator('header').getByRole('button', { name: 'Show account', exact: true }).click()
+	await page.getByRole('button', { name: 'Show account', exact: true }).click()
 	await expect(
 		drawer.getByRole('button', { name: 'Show recovery phrase', exact: true })
 	).toBeVisible()

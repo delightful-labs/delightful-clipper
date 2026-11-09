@@ -1,3 +1,4 @@
+import { readingControls } from './reader-ui.js'
 import type { ArticleImage } from '../src/lib/images/schema.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
@@ -108,6 +109,7 @@ test('shows text before image completion, resizes in a real worker, preserves se
 	)
 	expect(remote).toEqual([])
 	expect(requests).toBe(1)
+	await readingControls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	await page.getByRole('link', { name: 'Offline image fixture', exact: true }).click()
 	await imageLoaded(page)
@@ -145,6 +147,7 @@ test('continues background acquisition after leaving the reader and retries a fa
 	const failedName = 'Saved image ' + (urls.findIndex((url) => url === failedUrl) + 1),
 		backgroundName = 'Saved image ' + (urls.findIndex((url) => url !== failedUrl) + 1)
 	await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+	await readingControls(page)
 	await page.getByRole('link', { name: 'Open library', exact: true }).click()
 	gate.resolve()
 	await expect
