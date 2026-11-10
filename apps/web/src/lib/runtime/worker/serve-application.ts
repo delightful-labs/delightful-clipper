@@ -39,7 +39,9 @@ export function serveApplicationWorker(options: {
 		storage: z.instanceof(MessagePort),
 		storageControl: z.instanceof(MessagePort),
 		storageScope: hostScopeSchema,
-		broker: z.instanceof(MessagePort)
+		broker: z.instanceof(MessagePort),
+		brokerControl: z.instanceof(MessagePort),
+		brokerScope: hostScopeSchema
 	})
 	let observedRecovery: object | undefined
 	let host: WorkerHost | undefined
@@ -112,7 +114,15 @@ export function serveApplicationWorker(options: {
 				onBlocked: () => self.postMessage({ type: 'FAILED' })
 			}
 		)
-		const broker = brokerHostClient(brokerPort)
+		const broker = brokerHostClient(
+			brokerPort,
+			decoded.data.brokerControl,
+			decoded.data.brokerScope,
+			{
+				onOverdue: () => self.postMessage({ type: 'FAILED' }),
+				onBlocked: () => self.postMessage({ type: 'FAILED' })
+			}
+		)
 		const key = (options.storageKey ?? accountStorageKey)(serverUrl)
 		self.postMessage({ type: 'STORAGE_NAMESPACE', key })
 		const accountStore = createScopedWorkerAccountStore(key, storage, {
@@ -129,6 +139,7 @@ export function serveApplicationWorker(options: {
 				...input,
 				scope: crypto.randomUUID(),
 				closeAccountStore: accountStore.close,
+				closeBroker: broker.close,
 				callbackAttempt: decoded.data.callbackAttempt,
 				authReturned: () => self.postMessage({ type: 'AUTH_RETURNED' })
 			},
@@ -210,7 +221,6 @@ export function serveApplicationWorker(options: {
 			complete: () => {
 				for (const subscription of subscriptions.values()) subscription.unsubscribe()
 				subscriptions.clear()
-				broker.close()
 				attachment?.close()
 				const url = actor.getSnapshot().context.redirect
 				self.postMessage(url ? { type: 'NAVIGATE', url } : { type: 'CLOSED' })

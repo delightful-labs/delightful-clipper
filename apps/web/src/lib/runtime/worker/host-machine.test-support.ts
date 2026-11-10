@@ -9,7 +9,8 @@ import { workerHostMachine } from './host-machine.js'
 
 export function createWorkerHostFixture(
 	acquisition?: Promise<void>,
-	closeAccountStore?: () => Promise<WorkerHostClosed>
+	closeAccountStore?: () => Promise<WorkerHostClosed>,
+	closeBroker?: () => Promise<WorkerHostClosed>
 ) {
 	bindWorkerConnectivity(true)
 	const unused = vi.fn(async () => {})
@@ -70,7 +71,12 @@ export function createWorkerHostFixture(
 		close,
 		owner,
 		actor: createActor(workerHostMachine, {
-			input: { ...input, scope: 'test-scope', ...(closeAccountStore ? { closeAccountStore } : {}) }
+			input: {
+				...input,
+				scope: 'test-scope',
+				...(closeAccountStore ? { closeAccountStore } : {}),
+				...(closeBroker ? { closeBroker } : {})
+			}
 		})
 	}
 }

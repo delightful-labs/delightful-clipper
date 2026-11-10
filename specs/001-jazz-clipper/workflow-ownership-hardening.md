@@ -1,6 +1,6 @@
 # Workflow ownership hardening specification
 
-**Status:** Partially implemented: A and production account storage in B. Broker integration and C–G remain open. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
+**Status:** Partially implemented: A and B are complete for Clipper. C–G remain open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
 
 Move the remaining authentication and runtime lifecycle decisions into their owning charts. A reader must be able to identify admission, replacement, operation order, completion, failure and cancellation from the statecharts and their typed protocols. Preserve established product and persistence semantics while making resource ownership explicit and adding recoverable outcomes for stalled operations.
 
@@ -190,10 +190,13 @@ DLF-2: Qualify shared child lifecycles with independently modeled domain-free co
 
 Implementation checkpoint: shared DLF request/channel/effect-drain contracts and
 Clipper's production scoped account owner, native lock custody and shutdown
-ordering are implemented. [The ownership graph and protocol](../../docs/reviews/scoped-account-transport.md)
-describe actual root invocation boundaries, deadline policy and lost-write
-recovery. REC-3's Clipper account-storage scenarios are covered; broker migration
-and the remaining SHARE-3/DLF-3 consumer compositions remain open.
+ordering are implemented, including broker migration and transferred-port custody.
+[The account protocol](../../docs/reviews/scoped-account-transport.md) and
+[broker protocol/comparison](../../docs/reviews/scoped-broker-transport.md) describe
+actual root invocation boundaries, deadline policies and qualification. SHARE-3
+and REC-3 are covered for Clipper. The pinned comparison and Clipper evidence for
+DLF-3 are complete; actual-adapter qualification remains required before Finance
+adoption. No Finance adoption is included in this change set.
 
 **Files and owners:** DLF Jazz account-store/worker-host integration; Clipper `runtime/worker/account-store.ts`, `storage-channel.ts`, `broker-channel.ts` and narrow Window compatibility adapters.
 

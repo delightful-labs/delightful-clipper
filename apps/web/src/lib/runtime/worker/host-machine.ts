@@ -27,6 +27,7 @@ type Input = AccountInput<Session> & {
 	callbackAttempt?: string | null | undefined
 	authReturned?: () => void
 	closeAccountStore?: () => Promise<WorkerHostClosed>
+	closeBroker?: () => Promise<WorkerHostClosed>
 }
 type LibraryRef = ActorRefFrom<typeof libraryMachine>
 type Context = {
@@ -74,7 +75,7 @@ const actors = {
 	owner,
 	tagForm: tagFormMachine,
 	close: createAsyncLogic({ run: ({ input }: { input: Session }) => input.close() }),
-	closeAccountStore: createAsyncLogic<WorkerHostClosed, () => Promise<WorkerHostClosed>>({
+	closeTransport: createAsyncLogic<WorkerHostClosed, () => Promise<WorkerHostClosed>>({
 		run: ({ input }) => input()
 	})
 }
@@ -112,12 +113,14 @@ export const workerHostMachine = setup({
 			application: types<import('xstate').ActorRefFrom<(typeof actors)['application']>>(),
 			owner: types<import('xstate').ActorRefFrom<(typeof actors)['owner']>>(),
 			tagForm: types<import('xstate').ActorRefFrom<(typeof actors)['tagForm']>>(),
-			closeAccountStore: types<import('xstate').ActorRefFrom<typeof actors.closeAccountStore>>(),
+			closeAccountStore: types<import('xstate').ActorRefFrom<typeof actors.closeTransport>>(),
+			closeBroker: types<import('xstate').ActorRefFrom<typeof actors.closeTransport>>(),
 			close: types<import('xstate').ActorRefFrom<(typeof actors)['close']>>()
 		}
 	},
 	actors,
 	guards: {
+		hasBroker: ({ context }: { context: Context }) => context.input.closeBroker !== undefined,
 		hasAccountStore: ({ context }: { context: Context }) =>
 			context.input.closeAccountStore !== undefined,
 		custodyClear: () => !hasDetachedTransactions(),
@@ -387,7 +390,13 @@ export const workerHostMachine = setup({
 				},
 				OWNER_EMPTY: (args) => {
 					if (args.guards.custodyClear()) {
-						return { target: args.guards.hasAccountStore(args) ? 'closingAccountStore' : 'closed' }
+						return {
+							target: args.guards.hasAccountStore(args)
+								? 'closingAccountStore'
+								: args.guards.hasBroker(args)
+									? 'closingBroker'
+									: 'closed'
+						}
 					}
 					return { target: 'failed' }
 				}
@@ -402,7 +411,11 @@ export const workerHostMachine = setup({
 					return context.session
 				},
 				onDone: (args) => ({
-					target: args.guards.hasAccountStore(args) ? 'closingAccountStore' : 'closed'
+					target: args.guards.hasAccountStore(args)
+						? 'closingAccountStore'
+						: args.guards.hasBroker(args)
+							? 'closingBroker'
+							: 'closed'
 				}),
 				onError: { target: 'failed' }
 			}
@@ -410,8 +423,17 @@ export const workerHostMachine = setup({
 		closingAccountStore: {
 			invoke: {
 				id: 'closeAccountStore',
-				src: 'closeAccountStore',
+				src: 'closeTransport',
 				input: ({ context }) => required(context.input.closeAccountStore),
+				onDone: (args) => ({ target: args.guards.hasBroker(args) ? 'closingBroker' : 'closed' }),
+				onError: { target: 'failed' }
+			}
+		},
+		closingBroker: {
+			invoke: {
+				id: 'closeBroker',
+				src: 'closeTransport',
+				input: ({ context }) => required(context.input.closeBroker),
 				onDone: { target: 'closed' },
 				onError: { target: 'failed' }
 			}

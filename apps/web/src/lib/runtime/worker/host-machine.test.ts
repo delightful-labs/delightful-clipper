@@ -112,3 +112,49 @@ it('account-store close failure refuses clean worker closure', async () => {
 		f.owner.stop()
 	}
 })
+
+it('awaits SDK, account-store and exact broker-host closure in order before reporting CLOSED', async () => {
+	const storeReceipt = Promise.withResolvers<{ scope: string; requestId: string }>()
+	const brokerReceipt = Promise.withResolvers<{ scope: string; requestId: string }>()
+	const closeStore = vi.fn(() => storeReceipt.promise),
+		closeBroker = vi.fn(() => brokerReceipt.promise)
+	const f = fixture(undefined, closeStore, closeBroker)
+	try {
+		f.actor.start()
+		f.actor.send({ type: 'SHUTDOWN' })
+		await waitFor(f.actor, (snapshot) => snapshot.matches('closingAccountStore'), { timeout: 1000 })
+		expect(f.close).toHaveBeenCalledOnce()
+		expect(closeBroker).not.toHaveBeenCalled()
+		storeReceipt.resolve({ scope: 'storage', requestId: 'storage-proof' })
+		await waitFor(f.actor, (snapshot) => snapshot.matches('closingBroker'), { timeout: 1000 })
+		expect(closeBroker).toHaveBeenCalledOnce()
+		expect(f.actor.getSnapshot().status).toBe('active')
+		brokerReceipt.resolve({ scope: 'broker', requestId: 'broker-proof' })
+		await waitFor(f.actor, (snapshot) => snapshot.status === 'done', { timeout: 1000 })
+	} finally {
+		storeReceipt.resolve({ scope: 'storage', requestId: 'storage-proof' })
+		brokerReceipt.resolve({ scope: 'broker', requestId: 'broker-proof' })
+		f.actor.stop()
+		f.owner.stop()
+	}
+})
+
+it('broker close failure refuses clean realm closure after SDK and account custody settle', async () => {
+	const closeStore = vi.fn(async () => ({ scope: 'storage', requestId: 'proof' }))
+	const closeBroker = vi.fn(async () => {
+		throw new Error('broker closure unknown')
+	})
+	const f = fixture(undefined, closeStore, closeBroker)
+	try {
+		f.actor.start()
+		f.actor.send({ type: 'SHUTDOWN' })
+		await waitFor(f.actor, (snapshot) => snapshot.matches('failed'), { timeout: 1000 })
+		expect(f.close).toHaveBeenCalledOnce()
+		expect(closeStore).toHaveBeenCalledOnce()
+		expect(closeBroker).toHaveBeenCalledOnce()
+		expect(f.actor.getSnapshot().status).toBe('active')
+	} finally {
+		f.actor.stop()
+		f.owner.stop()
+	}
+})

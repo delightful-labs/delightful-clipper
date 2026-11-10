@@ -1,7 +1,7 @@
 # Workflow hardening PR checkpoint
 
-This checkpoint completes change set A and the production account-storage portion
-of B. Broker migration and C–G remain separate work. The
+This checkpoint completes change sets A and B for Clipper. C–G remain separate
+work. Finance adoption retains its separate actual-adapter qualification gate. The
 [implementation specification](../../specs/001-jazz-clipper/workflow-ownership-hardening.md)
 remains authoritative; this PR does not complete the whole specification.
 
@@ -60,7 +60,7 @@ passed 673 unit/native tests, six worker browser cases, 12 packaged-extension
 cases and eight production-offline cases. Current checkpoint results below
 supersede those counts.
 
-## B shared transport and production account storage
+## B shared transport, account storage and broker
 
 DLF commits `c4a4992`, `b0059fe`, `5bda676` and `1571ba2` supply scoped requests,
 bounded concurrent channels, independent host closure and original-effect drain.
@@ -90,8 +90,15 @@ an actor never stands in for native settlement. Normal shutdown waits for active
 operations, keepers and exact host closure before the application emits `CLOSED`.
 Disruptive disposal rejects clean closure and leaves necessary custody alive.
 
-See [scoped account transport](scoped-account-transport.md) for the invocation and
-coordination graph, deadline policy and native adapter boundaries.
+Broker traffic now uses the same shared scoped channel at Worker initialization.
+OPEN transfers exactly one validated port; stale, duplicate, malformed, late and
+unclaimed ports are closed. Native failed-post cleanup retains no untransferred
+port. Generation keys and SDK URL/name selection are preserved. Independent broker
+host closure follows SDK and account-store closure before CLOSED/navigation.
+
+See [scoped account transport](scoped-account-transport.md) and
+[scoped broker transport](scoped-broker-transport.md) for invocation/coordination
+graphs, deadline policies, native boundaries and the pinned Finance comparison.
 
 ## Checkpoint qualification
 
@@ -107,9 +114,9 @@ Final Clipper checkpoint checks passed:
 
 - `pnpm verify`: installed vendor integrity/import checks, repository formatting
   and lint, strict types, web/extension Svelte checks with zero errors/warnings,
-  **712 unit/native tests in 110 files**, and the production Netlify build.
-- `pnpm test:worker`: **nine browser cases**, including normal and forced-stop
-  account custody with dropped WRITE acknowledgement and delayed host closure.
+  **736 unit/native tests in 112 files**, and the production Netlify build.
+- `pnpm test:worker`: **11 browser cases**, including account custody with dropped WRITE acknowledgement
+  and delayed closure, plus real SharedWorker port ownership and late-port disposal.
 - `pnpm test:extension`: **12 packaged-extension cases**, including restoration,
   offline saves, browser restart and repeated settings teardown.
 - `pnpm test:offline`: **eight production cases**, including linked, existing and
@@ -117,25 +124,35 @@ Final Clipper checkpoint checks passed:
   edits, reconnection, cold reader reopening with both servers stopped and shell
   update failure/recovery. Both production Netlify fixtures built successfully.
 
-These checks ran against the final production account-storage integration and
+These checks ran against the final production account-storage/broker integration and
 the frozen archive above, using Clipper's managed Node `24.22.2`. They do not
-establish the deferred broker or Finance adoption criteria.
+establish Finance adoption or completion of C–G.
 
-The focused account-storage selection already passes 56 native/unit cases in ten
-files and nine Worker browser cases. These include dropped WRITE replies, wrong
-and delayed host-close receipts, actual competing Web Locks, forced owner stop,
-child failure, queued cancellation, reentrant disposal and missing native release
-acknowledgement. Strict targeted TypeScript and web/extension checks pass with zero
-Svelte errors/warnings. Browser tests use the actual SDK account-store facade,
-Window localStorage and Worker factories. Each fault case observes one original
-transform/write and retains the original operation identity.
+The focused Worker selection passes 80 native/unit cases in 12 files, including
+21 new broker scenarios, two shutdown-ordering scenarios and one generated
+custody campaign (120 runs, seed `20261115`, full contract-model coverage).
+They cover dropped WRITE replies, wrong/delayed host-close receipts, actual
+competing Web Locks, forced owner stop, child failure, queued cancellation,
+reentrant disposal, missing release acknowledgement and native broker port custody.
+Strict targeted TypeScript and web/extension checks pass with zero Svelte
+errors/warnings. Chromium tests use actual Workers, SharedWorkers, MessageChannels,
+localStorage and account-store factories.
+
+The extension harness accepts explicit web/core origins and a native source port
+so qualification can avoid other running servers. Default authorities remain
+unchanged. This run uses `CLIPPER_TEST_WEB_URL=http://127.0.0.1:5482`,
+`CLIPPER_TEST_CORE_URL=http://127.0.0.1:5483` and
+`CLIPPER_TEST_SOURCE_PORT=0` with `pnpm test:extension`; source URLs/assertions use
+the actual assigned port. Earlier attempts were blocked before test execution by
+occupied default ports; no unidentified process was stopped. The initial Worker
+browser run overlapped a test-file edit and reloaded; all 11 cases passed with
+source frozen. No assertions or product behavior were weakened.
 
 ## Follow-up boundary
 
-- B: migrate and qualify the broker channel, including transferred-port custody;
-  reconcile shared account integration with Finance's actual adapter before any
-  Finance adoption. SHARE-3 and DLF-3 remain open for those compositions. REC-3's
-  Clipper account-storage lost/late-write scenarios are covered here.
+- B is complete for Clipper: SHARE-3/REC-3 and the Clipper adapter/comparison
+  evidence for DLF-3 are covered. Before Finance adopts the shared runtime, qualify
+  its actual adapter/account owner; that consumer migration is not included here.
 - C: complete account binding and realm lifecycle work beyond the account-store
   closure ordering introduced here.
 - D–G: implement the remaining session, reader, authentication, root ownership and
@@ -143,6 +160,6 @@ transform/write and retains the original operation identity.
 
 The legacy account-store/storage fixtures and SDK compatibility worker remain for
 existing compatibility coverage; production application storage uses the scoped
-owner. Broker routing still uses its existing owner. No storage namespace,
+owner. Production broker routing uses the shared scoped channel. No storage namespace,
 identity, schema or Finance policy is migrated: web v2 and extension v1 keys and
 lock names are preserved. No new dependency or user-visible copy is introduced.

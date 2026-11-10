@@ -1,7 +1,8 @@
 # Scoped account transport implementation
 
 Production application account storage now uses the scoped DLF channel and a
-Worker account-store owner. Broker migration remains follow-up work.
+Worker account-store owner. Production broker traffic also uses the shared
+channel; see [scoped broker transport](scoped-broker-transport.md).
 
 ## Ownership and invocation
 
@@ -77,7 +78,8 @@ Before-write failures remain not-issued. Success requires the native lock reques
 promise to settle after release, rather than merely calling a release function.
 The owner rejects new updates after shutdown and waits for both update children
 and detached keepers before requesting exact channel/host closure. The application
-host awaits SDK closure and this account-store closure before emitting `CLOSED`.
+host awaits SDK closure, this account-store closure, then broker-host closure
+before emitting `CLOSED`.
 
 Deadlines are named, injectable chart policies: the account owner defaults to
 10 seconds per lock/read/write/release wait; the scoped channel retains its
@@ -122,7 +124,7 @@ for final regression counts and archive provenance. Both consumers use DLF sourc
 `1571ba2`; all native alpha.60 module bytes and existing patches are preserved.
 Web v2 and extension v1 keys/locks remain unchanged.
 
-Broker routing is unchanged. Its scoped-channel migration, transferred-port cases,
-Finance adoption and the rest of change sets C–G remain open. The legacy account
+Broker routing and transferred-port cases are now covered by the scoped broker
+integration. Finance adoption and change sets C–G remain open. The legacy account
 owner remains for compatibility fixtures and must not be supplied the new scoped
 transport: its old write-error release path does not implement this custody contract.

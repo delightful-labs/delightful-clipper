@@ -39,9 +39,18 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 		new Worker(new URL('./application.worker.ts', import.meta.url), { type: 'module' })
 	const storage = new MessageChannel(),
 		storageControl = new MessageChannel(),
-		broker = new MessageChannel()
+		broker = new MessageChannel(),
+		brokerControl = new MessageChannel()
 	const storageScope = crypto.randomUUID()
-	const releaseBroker = serveBrokerHost(broker.port1)
+	const brokerScope = crypto.randomUUID()
+	const releaseBroker = serveBrokerHost(broker.port1, brokerControl.port1, brokerScope, {
+		origin: window.location.origin,
+		storage: {
+			getItem: (key) => localStorage.getItem(key),
+			setItem: (key, value) => localStorage.setItem(key, value)
+		},
+		open: (url, name) => new SharedWorker(url, { type: 'module', name })
+	})
 	const connectivity = () => worker.postMessage({ type: 'CONNECTIVITY', online: navigator.onLine })
 	window.addEventListener('online', connectivity)
 	window.addEventListener('offline', connectivity)
@@ -101,9 +110,11 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 			storage: storage.port2,
 			storageControl: storageControl.port2,
 			storageScope,
-			broker: broker.port2
+			broker: broker.port2,
+			brokerControl: brokerControl.port2,
+			brokerScope
 		},
-		[storage.port2, storageControl.port2, broker.port2]
+		[storage.port2, storageControl.port2, broker.port2, brokerControl.port2]
 	)
 	return () => {
 		window.removeEventListener('online', connectivity)
