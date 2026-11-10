@@ -58,9 +58,7 @@
 
 <style>
 	.organization-controls {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		align-items: end;
+		display: grid;
+		gap: var(--dui-spacing-sm);
 	}
 </style>

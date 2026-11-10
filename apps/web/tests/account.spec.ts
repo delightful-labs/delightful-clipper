@@ -1,3 +1,4 @@
+import { openArticleActions } from './article-actions.js'
 import {
 	openAccountSettings,
 	openAllArticles,
@@ -820,10 +821,20 @@ test('Retry from a second tab reaches the worker holding the library lock', asyn
 		.getByRole('dialog', { name: 'Add link', exact: true })
 		.getByRole('button', { name: 'Add link', exact: true })
 		.click()
-	await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+	await expect(
+		(await openArticleActions(page.locator('[data-article-id]'))).getByRole('button', {
+			name: 'Retry',
+			exact: true
+		})
+	).toBeVisible()
 	const second = await context.newPage()
 	await second.goto('/')
-	await expect(second.getByRole('button', { name: 'Retry', exact: true })).toBeVisible()
+	await expect(
+		(await openArticleActions(second.locator('[data-article-id]'))).getByRole('button', {
+			name: 'Retry',
+			exact: true
+		})
+	).toBeVisible()
 	await second.getByRole('button', { name: 'Retry', exact: true }).click()
 	await expect(second.getByRole('link', { name: 'Retried across tabs', exact: true })).toBeVisible()
 	await expect(page.getByRole('link', { name: 'Retried across tabs', exact: true })).toBeVisible()

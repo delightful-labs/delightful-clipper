@@ -30,6 +30,7 @@
 	} = $props()
 	const listId = $props.id()
 	let pendingIndex = $state<number>()
+	let removedAction = $state<{ id: string; candidates: string[]; trigger: HTMLElement }>()
 	$effect(() => {
 		if (pendingIndex === undefined || !rows[pendingIndex]) return
 		const first = rows[pendingIndex]
@@ -40,8 +41,8 @@
 	$effect(() => {
 		void resetKey
 		pendingIndex = undefined
+		removedAction = undefined
 	})
-	let removedAction = $state<{ id: string; candidates: string[]; trigger: HTMLElement }>()
 
 	$effect(() => {
 		const pending = removedAction
@@ -61,16 +62,16 @@
 		onmore()
 	}
 
-	function changeTrash(row: LibraryArticle, trigger: HTMLElement) {
-		const index = rows.findIndex((item) => item.id === row.id)
+	function organize(request: OrganizationRequest, trigger: HTMLElement) {
+		const index = rows.findIndex((item) => item.id === request.id)
 		removedAction = {
-			id: row.id,
+			id: request.id,
 			candidates: [...rows.slice(index + 1), ...rows.slice(0, index).reverse()].map(
 				(item) => item.id
 			),
 			trigger
 		}
-		onorganize({ id: row.id, field: 'trashed', value: !row.trashed })
+		onorganize(request)
 	}
 </script>
 
@@ -82,8 +83,9 @@
 				id={listId + '-' + row.id}
 				readable={readable[row.id] === true}
 				{enabled}
-				{onorganize}
-				ontrash={(trigger) => changeTrash(row, trigger)}
+				onorganize={organize}
+				ontrash={(trigger) =>
+					organize({ id: row.id, field: 'trashed', value: !row.trashed }, trigger)}
 				ontags={(trigger) => ontags(row, trigger)}
 				onretry={() => onretry(row.id)}
 			/>

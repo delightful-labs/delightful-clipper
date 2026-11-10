@@ -1,3 +1,4 @@
+import { openArticleActions } from '../article-actions.js'
 import { readRecoveryPhrase, restoreAccount } from '../account-ui.js'
 import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { openAddLink } from '../add-link.js'
@@ -182,14 +183,29 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const organized = page
 			.getByRole('region', { name: 'Saved articles' })
 			.locator('[data-article-id]')
-		await organized.getByLabel('Status', { exact: true }).selectOption('archive')
+		await (
+			await openArticleActions(organized)
+		)
+			.getByLabel('Status', { exact: true })
+			.selectOption('archive')
 		await expect(organized.getByLabel('Status', { exact: true })).toBeEnabled()
-		await organized.getByRole('button', { name: 'Favorite', exact: true }).click()
+		await (
+			await openArticleActions(organized)
+		)
+			.getByRole('button', { name: 'Favorite', exact: true })
+			.click()
 		await expect(
-			organized.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(organized)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toBeEnabled()
 
-		await organized.getByRole('button', { name: 'tags', exact: true }).click()
+		await (
+			await openArticleActions(organized)
+		)
+			.getByRole('button', { name: 'tags', exact: true })
+			.click()
 		const tagDialog = page.getByRole('dialog', { name: 'tags', exact: true })
 		await tagDialog.locator('input[type="text"]').fill('RestartOnlyTag')
 		await tagDialog.getByRole('button', { name: 'Add tag', exact: true }).click()
@@ -308,14 +324,21 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.getByRole('region', { name: 'Saved articles' })
 			.locator('[data-article-id]')
 		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
-		await offlineRow.getByRole('button', { name: 'tags', exact: true }).click()
+		await (
+			await openArticleActions(offlineRow)
+		)
+			.getByRole('button', { name: 'tags', exact: true })
+			.click()
 		const offlineTags = reopened.getByRole('dialog', { name: 'tags', exact: true })
 		await expect(
 			offlineTags.getByRole('button', { name: 'Remove RestartOnlyTag', exact: true })
 		).toBeVisible()
 		await offlineTags.getByRole('button', { name: 'Close', exact: true }).click()
 		await expect(
-			offlineRow.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(offlineRow)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toHaveAttribute('aria-pressed', 'true')
 		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Inbox', exact: true }).check()
@@ -335,14 +358,22 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await search.fill('RESTARTONLYTAGS shel')
 		await expect(offlineRow).toBeVisible()
 		await closeLibraryPopovers(reopened)
-		await offlineRow.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+		await (
+			await openArticleActions(offlineRow)
+		)
+			.getByRole('button', { name: 'Move to Trash', exact: true })
+			.click()
 		await expect(offlineRow).toHaveCount(0)
 		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Trash', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
 		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
 		await closeLibraryPopovers(reopened)
-		await offlineRow.getByRole('button', { name: 'Restore article', exact: true }).click()
+		await (
+			await openArticleActions(offlineRow)
+		)
+			.getByRole('button', { name: 'Restore article', exact: true })
+			.click()
 		await expect(offlineRow).toHaveCount(0)
 		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
@@ -363,7 +394,10 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			timeout: 30000
 		})
 		await expect(
-			syncedOrganization.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(syncedOrganization)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toHaveAttribute('aria-pressed', 'true')
 		await restored
 			.getByRole('region', { name: 'Saved articles' })

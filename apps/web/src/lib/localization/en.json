@@ -113,6 +113,7 @@
 		"disabled": "Adding links is not enabled on this deployment."
 	},
 	"library": {
+		"article_actions": "Article actions",
 		"heading": "Saved articles",
 		"all_articles": "All articles",
 		"empty": "No saved articles on this device yet.",

@@ -1,3 +1,4 @@
+import { openArticleActions } from '../article-actions.js'
 import { readRecoveryPhrase, restoreAccount } from '../account-ui.js'
 import { readingControls } from '../reader-ui.js'
 import { openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
@@ -46,9 +47,13 @@ test('flag-enabled startup populates a real library once and preserves edits, re
 	)
 	const first = rows.first(),
 		id = await first.getAttribute('data-article-id')
-	await first.getByLabel('Status', { exact: true }).selectOption('archive')
+	await (
+		await openArticleActions(first)
+	)
+		.getByLabel('Status', { exact: true })
+		.selectOption('archive')
 	await expect(first.getByLabel('Status', { exact: true })).toBeEnabled()
-	await first.getByRole('button', { name: 'tags', exact: true }).click()
+	await (await openArticleActions(first)).getByRole('button', { name: 'tags', exact: true }).click()
 	const tags = page.getByRole('dialog', { name: 'tags', exact: true })
 	await expect(
 		tags.getByRole('list', { name: 'tags', exact: true }).getByRole('listitem')

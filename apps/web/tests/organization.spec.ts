@@ -1,3 +1,4 @@
+import { openArticleActions } from './article-actions.js'
 import { readRecoveryPhrase, restoreAccount } from './account-ui.js'
 import { readingControls } from './reader-ui.js'
 import { closeLibraryPopovers, openLibraryFilters } from './library-popovers.js'
@@ -49,17 +50,34 @@ test('changes all statuses, keeps favorites independent, combines filters, and p
 		second = await supplied(page, 'organize-second')
 	await expect(first.getByLabel('Status', { exact: true })).toHaveValue('inbox')
 	await closeLibraryPopovers(page)
-	await first.getByRole('button', { name: 'Favorite', exact: true }).click()
-	await expect(first.getByRole('button', { name: 'Remove favorite', exact: true })).toBeEnabled()
+	await (
+		await openArticleActions(first)
+	)
+		.getByRole('button', { name: 'Favorite', exact: true })
+		.click()
+	await expect(
+		(await openArticleActions(first)).getByRole('button', { name: 'Remove favorite', exact: true })
+	).toBeEnabled()
 	for (const status of ['later', 'archive', 'inbox']) {
-		await first.getByLabel('Status', { exact: true }).selectOption(status)
+		await (
+			await openArticleActions(first)
+		)
+			.getByLabel('Status', { exact: true })
+			.selectOption(status)
 		await expect(first.getByLabel('Status', { exact: true })).toBeEnabled()
 		await expect(
-			first.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(first)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toHaveAttribute('aria-pressed', 'true')
 	}
 	await expect(first.getByRole('status')).toHaveCount(0)
-	await first.getByLabel('Status', { exact: true }).selectOption('later')
+	await (
+		await openArticleActions(first)
+	)
+		.getByLabel('Status', { exact: true })
+		.selectOption('later')
 	await expect(first.getByLabel('Status', { exact: true })).toBeEnabled()
 	await openLibraryFilters(page)
 	await page.getByRole('radio', { name: 'Later', exact: true }).check()
@@ -68,13 +86,20 @@ test('changes all statuses, keeps favorites independent, combines filters, and p
 	await page.getByRole('button', { name: 'Favorites', exact: true }).click()
 	await expect(first).toBeVisible()
 	await closeLibraryPopovers(page)
-	await first.getByRole('button', { name: 'Remove favorite', exact: true }).click()
+	await (
+		await openArticleActions(first)
+	)
+		.getByRole('button', { name: 'Remove favorite', exact: true })
+		.click()
 	await expect(first).toHaveCount(0)
+	await expect(page.getByRole('heading', { name: 'Saved articles', exact: true })).toBeFocused()
 	await expect(page.getByText('No articles match this view.', { exact: true })).toBeVisible()
 	await openLibraryFilters(page)
 	await page.getByRole('button', { name: 'Favorites', exact: true }).click()
 	await expect(first.getByLabel('Status', { exact: true })).toHaveValue('later')
-	await expect(first.getByRole('button', { name: 'Favorite', exact: true })).toBeEnabled()
+	await expect(
+		(await openArticleActions(first)).getByRole('button', { name: 'Favorite', exact: true })
+	).toBeEnabled()
 	// A duplicate keeps the snapshot, original status and independent favorite value.
 	const repeat = await page.evaluate(async () => {
 		const path = '/tests/article-driver.ts'
@@ -104,20 +129,37 @@ test('synchronizes independent desired values in both directions between restore
 		await restoreAccount(restored, phrase)
 		const remote = restored.locator(`[data-article-id="${id}"]`)
 		await expect(remote).toBeVisible({ timeout: 30000 })
-		await row.getByLabel('Status', { exact: true }).selectOption('archive')
+		await (
+			await openArticleActions(row)
+		)
+			.getByLabel('Status', { exact: true })
+			.selectOption('archive')
 		await expect(remote.getByLabel('Status', { exact: true })).toHaveValue('archive', {
 			timeout: 30000
 		})
-		await remote.getByRole('button', { name: 'Favorite', exact: true }).click()
-		await expect(row.getByRole('button', { name: 'Remove favorite', exact: true })).toBeEnabled({
+		await (
+			await openArticleActions(remote)
+		)
+			.getByRole('button', { name: 'Favorite', exact: true })
+			.click()
+		await expect(
+			(await openArticleActions(row)).getByRole('button', { name: 'Remove favorite', exact: true })
+		).toBeEnabled({
 			timeout: 30000
 		})
-		await row.getByLabel('Status', { exact: true }).selectOption('later')
+		await (
+			await openArticleActions(row)
+		)
+			.getByLabel('Status', { exact: true })
+			.selectOption('later')
 		await expect(remote.getByLabel('Status', { exact: true })).toHaveValue('later', {
 			timeout: 30000
 		})
 		await expect(
-			remote.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(remote)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toHaveAttribute('aria-pressed', 'true')
 	} finally {
 		await independent.close()
@@ -142,11 +184,21 @@ test('persists offline edits across complete browser restart and synchronizes on
 		const remote = restored.locator(`[data-article-id="${id}"]`)
 		await expect(remote).toBeVisible({ timeout: 30000 })
 		await authority.stop()
-		await row.getByLabel('Status', { exact: true }).selectOption('archive')
+		await (
+			await openArticleActions(row)
+		)
+			.getByLabel('Status', { exact: true })
+			.selectOption('archive')
 		await expect(row.getByLabel('Status', { exact: true })).toBeEnabled()
 		await closeLibraryPopovers(page)
-		await row.getByRole('button', { name: 'Favorite', exact: true }).click()
-		await expect(row.getByRole('button', { name: 'Remove favorite', exact: true })).toBeEnabled()
+		await (
+			await openArticleActions(row)
+		)
+			.getByRole('button', { name: 'Favorite', exact: true })
+			.click()
+		await expect(
+			(await openArticleActions(row)).getByRole('button', { name: 'Remove favorite', exact: true })
+		).toBeEnabled()
 		await context.close()
 		context = await chromium.launchPersistentContext(profile, { headless: true })
 		const reopened = await context.newPage()
@@ -154,9 +206,16 @@ test('persists offline edits across complete browser restart and synchronizes on
 		const persisted = reopened.locator(`[data-article-id="${id}"]`)
 		await expect(persisted.getByLabel('Status', { exact: true })).toHaveValue('archive')
 		await expect(
-			persisted.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(persisted)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toHaveAttribute('aria-pressed', 'true')
-		await persisted.getByLabel('Status', { exact: true }).selectOption('later')
+		await (
+			await openArticleActions(persisted)
+		)
+			.getByLabel('Status', { exact: true })
+			.selectOption('later')
 		await expect(persisted.getByLabel('Status', { exact: true })).toBeEnabled()
 		authority = await startAuthority()
 		await reopened.reload()
@@ -165,7 +224,10 @@ test('persists offline edits across complete browser restart and synchronizes on
 			timeout: 30000
 		})
 		await expect(
-			remote.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(remote)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toHaveAttribute('aria-pressed', 'true')
 	} finally {
 		await independent.close()
@@ -192,11 +254,17 @@ test('organizes a link-only article and retains its values when supplied content
 		.click()
 	const row = page.locator('[data-article-id]').filter({ hasText: url })
 	await expect(row).toBeVisible()
-	await row.getByLabel('Status', { exact: true }).selectOption('later')
+	await (await openArticleActions(row)).getByLabel('Status', { exact: true }).selectOption('later')
 	await expect(row.getByLabel('Status', { exact: true })).toBeEnabled()
 	await closeLibraryPopovers(page)
-	await row.getByRole('button', { name: 'Favorite', exact: true }).click()
-	await expect(row.getByRole('button', { name: 'Remove favorite', exact: true })).toBeEnabled()
+	await (
+		await openArticleActions(row)
+	)
+		.getByRole('button', { name: 'Favorite', exact: true })
+		.click()
+	await expect(
+		(await openArticleActions(row)).getByRole('button', { name: 'Remove favorite', exact: true })
+	).toBeEnabled()
 	const id = await row.getAttribute('data-article-id')
 	await page.evaluate(async (url) => {
 		const path = '/tests/article-driver.ts'
@@ -206,7 +274,10 @@ test('organizes a link-only article and retains its values when supplied content
 	await expect(completed.getByRole('link', { name: 'Supplied clip', exact: true })).toBeVisible()
 	await expect(completed.getByLabel('Status', { exact: true })).toHaveValue('later')
 	await expect(
-		completed.getByRole('button', { name: 'Remove favorite', exact: true })
+		(await openArticleActions(completed)).getByRole('button', {
+			name: 'Remove favorite',
+			exact: true
+		})
 	).toHaveAttribute('aria-pressed', 'true')
 })
 
@@ -218,10 +289,18 @@ test('native status radios support keyboard navigation and mobile wrapping while
 	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
 	const inbox = await supplied(page, 'radio-inbox')
 	const archived = await supplied(page, 'radio-archive')
-	await archived.getByLabel('Status', { exact: true }).selectOption('archive')
+	await (
+		await openArticleActions(archived)
+	)
+		.getByLabel('Status', { exact: true })
+		.selectOption('archive')
 	await expect(archived.getByLabel('Status', { exact: true })).toBeEnabled()
 	await closeLibraryPopovers(page)
-	await inbox.getByRole('button', { name: 'Favorite', exact: true }).click()
+	await (
+		await openArticleActions(inbox)
+	)
+		.getByRole('button', { name: 'Favorite', exact: true })
+		.click()
 	await openLibraryFilters(page)
 	const favorites = page.getByRole('button', { name: 'Favorites', exact: true })
 	await favorites.click()
@@ -248,4 +327,95 @@ test('native status radios support keyboard navigation and mobile wrapping while
 	await expect(group.getByRole('radio', { name: 'Archive', exact: true })).toBeChecked()
 	await expect(archived).toBeVisible()
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+for (const width of [1440, 390]) {
+	test(`article action popovers hide controls, support keyboard and light dismissal, and return tag-dialog focus at ${width}px`, async ({
+		page
+	}) => {
+		await page.setViewportSize({ width, height: 900 })
+		await page.goto('/')
+		await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
+		const first = await supplied(page, `popover-first-${width}`)
+		const second = await supplied(page, `popover-second-${width}`)
+		const trigger = first.getByRole('button', { name: 'Article actions', exact: true })
+		const panel = first.getByRole('dialog', { name: 'Article actions', exact: true })
+		await expect(first.getByRole('button')).toHaveCount(1)
+		await expect(first.getByLabel('Status', { exact: true })).toBeHidden()
+		await expect(first.getByRole('button', { name: 'Favorite', exact: true })).toHaveCount(0)
+		await expect(trigger).toHaveAccessibleDescription('Supplied clip')
+		await trigger.focus()
+		await trigger.press('Enter')
+		await expect(panel).toBeVisible()
+		await expect(panel.getByLabel('Status', { exact: true })).toBeFocused()
+		const bounds = await panel.boundingBox()
+		expect(bounds).not.toBeNull()
+		expect(bounds!.x).toBeGreaterThanOrEqual(0)
+		expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
+		expect(bounds!.y).toBeGreaterThanOrEqual(0)
+		expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(900)
+		await page.keyboard.press('Escape')
+		await expect(panel).toBeHidden()
+		await expect(trigger).toBeFocused()
+		await trigger.click()
+		const secondTrigger = second.getByRole('button', { name: 'Article actions', exact: true })
+		await secondTrigger.focus()
+		await secondTrigger.press('Enter')
+		await expect(second.locator('[data-article-actions]')).toBeVisible()
+		await expect(panel).toBeHidden()
+		await page.getByRole('heading', { name: 'Saved articles', exact: true }).click()
+		await expect(second.locator('[data-article-actions]')).toBeHidden()
+		await (
+			await openArticleActions(first)
+		)
+			.getByRole('button', { name: 'tags', exact: true })
+			.click()
+		const dialog = page.getByRole('dialog', { name: 'tags', exact: true })
+		await expect(dialog).toBeVisible()
+		await expect(panel).toBeHidden()
+		await page.keyboard.press('Escape')
+		await expect(dialog).toBeHidden()
+		await expect(trigger).toBeFocused()
+		await (
+			await openArticleActions(first)
+		)
+			.getByLabel('Status', { exact: true })
+			.selectOption('later')
+		await expect(panel).toBeHidden()
+		await expect(trigger).toBeFocused()
+		await (
+			await openArticleActions(first)
+		)
+			.getByRole('button', { name: 'Favorite', exact: true })
+			.click()
+		await expect(panel).toBeHidden()
+		await expect(trigger).toBeFocused()
+		await expect(
+			(await openArticleActions(first)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
+		).toHaveAttribute('aria-pressed', 'true')
+		expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+	})
+}
+
+test('a status change that removes the current row focuses the next article', async ({ page }) => {
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	await supplied(page, 'status-focus-first')
+	await supplied(page, 'status-focus-second')
+	await openLibraryFilters(page)
+	await page.getByRole('radio', { name: 'Inbox', exact: true }).check()
+	await closeLibraryPopovers(page)
+	const rows = page.locator('[data-article-id]')
+	const firstId = await rows.first().getAttribute('data-article-id')
+	const nextId = await rows.nth(1).getAttribute('data-article-id')
+	await (
+		await openArticleActions(rows.first())
+	)
+		.getByLabel('Status', { exact: true })
+		.selectOption('later')
+	await expect(page.locator(`[data-article-id="${firstId}"]`)).toHaveCount(0)
+	await expect(page.locator(`[data-article-id="${nextId}"]`)).toBeFocused()
 })

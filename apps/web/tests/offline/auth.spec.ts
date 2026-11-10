@@ -1,3 +1,4 @@
+import { openArticleActions } from '../article-actions.js'
 import { openAccountSettings, openAllArticles, expectSignedInAccount } from '../account-ui.js'
 import { authenticateGateway } from '../../src/lib/server/gateway-auth.js'
 import { handleConfiguredAuth } from '../../src/lib/server/auth/completion-handler.js'
@@ -165,8 +166,9 @@ for (const mode of ['linked', 'existing', 'expired'])
 							}
 				})
 			})
-			await page
-				.locator(`[data-article-id="${id}"]`)
+			await (
+				await openArticleActions(page.locator(`[data-article-id="${id}"]`))
+			)
 				.getByRole('button', { name: 'Retry', exact: true })
 				.click()
 			await expect(
@@ -233,13 +235,23 @@ for (const mode of ['linked', 'existing', 'expired'])
 				await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
 				await openAllArticles(page)
 				if (restart === 0) {
-					await saved.getByRole('button', { name: 'Favorite', exact: true }).click()
+					await (
+						await openArticleActions(saved)
+					)
+						.getByRole('button', { name: 'Favorite', exact: true })
+						.click()
 					await expect(
-						saved.getByRole('button', { name: 'Remove favorite', exact: true })
+						(await openArticleActions(saved)).getByRole('button', {
+							name: 'Remove favorite',
+							exact: true
+						})
 					).toBeEnabled()
 				} else {
 					await expect(
-						saved.getByRole('button', { name: 'Remove favorite', exact: true })
+						(await openArticleActions(saved)).getByRole('button', {
+							name: 'Remove favorite',
+							exact: true
+						})
 					).toBeVisible()
 				}
 				await page.getByRole('link', { name: 'Native authorized article', exact: true }).click()
@@ -265,9 +277,10 @@ for (const mode of ['linked', 'existing', 'expired'])
 			await expectSignedInAccount(page)
 
 			await expect(
-				page
-					.locator(`[data-article-id="${id}"]`)
-					.getByRole('button', { name: 'Remove favorite', exact: true })
+				(await openArticleActions(page.locator(`[data-article-id="${id}"]`))).getByRole('button', {
+					name: 'Remove favorite',
+					exact: true
+				})
 			).toBeVisible({ timeout: 30000 })
 			await expect
 				.poll(() =>
