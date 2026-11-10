@@ -1,3 +1,4 @@
+import { READER_REPLY_TIMEOUT_MS, monotonicNow } from '../../contracts/resource-waits.js'
 import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import { identityLogic } from '../identity.js'
 import type { EventPayload } from '../events.js'
@@ -29,12 +30,16 @@ import type { SyncReport } from '../../contracts/storage.js'
 import { t } from '../../localization/index.js'
 import { stateFeedback } from '../../contracts/feedback.js'
 
-type Input = { capability: ReaderCapability | undefined }
+type Input = {
+	capability: ReaderCapability | undefined
+	viewportReplyTimeoutMs?: number
+	now?: () => number
+}
 type Attachment = { documentId: string; surface: ReaderSurface }
 type OwnedAttachment = Attachment & { id: string }
 export type ReaderExperienceEvent =
 	| { type: 'MEASURE'; position: ReadingPosition; attachmentId: string }
-	| { type: 'VIEWPORT_FAILED'; attachmentId: string }
+	| { type: 'VIEWPORT_FAILED'; attachmentId: string; reason?: 'failed' | 'overdue' }
 	| { type: 'CHANGE'; change: ReaderChange }
 	| { type: 'ROWS'; rows: ReaderOperation[] }
 	| ({ type: 'ATTACH' } & ViewportElements & { documentId: string })
@@ -186,6 +191,9 @@ const model = setup({
 		writeOperation
 	},
 	guards: {
+		viewportUnavailable: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ active: { viewport: { owning: 'unavailable' } } }, value) ||
+			matchesState({ active: { viewport: { owning: 'overdue' } } }, value),
 		fullscreenSupported: ({ context }: { context: Context }) =>
 			context.display?.supported() === true,
 		fullscreenActive: ({ context }: { context: Context }) => context.display?.active() === true,
@@ -666,13 +674,20 @@ export const readerExperienceMachine = model.createMachine({
 								input: ({ context }: { context: Context }) => ({
 									...required(context.attachment).surface.viewport,
 									attachmentId: required(context.attachment).id,
+									replyTimeoutMs: context.viewportReplyTimeoutMs ?? READER_REPLY_TIMEOUT_MS,
+									now: context.now ?? monotonicNow,
 									position: projectReaderState(context.rows).positions[
 										required(context.attachment).documentId
 									]
 								}),
-								onError: { target: 'failed' },
+								onError: { target: '.unavailable' },
 								onDone: (args) => {
 									const { event } = args
+									if (event.output.outcome !== 'closed')
+										return {
+											target: args.guards.closing(args) ? 'detached' : 'failed',
+											context: retireAttachments(args.context)
+										}
 									if (
 										args.guards.current(args) &&
 										positionSchema.safeParse(event.output.position).success &&
@@ -735,7 +750,7 @@ export const readerExperienceMachine = model.createMachine({
 									enq.raise({ type: 'SHOW_CONTROLS' })
 									enq.sendTo('viewport', { type: 'DETACH' })
 									return {
-										target: '.closing',
+										target: args.guards.viewportUnavailable(args) ? '.unavailable' : '.closing',
 										context: {
 											pendingAttachment: { surface: event.surface, documentId: event.documentId },
 											retiringSurfaces: context.pendingAttachment
@@ -758,7 +773,7 @@ export const readerExperienceMachine = model.createMachine({
 								},
 								VIEWPORT_FAILED: (args) => {
 									if (!args.guards.currentViewport(args)) return
-									return { target: 'failed' }
+									return { target: args.event.reason === 'overdue' ? '.overdue' : '.unavailable' }
 								}
 							},
 							states: {
@@ -806,6 +821,20 @@ export const readerExperienceMachine = model.createMachine({
 											enq.sendTo('viewport', { type: 'DETACH' })
 											return { target: 'closing' }
 										}
+									}
+								},
+								overdue: {
+									meta: { name: t('reader.data_unavailable'), variant: 'error', priority: 4 },
+									on: {
+										DETACH: ({ context }) => ({ context: retirePendingAttachment(context) }),
+										SHUTDOWN: ({ context }) => ({ context: retirePendingAttachment(context) })
+									}
+								},
+								unavailable: {
+									meta: { name: t('reader.data_unavailable'), variant: 'error', priority: 4 },
+									on: {
+										DETACH: ({ context }) => ({ context: retirePendingAttachment(context) }),
+										SHUTDOWN: ({ context }) => ({ context: retirePendingAttachment(context) })
 									}
 								},
 								closing: {

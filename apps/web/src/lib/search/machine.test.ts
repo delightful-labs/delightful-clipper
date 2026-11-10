@@ -120,7 +120,7 @@ it('contains worker construction failure inside the search workflow', async () =
 	actor.send({ type: 'STOP' })
 	await toPromise(actor)
 })
-it('cancels observation of an old bound read and cannot publish after shutdown', async () => {
+it('requests cancellation and drains an old bound read before acknowledging shutdown', async () => {
 	const gate =
 		Promise.withResolvers<
 			ReturnType<SearchCapability['load']> extends Promise<infer T> ? T : never
@@ -142,9 +142,9 @@ it('cancels observation of an old bound read and cannot publish after shutdown',
 	}).start()
 	actor.send({ type: 'ROWS', rows: [row] })
 	actor.send({ type: 'ACTIVATE' })
-	await waitFor(actor, () => signals.length === 1)
+	await vi.waitFor(() => expect(signals).toHaveLength(1))
 	actor.send({ type: 'STOP' })
-	await toPromise(actor)
+	expect(actor.getSnapshot().status).toBe('active')
 	expect(signals.at(-1)?.aborted).toBe(true)
 	gate.resolve([
 		{
@@ -156,7 +156,7 @@ it('cancels observation of an old bound read and cannot publish after shutdown',
 			originalSavedAt: row.originalSavedAt
 		}
 	])
-	await Promise.resolve()
+	await toPromise(actor)
 	expect(actor.getSnapshot().context.rows).toEqual([])
 })
 
@@ -240,7 +240,7 @@ it('drains one native load and coalesces invalidations into one load of the late
 	f.posted.length = 0
 	const actor = createActor(machine, { input: { capability: { ...f.cap, load } } }).start()
 	actor.send({ type: 'ACTIVATE' })
-	await waitFor(actor, () => load.mock.calls.length === 1)
+	await vi.waitFor(() => expect(load).toHaveBeenCalledOnce())
 	actor.send({ type: 'ROWS', rows: [row] })
 	actor.send({ type: 'DIRTY' })
 	const latest = { ...row, title: 'Latest' }

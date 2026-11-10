@@ -1,3 +1,4 @@
+import type { ViewportReply } from './surface-viewport.js'
 import { createActor, type ActorRefFrom } from 'xstate'
 import { z } from 'zod'
 import { viewportMachine } from './viewport.js'
@@ -19,6 +20,7 @@ const command = z.discriminatedUnion('type', [
  * It reports measurements; it has no account, database or persistence capability. */
 export function serveReaderSurface(port: MessagePort, elements: ViewportElements) {
 	const surface = nativeReaderSurface(elements)
+	const reportViewport = (message: ViewportReply) => port.postMessage(message)
 	let viewport: ActorRefFrom<typeof viewportMachine> | undefined
 	let released = false
 	let disposeRequest: { id?: string | undefined } | undefined
@@ -52,7 +54,16 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 		switch (message.type) {
 			case 'VIEWPORT_OPEN': {
 				if (released) {
-					port.postMessage({ type: 'VIEWPORT_CLOSED' })
+					const previous = viewport?.getSnapshot()
+					if (previous && previous.status !== 'done') {
+						reportViewport({ type: 'VIEWPORT_FAILED', attachmentId: message.attachmentId })
+						return
+					}
+					reportViewport({
+						type: 'VIEWPORT_SETTLED',
+						attachmentId: message.attachmentId,
+						outcome: previous && !previous.matches('closed') ? 'failed' : 'closed'
+					})
 					return
 				}
 				if (viewport) return
@@ -61,26 +72,32 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 						...elements,
 						attachmentId: message.attachmentId,
 						position: message.position,
-						report: (event) => port.postMessage(event)
+						report: reportViewport
 					}
 				})
 				viewport = actor
 				actor.subscribe({
 					complete: () => {
 						const snapshot = actor.getSnapshot()
-						if (snapshot.output && snapshot.matches('closed'))
-							port.postMessage({ type: 'VIEWPORT_CLOSED', position: snapshot.output.position })
-						else if (snapshot.status !== 'done')
-							port.postMessage({ type: 'VIEWPORT_FAILED', attachmentId: message.attachmentId })
+						if (snapshot.status === 'done' && snapshot.output)
+							reportViewport({
+								type: 'VIEWPORT_SETTLED',
+								attachmentId: message.attachmentId,
+								outcome: snapshot.matches('closed') ? 'closed' : 'failed',
+								position: snapshot.output.position
+							})
+						else reportViewport({ type: 'VIEWPORT_FAILED', attachmentId: message.attachmentId })
 						if (disposeRequest) dispose(disposeRequest.id)
 					},
 					error: () =>
-						port.postMessage({
+						reportViewport({
 							type: 'VIEWPORT_FAILED',
 							attachmentId: message.attachmentId
 						})
 				})
 				actor.start()
+				if (actor.getSnapshot().status === 'active')
+					reportViewport({ type: 'VIEWPORT_OPENED', attachmentId: message.attachmentId })
 				break
 			}
 			case 'REFLOW':

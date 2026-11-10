@@ -68,3 +68,5 @@ provider tests. Existing platform exclusions remain explicit.
 A–D remain complete for Clipper. Reader/search recovery (E), browser jobs (F)
 and the remaining broader v6 cleanup (G) retain their existing acceptance gates.
 This review does not silently mark those change sets complete.
+
+Subsequent change set E is now qualified in [the reader/search record](reader-search-lifetimes.md); the checkpoint contains current completion status.

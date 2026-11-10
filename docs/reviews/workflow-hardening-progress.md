@@ -1,6 +1,6 @@
 # Workflow hardening PR checkpoint
 
-This checkpoint completes change sets A–D for Clipper. E–G remain separate
+This checkpoint completes change sets A–E for Clipper. F–G remain separate
 work. Finance adoption retains its separate actual-adapter qualification gate. The
 [implementation specification](../../specs/001-jazz-clipper/workflow-ownership-hardening.md)
 remains authoritative; this PR does not complete the whole specification.
@@ -149,6 +149,30 @@ The selected native logout also enforces original account/client/DB admission.
 Terminal settlement refreshes facts before retry, and C's host retains ownership
 through shutdown. See [the auth ownership protocol](auth-request-lifecycle.md).
 
+## E reader and search resource lifetimes
+
+Viewport open/detach replies are scoped to the original attachment and bounded by
+an injectable ten-second feedback policy. Actual native settlement distinguishes
+successful and failed cleanup; stop/error cannot fabricate closure. Overdue or
+failed peers retain their invocation, original surface and confirmed position.
+Late cleanup releases resources without reviving the failed operation or issuing
+a new final-position write. Issued writes and fullscreen work retain C's ownership.
+
+Search load/index/query feedback limits are independently configured at 30/15/5
+seconds. Monotonic completion facts reject expired results even before timer
+callbacks run. Stalled/noncancellable corpus reads remain observed through
+cancellation and account shutdown; retry cannot overlap them. Derived workers
+can be retired/recreated, with generation/query checks and disposed-callback
+suppression. Library admission explicitly distinguishes supported and unsupported
+search, preserving extension restoration without waiting for unadmitted work.
+
+See [reader/search lifetimes](reader-search-lifetimes.md) for invocation diagrams,
+policy rationale and native recovery boundaries. The independent reader receipt
+campaign runs 120 schedules of up to 12 commands, seed `20261118`, with full
+contract-model state/event/transition coverage. Native browser cases hold actual
+Window receipts through expiry and replacement, then require actual lease cleanup
+before reopening the replacement account.
+
 ## Checkpoint qualification
 
 The A/B DLF source at `1571ba2` passed 356 selected lifecycle/workspace/scoped-form
@@ -169,8 +193,8 @@ Final Clipper checkpoint checks passed:
 
 - `pnpm verify`: installed vendor integrity/import checks, repository formatting
   and lint, strict types, web/extension Svelte checks with zero errors/warnings,
-  **831 unit/native tests in 123 files**, and the production Netlify build.
-- `pnpm test:worker`: **19 browser cases**, including A → B → A restoration with an attached reader,
+  **852 unit/native tests in 126 files**, and the production Netlify build.
+- `pnpm test:worker`: **26 browser cases**, including A → B → A restoration with an attached reader,
   account custody with dropped WRITE acknowledgement and delayed closure, plus real
   SharedWorker port ownership and late-port disposal. PR34's attached-reader
   shutdown and forced root stop without clean closure are also covered.
@@ -181,14 +205,14 @@ Final Clipper checkpoint checks passed:
   edits, reconnection, cold reader reopening with both servers stopped and shell
   update failure/recovery. Both production Netlify fixtures built successfully.
 
-- `pnpm test:schema`: **eight Chromium/Firefox schema-upgrade cases**.
+- Prior PR34 rebase checkpoint: `pnpm test:schema` passed **eight Chromium/Firefox schema-upgrade cases**. E introduces no schema change.
 
 This checkpoint incorporates merged PR34 at `e0856c6`, against the final production
 account-storage/broker integration and the frozen archive above, using Clipper's
 managed Node `24.22.2`. Main's proof-renewal, session-lifecycle and cold-reader connection fixes are preserved.
 Browser fixtures use its account settings page and article action popovers. Extension
 qualification ran on macOS; main's documented temporary Linux exclusions remain. They do not
-establish Finance adoption or completion of E–G.
+establish Finance adoption or completion of F–G.
 
 The [PR34 integration and XState review](pr34-workflow-integration.md) records the
 rebase and the targeted completion/outcome corrections. Native observer completion
@@ -213,7 +237,7 @@ unchanged. This run uses `CLIPPER_TEST_WEB_URL=http://127.0.0.1:5482`,
 the actual assigned port. Earlier attempts were blocked before test execution by
 occupied default ports; no unidentified process was stopped. Cold Worker startup
 now prebundles the adopted DLF lifecycle exports, preventing an initial dependency
-optimizer reload. All 19 Worker cases passed with source frozen. No assertions or
+optimizer reload. All 26 Worker cases passed with source frozen. No assertions or
 product behavior were weakened.
 
 ## Follow-up boundary
@@ -222,13 +246,14 @@ product behavior were weakened.
   evidence for DLF-3 are covered. Before Finance adopts the shared runtime, qualify
   its actual adapter/account owner; that consumer migration is not included here.
 - C is complete: HOST/BIND and the host/acquisition/session-close portion of
-  REC-6 are covered. E retains search/viewport failure recovery beyond the host
+  REC-6 are covered. E supplies search/viewport failure recovery beyond the host
   cleanup protocol.
 - D is complete: AUTH-1–5, REC-7 and the provider/native sign-out portion of REC-6
   are covered, including the composed C shutdown graph. Native HTTP tests cover
   stalled headers/bodies, abort delivery, delayed timers and late results.
-- E–G: implement remaining reader/search, browser job and v6 cleanup requirements
-  in specification dependency order.
+- E is complete: REC-4/5 cover scoped reader acknowledgement/cleanup, final-position
+  uncertainty, bounded search waits and original-read custody through account shutdown.
+- F–G: implement browser jobs and remaining v6 cleanup in specification dependency order.
 
 The legacy account-store/storage fixtures and SDK compatibility worker remain for
 existing compatibility coverage; production application storage uses the scoped

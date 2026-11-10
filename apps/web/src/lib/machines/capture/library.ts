@@ -525,6 +525,8 @@ export const libraryMachine = setup({
 	},
 	actors,
 	guards: {
+		searchSupported: ({ context }: { context: Context }) =>
+			context.capability?.search !== undefined,
 		isReaderAvailable: ({ context }: { context: Context }) => context.reader?.kind === 'available',
 		isOrganizationRejected: ({ context }: { context: Context }) =>
 			organizationStatuses(context, context.organizationId).includes('rejected'),
@@ -628,14 +630,6 @@ export const libraryMachine = setup({
 					input: ({ context }: { context: Context }) => context.capability
 				},
 				{
-					id: 'search',
-					src: 'search',
-					input: ({ context }: { context: Context }) => ({
-						capability: context.capability?.search
-					}),
-					onSnapshot: {}
-				},
-				{
 					id: 'worker',
 					src: 'worker',
 					input: ({ context }: { context: Context }) => context.capability
@@ -647,6 +641,8 @@ export const libraryMachine = setup({
 					!(
 						matchesState({ running: { control: 'closing' } }, args.value) &&
 						matchesState({ running: { fakeDataLifecycle: 'closed' } }, args.value) &&
+						(matchesState({ running: { searchLifecycle: 'closed' } }, args.value) ||
+							matchesState({ running: { searchLifecycle: 'unsupported' } }, args.value)) &&
 						(matchesState({ running: { imageLifecycle: 'closed' } }, args.value) ||
 							matchesState({ running: { imageLifecycle: 'failed' } }, args.value)) &&
 						(matchesState({ running: { readerLifecycle: 'closed' } }, args.value) ||
@@ -1226,6 +1222,36 @@ export const libraryMachine = setup({
 						}
 					}
 				},
+				searchLifecycle: {
+					initial: 'admitting',
+					invoke: {
+						id: 'search',
+						src: 'search',
+						input: ({ context }) => ({ capability: context.capability?.search }),
+						onSnapshot: {},
+						onDone: { target: '.closed' },
+						onError: { target: '.blocked' }
+					},
+					states: {
+						admitting: {
+							type: 'choice',
+							choice: (args) =>
+								args.guards.searchSupported(args) ? { target: 'active' } : { target: 'unsupported' }
+						},
+						active: {
+							on: {
+								SHUTDOWN: (_args, enq) => {
+									enq.sendTo('search', { type: 'STOP' })
+								}
+							}
+						},
+						// No corpus/worker capability was admitted; this child cannot own a
+						// native read. Its idle invocation exits with the library.
+						unsupported: {},
+						blocked: { meta: { name: t('library.search_failed'), variant: 'error' } },
+						closed: {}
+					}
+				},
 				control: {
 					initial: 'active',
 					states: {
@@ -1234,7 +1260,6 @@ export const libraryMachine = setup({
 								SHUTDOWN: (args, enq) => {
 									let patch = {}
 									enq.sendTo('worker', { type: 'STOP' })
-									enq.sendTo('search', { type: 'STOP' })
 									enq.sendTo('receipts', { type: 'SHUTDOWN' })
 									patch = {
 										...patch,

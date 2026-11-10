@@ -15,4 +15,6 @@ export type ReaderSurface = {
 export type SurfaceViewportInput = ReaderSurface['viewport'] & {
 	attachmentId: string
 	position: ReadingPosition | undefined
+	replyTimeoutMs?: number
+	now?: () => number
 }

@@ -66,9 +66,9 @@ still does not establish atomic single use or safe replay after a lost reply.
 
 ## Qualification
 
-Clipper passed `pnpm verify` (831 unit/native tests in 123 files, installed vendor
+Clipper passed `pnpm verify` (852 unit/native tests in 126 files, installed vendor
 integrity/import checks, formatting, lint, strict types, zero Svelte errors/warnings
-and production build), all 19 Worker browser cases, 12 packaged-extension cases
+and production build), all 26 Worker browser cases, 12 packaged-extension cases
 and eight production offline/restart cases. The latter includes actual linked
 sign-out, existing/expired credentials, persisted edits and reconnection.
 
@@ -92,6 +92,8 @@ contract-model coverage. The consumer artifact preserves every prior Worker
 archive payload byte and adds four sign-out JS/declaration files plus exports;
 [provenance](../../vendor/auth-lifecycle-provenance.json) records all source hashes.
 
-These are bounded qualifications; E–G remain separate work and Finance adoption
+These are bounded qualifications; F–G remain separate work and Finance adoption
 still requires its actual-adapter qualification. See the
 [PR checkpoint](workflow-hardening-progress.md) for exact shared artifact provenance.
+
+E now covers reader/search recovery; see [its ownership record](reader-search-lifetimes.md).

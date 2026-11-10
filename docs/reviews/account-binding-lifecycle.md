@@ -182,6 +182,8 @@ These are bounded qualifications, not exhaustive native scheduling proofs.
 
 D now supplies provider/OAuth HTTP deadlines and ordered sign-out recovery; see
 [its ownership and qualification record](auth-request-lifecycle.md). C covers the
-host/acquisition/session-close part of REC-6. E retains search deadlines
+host/acquisition/session-close part of REC-6. E now supplies search deadlines
 and viewport transport failure/uncertainty recovery beyond this host-owned cleanup
 protocol. F/G remain separate work. No new DLF source/artifact is required by C.
+
+See [E's reader/search record](reader-search-lifetimes.md) for the qualified composed protocol.

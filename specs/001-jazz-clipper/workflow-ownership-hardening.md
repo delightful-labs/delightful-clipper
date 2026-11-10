@@ -1,8 +1,8 @@
 # Workflow ownership hardening specification
 
-**Status:** Partially implemented: A–D are complete for Clipper. E–G remain open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
+**Status:** Partially implemented: A–E are complete for Clipper. F–G remain open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
 
-The A–D branch incorporates merged PR34 at `e0856c6`. Its
+The workflow branch incorporates merged PR34 at `e0856c6`. Its
 [integration and XState review](../../docs/reviews/pr34-workflow-integration.md)
 records preserved sign-in evidence, explicit shutdown receipts and terminal read
 outcomes. These corrections do not complete E–G.
@@ -414,6 +414,13 @@ REC-7: Expire authorization/completion HTTP waits during header and body reads. 
 Use the shared deadline/outcome contract. An open reader or standing search subscription has no finite completion deadline by itself. Search native reads remain owned when cancellation is unavailable; new retries cannot overlap the outstanding full-library read.
 
 Reader attachment admission, last-position acknowledgment, fullscreen exit and write-drain behavior are specified with their host owner in C. This change set implements the surface/search side of that same protocol rather than introducing another binding authority.
+
+Implementation checkpoint: scoped viewport startup/settlement, monotonic finite
+reply deadlines, retained final-position/write custody and admitted-search drain
+are implemented. The library joins actual native corpus settlement; unsupported
+search has no drain obligation. Native browser cases cover silent index/query
+workers, transport/post failures and account replacement during overdue detach.
+REC-4/5 are covered. See [reader/search ownership and qualification](../../docs/reviews/reader-search-lifetimes.md).
 
 ### Acceptance criteria
 

@@ -23,7 +23,7 @@ it.each([false, true])(
 			})
 		const dom = viewportDOM(),
 			data = new MessageChannel(),
-			replies: { type: string; id?: string }[] = []
+			replies: { type: string; id?: string; outcome?: string }[] = []
 		data.port1.onmessage = ({ data }) => replies.push(data)
 		const surface = serveReaderSurface(data.port2, dom)
 		try {
@@ -32,12 +32,18 @@ it.each([false, true])(
 				await vi.waitFor(() =>
 					expect(replies.filter((reply) => reply.type === 'VIEWPORT_FAILED')).toHaveLength(1)
 				)
-				expect(replies.some((reply) => reply.type === 'VIEWPORT_CLOSED')).toBe(false)
+				expect(
+					replies.some((reply) => reply.type === 'VIEWPORT_SETTLED' && reply.outcome === 'closed')
+				).toBe(false)
 			} else {
 				await vi.waitFor(() => expect(dom.rootBounds).toHaveBeenCalled())
 				surface.detach()
 				await vi.waitFor(() =>
-					expect(replies.filter((reply) => reply.type === 'VIEWPORT_CLOSED')).toHaveLength(1)
+					expect(
+						replies.filter(
+							(reply) => reply.type === 'VIEWPORT_SETTLED' && reply.outcome === 'closed'
+						)
+					).toHaveLength(1)
 				)
 				expect(replies.some((reply) => reply.type === 'VIEWPORT_FAILED')).toBe(false)
 			}
