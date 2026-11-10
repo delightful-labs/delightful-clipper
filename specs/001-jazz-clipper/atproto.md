@@ -5,6 +5,8 @@ merge `168cd0b` including fix `152d679`. This is the current Clipper checkpoint;
 older JWT/Neon/source-build experiments are historical. Product decisions below
 are accepted requirements, not claims that publication has been implemented.
 Shared identity/lifecycle belongs to DLF; Clipper owns annotations and publication.
+The PR #32 follow-up below records implemented reader work awaiting merge and
+normal deployment verification; it is separate from the merged baseline.
 
 ## Implemented identity integration
 
@@ -78,6 +80,9 @@ remains unresolved: the evidence does not locate the stall in restoration,
 connection confirmation or shutdown settlement. This is Jazz recovery-phrase
 sign-in through the extension's trusted page; direct AT Protocol provider sign-in
 in the extension remains deferred. Diagnostic follow-up is not an established fix.
+At the user's request, commit `07acf39` temporarily skips these three cases on
+Linux, retaining them on macOS and leaving the other nine enabled on Linux.
+A green run with these skips does not establish a repair or Linux qualification.
 
 Linux extension qualification and complete release readiness remain blocked by
 this issue. Passing web/native offline evidence remains valid within its tested
@@ -115,13 +120,21 @@ from that replica's library rendered the saved text. Extraction was synthetic,
 while authentication and Jazz persistence/sync used production. The fresh replica
 reused only this app's session in memory; this was not another-device OAuth login.
 
-A separate production reader gap remains: direct URL navigation in a fresh replica
-twice reported the article unavailable while online, whereas opening from the
-library worked. Corrected local cold-reader cases pass without application changes,
-so neither the cause nor a fix is established. No speculative wait/retry change
-was retained or deployed. [PR #32](https://github.com/delightful-labs/delightful-clipper/pull/32)
-contains the bounded live evidence and added test coverage. The marked article
-remains in the private library; the native test profile stays local for continuation.
+A separate production reader failure was reproduced: direct URL navigation in a
+fresh replica reported unavailable while online, whereas library navigation worked.
+Investigation confirmed that a temporary snapshot miss while Jazz was connecting
+became a terminal reader result. [PR #32](https://github.com/delightful-labs/delightful-clipper/pull/32)
+implements the approved reader-owned connection wait and one further local-first
+read. Cached reads remain immediate; cancellation, account scope and listener
+cleanup stay explicit. This is an application fix, not an SDK patch.
+
+The implementation passed `pnpm verify` (683 unit/native tests), eight offline,
+six worker and seven reader browser cases. The actual built worker passed the
+original failure scenario and three reloads in each of two isolated fresh contexts
+against production using local asset substitution. Those checks did not deploy
+the repair. Normal PR deployment/merge verification remains open. See the
+[reader investigation and qualification](../../docs/reviews/reader-direct-open-2026-11-10.md).
+The marked article remains private and the native test profile stays local.
 
 ## Accepted publication behavior — not implemented
 
@@ -165,8 +178,8 @@ retain proposals beyond their explicitly approved subsets.
 
 | Work | Status / next evidence |
 | --- | --- |
-| Production reader gap | Investigate the reproducible direct-reader URL failure in a fresh local replica. Library-link reading works; the corrected local cold-reader case does not reproduce it. No fix deployed. |
-| Linux extension CI | Known recovery sign-in failure: run `42845035130` passes web/schema/worker/offline checks but fails three of 12 extension cases. Cause and repair remain unresolved; local macOS passes are separate evidence. See the known issue above. |
+| Production reader gap | Approved fix implemented and locally qualified in PR #32, including isolated built-worker checks against production. Merge and verify the normally deployed artifact; no production deployment claim. |
+| Linux extension CI | Known recovery sign-in failure: run `42845035130` failed three of 12 extension cases after passing web/schema/worker/offline checks. Those three are temporarily skipped on Linux by user request; cause and repair remain unresolved. Latest-head CI still needs confirmation. |
 | Hosted identity check | Real-provider round trip and three same-account reloads passed on production. Two live-identity offline process restarts and remote propagation now pass. Returning-device provider access, deployed persistence/refresh and revoke/expire behavior remain open. |
 | Shared DLF adoption | Extract only evidenced reusable provider/server/lifecycle boundaries, review interfaces, then qualify Finance independently with its existing data/backup obligations. No cross-app session/token transfer. |
 | Local annotations | Finish independently identified highlights, article notes, attached notes and anchors; existing draft/revision groundwork is not the completed model or editor. Review native text/history/anchor facilities before custom machinery. |
