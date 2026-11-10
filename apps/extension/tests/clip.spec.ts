@@ -13,6 +13,8 @@ import { app } from '../../web/src/lib/backend/jazz/schema.js'
 import permissions from '../../web/src/lib/backend/jazz/permissions.js'
 import { connectionSchema } from '../src/connection.js'
 import { z } from 'zod'
+const linuxRecoverySignInIssue =
+	'Known Linux extension recovery sign-in failure; see docs/reviews/image-browser-ci-2026-11-10.md. Re-enable after Linux qualification.'
 const machineEvidenceSchema = z.object({
 	machine: z.string().max(80),
 	status: z.string().max(20).optional(),
@@ -625,6 +627,7 @@ test('successive toolbar clicks save different tabs through one hidden runtime',
 test('a signed-out click opens sign-in, rejects invalid input, then saves to the already-open app account', async ({
 	browser
 }) => {
+	test.skip(process.platform === 'linux', linuxRecoverySignInIssue)
 	const { context, id, worker } = await extension(join(directory, 'fresh-signin-profile'), false)
 	const web = await browser.newContext()
 	try {
@@ -737,6 +740,7 @@ test('canceling sign-in leaves no article reference and a later click can prompt
 })
 
 test('a stale connection for another account prompts again and cannot save', async () => {
+	test.skip(process.platform === 'linux', linuxRecoverySignInIssue)
 	const { context, id, worker } = await extension(join(directory, 'stale-connection-profile'))
 	try {
 		await worker.evaluate(async () => {
@@ -776,6 +780,7 @@ test('a stale connection for another account prompts again and cannot save', asy
 })
 
 test('repeated settings teardown preserves the confirmed account and toolbar capture', async () => {
+	test.skip(process.platform === 'linux', linuxRecoverySignInIssue)
 	test.setTimeout(180000)
 	const { context, id, worker } = await extension(join(directory, 'settings-teardown-profile'))
 	try {

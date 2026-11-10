@@ -94,3 +94,15 @@ diagnostic IDs; bounded console evidence captures their state paths and technica
 errors on failure. No deadlines or account workflow decisions change. Linux
 evidence is still required to distinguish restoration, Chrome confirmation and
 native shutdown settlement; this diagnostic addition is not an extension repair.
+
+## Temporary Linux test exclusion — user approved
+
+The three cases that failed in run `42845035130` are temporarily skipped on Linux:
+signed-out recovery sign-in/capture, stale-account connection and repeated settings
+teardown/capture. Their test bodies and assertions remain active on macOS and
+other platforms. The other nine extension cases remain enabled on Linux.
+
+The skip reason references this known issue. Re-enable these cases after a repair
+is established and Linux qualification can resume. A green run with these skips
+does not resolve the issue or qualify Linux extension recovery sign-in. No product
+behavior, deadline, dependency or account data shape changes accompany this exclusion.
