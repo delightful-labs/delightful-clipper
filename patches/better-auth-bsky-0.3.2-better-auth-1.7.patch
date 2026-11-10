@@ -1,0 +1,11 @@
+--- a/dist/server-5aI6OwM2.js
++++ b/dist/server-5aI6OwM2.js
+@@ -761,7 +761,7 @@
+ 						image: profile.avatar
+ 					};
+ 					const email = mappedFields.email || atprotoPlaceholderEmail(did);
+-					const existingAccount = await ctx.context.internalAdapter.findAccountByProviderId(did, "atproto");
++					const existingAccount = await ctx.context.internalAdapter.findAccountByKey({ accountId: did, providerId: "atproto" });
+ 					let userId;
+ 					if (existingAccount) {
+ 						userId = existingAccount.userId;

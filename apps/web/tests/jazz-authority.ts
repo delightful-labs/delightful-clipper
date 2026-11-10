@@ -1,6 +1,12 @@
 import { createServer } from 'node:http'
 import { join } from 'node:path'
-import { acceptLocalFirstAuth, createJazz, memory, sqlite } from 'jazz-tools/backend'
+import {
+	type CreateJazzOptions,
+	acceptLocalFirstAuth,
+	createJazz,
+	memory,
+	sqlite
+} from 'jazz-tools/backend'
 import { app } from '../src/lib/backend/jazz/schema.js'
 import permissions from '../src/lib/backend/jazz/permissions.js'
 
@@ -8,14 +14,15 @@ import permissions from '../src/lib/backend/jazz/permissions.js'
 export async function startJazzAuthority(input: {
 	port: number
 	origin: string
+	authenticate?: CreateJazzOptions['authenticate']
 	dataDir?: string
 }) {
 	const backend = createJazz({
 		app,
 		permissions,
 		store: input.dataDir ? sqlite({ path: join(input.dataDir, 'core') }) : memory(),
-		authenticate: acceptLocalFirstAuth,
-		publicUrl: `http://127.0.0.1:${input.port}/jazz`,
+		authenticate: input.authenticate ?? acceptLocalFirstAuth,
+		publicUrl: [`http://127.0.0.1:${input.port}/jazz`, `${input.origin}/jazz`],
 		allowedOrigins: [input.origin]
 	})
 	const server = createServer((request, response) => backend.nodeHandler(request, response))
@@ -31,7 +38,7 @@ export async function startJazzAuthority(input: {
 			server.once('error', reject)
 			server.listen(input.port, '127.0.0.1', resolve)
 		})
-		return { stop }
+		return { stop, backend }
 	} catch (error) {
 		await stop()
 		throw error

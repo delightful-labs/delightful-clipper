@@ -1,3 +1,4 @@
+import { policySchema } from './schema-permissions.test-support.js'
 import { beforeAll, afterAll, expect, it } from 'vitest'
 import { createActor, toPromise, setup } from 'xstate'
 import { createPolicyTestApp } from 'jazz-tools/testing'
@@ -10,7 +11,7 @@ import type { ImageStageRef } from '../../contracts/images.js'
 import type { ImageWrite } from '../../images/schema.js'
 let fixture: PolicyTestApp
 beforeAll(async () => {
-	fixture = await createPolicyTestApp(app, permissions, expect)
+	fixture = await createPolicyTestApp(policySchema(), permissions, expect)
 })
 afterAll(async () => fixture?.shutdown())
 const bytes = new Uint8Array(

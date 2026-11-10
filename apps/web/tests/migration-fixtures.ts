@@ -7,6 +7,8 @@ import { app as images } from './fixtures/schema-history/preimages-schema.test-s
 import { app as notes } from './fixtures/schema-history/prenotes-schema.test-support.js'
 import { app as entities } from './fixtures/schema-history/prenote-entities-schema.test-support.js'
 import { app } from '../src/lib/backend/jazz/schema.js'
+import { app as beforeAuth } from './fixtures/schema-history/preauth-schema.test-support.js'
+import authMigration from '../src/lib/backend/jazz/migrations/20261109T125137-better-auth-native-bb82b0448a9f-7c74c142a5dc.js'
 import urlMigration from './fixtures/schema-history/migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
 import organizationMigration from './fixtures/schema-history/migrations/20261105T033336-library-organization-80988faa7219-5315ce57b805.js'
 import discoveryMigration from './fixtures/schema-history/migrations/20261105T143555-search-tags-trash-5315ce57b805-86d3840835d8.js'
@@ -24,7 +26,8 @@ const steps = [
 	{ to: images, migration: readerMigration },
 	{ to: notes, migration: imageMigration },
 	{ to: entities, migration: noteMigration },
-	{ to: app, migration: entityMigration }
+	{ to: beforeAuth, migration: entityMigration },
+	{ to: app, migration: authMigration }
 ]
 export const browserMigrations = await appMigrations(legacyApp, ...steps)
 export const fixtureSchemas = [legacyApp, ...steps.map((step) => step.to)]
@@ -39,7 +42,8 @@ export function fixtureDeployment(input: DeployOptions) {
 	if (!edge) throw new Error('Unknown browser migration fixture')
 	return {
 		...input,
-		schemas: fixtureSchemas.slice(index, index + 2),
+		schemas: fixtureSchemas.slice(index, index + (input.schema === app ? 3 : 2)),
+		...(input.schema === app ? { migrations: [authMigration] } : {}),
 		migration: { ...input.migration, fromHash: edge.fromHash, toHash: edge.toHash }
 	}
 }

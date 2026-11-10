@@ -76,6 +76,21 @@ async function extension(profile: string, connected = true) {
 			'--enable-unsafe-extension-debugging'
 		]
 	})
+	await context.addInitScript(() => {
+		Reflect.set(globalThis, 'mainThreadWasmCalls', 0)
+		for (const name of ['compile', 'compileStreaming', 'instantiate', 'instantiateStreaming']) {
+			const native = Reflect.get(WebAssembly, name)
+			if (typeof native !== 'function') continue
+			Reflect.set(WebAssembly, name, (...args: unknown[]) => {
+				Reflect.set(
+					globalThis,
+					'mainThreadWasmCalls',
+					Number(Reflect.get(globalThis, 'mainThreadWasmCalls')) + 1
+				)
+				return Reflect.apply(native, WebAssembly, args)
+			})
+		}
+	})
 	context.setDefaultTimeout(15000)
 	const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'))
 	await expect.poll(() => worker.evaluate(() => chrome.action.onClicked.hasListeners())).toBe(true)
@@ -121,6 +136,7 @@ async function extension(profile: string, connected = true) {
 			)
 			throw error
 		}
+		expect(await options.evaluate(() => Reflect.get(globalThis, 'mainThreadWasmCalls'))).toBe(0)
 		await options.close()
 	}
 	const evaluate = <Result>(
@@ -631,6 +647,7 @@ test('a signed-out click opens sign-in, rejects invalid input, then saves to the
 			)
 		).toBe(false)
 		await expect(source.locator('delightful-clipper-bar')).toHaveCount(0)
+		expect(await popup.evaluate(() => Reflect.get(globalThis, 'mainThreadWasmCalls'))).toBe(0)
 		await popup.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
 		const closed = popup.waitForEvent('close')
 		await submit.click()
@@ -726,6 +743,41 @@ test('a stale connection for another account prompts again and cannot save', asy
 					).length
 			)
 		).toBe(0)
+	} finally {
+		await context.close()
+	}
+})
+
+test('repeated settings teardown preserves the confirmed account and toolbar capture', async () => {
+	test.setTimeout(180000)
+	const { context, id, worker } = await extension(join(directory, 'settings-teardown-profile'))
+	try {
+		const connection = await worker.evaluate(
+			async () => (await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+		)
+		const source = await context.newPage()
+		await source.goto('http://127.0.0.1:5230/teardown-source')
+		for (let iteration = 0; iteration < 24; iteration++) {
+			await test.step(`settings teardown ${iteration + 1}`, async () => {
+				const options = await openOptions(context, id)
+				await expect(
+					options.getByRole('button', { name: 'Show recovery phrase', exact: true })
+				).toBeVisible()
+				expect(
+					options.workers().filter((worker) => worker.url().includes('settings.worker'))
+				).toHaveLength(1)
+				expect(await options.evaluate(() => Reflect.get(globalThis, 'mainThreadWasmCalls'))).toBe(0)
+				await options.close()
+				await source.goto(`http://127.0.0.1:5230/teardown-${iteration}`)
+				await clip(context, id, source)
+				await expect(source.getByRole('status')).toHaveText(saved)
+				expect(
+					await worker.evaluate(
+						async () => (await chrome.storage.local.get('clipper.connection'))['clipper.connection']
+					)
+				).toEqual(connection)
+			})
+		}
 	} finally {
 		await context.close()
 	}

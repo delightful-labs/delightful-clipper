@@ -87,6 +87,7 @@ export async function deploy(input: DeployOptions) {
 		app: input.schema,
 		permissions: input.permissions,
 		...(normalized.migration ? { migration: normalized.migration } : {}),
-		...(normalized.schemas ? { schemas: normalized.schemas } : {})
+		...(normalized.schemas ? { schemas: normalized.schemas } : {}),
+		...(normalized.migrations ? { migrations: normalized.migrations } : {})
 	})
 }

@@ -1,0 +1,73 @@
+Native browser stderr excerpts. No credentials or account payloads.
+
+Bundled Chromium 156, headless
+# Fatal error
+# Invoke in DisallowJavascriptExecutionScope
+#
+#
+#
+#FailureMessage Object: 0x17c6225480   Google Chrome for Testing Framework 0x00000001177b9888 ChromeMain + 63800676
+1   Google Chrome for Testing Framework 0x000000011d7426e8 ChromeMain + 163976132
+2   Google Chrome for Testing Framework 0x000000011d419040 ChromeMain + 160660764
+3   Google Chrome for Testing Framework 0x0000000113e647ac ChromeMain + 3683464
+4   Google Chrome for Testing Framework 0x0000000113e636cc ChromeMain + 3679144
+5   Google Chrome for Testing Framework 0x0000000113e6262c ChromeMain + 3674888
+6   Google Chrome for Testing Framework 0x0000000113db2864 ChromeMain + 2954560
+7   Google Chrome for Testing Framework 0x000000011f2cd2e4 ChromeMain + 192856000
+8   Google Chrome for Testing Framework 0x000000011fb06748 ChromeMain + 201479204
+9   Google Chrome for Testing Framework 0x000000011a92f0a0 ChromeMain + 115662204
+10  Google Chrome for Testing Framework 0x0000000113bf9aa4 ChromeMain + 1148800
+
+Bundled Chromium 156, headed
+# Fatal error
+# Invoke in DisallowJavascriptExecutionScope
+#
+#
+#
+#FailureMessage Object: 0x17c28c0280   Google Chrome for Testing Framework 0x0000000117bdd888 ChromeMain + 63800676
+1   Google Chrome for Testing Framework 0x000000011db666e8 ChromeMain + 163976132
+2   Google Chrome for Testing Framework 0x000000011d83d040 ChromeMain + 160660764
+3   Google Chrome for Testing Framework 0x00000001142887ac ChromeMain + 3683464
+4   Google Chrome for Testing Framework 0x00000001142876cc ChromeMain + 3679144
+5   Google Chrome for Testing Framework 0x000000011428662c ChromeMain + 3674888
+6   Google Chrome for Testing Framework 0x00000001141d6864 ChromeMain + 2954560
+7   Google Chrome for Testing Framework 0x000000011f6f12e4 ChromeMain + 192856000
+8   Google Chrome for Testing Framework 0x000000011ff2a748 ChromeMain + 201479204
+9   Google Chrome for Testing Framework 0x000000011ad530a0 ChromeMain + 115662204
+10  Google Chrome for Testing Framework 0x000000011401daa4 ChromeMain + 1148800
+
+Installed Chrome 157, headless
+# Fatal error
+# Invoke in DisallowJavascriptExecutionScope
+#
+#
+#
+#FailureMessage Object: 0x4338801d80   Google Chrome Framework             0x00000001288f773c ChromeMain + 65383324
+1   Google Chrome Framework             0x000000012e938e28 ChromeMain + 166314632
+2   Google Chrome Framework             0x000000012e5ff800 ChromeMain + 162933856
+3   Google Chrome Framework             0x0000000124d92b6c ChromeMain + 3104716
+4   Google Chrome Framework             0x0000000124d91a40 ChromeMain + 3100320
+5   Google Chrome Framework             0x0000000124d90984 ChromeMain + 3096036
+6   Google Chrome Framework             0x0000000124d2d1e4 ChromeMain + 2688580
+7   Google Chrome Framework             0x000000013091b65c ChromeMain + 199748284
+8   Google Chrome Framework             0x00000001311a4a08 ChromeMain + 208698984
+9   Google Chrome Framework             0x000000012c0110e0 ChromeMain + 123159872
+10  Google Chrome Framework             0x0000000125981554 ChromeMain + 15616436
+
+SDK-only standalone reproducer, no restoration or subscription, Node 24
+# Fatal error
+# Invoke in DisallowJavascriptExecutionScope
+#
+#
+#
+#FailureMessage Object: 0x174e1b9880   Google Chrome for Testing Framework 0x000000011ba65888 ChromeMain + 63800676
+1   Google Chrome for Testing Framework 0x00000001219ee6e8 ChromeMain + 163976132
+2   Google Chrome for Testing Framework 0x00000001216c5040 ChromeMain + 160660764
+3   Google Chrome for Testing Framework 0x00000001181107ac ChromeMain + 3683464
+4   Google Chrome for Testing Framework 0x000000011810f6cc ChromeMain + 3679144
+5   Google Chrome for Testing Framework 0x000000011810e62c ChromeMain + 3674888
+6   Google Chrome for Testing Framework 0x000000011805e864 ChromeMain + 2954560
+7   Google Chrome for Testing Framework 0x00000001235792e4 ChromeMain + 192856000
+8   Google Chrome for Testing Framework 0x0000000123db2748 ChromeMain + 201479204
+9   Google Chrome for Testing Framework 0x000000011ebdb0a0 ChromeMain + 115662204
+10  Google Chrome for Testing Framework 0x0000000117ea5aa4 ChromeMain + 1148800

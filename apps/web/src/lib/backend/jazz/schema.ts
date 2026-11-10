@@ -1,7 +1,10 @@
 import { schema as s } from 'jazz-tools'
+import { migrations } from './migrations/index.js'
+import { schema as authSchema } from './auth-schema.js'
 
 export const app = s.defineApp(
 	{
+		...authSchema,
 		notes: s.table(
 			{ libraryId: s.uuid(), articleId: s.uuid().optional(), documentId: s.uuid().optional() },
 			{
@@ -154,5 +157,5 @@ export const app = s.defineApp(
 			}
 		)
 	},
-	{ migrations: 'none' }
+	{ migrations }
 )

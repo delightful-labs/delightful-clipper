@@ -19,6 +19,7 @@ let authority: Awaited<ReturnType<typeof startJazzAuthority>>,
 async function startAuthority() {
 	if (authorityUp) return
 	authority = await startJazzAuthority({ port: 5191, origin: 'http://127.0.0.1:5190', dataDir })
+	await ui.useJazz(authority.backend)
 	authorityUp = true
 }
 async function stopAuthority() {

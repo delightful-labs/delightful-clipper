@@ -1,3 +1,4 @@
+import { selectAtprotoView } from '../../machines/runtime/atproto.js'
 import type { LibraryArticle } from '../../contracts/articles.js'
 import type { SnapshotFrom } from 'xstate'
 import type { workerHostMachine } from './host-machine.js'
@@ -54,6 +55,7 @@ function projectRuntimePayload(snapshot: SnapshotFrom<typeof workerHostMachine>)
 	return {
 		scope: snapshot.context.scope,
 		account: selectApplicationView(application, true),
+		oauth: selectAtprotoView(snapshot.children.oauth?.getSnapshot()),
 		library: snapshot.context.library
 			? {
 					scope: snapshot.context.scope,

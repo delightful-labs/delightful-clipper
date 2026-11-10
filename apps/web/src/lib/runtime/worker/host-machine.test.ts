@@ -1,65 +1,6 @@
-import { bindWorkerConnectivity } from '../../offline/connectivity.js'
-import { createActor, waitFor } from 'xstate'
+import { waitFor } from 'xstate'
 import { expect, it, vi } from 'vitest'
-import { createSessionAcquisitionMachine } from 'delightful-local-first/session/workflow'
-import type { Session } from '../../backend/jazz/account.js'
-import type { AccountInput } from '../../contracts/account.js'
-import { retainDetachedTransaction } from '../../backend/jazz/transaction.js'
-import { workerHostMachine } from './host-machine.js'
-
-function fixture() {
-	bindWorkerConnectivity(true)
-	const unused = vi.fn(async () => {})
-	const close = vi.fn(async () => {})
-	const session: Session = {
-		getSnapshot: () => ({ status: 'signed-out' }),
-		subscribe: () => () => {},
-		createLocalFirst: unused,
-		restoreLocalFirst: unused,
-		loginWithBackend: unused,
-		linkWithBackend: unused,
-		logout: unused,
-		retry: unused,
-		close
-	}
-	const binding = {}
-	const owner = createActor(createSessionAcquisitionMachine<Session>(), {
-		input: { binding, capability: { open: async () => session }, existing: session }
-	}).start()
-	const input: AccountInput<Session> = {
-		startup: { owner, scope: { binding, attachment: {}, generation: 0 } },
-		bind: () => ({
-			read: () => ({ status: 'signed-out' }),
-			readiness: {
-				binding: {},
-				capability: {
-					readStatus: () => 'signed-out',
-					subscribe: () => () => {},
-					retry: unused
-				}
-			},
-			create: unused,
-			logout: unused,
-			release: () => {},
-			restoration: {
-				binding: {},
-				capability: {
-					parsePhrase: async () => {
-						throw new Error('Unused fixture restoration')
-					},
-					isCurrentBinding: () => false,
-					restoreIdentity: unused,
-					readIdentity: async () => ({ kind: 'unavailable' })
-				}
-			}
-		})
-	}
-	return {
-		close,
-		owner,
-		actor: createActor(workerHostMachine, { input: { ...input, scope: 'test-scope' } })
-	}
-}
+import { createWorkerHostFixture as fixture } from './host-machine.test-support.js'
 
 it('closes the SDK only after the application has acknowledged clean shutdown', async () => {
 	const f = fixture()
@@ -77,25 +18,59 @@ it('closes the SDK only after the application has acknowledged clean shutdown', 
 	}
 })
 
-it('retains detached native custody and refuses a safe-close acknowledgment', async () => {
+it('holds provider navigation until application drain and native SDK close settle', async () => {
+	const nativeClose = Promise.withResolvers<void>()
 	const f = fixture()
-	const pending = Promise.withResolvers<void>()
-	const rollback = vi.fn(async () => true)
-	retainDetachedTransaction({
-		acquisition: Promise.resolve({ tx: { rollback } }),
-		pending: pending.promise,
-		commit: undefined
-	})
+	f.close.mockImplementation(() => nativeClose.promise)
+	const fetch = vi.fn(async () =>
+		Response.json({ url: 'https://provider.example.invalid/authorize' })
+	)
+	vi.stubGlobal('fetch', fetch)
 	try {
 		f.actor.start()
-		f.actor.send({ type: 'SHUTDOWN' })
-		await waitFor(f.actor, (snapshot) => snapshot.matches('failed'), { timeout: 1000 })
+		f.actor.send({ type: 'ATPROTO', scope: crypto.randomUUID(), handle: 'stale.example.invalid' })
+		expect(fetch).not.toHaveBeenCalled()
+		f.actor.send({
+			type: 'ATPROTO',
+			scope: f.actor.getSnapshot().context.scope,
+			handle: 'derocher.me'
+		})
+		await waitFor(f.actor, (snapshot) => snapshot.matches('closingSession'))
 		expect(f.actor.getSnapshot().status).toBe('active')
-		expect(f.close).not.toHaveBeenCalled()
-		expect(rollback).not.toHaveBeenCalled()
+		expect(f.actor.getSnapshot().context.redirect).toBe(
+			'https://provider.example.invalid/authorize'
+		)
+		expect(f.close).toHaveBeenCalledOnce()
+		nativeClose.resolve()
+		await waitFor(f.actor, (snapshot) => snapshot.status === 'done')
+		expect(f.actor.getSnapshot().matches('closed')).toBe(true)
 	} finally {
-		pending.resolve()
+		nativeClose.resolve()
 		f.actor.stop()
 		f.owner.stop()
+		vi.unstubAllGlobals()
+	}
+})
+it('refuses safe navigation when native SDK close fails', async () => {
+	const f = fixture()
+	f.close.mockRejectedValue(new Error('Unsettled native close'))
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Response.json({ url: 'https://provider.example.invalid/authorize' }))
+	)
+	try {
+		f.actor.start()
+		f.actor.send({
+			type: 'ATPROTO',
+			scope: f.actor.getSnapshot().context.scope,
+			handle: 'derocher.me'
+		})
+		await waitFor(f.actor, (snapshot) => snapshot.matches('failed'))
+		expect(f.close).toHaveBeenCalledOnce()
+		expect(f.actor.getSnapshot().status).toBe('active')
+	} finally {
+		f.actor.stop()
+		f.owner.stop()
+		vi.unstubAllGlobals()
 	}
 })

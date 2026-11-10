@@ -1,3 +1,4 @@
+import { policySchema } from './schema-permissions.test-support.js'
 import { readRecord } from '../../machines/storage/read.test-support.js'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createActor, toPromise } from 'xstate'
@@ -11,7 +12,7 @@ import { BYTE_LIMIT, prepareSave } from '../../storage/prepare.js'
 
 let fixture: PolicyTestApp
 beforeAll(async () => {
-	fixture = await createPolicyTestApp(app, permissions, expect)
+	fixture = await createPolicyTestApp(policySchema(), permissions, expect)
 })
 afterAll(async () => {
 	await fixture?.shutdown()

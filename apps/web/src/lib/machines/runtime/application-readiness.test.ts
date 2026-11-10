@@ -778,3 +778,95 @@ it('rejects forged private completion events while session acquisition is pendin
 	expect(actor.getSnapshot().output).toEqual({ clean: true })
 	session.owner.stop()
 })
+
+it('does not apply a superseded guest preparation failure to the backend account Jazz has opened', async () => {
+	const pending = Promise.withResolvers<void>()
+	const access = root(Promise.resolve(), Promise.resolve())
+	const guest = { ...ready('guest', access), localFirst: false }
+	const backend = { ...ready('backend', access), localFirst: true, signedIn: true }
+	const f = fixture(guest)
+	const actor = createActor(applicationReadinessMachine, {
+		input: input({ ...f.host, prepare: () => pending.promise })
+	}).start()
+	try {
+		await waitFor(actor, (snapshot) =>
+			snapshot.matches({ active: { flow: { running: 'preparing' } } })
+		)
+		f.emit(backend)
+		await waitFor(
+			actor,
+			(snapshot) =>
+				snapshot.context.observation.status === 'ready' &&
+				snapshot.context.observation.accountId === 'backend'
+		)
+		pending.reject(new Error('The guest client closed during native account following'))
+		await waitFor(
+			actor,
+			(snapshot) => snapshot.matches({ active: { flow: { running: 'library' } } }),
+			{ timeout: 1000 }
+		)
+		expect(actor.getSnapshot().context.observation).toBe(backend)
+	} finally {
+		actor.stop()
+	}
+})
+
+it('does not retry failed preparation just because the same account replaced its thin binding', async () => {
+	const access = root(Promise.resolve(), Promise.resolve())
+	const thin = { ...ready('guest', access), localFirst: false }
+	const f = fixture(thin)
+	let calls = 0
+	const prepare = vi.fn(async () => {
+		if (++calls === 1) f.emit({ ...thin, binding: {} })
+		throw new Error('Local persistence unavailable')
+	})
+	const actor = createActor(applicationReadinessMachine, {
+		input: input({ ...f.host, prepare })
+	}).start()
+	try {
+		await waitFor(
+			actor,
+			(snapshot) => snapshot.matches({ active: { flow: { running: 'unavailable' } } }),
+			{ timeout: 1000 }
+		)
+		expect(prepare).toHaveBeenCalledOnce()
+	} finally {
+		actor.stop()
+	}
+})
+
+it('prepares a different backend account after its superseded guest preparation fails', async () => {
+	const pending = Promise.withResolvers<void>()
+	const access = root(Promise.resolve(), Promise.resolve())
+	const guest = { ...ready('guest', access), localFirst: false }
+	const backend = { ...ready('backend', access), localFirst: false, signedIn: true }
+	const f = fixture(guest)
+	let calls = 0
+	const prepare = vi.fn(async () => {
+		if (++calls === 1) return pending.promise
+		f.emit({ ...backend, binding: {}, localFirst: true })
+	})
+	const actor = createActor(applicationReadinessMachine, {
+		input: input({ ...f.host, prepare })
+	}).start()
+	try {
+		await waitFor(actor, (s) => s.matches({ active: { flow: { running: 'preparing' } } }))
+		f.emit(backend)
+		await waitFor(
+			actor,
+			(s) =>
+				s.context.observation.status === 'ready' && s.context.observation.accountId === 'backend'
+		)
+		pending.reject(new Error('The guest closed while Jazz opened the backend account'))
+		await waitFor(actor, (s) => s.matches({ active: { flow: { running: 'library' } } }), {
+			timeout: 1000
+		})
+		expect(prepare).toHaveBeenCalledTimes(2)
+		expect(actor.getSnapshot().context.observation).toMatchObject({
+			accountId: 'backend',
+			localFirst: true
+		})
+	} finally {
+		actor.stop()
+	}
+})

@@ -1,3 +1,4 @@
+import { signOutMachine } from './sign-out.js'
 import type { EventPayload } from '../events.js'
 import {
 	types,
@@ -143,7 +144,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 			run: ({ input }: { input: AccountHost }) => required(input.prepare)()
 		}),
 		create: createAsyncLogic({ run: ({ input }: { input: AccountHost }) => input.create() }),
-		logout: createAsyncLogic({ run: ({ input }: { input: AccountHost }) => input.logout() }),
+		logout: signOutMachine,
 		bootstrap: rootBootstrapMachine,
 		global: createAsyncLogic({ run: ({ input }: { input: RootWrite }) => input.global() }),
 		restore: restorationMachine
@@ -254,6 +255,9 @@ export function createApplicationReadinessMachine<Session extends object>(
 									refreshing: {},
 									route: { id: 'application-active-flow-running-route' },
 									preparing: {
+										schemas: {
+											context: types<{ preparing: { binding: object; accountId: string } }>()
+										},
 										states: {
 											active: {},
 											stopping: {}
@@ -390,6 +394,14 @@ export function createApplicationReadinessMachine<Session extends object>(
 
 			stoppingPreparation: ({ value }: { value: import('xstate').StateValue }) =>
 				matchesState({ active: { flow: { running: { preparing: 'stopping' } } } }, value),
+			preparationReplaced: (
+				{ context }: { context: Context<Session> },
+				preparing: { binding: object; accountId: string }
+			) =>
+				context.observation.status === 'ready' &&
+				context.observation.binding !== preparing.binding &&
+				(context.observation.localFirst !== false ||
+					context.observation.accountId !== preparing.accountId),
 			needsLocalFirst: ({ context }) =>
 				context.observation.status === 'ready' &&
 				context.observation.localFirst === false &&
@@ -707,7 +719,17 @@ export function createApplicationReadinessMachine<Session extends object>(
 												}
 											}
 											if (args.guards.needsLocalFirst(args)) {
-												return { target: 'preparing' }
+												if (context.observation.status !== 'ready')
+													throw new Error('Preparation scope unavailable')
+												return {
+													target: 'preparing',
+													context: {
+														preparing: {
+															binding: context.observation.binding,
+															accountId: context.observation.accountId
+														}
+													}
+												}
 											}
 											if (context.observation.status === 'ready') {
 												return { target: 'library' }
@@ -743,6 +765,8 @@ export function createApplicationReadinessMachine<Session extends object>(
 												if (args.guards.stoppingPreparation(args)) {
 													return { target: 'draining' }
 												}
+												if (args.guards.preparationReplaced(args, args.context.preparing))
+													return { target: 'refreshing' }
 												return {
 													target: 'unavailable',
 													context: { observation: { status: 'error' } }

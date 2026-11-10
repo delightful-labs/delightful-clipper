@@ -27,6 +27,12 @@ Every source-of-truth row carries or inherits an enforced `libraryId`/owner rela
 
 ## AT Protocol identity boundary
 
+Research follow-up (2026-11-07): [AT Protocol highlights and notes research](../../docs/atproto-research.md)
+compares public Lexicons, private Spaces, anchoring, offline reconciliation and DLF/backup ownership.
+It consolidates accepted publication behavior and companion fields, with unapproved mechanics
+kept separate. Jazz upgrade and backend hosting are being handled independently; this research
+does not authorize implementation or migration.
+
 AT Protocol support is confirmed product intent; the original planning conversation did not carry it into this specification. Notes and highlights therefore need their own records and identities, with explicit article relationships, regardless of the eventual AT storage/publication choice. The article must not be the only address through which an annotation can be retrieved. A note attached to a highlight has its own identity, not the highlight's identity.
 
 AT Protocol addresses records with an AT URI containing repository identity, collection and record key. A version-specific strong reference additionally carries a CID; record address and content version are different concepts. See the official [data repository guide](https://atproto.com/guides/data-repos) and [AT URI specification](https://atproto.com/specs/at-uri-scheme). DLF owns shared identity integration and the broader cross-app AT Protocol boundary, starting with identity. Clipper domain IDs must remain independent of DIDs, provider subjects, AT record keys and content-version identifiers. No Lexicon namespace, record-key format, source-of-truth or publication lifecycle is selected here; those choices are not prerequisites for modeling independent local entities. A portable article reference also needs design because a private Jazz article ID alone is not an externally resolvable source reference.

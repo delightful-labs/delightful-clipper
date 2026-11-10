@@ -35,8 +35,6 @@ let endpoint: string
 
 beforeAll(async () => {
 	core = await startLocalJazzServer({
-		schema: app,
-		permissions,
 		inMemory: true,
 		allowLocalFirstAuth: true
 	})

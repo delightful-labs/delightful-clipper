@@ -21,6 +21,7 @@ const view: RuntimeView = {
 	type: 'VIEW',
 	scope: crypto.randomUUID(),
 	library: undefined,
+	oauth: { busy: false, message: undefined },
 	worker: { windowPresent: false },
 	account: {
 		status: 'starting',
@@ -40,7 +41,10 @@ it.each(['failure', 'detach'])(
 	'stops delivering render and sensitive recovery views after UI %s, and waits for the worker close acknowledgment',
 	(phase) => {
 		vi.stubGlobal('Worker', NativeWorker)
-		vi.stubGlobal('window', new EventTarget())
+		vi.stubGlobal(
+			'window',
+			Object.assign(new EventTarget(), { location: { href: 'https://example.invalid/' } })
+		)
 		vi.stubGlobal('navigator', { onLine: true })
 		const publish = vi.fn(),
 			recovery = vi.fn(),
@@ -77,7 +81,10 @@ it.each(['failure', 'detach'])(
 
 it('binds the alpha.60 namespace before serving the worker account read', async () => {
 	vi.stubGlobal('Worker', NativeWorker)
-	vi.stubGlobal('window', new EventTarget())
+	vi.stubGlobal(
+		'window',
+		Object.assign(new EventTarget(), { location: { href: 'https://example.invalid/' } })
+	)
 	vi.stubGlobal('navigator', { onLine: true })
 	const getItem = vi.fn(() => 'opaque-test-selection')
 	vi.stubGlobal('localStorage', { getItem, setItem: vi.fn() })
@@ -108,4 +115,27 @@ it('binds the alpha.60 namespace before serving the worker account read', async 
 		client.close()
 		worker.emit({ type: 'CLOSED' })
 	}
+})
+
+it('executes an acknowledged provider navigation and releases the already-closed worker', () => {
+	vi.stubGlobal('Worker', NativeWorker)
+	const assign = vi.fn()
+	const window = Object.assign(new EventTarget(), {
+		location: { href: 'https://example.invalid/', assign }
+	})
+	vi.stubGlobal('window', window)
+	vi.stubGlobal('navigator', { onLine: true })
+	const client = openApplicationClient({
+		appId: crypto.randomUUID(),
+		serverUrl: 'https://example.invalid/jazz',
+		publish: vi.fn(),
+		recovery: vi.fn(),
+		failed: vi.fn()
+	})
+	const worker = NativeWorker.latest!
+	worker.emit({ type: 'NAVIGATE', url: 'https://provider.example.invalid/authorize' })
+	expect(assign).toHaveBeenCalledExactlyOnceWith('https://provider.example.invalid/authorize')
+	expect(worker.terminate).toHaveBeenCalledOnce()
+	client.close()
+	expect(worker.terminate).toHaveBeenCalledOnce()
 })

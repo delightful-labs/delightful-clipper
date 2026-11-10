@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, setContext, type Snippet } from 'svelte'
-	import { Button, StatusMessage, Textarea } from 'delightful-ui'
+	import { Button, StatusMessage, Textarea, InputText } from 'delightful-ui'
 	import RecoveryView from 'delightful-local-first/recovery/view'
 	import type { RecoveryPhraseView } from 'delightful-local-first/recovery/contracts'
 	import { openApplicationClient } from '../runtime/worker/client.js'
@@ -13,17 +13,23 @@
 		appId,
 		serverUrl,
 		children,
-		shell
+		shell,
+		createWorker,
+		atprotoEnabled = true
 	}: {
 		appId: string
 		serverUrl: string
 		children: Snippet
 		gatewayEnabled: boolean
+		createWorker?: import('../runtime/worker/client.js').Input['createWorker']
+		atprotoEnabled?: boolean
 		shell?: Snippet<[Snippet, Snippet, WorkflowMessage | undefined]>
 	} = $props()
 	let view = $state<RuntimeView['account']>()
 	let library = $state<LibraryClient>()
 	let phrase = $state('')
+	let handle = $state('')
+	let oauth = $state<RuntimeView['oauth']>()
 	let recovery = $state<RecoveryPhraseView>({ kind: 'unavailable' })
 	let recoveryAvailable = $state(false)
 	let recoveryScope = ''
@@ -41,9 +47,11 @@
 		client = openApplicationClient({
 			appId,
 			serverUrl,
+			...(createWorker ? { createWorker } : {}),
 			publish: (next) => {
 				accountScope = next.scope
 				view = next.account
+				oauth = next.oauth
 				if (!next.library) {
 					library = undefined
 					bound = undefined
@@ -83,6 +91,24 @@
 
 {#snippet controls()}
 	<section class="account-controls" aria-label={t('app.title')}>
+		{#if oauth?.message}<StatusMessage {...oauth.message} />{/if}
+		{#if atprotoEnabled && view?.canRestore && !view.canLogout}
+			<form
+				onsubmit={(event) => {
+					event.preventDefault()
+					client?.post({ type: 'ATPROTO', scope: accountScope, handle })
+				}}
+			>
+				<InputText
+					label={t('account.atproto.handle_label')}
+					bind:value={handle}
+					autocomplete="username"
+					required
+					disabled={oauth?.busy}
+				/>
+				<Button type="submit" disabled={oauth?.busy}>{t('account.atproto.sign_in')}</Button>
+			</form>
+		{/if}
 		{#if view?.message.text}<StatusMessage {...view.message} />{/if}
 		{#if view?.feedbackMessage}<StatusMessage {...view.feedbackMessage} />{/if}
 		{#if view?.showIdentityForm}<Button type="button" onclick={() => account({ type: 'CREATE' })}

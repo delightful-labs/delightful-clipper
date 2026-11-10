@@ -19,7 +19,12 @@ packageManagerStrictVersion: true
 overrides:
   jazz-tools: 2.0.0-alpha.60
 
+peerDependencyRules:
+  allowedVersions:
+    'jazz-tools@2.0.0-alpha.60>better-auth': '1.7.18'
+
 patchedDependencies:
+  '@kingironman2011/better-auth-bsky@0.3.2': patches/better-auth-bsky-0.3.2-better-auth-1.7.patch
   delightful-local-first@0.0.0: patches/delightful-local-first@0.0.0.patch
   jazz-tools@2.0.0-alpha.60: patches/jazz-tools@2.0.0-alpha.60.patch
 

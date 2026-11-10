@@ -112,6 +112,17 @@ function bindHost(
 		},
 		readiness,
 		create: () => session.createLocalFirst(),
+		signOut: async () => {
+			const response = await fetch('/api/auth/sign-out', {
+				method: 'POST',
+				credentials: 'same-origin',
+				redirect: 'error',
+				cache: 'no-store',
+				headers: { 'Content-Type': 'application/json' },
+				body: '{}'
+			})
+			if (!response.ok) throw new Error('Provider sign-out failed')
+		},
 		logout: () => session.logout(),
 		release: () => {
 			recovery.invalidate()
@@ -179,7 +190,7 @@ export function currentLibraryRecords() {
 	})
 }
 
-/** Read the managed bearer immediately before dispatch; results belong to this binding. */
+/** Guests send their native proof; backend users send their same-origin cookie. */
 export async function requestCapture(
 	operation: 'resolve' | 'extract' | 'asset',
 	body: unknown,
@@ -191,14 +202,16 @@ export async function requestCapture(
 		throw new Error('Account scope unavailable')
 	const { account, client } = snapshot
 	const token = client.db.getConfig().jwtToken
-	if (!token) throw new Error('Authentication unavailable')
 	const response = await fetch(`/api/capture/${operation}`, {
 		method: 'POST',
-		credentials: 'omit',
+		credentials: 'same-origin',
 		redirect: 'error',
 		cache: 'no-store',
 		signal: signal ?? null,
-		headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+		headers: {
+			...(token ? { Authorization: `Bearer ${token}` } : {}),
+			'Content-Type': 'application/json'
+		},
 		body: JSON.stringify(body)
 	})
 	const now = session.getSnapshot()

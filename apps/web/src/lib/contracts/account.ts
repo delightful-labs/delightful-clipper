@@ -39,6 +39,7 @@ export type AccountHost = Readonly<{
 	prepare?: () => Promise<void>
 	readiness: SessionReadinessBinding
 	create: () => Promise<void>
+	signOut?: () => Promise<void>
 	logout: () => Promise<void>
 	release: () => void
 	restoration: Readonly<{ binding: object; capability: RestorationCapability }>

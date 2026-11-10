@@ -16,7 +16,7 @@ for (const version of ['a', 'b']) {
 				CLIPPER_SHELL_VERSION: `offline-${version}`,
 				CAPTURE_GATEWAY_ENABLED: 'true',
 				PUBLIC_JAZZ_APP_ID: '2db98ae3-fcf1-41e8-b7d3-9818496bde60',
-				PUBLIC_JAZZ_SERVER_URL: 'http://127.0.0.1:5191/jazz',
+				PUBLIC_JAZZ_SERVER_URL: 'http://127.0.0.1:5190/jazz',
 				JAZZ_ACCOUNT_REGISTRY:
 					'http://127.0.0.1:5191/apps/2db98ae3-fcf1-41e8-b7d3-9818496bde60/accounts'
 			}

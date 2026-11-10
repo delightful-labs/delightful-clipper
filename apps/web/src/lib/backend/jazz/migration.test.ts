@@ -27,6 +27,8 @@ import {
 import { createServer } from 'node:http'
 import { startLocalJazzServer as startCore, deploy as deployCore } from 'jazz-tools/dev'
 import { app } from './schema.js'
+import { app as beforeAuth } from '../../../../tests/fixtures/schema-history/preauth-schema.test-support.js'
+import authMigration from './migrations/20261109T125137-better-auth-native-bb82b0448a9f-7c74c142a5dc.js'
 import { legacyApp } from '../../../../tests/fixtures/schema-history/legacy-schema.test-support.js'
 import permissions from './permissions.js'
 import { app as preOrganizationApp } from '../../../../tests/fixtures/schema-history/preorganization-schema.test-support.js'
@@ -71,7 +73,8 @@ const historicalSchemas: Record<string, { wasmSchema: typeof app.wasmSchema }> =
 	'3d99c179e109': preImageApp,
 	dc1365b4b2ec: preNotesApp,
 	b7805d9b30d2: preEntitiesApp,
-	'92a26a023aa5': app
+	'92a26a023aa5': beforeAuth,
+	'current-auth': app
 }
 async function deploy(input: Parameters<typeof deployCore>[0]) {
 	if (!input.migration) return deployCore(input)
@@ -82,13 +85,21 @@ async function deploy(input: Parameters<typeof deployCore>[0]) {
 	const toHash = await computeSchemaHash(to.wasmSchema)
 	const result = await deployCore({
 		...input,
-		schemas: [from, to],
+		schemas: to === beforeAuth ? [from, to, app] : [from, to],
+		...(to === beforeAuth ? { migrations: [authMigration] } : {}),
 		migration: { ...input.migration, fromHash, toHash }
 	})
 	const edges = deployedEdges.get(input.appId) ?? []
 	if (!edges.some((edge) => edge.fromHash === fromHash && edge.toHash === toHash)) {
 		edges.push({ fromHash, toHash, forward: serializeForwardLenses(input.migration.forward) })
 		deployedEdges.set(input.appId, edges)
+	}
+	if (to === beforeAuth) {
+		edges.push({
+			fromHash: toHash,
+			toHash: await computeSchemaHash(app.wasmSchema),
+			forward: serializeForwardLenses(authMigration.forward)
+		})
 	}
 	return result
 }

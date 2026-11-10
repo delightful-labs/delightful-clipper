@@ -128,6 +128,7 @@ test('continues background acquisition after leaving the reader and retries a fa
 }) => {
 	const bytes = await png(page, 20, 10),
 		gate = Promise.withResolvers<void>(),
+		failedResponse = Promise.withResolvers<void>(),
 		urls = ['https://images.example/retry.png', 'https://images.example/slow.png']
 	let failing = true
 	let failedUrl: string | undefined
@@ -137,12 +138,16 @@ test('continues background acquisition after leaving the reader and retries a fa
 		// so a held request cannot block the serial queue before the failure assertion.
 		failedUrl ??= url
 		if (url !== failedUrl) await gate.promise
-		if (url === failedUrl && failing)
+		if (url === failedUrl && failing) {
 			await route.fulfill({ status: 415, json: { code: 'unsupportedMedia', retryable: false } })
-		else await route.fulfill({ status: 200, contentType: 'image/png', body: bytes })
+			failedResponse.resolve()
+		} else await route.fulfill({ status: 200, contentType: 'image/png', body: bytes })
 	})
 	await seed(page, urls)
 	await page.getByRole('link', { name: 'Offline image fixture', exact: true }).click()
+	// Cold native reconciliation may wait five seconds before the first fetch.
+	// Observe the mocked response before timing its durable failure publication.
+	await failedResponse.promise
 	await expect.poll(async () => (await rows(page)).map((row) => row.status)).toContain('failed')
 	const failedName = 'Saved image ' + (urls.findIndex((url) => url === failedUrl) + 1),
 		backgroundName = 'Saved image ' + (urls.findIndex((url) => url !== failedUrl) + 1)

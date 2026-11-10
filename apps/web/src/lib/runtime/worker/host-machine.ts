@@ -1,3 +1,4 @@
+import { atprotoMachine } from '../../machines/runtime/atproto.js'
 import type { EventPayload } from '../../machines/events.js'
 import { types, createCallbackLogic, setup, createAsyncLogic, type ActorRefFrom } from 'xstate'
 import { hasDetachedTransactions } from '../../backend/jazz/transaction.js'
@@ -20,9 +21,14 @@ function required<T>(value: T | undefined): T {
 	return value
 }
 const application = createApplicationReadinessMachine<Session>(observeBrowserConnection)
-type Input = AccountInput<Session> & { scope: string }
+type Input = AccountInput<Session> & {
+	scope: string
+	callbackAttempt?: string | null | undefined
+	authReturned?: () => void
+}
 type LibraryRef = ActorRefFrom<typeof libraryMachine>
 type Context = {
+	redirect: string | undefined
 	recovery: RecoveryOwner | undefined
 	input: Input
 	session: Session | undefined
@@ -43,6 +49,8 @@ type Event =
 			sources: string[]
 			surface: ReaderSurface
 	  }
+	| { type: 'OAUTH_REDIRECT'; url: string }
+	| { type: 'OAUTH_RETURNED' }
 	| { type: 'SHUTDOWN' }
 	| { type: 'OWNER_READY'; session: Session }
 	| { type: 'OWNER_EMPTY' }
@@ -59,6 +67,7 @@ const owner = createCallbackLogic<SessionOwnerReply<Session>, Input>(
 	}
 )
 const actors = {
+	oauth: atprotoMachine,
 	application,
 	owner,
 	tagForm: tagFormMachine,
@@ -73,6 +82,9 @@ export const workerHostMachine = setup({
 		context: types<Context>(),
 		events: {
 			SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>(),
+			ATPROTO: types<EventPayload<Event, 'ATPROTO'>>(),
+			OAUTH_REDIRECT: types<EventPayload<Event, 'OAUTH_REDIRECT'>>(),
+			OAUTH_RETURNED: types<EventPayload<Event, 'OAUTH_RETURNED'>>(),
 			CONNECTIVITY: types<EventPayload<Event, 'CONNECTIVITY'>>(),
 			RECOVERY: types<EventPayload<Event, 'RECOVERY'>>(),
 			ACCOUNT: types<EventPayload<Event, 'ACCOUNT'>>(),
@@ -91,6 +103,7 @@ export const workerHostMachine = setup({
 		input: types<Input>(),
 		tags: types<string>(),
 		children: {
+			oauth: types<ActorRefFrom<typeof atprotoMachine>>(),
 			application: types<import('xstate').ActorRefFrom<(typeof actors)['application']>>(),
 			owner: types<import('xstate').ActorRefFrom<(typeof actors)['owner']>>(),
 			tagForm: types<import('xstate').ActorRefFrom<(typeof actors)['tagForm']>>(),
@@ -175,6 +188,7 @@ export const workerHostMachine = setup({
 	id: 'worker-host',
 	initial: 'running',
 	context: ({ input }) => ({
+		redirect: undefined,
 		input,
 		recovery: undefined,
 		session: undefined,
@@ -195,21 +209,40 @@ export const workerHostMachine = setup({
 					return { target: 'failed' }
 				}
 			},
-			invoke: {
-				id: 'application',
-				src: 'application',
-				input: ({ context }: { context: Context }) => context.input,
-				onDone: (args, enq) => {
-					enq.raise({
-						type: 'APPLICATION_CLOSED',
-						clean: args.event.output.clean
-					})
+			invoke: [
+				{
+					id: 'oauth',
+					src: 'oauth',
+					input: ({ context }) => ({ callbackAttempt: context.input.callbackAttempt })
 				},
-				onError: { target: 'failed' }
-			},
+				{
+					id: 'application',
+					src: 'application',
+					input: ({ context }: { context: Context }) => context.input,
+					onDone: (args, enq) => {
+						enq.raise({
+							type: 'APPLICATION_CLOSED',
+							clean: args.event.output.clean
+						})
+					},
+					onError: { target: 'failed' }
+				}
+			],
 			states: {
 				accepting: {
 					on: {
+						ATPROTO: (args, enq) => {
+							if (!args.guards.currentAccount(args)) return
+							enq.sendTo('oauth', { type: 'BEGIN', handle: args.event.handle })
+						},
+						OAUTH_RETURNED: ({ context }, enq) => {
+							enq(() => context.input.authReturned?.())
+						},
+						OAUTH_REDIRECT: ({ event }, enq) => {
+							enq.sendTo('application', { type: 'SHUTDOWN' })
+							return { target: 'draining', context: { redirect: event.url } }
+						},
+
 						BIND_RECOVERY: (args, enq) => {
 							const { context } = args
 							if (args.guards.suppliedRecovery(args)) {

@@ -30,7 +30,9 @@
 		"unicode-case-folding": "1.1.2",
 		"ws": "8.22.1",
 		"xstate": "6.0.0-beta.1",
-		"zod": "4.6.7"
+		"zod": "4.6.7",
+		"better-auth": "1.7.18",
+		"@kingironman2011/better-auth-bsky": "0.3.2"
 	},
 	"devDependencies": {
 		"@opentelemetry/api": "1.9.1",

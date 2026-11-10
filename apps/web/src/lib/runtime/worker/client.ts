@@ -2,7 +2,7 @@ import type { EventPayload } from '../../machines/events.js'
 import { types, createActor, createCallbackLogic, setup } from 'xstate'
 
 import { serveBrokerHost } from './broker-channel.js'
-import { serveAccountStorage, ACCOUNT_STORAGE_PREFIX } from './storage-channel.js'
+import { serveAccountStorage, isAccountStorageKey } from './storage-channel.js'
 import { serveReaderSurface } from '../../reader/surface-host.js'
 import type { RuntimeCommand, LibraryIntent } from './protocol.js'
 import type { RuntimeView, LibraryRender } from './views.js'
@@ -10,12 +10,15 @@ import type { RecoveryPhraseView } from 'delightful-local-first/recovery/contrac
 import type { ViewportElements } from '../../reader/viewport.js'
 
 export type WorkerReply =
+	| { type: 'NAVIGATE'; url: string }
+	| { type: 'AUTH_RETURNED' }
 	| { type: 'RECEIVED'; requestId: string; scope: string }
 	| RuntimeView
 	| { type: 'CLOSED' | 'FAILED' }
 	| { type: 'STORAGE_NAMESPACE'; key: string }
 	| { type: 'RECOVERY'; scope: string; view: RecoveryPhraseView; available: boolean }
-type Input = {
+export type Input = {
+	createWorker?: () => { worker: Worker; release: () => void }
 	appId: string
 	serverUrl: string
 	publish: (view: RuntimeView) => void
@@ -29,9 +32,10 @@ type Event =
 	| { type: 'UI_DETACHED' }
 	| { type: 'SHUTDOWN' | 'CLOSED' | 'FAILED' }
 const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }) => {
-	const worker = new Worker(new URL('./application.worker.ts', import.meta.url), {
-		type: 'module'
-	})
+	const native = input.createWorker?.()
+	const worker =
+		native?.worker ??
+		new Worker(new URL('./application.worker.ts', import.meta.url), { type: 'module' })
 	const storage = new MessageChannel(),
 		broker = new MessageChannel()
 	const releaseBroker = serveBrokerHost(broker.port1)
@@ -43,7 +47,7 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 	worker.onmessage = ({ data }: MessageEvent<WorkerReply>) => {
 		switch (data.type) {
 			case 'STORAGE_NAMESPACE':
-				if (!releaseStorage && data.key.startsWith(ACCOUNT_STORAGE_PREFIX))
+				if (!releaseStorage && isAccountStorageKey(data.key))
 					releaseStorage = serveAccountStorage(storage.port1, localStorage, data.key)
 				break
 			case 'RECEIVED':
@@ -54,6 +58,16 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 				break
 			case 'RECOVERY':
 				if (recoveryAttached) input.recovery(data.view, data.available, data.scope)
+				break
+			case 'AUTH_RETURNED': {
+				const url = new URL(window.location.href)
+				url.searchParams.delete('atproto_attempt')
+				window.history.replaceState(window.history.state, '', url)
+				break
+			}
+			case 'NAVIGATE':
+				window.location.assign(data.url)
+				sendBack({ type: 'CLOSED' })
 				break
 			case 'CLOSED':
 				sendBack({ type: 'CLOSED' })
@@ -75,6 +89,7 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 	worker.postMessage(
 		{
 			type: 'INITIALIZE',
+			callbackAttempt: new URL(window.location.href).searchParams.get('atproto_attempt'),
 			online: navigator.onLine,
 			appId: input.appId,
 			serverUrl: input.serverUrl,
@@ -90,6 +105,7 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 		worker.onerror = null
 		worker.onmessageerror = null
 		worker.terminate()
+		native?.release()
 		releaseStorage?.()
 		storage.port1.close()
 		releaseBroker()
@@ -127,6 +143,7 @@ const clientMachine = setup({
 	states: {
 		attached: {
 			on: {
+				CLOSED: { target: 'closed' },
 				VIEW: (args, enq) => {
 					enq(() => args.context.publish(args.event.view))
 				},

@@ -1,3 +1,4 @@
+import { configuredAuth } from './auth/handler.js'
 import { extensionOrigin } from '../../../../../tooling/extension-identity.js'
 import {
 	acceptLocalFirstAuth,
@@ -48,7 +49,11 @@ export const jazz = createJazz({
 	app,
 	permissions,
 	store,
-	authenticate: acceptLocalFirstAuth,
+	authenticate: async (request) => {
+		const auth = configuredAuth()
+		const session = auth ? await auth.api.getSession({ headers: request.headers }) : null
+		return session ? { userId: session.user.id } : acceptLocalFirstAuth(request)
+	},
 	allowedOrigins: [extensionOrigin],
 	...(publicUrl ? { publicUrl } : {})
 })
