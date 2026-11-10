@@ -10,16 +10,18 @@ import {
 } from 'jazz-tools/backend'
 import { app } from '../backend/jazz/schema.js'
 import permissions from '../backend/jazz/permissions.js'
+import { jazzCoreName } from './jazz-core-name.js'
 
 // Jazz owns lazy acquisition, schema publication, sockets, and core lifecycle.
 // The local alpha.60 store has a separate path from the previous SDK's data.
+const coreName = jazzCoreName(process.env)
 const store = process.env.VERCEL
 	? vercel({
 			vcpus: 1,
 			maxDriveBytes: 1024 ** 3,
 			blobs: 'sqlite',
 			idleMs: 60_000,
-			...(process.env.CLIPPER_JAZZ_CORE_NAME ? { name: process.env.CLIPPER_JAZZ_CORE_NAME } : {})
+			...(coreName ? { name: coreName } : {})
 		})
 	: process.env.CLIPPER_TEST === 'true' && process.env.CLIPPER_TEST_CORE_URL
 		? remote({

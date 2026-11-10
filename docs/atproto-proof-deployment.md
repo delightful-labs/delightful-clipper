@@ -44,10 +44,12 @@ condition. Any temporary preview-domain protection exception needs explicit
 approval and must be revoked after the test; do not disable project protection.
 
 Jazz alpha.60's generated preview drive name can exceed Vercel's 64-character
-limit. The native `CLIPPER_JAZZ_CORE_NAME` override can select a short, distinct
-branch-only name; include the SDK's `-data` suffix when checking the bound. The
-qualified preview uses `clipper-atproto-pr32`. Do not change a production storage
-name to work around preview provisioning.
+limit. Clipper automatically substitutes a bounded project-and-branch-specific
+name only when the SDK's generated preview name (including `-data`) exceeds that
+limit. Existing valid names and production names remain unchanged. The native
+`CLIPPER_JAZZ_CORE_NAME` override still takes precedence; the qualified AT Protocol
+preview uses `clipper-atproto-pr32`. Do not change a production storage name to
+work around preview provisioning.
 
 An existing Vercel `__vdpl` cookie can pin a browser to an older deployment.
 Confirm the actual deployment before diagnosing a configuration change; Vercel's
