@@ -66,6 +66,11 @@ The worker's reader chart owns reading preferences, progress, persistence, focus
 
 UI release immediately detaches the native viewport while its DOM is still present. Its final-position acknowledgment crosses the surface port; the reader chart drains the resulting writes and fullscreen exit before completing. A late viewport-open request for an already released DOM lease acknowledges closure without recreating the resource. Worker/SDK termination never substitutes for that acknowledgment.
 
+Private surface custody and observation follow the actual invoked library through
+drain. A UI-ready selector may withdraw rendering and command admission before
+that invocation completes; it must not determine when the worker disposes the
+reader port or stops observing its closing child actors.
+
 `workerHostMachine` drains the application, waits for retained DLF acquisition (including a late SDK open), closes the actual SDK session, and only then emits `CLOSED`. Cleanup/owner/close failures refuse safe-termination acknowledgment. The UI port terminates its worker only after that receipt. Unknown-write settlement and reconciliation remain with the existing DLF/domain charts.
 
 ## Qualification and development

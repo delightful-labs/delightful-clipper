@@ -193,9 +193,13 @@ They do not establish live AT Protocol access-token refresh or provider revocati
 All 21 account browser cases pass locally, including the offline-save/full-process
 restart/independent-restoration case. Linux CI run `42851581957` at `9a09485`
 failed that case's independent-profile read, then failed eight later cases.
-Tooling/types/build passed. One rerun of the failed browser job has passed the
-complete web suite and reached schema tests; later steps are still in progress.
-The passing rerun does not explain or resolve the intermittent Linux failure.
+Tooling/types/build passed. The rerun completed successfully. Follow-up commit
+`b934415` also passed the complete [Linux CI run 42854820880](https://github.com/delightful-labs/delightful-clipper/actions/runs/42854820880):
+686 unit/native tests, strict checks/build, all 55 web cases, eight historical
+schema cases, six worker cases, eight offline cases, nine extension cases and
+two sample-data cases. The three known extension cases remain skipped on Linux.
+These passing runs do not explain or repair the intermittent independent-profile
+read failure from the earlier attempt.
 
 The deployed PR preview initially returned `503 invalid_auth_configuration` with
 the missing field names `AUTH_BASE_URL` and `AUTH_SECRET`. These previously approved
@@ -204,12 +208,139 @@ stable branch origin and an independent sensitive preview secret. Redeployment
 `dpl_6QtwDidBv7Qr87LJL4J7n685wNsk` serves unchanged commit `9a09485`; its session
 endpoint returns HTTP 200. Production configuration is unchanged.
 
-The authenticated Chrome session reaches the actual preview, but its Jazz backend
-cannot open: the SDK-generated preview drive name exceeds Vercel's 64-character
-limit. The app already supports the native `CLIPPER_JAZZ_CORE_NAME` override.
-Selecting `clipper-atproto-pr32` for this branch's disposable preview store is
-awaiting user approval. No override or new store has been selected yet. Fresh
-returning-provider sign-in, the normally deployed reader repair, hosted backend
-restart, live refresh and revocation checks remain pending behind this blocker.
+The SDK-generated preview drive name exceeded Vercel's 64-character limit. With
+user approval, `CLIPPER_JAZZ_CORE_NAME=clipper-atproto-pr32` is now scoped only to
+this preview branch. Deployment `dpl_4Hd2z5NUbih8n4D8TUkd6SMtu5FD` serves `b934415`;
+opening its immutable URL reaches “Private library synced.” The named preview
+sandbox exists, confirming that the shorter native override permits provisioning.
+Production's storage name and data are unchanged; no SDK patch was introduced.
+
+Hosted OAuth was blocked by Vercel Authentication on the preview domain. An
+isolated unauthenticated browser requesting `/api/auth/oauth-client-metadata.json`
+is redirected to Vercel's login page. The [AT Protocol OAuth specification](https://atproto.com/specs/oauth)
+requires the provider to fetch public client metadata. Chrome also reports that
+the service-worker script was behind a disallowed redirect. With user approval,
+a temporary exception was enabled only for the stable PR preview domain during
+testing and has since been revoked. A cookie-free HTTP request received the metadata
+with HTTP 200; the real provider accepts the sign-in request. The existing Chrome
+window also had a `__vdpl` cookie pinning it to the older `dpl_6QtwDidBv7Qr87LJL4J7n685wNsk`
+deployment. Opening the current deployment with Vercel's normal `dpl` parameter
+updates the pin; backend startup and service-worker activation then succeed.
+
+A public AT Protocol documentation article was saved through the actual Add link
+flow, including server extraction, before starting OAuth. After the user completed
+real Bluesky sign-in as `derocher.me`, the callback returned to the stable preview
+origin with an authenticated app session and the same article. Three reloads
+retained the same identity and article without account-operation alerts. The
+native provider restoration endpoint returned `active: true`.
+
+The named preview backend was then stopped explicitly. Its next auth request
+woke a different sandbox session; the same app identity and active provider
+session survived. Reloading the saved reader URL rendered the parsed article
+without an unavailable alert. This is actual deployed preview evidence, not
+asset substitution. It is not a production deployment or a fresh-device reader
+pass by itself.
+
+An isolated returning-device browser started signed out, without the saved
+article or cached library, and with an activated service worker. Its first
+authorization request returned HTTP 500 / `AUTHORIZATION_FAILED`; the server log
+records the authorization server's `OAuthResponseError: unknown_error` during
+the pushed authorization request. Public metadata remained HTTP 200 and the app
+session stayed signed out. One explicit retry reached the real provider; the
+cause of the first refusal remains unresolved. The user completed the second
+sign-in in this isolated browser. The same app identity returned, and the saved
+article arrived without copying credentials or browser storage from the first
+browser. Direct reader navigation and three reloads rendered the parsed text
+without account-operation or unavailable alerts. This used the normally deployed
+PR artifact, without local asset substitution.
+The first browser's app session was explicitly revoked through Better Auth's
+native single-session endpoint: revocation returned HTTP 200, a subsequent
+authoritative session read returned no user, and the authenticated provider
+restoration endpoint rejected that browser with HTTP 401. This did not delete
+the user/library or revoke the separate browser's pending sign-in. Provider-grant
+revocation and live access-token refresh are distinct from this app-session result.
+
+In the second browser the plugin's native provider sign-out request returned
+HTTP 200, and provider restoration became inactive while the app session and
+saved reader remained available. After another actual restart of the named
+preview backend, the same app identity remained and provider restoration stayed
+inactive. The endpoint suppresses upstream revocation errors, so this proves the
+request and durable local provider-session removal, not independent confirmation
+that the authorization server invalidated the grant. No PDS records were written.
+
+Two additional integration tests exercise the installed provider plugin and
+atcute SDK with simulated discovery/token responses and the real Jazz adapter.
+An expired provider access token triggers refresh; the rotated access and refresh
+tokens survive SQLite backend reopen. An `invalid_grant` response clears the
+provider session across reopen while preserving the app session and user. Both
+tests require exactly one real SDK refresh request. These tests pass alongside
+the three native app-session lifecycle cases. They do not claim that live
+provider access-token rotation or coordinated multi-instance refresh was observed.
+
+## Attached-reader shutdown follow-up — PR #34
+
+PR #32 merged at `a5f7773`, and production deployment
+`dpl_HnjxhBjL1WwXQ8TRk3qkeWxbgmVR` is ready on that commit. During preview
+qualification, signing out with a reader attached remained at “Closing your
+account…” before any auth sign-out request. Native chart diagnostics located
+the stall at viewport closure: private message-port cleanup incorrectly used
+the UI-ready library selector, which intentionally hides a draining library.
+The port was disposed before the viewport acknowledgment could return.
+
+[PR #34](https://github.com/delightful-labs/delightful-clipper/pull/34), commit
+`fbb4e4f`, retains observation and surface custody through the actual invoked
+library's lifetime. Public UI/command admission is unchanged. A browser regression
+attaches a real reader and requires the actual application worker to close.
+Full local verification passes with 700 unit/native tests, all 12 worker cases
+and all eight built-app offline cases on the merged-main baseline. This count
+precedes the two additional provider-refresh tests above.
+
+On deployed preview `dpl_CzLcqPWrTmEnN8UxQhRPvRiXivG4`, the reader-attached
+case was repeated by forwarding the UI's existing ACCOUNT/LOGOUT worker command
+through its real scope. This isolates the attached-reader path now that account
+settings are a separate route. The viewport, reader and library closed; the
+provider/session sign-out chart finished; an authoritative session read returned
+no user. An earlier observation of the intermediate closing state was not counted
+as completion. This is preview evidence for the follow-up, not a production
+sign-out verification.
+
+The first follow-up CI passed tooling/types/build and all web cases, but four
+live schema-upgrade cases failed because the status-text locator matched both
+the account area and main content after main's layout changes. The assertion now
+targets main content; no test or storage requirement was removed.
+All eight schema browser cases pass in Chromium/Firefox after this correction.
+Final `pnpm verify` passes with 702 unit/native tests in 112 files, vendor checks,
+formatting, lint, strict web/extension/service-worker types and the production
+build. The 12 worker and eight built-app offline cases passed on the same runtime
+fix before the final test/documentation-only additions. Final follow-up CI remains
+required before review readiness; no skipped Linux path is thereby qualified.
+
+The preview-domain protection exception has been revoked and unauthenticated
+requests again redirect to Vercel Authentication. The temporary branch-only
+`PUBLIC_DEBUG` variable was deleted. Clean redeployment
+`dpl_5hzCLYF9TFU8ozvDqWKHobF8yoFT` is ready on `fbb4e4f`. Only the approved
+branch auth origin, independent secret and shorter storage name remain.
+Production auth configuration, storage and data were unchanged by these tests.
+
 The separate Linux extension recovery issue and its three user-approved temporary
 skips remain deferred.
+
+## PR #34 CI fixture alignment
+
+[Run 42878321588](https://github.com/delightful-labs/delightful-clipper/actions/runs/42878321588/job/130047512748)
+passed tooling/types/build, all 60 web cases, eight schema cases, 12 worker cases
+and eight offline cases. Seven extension cases then failed during their shared
+web-account setup: they still expected recovery controls on the library page,
+although merged main moved them to `/account`. Two extension cases passed and
+the three previously deferred Linux cases remained skipped. This failure occurred
+before extension restoration and does not establish the deferred Linux bug.
+
+The extension tests now reuse the same web recovery/restoration navigation
+helpers as the passing web suite. Their duplicate/Trash check also opens the
+article-actions popover introduced on main. Assertions, operation timeouts and
+Linux exclusions are unchanged; no product or dependency code was modified.
+All 12 packaged-extension cases pass locally on macOS/Chromium after these
+fixture changes, including offline process restart and repeated settings teardown.
+Strict types, lint, formatting and whitespace checks pass. This does not change
+the Linux qualification boundary; the next CI run must verify its nine enabled
+extension cases, retaining the three existing Linux exclusions.

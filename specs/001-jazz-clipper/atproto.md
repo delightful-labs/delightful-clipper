@@ -1,12 +1,12 @@
 # AT Protocol implementation and remaining work
 
-Updated 2026-11-10 against merged [PR #20](https://github.com/delightful-labs/delightful-clipper/pull/20),
-merge `168cd0b` including fix `152d679`. This is the current Clipper checkpoint;
+Updated 2026-11-10 against merged [PR #32](https://github.com/delightful-labs/delightful-clipper/pull/32),
+merge `a5f7773`, following PR #20's native identity integration. This is the current Clipper checkpoint;
 older JWT/Neon/source-build experiments are historical. Product decisions below
 are accepted requirements, not claims that publication has been implemented.
 Shared identity/lifecycle belongs to DLF; Clipper owns annotations and publication.
-The PR #32 follow-up below records implemented reader work awaiting merge and
-normal deployment verification; it is separate from the merged baseline.
+The attached-reader shutdown follow-up in [PR #34](https://github.com/delightful-labs/delightful-clipper/pull/34)
+is qualified on preview and awaits review/merge; it is separate from the merged baseline.
 
 ## Implemented identity integration
 
@@ -55,8 +55,8 @@ failed at `pnpm test:e2e`, before its extension step. A later PR #32 run reached
 the extension suite and exposed the known Linux failure recorded below.
 
 The original Jazz-only Window-teardown reproducer remains evidence of an upstream
-boundary, not a repair to Jazz itself. Linux extension CI, further hosted lifecycle
-qualification, cross-app Finance adoption, and all published Jazz
+boundary, not a repair to Jazz itself. Linux extension CI, coordinated hosted refresh,
+cross-app Finance adoption, and all published Jazz
 pending-write/account-switch caveats remain separate qualification gates. Do not
 claim complete integration/release readiness from these local passes.
 
@@ -132,9 +132,36 @@ The implementation passed `pnpm verify` (683 unit/native tests), eight offline,
 six worker and seven reader browser cases. The actual built worker passed the
 original failure scenario and three reloads in each of two isolated fresh contexts
 against production using local asset substitution. Those checks did not deploy
-the repair. Normal PR deployment/merge verification remains open. See the
+the repair. PR #32 has since merged, and its normally deployed preview
+passed a fresh returning-device reader open and three direct reloads with a real
+provider identity and real article extraction. Production deployment on merge
+`a5f7773` is ready; no fresh production reader smoke test is claimed. See the
 [reader investigation and qualification](../../docs/reviews/reader-direct-open-2026-11-10.md).
 The marked article remains private and the native test profile stays local.
+
+### Hosted lifecycle and shutdown checkpoint — 2026-11-10
+
+The isolated PR preview passed a real-provider new-browser sign-in to the same
+app identity and saved article. Actual backend stop/wake retained app/provider
+sessions; native app-session revocation removed access; provider-session removal
+remained inactive through a second backend restart while preserving the app
+session and reader. The provider endpoint's HTTP 200 does not independently
+prove authorization-server grant invalidation. A first pushed authorization
+request failed with upstream `unknown_error`; one explicit retry succeeded, and
+the cause remains unresolved.
+
+Five native lifecycle tests cover app-session renewal/expiry/revocation and
+provider-token rotation/`invalid_grant` persistence with the real Jazz adapter.
+Provider discovery and token responses are simulated in the latter two; live
+access-token rotation and multi-instance refresh coordination remain unproven.
+
+An attached-reader sign-out hang found during this work is fixed in PR #34:
+private surface ownership follows the invoked library through drain, preserving
+the viewport acknowledgment. The real worker shutdown regression and deployed
+preview sign-out pass. All eight full-process offline cases pass on the merged
+baseline with this fix. Temporary public preview access and machine debug
+configuration have been removed. See the [current native auth review](../../docs/reviews/atproto-native-alpha60.md#attached-reader-shutdown-follow-up--pr-34)
+for exact artifacts and remaining CI status; this is not a complete release claim.
 
 ## Accepted publication behavior — not implemented
 
@@ -178,9 +205,10 @@ retain proposals beyond their explicitly approved subsets.
 
 | Work | Status / next evidence |
 | --- | --- |
-| Production reader gap | Approved fix implemented and locally qualified in PR #32, including isolated built-worker checks against production. Merge and verify the normally deployed artifact; no production deployment claim. |
-| Linux extension CI | Known recovery sign-in failure: run `42845035130` failed three of 12 extension cases after passing web/schema/worker/offline checks. Those three are temporarily skipped on Linux by user request; cause and repair remain unresolved. Latest-head CI still needs confirmation. |
-| Hosted identity check | Real-provider round trip/reloads and two live-identity offline process restarts/propagation pass. Native app-session renewal, expiry and revocation across backend restart now pass three added regressions. Fresh returning-provider access, deployed persistence and live provider refresh/revocation remain open; preview auth is configured, but the SDK-generated storage name exceeds Vercel's limit. A branch-only shorter name is awaiting approval. See the current native auth follow-up. |
+| Production reader gap | PR #32 merged at `a5f7773`; production deployment is ready. Real returning-device direct reader/reloads pass on the normally deployed preview. A new production reader smoke test has not been performed. |
+| Linux extension CI | Known recovery sign-in failure: run `42845035130` failed three of 12 extension cases. Those three remain temporarily skipped on Linux by user request; cause and repair remain unresolved. Complete CI at `b934415` passes, including the other nine extension cases. Green checks with exclusions do not qualify the skipped paths. |
+| Hosted identity check | Returning-device real-provider sign-in, same-identity reader/reloads, backend restart durability and app/provider-session removal pass on preview. Five native lifecycle cases cover renewal, expiry, revocation and simulated provider refresh persistence. Live token rotation, independent authorization-server revocation confirmation and multi-instance refresh remain distinct limits. Temporary preview access/debug configuration is removed. |
+| Reader shutdown follow-up | PR #34 retains private surface custody through library drain; real worker closure and deployed preview sign-out pass. Final CI/review/merge remain required. |
 | Shared DLF adoption | Extract only evidenced reusable provider/server/lifecycle boundaries, review interfaces, then qualify Finance independently with its existing data/backup obligations. No cross-app session/token transfer. |
 | Local annotations | Finish independently identified highlights, article notes, attached notes and anchors; existing draft/revision groundwork is not the completed model or editor. Review native text/history/anchor facilities before custom machinery. |
 | Public vocabulary | Select the real controlled companion namespace; resolve exact payload/projector, public keys/discovery, anchoring/version rules, and oversized retained/imported content. Example `com.example.*` names are not selected production NSIDs. |

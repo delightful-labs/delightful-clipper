@@ -142,6 +142,8 @@ export function serveApplicationWorker(options: {
 				view: recoveryView(recovery)
 			})
 			const library = selectLibraryActor(snapshot)
+			// UI admission closes before the invoked library finishes draining its readers.
+			const ownedLibrary = snapshot?.children.library
 			if (library !== observedLibrary) {
 				observedLibrary = library
 				actor.send({ type: 'BIND_LIBRARY', library, scope: crypto.randomUUID() })
@@ -150,11 +152,11 @@ export function serveApplicationWorker(options: {
 			const watched: AnyActorRef[] = [
 				actor.getSnapshot().children.oauth,
 				application,
-				library,
+				ownedLibrary,
 				actor.getSnapshot().context.tagForm,
 				recovery,
 				recovery?.getSnapshot().children.phrase,
-				...Object.values(library?.getSnapshot().children ?? {})
+				...Object.values(ownedLibrary?.getSnapshot().children ?? {})
 			].filter((value) => value !== undefined)
 			for (const [reference, subscription] of subscriptions) {
 				if (!watched.includes(reference)) {
@@ -166,7 +168,9 @@ export function serveApplicationWorker(options: {
 				if (!subscriptions.has(reference))
 					subscriptions.set(reference, reference.subscribe(publish))
 			}
-			const readerContext = library?.getSnapshot().children.readerExperience?.getSnapshot().context
+			const readerContext = ownedLibrary
+				?.getSnapshot()
+				.children.readerExperience?.getSnapshot().context
 			for (const surface of surfaces) {
 				if (
 					readerContext?.attachment?.surface !== surface &&

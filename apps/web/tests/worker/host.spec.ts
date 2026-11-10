@@ -65,6 +65,37 @@ test('application worker waits for acquisition during immediate shutdown', async
 	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
 })
 
+test('application shutdown retains an attached reader surface until its viewport closes', async ({
+	page
+}) => {
+	let viewportAttached = false
+	page.on('console', (message) => {
+		const text = message.text()
+		if (
+			text.includes('"machine":"reader-experience"') &&
+			text.includes('"active.viewport.owning.active"')
+		)
+			viewportAttached = true
+	})
+	await page.goto('/')
+	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
+	await page.evaluate(async () => {
+		const path = '/tests/worker/host-driver.ts'
+		await (await import(/* @vite-ignore */ path)).qualifyHost()
+	})
+	await page.reload()
+	await page.getByRole('link', { name: 'Worker proof', exact: true }).click()
+	await expect(page.getByRole('article')).toContainText('Saved in a worker.')
+	await expect.poll(() => viewportAttached).toBe(true)
+	const worker = page.workers().find((value) => value.url().includes('application.worker'))
+	if (!worker) throw new Error('Application worker unavailable')
+	const closed = worker.waitForEvent('close', { timeout: 15000 })
+	await worker.evaluate(() => {
+		self.dispatchEvent(new MessageEvent('message', { data: { type: 'SHUTDOWN' } }))
+	})
+	await closed
+})
+
 test('worker provisions the first local account and library without a Window application instance', async ({
 	page
 }) => {

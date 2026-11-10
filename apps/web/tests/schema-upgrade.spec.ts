@@ -200,9 +200,11 @@ for (const browser of [chromium, firefox]) {
 						// The SDK refuses simultaneous schema fingerprints for the same physical root.
 						// This is a temporary admission refusal, not permission to reset the database.
 						await expect(
-							page.getByText('The library could not be saved on this device. Retry to continue.', {
-								exact: true
-							})
+							page
+								.getByRole('main')
+								.getByText('The library could not be saved on this device. Retry to continue.', {
+									exact: true
+								})
 						).toBeVisible()
 						expect(
 							diagnostics.some((line) =>

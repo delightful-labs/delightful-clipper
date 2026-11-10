@@ -33,6 +33,29 @@ Auth must start and return on the same deployment origin. The existing
 attempt-bound callback receipt remains required; an older session cookie alone
 cannot prove that a new OAuth attempt succeeded.
 
+### Preview qualification
+
+Use branch-scoped auth configuration with its stable HTTPS branch origin and an
+independent secret; do not copy production sessions or secrets into a preview.
+AT Protocol's authorization server must fetch the client metadata URL without
+Vercel login. Browser service-worker scripts also cannot activate behind an auth
+redirect. A dashboard-authenticated browser alone does not establish either
+condition. Any temporary preview-domain protection exception needs explicit
+approval and must be revoked after the test; do not disable project protection.
+
+Jazz alpha.60's generated preview drive name can exceed Vercel's 64-character
+limit. The native `CLIPPER_JAZZ_CORE_NAME` override can select a short, distinct
+branch-only name; include the SDK's `-data` suffix when checking the bound. The
+qualified preview uses `clipper-atproto-pr32`. Do not change a production storage
+name to work around preview provisioning.
+
+An existing Vercel `__vdpl` cookie can pin a browser to an older deployment.
+Confirm the actual deployment before diagnosing a configuration change; Vercel's
+normal `dpl` URL parameter can select the current deployment. Preserve the stable
+auth origin throughout the provider round trip. Temporary access and debug
+configuration used for the November 10 checks have been removed; the approved
+preview auth settings and isolated store remain.
+
 ## Existing proof accounts
 
 This change does not import the old disposable Postgres auth records. A fresh
