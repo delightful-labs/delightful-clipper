@@ -2,7 +2,7 @@
 
 **Status:** Proposed implementation specification. **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`. This document can merge independently; authentication changes require PR #20 or its equivalent before implementation.
 
-Move the remaining authentication and runtime lifecycle decisions into their owning charts. A reader must be able to identify admission, replacement, operation order, completion, failure and cancellation from the statecharts and their typed protocols. Preserve the application's existing behavior while making resource ownership explicit.
+Move the remaining authentication and runtime lifecycle decisions into their owning charts. A reader must be able to identify admission, replacement, operation order, completion, failure and cancellation from the statecharts and their typed protocols. Preserve established product and persistence semantics while making resource ownership explicit and adding recoverable outcomes for stalled operations.
 
 Follow [XState memory](../../docs/memory/xstate.md), [worker runtime boundaries](../../docs/memory/worker-runtime.md), [the v6 specification](xstate-v6-migration.md), [the product specification](spec.md), [design decisions](design-decisions.md) and [implementation handoff](implementation-handoff.md). This specification narrows the next refactor; it does not reopen accepted product scope cuts.
 
@@ -14,6 +14,8 @@ Follow [XState memory](../../docs/memory/xstate.md), [worker runtime boundaries]
 | 2 | Application worker binding coordination | Existing `workerHostMachine`, with an invoked attachment owner if needed | Binding replacement, attachment admission and retirement have one lifecycle owner. |
 | 3 | Native account binding replacement | Existing application-readiness lifecycle, with a binding child if needed | Native observations are facts; the chart chooses reuse, replacement and release. |
 | 4 | Extension extraction worker | Child invoked by the existing clip chart | Result, error, cancellation and native cleanup share one owner. |
+
+The recovery and deadline work below extends these four refactors to OAuth requests, account storage, reader transport, search, sign-out and realm closure. It is required scope, not optional follow-up.
 
 Workstreams 2 and 3 must be designed together before either is implemented. Workstream 3 may change an adapter contract, but must not introduce a competing account authority. No dependency installation, schema migration, new catalog wording, note editor or AT publication feature is needed.
 
@@ -176,7 +178,7 @@ The waiting state's resource adapter owns worker creation, postMessage, native c
 - Pre-aborted admission does not create or post to a worker. Failure during construction/posting, worker error and `messageerror` all settle through the owning chart.
 - The first admitted terminal event determines the outcome. Ignore late or duplicate messages/errors and cancellation after settlement. Terminate exactly once and remove listeners on every acquired-resource exit.
 - Preserve the caller's cancellation/failure mapping and clip operation identity. Cancellation before save prevents save admission; it does not roll back an already-issued save.
-- Reuse an existing worker-call abstraction only if it supports this lifetime and typed reply without bringing HTTP or database policy into the resource adapter. Add no new timeout policy in this refactor.
+- Reuse an existing worker-call abstraction only if it supports this lifetime and typed reply without bringing HTTP or database policy into the resource adapter. Preserve the existing parent extraction deadline of 15 seconds and its link-only fallback. The child must clean up on deadline-driven cancellation; do not introduce a competing extraction timer.
 
 EXT-1: Meaningful generated schedules cover result/error/abort ordering, pre-abort, duplicate replies, malformed replies, construction failure, post failure and parent shutdown.
 
@@ -184,9 +186,73 @@ EXT-2: The oracle proves at most one outcome, one termination per acquired worke
 
 EXT-3: The rebuilt packaged extension passes the complete existing capture suite. Reproduce and resolve or separately explain PR #20's toolbar/source-message regression; do not weaken assertions or call the refactor release-qualified while it remains open.
 
+## Recovery and deadline coverage
+
+### Outcome and clock contract
+
+A rejected operation, an overdue operation and a confirmed cancellation are different outcomes. Each finite wait below must have a named deadline policy, observable overdue/failure outcome and an explicit recovery path. Idle states, intentional subscriptions, user-driven sign-in popup waits and offline remote-acceptance waits do not fail merely because time passes.
+
+- Keep deadlines in the owning chart or its owned clock logic. Configure durations as named, injectable policies. Record the chosen production duration and rationale before implementation qualification; do not invent one universal timeout for network, lock and SDK settlement. Existing qualified limits remain unchanged unless separately justified.
+- Observe elapsed time using a monotonic native clock in owned logic. Consume observed time as facts in pure guards. Check the deadline when accepting a completion, so a delayed timer callback cannot admit an already-expired result. Define and test exact-boundary precedence.
+- Every timeout must say whether work was unissued, abortable, issued but still draining, or settled. Expiry alone establishes neither rollback nor failure of a remote/native write.
+- A recoverable request timeout may stop user waiting and expose an existing retry/reload action. Pending irreversible effects retain operation identity and resource custody until settlement or explicit unknown-outcome handling. Do not release an account-storage lock while its issued write can still execute.
+- Late results may settle the original owner's resources, but may not revive a failed UI operation, mutate a replacement binding, deliver a second result or trigger automatic replay.
+- Reuse existing localized feedback/actions. If adequate wording is absent, propose the exact catalog addition under the localization approval rule before adding it. A missing string does not justify a hardcoded message.
+
+```mermaid
+flowchart LR
+    Waiting[Await selected operation] -->|Confirmed rejection| Failed[Failed with permitted recovery]
+    Waiting -->|Deadline and abortable work| Abort[Request cancellation and await cleanup]
+    Waiting -->|Deadline and issued noncancellable effect| Overdue[Overdue with custody retained]
+    Overdue -->|Late native settlement| Settled[Reconcile original operation]
+    Overdue -->|Cannot establish outcome| Unknown[Explicit unknown outcome]
+    Abort -->|Cleanup acknowledged| Retry[Retry allowed only when safe]
+```
+
+This outline describes outcome categories, not a requirement to add each state to every chart.
+
+### Required finite waits and recovery
+
+| Owner and affected states | Required handling | Recovery and safety boundary |
+| --- | --- | --- |
+| OAuth `authorizing`, `completing` in `machines/runtime/atproto.ts` | Bound both HTTP request and response-body decoding. Abort supported work and leave busy feedback on expiry. Preserve explicit rejection handling. | Authorization restart creates a new admitted attempt. Completion recovery retains the callback attempt; a lost response may follow cookie clearing, so never assume completion can be safely replayed or mint success from an existing unrelated session. Return an explicit unavailable/uncertain result when confirmation cannot be re-established. |
+| Account-store `acquiring`, `reading`, `writing`, `releasing`, `releasingFailure` in `runtime/worker/account-store.ts` | Bound lock acquisition and storage-port reply waits; handle port/message errors and missing release acknowledgment. Abort a queued lock request before granting cancellation. Correlate operation IDs and ignore stale replies. | Acquisition/read failure before a write can fail without mutation. A WRITE with lost acknowledgment is uncertain: keep the lock/custody and reconcile or drain the original request before another update. A timeout alone cannot release the lock, call the update successful, or reapply the SDK transform. |
+| Surface viewport `remote` and reader viewport `closing` | Distinguish a long-lived open reader from finite open/detach acknowledgments. Handle `messageerror`, explicit peer failure and missing acknowledgments. Route transport failure to the reader owner. | On overdue detach, preserve the last confirmed position and mark the final position unavailable/uncertain. Keep any already-issued reader writes under their original owner. Do not fabricate `VIEWPORT_CLOSED` or clean drain. Recover by an explicitly admitted reattachment or existing reload path after resource ownership is resolved. |
+| Search `loading`, `indexing`, `querying` | Bound index/query reply waits and expose a stalled native-read outcome. Retain existing `WORKER_ERROR` and retry paths. Generation-check all results. | A silent derived-data worker may be retired/recreated before retrying. A Jazz read without cancellation support remains owned and draining; retry must not start overlapping full-library reads. Search failure must not block local library readiness or erase saved content. |
+| Sign-out `provider`, `session` | Bound user-facing waiting for each stage separately and model overdue settlement. Preserve parent application-readiness error handling; lack of child `onError` is not by itself an unhandled-error defect. | Provider failure/expiry never selects native logout as though provider success were confirmed. Native logout expiry cannot claim the account remains signed in or is signed out without observation. Refresh native facts and reconcile settled provider/session effects before admitting retry. Preserve provider-before-native ordering and retain active effects during shutdown. |
+| Host `draining`, `settlingAcquisition`, `closingSession`; client `draining` | Add overdue/blocked-close reporting, cause propagation and explicit recovery presentation for missing acknowledgments or unresolved close. Client and host deadlines must preserve one authoritative closure protocol. | No timer emits clean `CLOSED`, terminates the realm, navigates, or discards retained custody. SDK acquisition completing late remains owned and must be closed. Clean closure may occur only after the real drain, custody checks and close acknowledgment. A hard reload is disruptive recovery, never proof of a clean close. |
+
+The account-storage protocol may require a settlement query or peer-side serialization to distinguish a lost reply from an unexecuted request. Specify that handshake before coding; the current raw READ/WRITE protocol is not evidence that safe write cancellation or reconciliation exists. If settlement cannot be established, report blocked/unknown rather than release-and-retry.
+
+Relevant reviewed sources: [OAuth](https://github.com/delightful-labs/delightful-clipper/blob/b33a22d/apps/web/src/lib/machines/runtime/atproto.ts), [account store](https://github.com/delightful-labs/delightful-clipper/blob/b33a22d/apps/web/src/lib/runtime/worker/account-store.ts), [storage RPC](https://github.com/delightful-labs/delightful-clipper/blob/b33a22d/apps/web/src/lib/runtime/worker/storage-channel.ts), [surface viewport](https://github.com/delightful-labs/delightful-clipper/blob/b33a22d/apps/web/src/lib/reader/surface-viewport.ts), [reader experience](https://github.com/delightful-labs/delightful-clipper/blob/b33a22d/apps/web/src/lib/machines/reader/experience.ts), [search](https://github.com/delightful-labs/delightful-clipper/blob/b33a22d/apps/web/src/lib/search/machine.ts), [sign-out](https://github.com/delightful-labs/delightful-clipper/blob/b33a22d/apps/web/src/lib/machines/runtime/sign-out.ts), [host](https://github.com/delightful-labs/delightful-clipper/blob/b33a22d/apps/web/src/lib/runtime/worker/host-machine.ts) and [client](https://github.com/delightful-labs/delightful-clipper/blob/b33a22d/apps/web/src/lib/runtime/worker/client.ts).
+
+### Existing bounds to preserve
+
+The reviewed baseline already bounds extension extraction at 15 seconds with link-only fallback, extension account authorization at 15 seconds with unavailable output, image fetch at 25 seconds, image processing at 20 seconds, capture requests at a default 20 seconds and parser execution at 10 seconds before termination handling. These are not missing-timeout findings. Preserve them and verify subsequent cleanup and acknowledgment; the parser deadline, for example, does not itself prove that worker exit will be acknowledged.
+
+Remote sync may remain pending offline. Transaction drain may remain unresolved when the SDK cannot confirm an issued effect. Those conditions need honest status and custody, not a timeout that invents a rejected write or a successful shutdown.
+
+### Acceptance criteria
+
+REC-1: For each of the six rows, inject a never-settling operation or suppress the expected acknowledgment. The actor reaches its documented overdue/failure presentation within the configured deadline without hanging the user-facing busy state indefinitely. Ongoing drain may remain active with explicit overdue status.
+
+REC-2: Generate completion/error/cancel/deadline schedules, including completions just before, at and after expiry and delayed timer delivery. Independent oracles prove the selected precedence, one externally delivered outcome and no stale-generation promotion.
+
+REC-3: Fault-inject dropped and late storage WRITE replies. Prove no second transform/write or lock release while the original effect can still execute; eventual settlement or blocked/unknown output retains exact operation identity.
+
+REC-4: Suppress viewport open/detach replies, fail the port and replace the account during detach. Prove final-position uncertainty is exposed, stale surfaces cannot attach and clean shutdown is not acknowledged prematurely.
+
+REC-5: Stall search loading, indexing and queries separately. Retry recreates only safe derived resources, does not overlap noncancellable native reads, and leaves library/offline editing usable.
+
+REC-6: Stall provider sign-out, native logout, application drain, SDK acquisition and SDK close separately. Prove provider-before-native ordering, correct parent error recovery, retained custody, no false clean-close/navigation and eventual handling of late native completion.
+
+REC-7: Expire authorization/completion HTTP waits during header and body reads. Prove the UI exits busy status, abort signals reach supported I/O, and retry cannot falsely establish callback confirmation or replay an uncertain effect.
+
+REC-8: Preserve the existing bounded extraction, authorization, image, capture and parser behavior. Test post-timeout cleanup and account/shutdown races rather than asserting timer configuration text.
+
 ## State that stays outside charts
 
-Simple drawer/input/footnote/focus presentation state, pure parsing/projection, stream buffers, native handles and RPC reply maps may remain ordinary code. Their enclosing resource lifetime must be owned and tested. Do not turn each calculation or database primitive into a state, and do not replace the account-store, transaction, sync or draft mutation charts already implemented.
+Simple drawer/input/footnote/focus presentation state, pure parsing/projection, stream buffers, native handles and RPC reply maps may remain ordinary code. Their enclosing resource lifetime must be owned and tested. Do not turn each calculation or database primitive into a state, and extend the existing account-store owner for its deadline gaps rather than replace its locking protocol. Preserve existing transaction, sync and draft mutation ownership.
 
 Note creation/revision/import and draft APIs remain deferred capabilities with no production note UI caller established by this audit. This refactor neither wires them up nor deletes them. Architecture documentation must keep them separate from active independently invoked roots.
 
@@ -198,7 +264,7 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 | Gate | Evidence required |
 | --- | --- |
-| Focused workflow tests | AUTH, HOST, BIND and EXT acceptance cases; actual actor SUT and separately recorded native effects. |
+| Focused workflow tests | AUTH, HOST, BIND, EXT and REC acceptance cases; actual actor SUT and separately recorded native effects. |
 | Repository verification | `pnpm verify`: vendor integrity, format, lint, strict types, unit/native tests and production build. |
 | Worker/browser behavior | `pnpm test:worker` and applicable `pnpm test:e2e` cases: stale-scope refusal, reader detach and zero application SDK/WASM initialization on the UI thread. |
 | Offline authentication | `pnpm test:offline` including connected and existing-account profiles, expired credentials, complete browser-process restart with app/auth/Jazz unreachable, acknowledged edits surviving another restart and reconciliation after reconnect. |
@@ -207,4 +273,4 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 Run build/type generation and browser suites sequentially when they share generated output. Use isolated authorities/ports for concurrent development without stopping unidentified servers. No broad new performance claim is made; the UI-thread boundary and unchanged bounded publication behavior are explicit checks.
 
-The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four workstreams' acceptance criteria, updated architecture views showing active roots and deferred capabilities, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
+The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four ownership workstreams and all six recovery/deadline areas' acceptance criteria, updated architecture views showing active roots and deferred capabilities, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
