@@ -122,7 +122,9 @@ acknowledges native cleanup. Late open after detach cannot recreate a viewport.
 
 Native local restoration changes the initiating Jazz session. It does not imply
 cross-tab local account-selection following. C preserves that SDK contract; the
-browser test restores A → B → A in the supported app flow with an A reader attached.
+browser test sends the supported restore command over the real native Worker
+transport with an A reader attached, exercising A → B → A without route changes.
+The account settings UI supplies the independent profiles’ recovery phrases.
 Native backend following, sign-out and offline durability are additionally exercised
 by the production authenticated offline suite.
 

@@ -66,7 +66,7 @@ still does not establish atomic single use or safe replay after a lost reply.
 
 ## Qualification
 
-Clipper passed `pnpm verify` (803 unit/native tests in 118 files, installed vendor
+Clipper passed `pnpm verify` (826 unit/native tests in 122 files, installed vendor
 integrity/import checks, formatting, lint, strict types, zero Svelte errors/warnings
 and production build), all 17 Worker browser cases, 12 packaged-extension cases
 and eight production offline/restart cases. The latter includes actual linked

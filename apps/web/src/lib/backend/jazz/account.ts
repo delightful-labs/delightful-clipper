@@ -138,15 +138,20 @@ function bindHost(
 			const adopted = {
 				...build(live),
 				library: libraryFactory(
-					createLibraryRecords(db, account.id, () => {
-						try {
-							check()
-							if (!live()) return false
-							return true
-						} catch {
-							return false
-						}
-					}, readConnection(db)),
+					createLibraryRecords(
+						db,
+						account.id,
+						() => {
+							try {
+								check()
+								if (!live()) return false
+								return true
+							} catch {
+								return false
+							}
+						},
+						readConnection(db)
+					),
 					account.id,
 					requestCapture,
 					cacheNamespace
@@ -244,10 +249,15 @@ export function currentLibraryRecords() {
 	if (!session || snapshot?.status !== 'ready' || !snapshot.account || !snapshot.client)
 		throw new Error('Library scope unavailable')
 	const { account, client } = snapshot
-	return createLibraryRecords(client.db, account.id, () => {
-		const now = session.getSnapshot()
-		return now.status === 'ready' && now.account === account && now.client === client
-	}, readConnection(client.db))
+	return createLibraryRecords(
+		client.db,
+		account.id,
+		() => {
+			const now = session.getSnapshot()
+			return now.status === 'ready' && now.account === account && now.client === client
+		},
+		readConnection(client.db)
+	)
 }
 
 /** Guests send their native proof; backend users send their same-origin cookie. */
