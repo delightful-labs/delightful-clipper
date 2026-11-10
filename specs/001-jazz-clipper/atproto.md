@@ -53,10 +53,32 @@ failed at `pnpm test:e2e`, before its extension step. This run supplies no Linux
 extension qualification; resolving the browser CI failure remains open.
 
 The original Jazz-only Window-teardown reproducer remains evidence of an upstream
-boundary, not a repair to Jazz itself. Linux extension CI, real provider consent on
-the merged hosted deployment, cross-app Finance adoption, and all published Jazz
+boundary, not a repair to Jazz itself. Linux extension CI, further hosted lifecycle
+qualification, cross-app Finance adoption, and all published Jazz
 pending-write/account-switch caveats remain separate qualification gates. Do not
 claim complete integration/release readiness from these local passes.
+
+### Hosted live-provider check — passed 2026-11-10
+
+Production deployment `dpl_5qUpzSiG7Y8APNfgrW1rSQgQ9XD9` serves merge `168cd0b`
+on `https://clipper.delightfullabs.com`. Production-only `AUTH_BASE_URL` and a
+new sensitive `AUTH_SECRET` were configured with user approval; neither secret
+nor browser credentials were written to the repository. Session and OAuth client
+metadata endpoints return HTTP 200 with the canonical production callback.
+
+A separate visible Chromium context reached the actual Bluesky provider. The
+user completed sign-in there; the callback returned to Clipper, the session
+endpoint reported an authenticated user, and three subsequent reloads retained
+the same remembered Jazz account and a visible library. Chrome MCP was
+unavailable, so this check used the existing Playwright installation. The test
+browser was closed afterward; no password, cookie, token or recovery material
+was captured in the evidence.
+
+This passes the hosted provider round trip and same-account reload check. It
+does not establish a new browser-process/offline restart with that live identity,
+backend restart durability, refresh/revocation, another-device returning sign-in,
+or public repository permissions. The eight synthetic-provider offline cases
+above remain separate evidence.
 
 ## Accepted publication behavior — not implemented
 
@@ -101,7 +123,7 @@ retain proposals beyond their explicitly approved subsets.
 | Work | Status / next evidence |
 | --- | --- |
 | Browser CI | Resolve the general web-test failure in run `42802719477`, then obtain Linux extension evidence; local macOS passes are a separate result. |
-| Hosted identity check | Verify actual provider consent, callback, same-origin configuration and retained library on the merged deployment; qualify deployed persistence/refresh and revoke/expire behavior. |
+| Hosted identity check | Real-provider round trip and three same-account reloads passed on production. Next qualify browser-process restart with the live identity, returning-device access, deployed persistence/refresh and revoke/expire behavior. |
 | Shared DLF adoption | Extract only evidenced reusable provider/server/lifecycle boundaries, review interfaces, then qualify Finance independently with its existing data/backup obligations. No cross-app session/token transfer. |
 | Local annotations | Finish independently identified highlights, article notes, attached notes and anchors; existing draft/revision groundwork is not the completed model or editor. Review native text/history/anchor facilities before custom machinery. |
 | Public vocabulary | Select the real controlled companion namespace; resolve exact payload/projector, public keys/discovery, anchoring/version rules, and oversized retained/imported content. Example `com.example.*` names are not selected production NSIDs. |
