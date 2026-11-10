@@ -22,6 +22,9 @@ import { app } from './schema.js'
 export type Session = JazzSession<JazzClient>
 
 export type LibraryFactory = typeof createLibraryCapability
+function externallySignedIn(account: { identity: { issuer: string } }) {
+	return !['urn:jazz:local-first', 'urn:jazz:anonymous'].includes(account.identity.issuer)
+}
 function bindHost(
 	session: Session,
 	libraryFactory: LibraryFactory,
@@ -73,8 +76,25 @@ function bindHost(
 					admitted()
 					return db.upgradeToLocalFirst(localFirst)
 				},
+				logout: () => {
+					// Native mutation admission stays bound to the selected identity.
+					admitted()
+					return session.logout()
+				},
+				logoutStatus: () => {
+					const now = session.getSnapshot()
+					if (
+						now.status === 'signed-out' ||
+						(now.status === 'ready' && now.account && !externallySignedIn(now.account))
+					)
+						return 'signed-out'
+					if (now.status !== 'ready' || !now.account || !now.client) return 'unavailable'
+					return now.account === account && now.client === client && now.client.db === db && live()
+						? 'current'
+						: 'replaced'
+				},
 				accountId: account.id,
-				signedIn: !['urn:jazz:local-first', 'urn:jazz:anonymous'].includes(account.identity.issuer),
+				signedIn: externallySignedIn(account),
 				root: {
 					read: async () => {
 						admitted()

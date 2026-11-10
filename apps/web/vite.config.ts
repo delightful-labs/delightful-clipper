@@ -40,6 +40,7 @@ export default defineConfig(({ command, mode }) => {
 				'delightful-local-first/backend/jazz/recovery',
 				'delightful-local-first/backend/jazz/restoration',
 				'delightful-local-first/session/workflow',
+				'delightful-local-first/session/sign-out/workflow',
 				'delightful-local-first/restoration/workflow',
 				'delightful-local-first/recovery/workflow',
 				'delightful-local-first/workspace/creation/workflow',

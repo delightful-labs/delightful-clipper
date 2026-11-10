@@ -1,6 +1,6 @@
 # Workflow ownership hardening specification
 
-**Status:** Partially implemented: A, B and C are complete for Clipper. D–G remain open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
+**Status:** Partially implemented: A–D are complete for Clipper. E–G remain open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
 
 Move the remaining authentication and runtime lifecycle decisions into their owning charts. A reader must be able to identify admission, replacement, operation order, completion, failure and cancellation from the statecharts and their typed protocols. Preserve established product and persistence semantics while making resource ownership explicit and adding recoverable outcomes for stalled operations.
 
@@ -322,6 +322,12 @@ BIND-3: An issued write remains attached to its original DB. Local, remote, reje
 BIND-4: Real native account following, restoration, sign-out and offline restart tests retain the saved library and locally acknowledged edits.
 
 ## D Authentication requests and sign out
+
+Implementation checkpoint: request-scoped server ownership, response transfer and
+disconnect cleanup, bounded OAuth header/body reads with uncertain-completion
+handling, and DLF ordered sign-out with native identity reconciliation are
+implemented. AUTH-1–5, REC-7 and D's portion of REC-6 are covered, including C's
+composed shutdown ordering. See [the ownership and qualification record](../../docs/reviews/auth-request-lifecycle.md).
 
 **Files and owners:** Clipper `server/auth/handler.ts`, `completion-handler.ts`, `completion.ts`, `machines/runtime/atproto.ts`, `sign-out.ts`; DLF provider-injected ordered sign-out workflow, with C application-readiness integration.
 

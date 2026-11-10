@@ -5,7 +5,7 @@ import {
 	createSessionAcquisitionMachine,
 	selectAcquiredSession
 } from 'delightful-local-first/session/workflow'
-import { createActor, waitFor } from 'xstate'
+import { createActor, waitFor, SimulatedClock } from 'xstate'
 import { describe, expect, it, vi } from 'vitest'
 import {
 	createApplicationReadinessMachine,
@@ -108,6 +108,148 @@ function root(local: Promise<void>, global: Promise<void>) {
 }
 
 describe('account/root ownership', () => {
+	it('recognizes native provider following that already signed out without logging out a new local identity', async () => {
+		const f = fixture({ status: 'signed-out' }),
+			pending = Promise.withResolvers<void>()
+		let status: 'current' | 'signed-out' = 'current'
+		f.emit({
+			...ready('original-native', { read: async () => 'compatible', ensure: vi.fn() }),
+			signedIn: true,
+			logoutStatus: () => status
+		})
+		const provider = vi.fn(() => pending.promise),
+			source = startup(async () => ({ ...f.host, signOut: provider })),
+			actor = createActor(applicationReadinessMachine, { input: source.attach() }).start()
+		try {
+			await waitFor(actor, (snapshot) => selectApplicationView(snapshot, true).status === 'ready')
+			actor.send({ type: 'LOGOUT' })
+			await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce())
+			status = 'signed-out'
+			f.emit({ status: 'signed-out' })
+			pending.resolve()
+			await waitFor(actor, (snapshot) =>
+				snapshot.matches({ active: { flow: { running: 'signedOut' } } })
+			)
+			expect(f.host.logout).not.toHaveBeenCalled()
+			expect(selectApplicationView(actor.getSnapshot(), true).feedback).toBeUndefined()
+		} finally {
+			pending.resolve()
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			source.owner.stop()
+		}
+	})
+	it('refreshes native facts after provider rejection and never automatically retries or invokes native logout', async () => {
+		const f = fixture({
+			...ready('provider-rejection', { read: async () => 'compatible', ensure: vi.fn() }),
+			signedIn: true
+		})
+		const provider = vi.fn(async () => {
+				throw new Error('Provider unavailable')
+			}),
+			read = vi.fn(f.host.read)
+		const source = startup(async () => ({ ...f.host, read, signOut: provider })),
+			actor = createActor(applicationReadinessMachine, { input: source.attach() }).start()
+		try {
+			await waitFor(actor, (snapshot) => selectApplicationView(snapshot, true).status === 'ready')
+			actor.send({ type: 'LOGOUT' })
+			await waitFor(
+				actor,
+				(snapshot) =>
+					selectApplicationView(snapshot, true).feedback === 'identityFailed' &&
+					selectApplicationView(snapshot, true).status === 'ready'
+			)
+			expect(provider).toHaveBeenCalledOnce()
+			expect(f.host.logout).not.toHaveBeenCalled()
+			expect(read.mock.calls.length).toBeGreaterThan(1)
+			expect(selectApplicationView(actor.getSnapshot(), true).canLogout).toBe(true)
+		} finally {
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			source.owner.stop()
+		}
+	})
+	it('retains original native logout admission when the account changes during a delayed provider call', async () => {
+		const pending = Promise.withResolvers<void>(),
+			f = fixture({ status: 'signed-out' })
+		let current = 'A'
+		const mutate = vi.fn(),
+			logoutA = vi.fn(async () => {
+				if (current !== 'A') throw new Error('Original scope expired')
+				mutate('A')
+			})
+		f.emit({
+			...ready('A', { read: async () => 'compatible', ensure: vi.fn() }),
+			logout: logoutA,
+			signedIn: true
+		})
+		const provider = vi.fn(() => pending.promise),
+			source = startup(async () => ({ ...f.host, signOut: provider })),
+			actor = createActor(applicationReadinessMachine, { input: source.attach() }).start()
+		try {
+			await waitFor(actor, (snapshot) => selectApplicationView(snapshot, true).status === 'ready')
+			actor.send({ type: 'LOGOUT' })
+			await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce())
+			current = 'B'
+			f.emit({ ...ready('B', { read: async () => 'compatible', ensure: vi.fn() }), signedIn: true })
+			pending.resolve()
+			await waitFor(
+				actor,
+				(snapshot) =>
+					snapshot.context.observation.status === 'ready' &&
+					snapshot.context.observation.accountId === 'B' &&
+					selectApplicationView(snapshot, true).status === 'ready'
+			)
+			expect(logoutA).toHaveBeenCalledOnce()
+			expect(mutate).not.toHaveBeenCalled()
+			expect(f.host.logout).not.toHaveBeenCalled()
+			expect(selectApplicationView(actor.getSnapshot(), true).feedback).toBe('identityFailed')
+		} finally {
+			pending.resolve()
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			source.owner.stop()
+		}
+	})
+	it('requires reload feedback while native logout is overdue and refreshes observed identity only after settlement', async () => {
+		const pending = Promise.withResolvers<void>(),
+			clock = new SimulatedClock(),
+			f = fixture({
+				...ready('native-pending', { read: async () => 'compatible', ensure: vi.fn() }),
+				signedIn: true
+			})
+		const logout = vi.fn(async () => {
+			await pending.promise
+			f.emit({ status: 'signed-out' })
+		})
+		const source = startup(async () => ({ ...f.host, logout })),
+			actor = createActor(applicationReadinessMachine, { clock, input: source.attach() }).start()
+		try {
+			await waitFor(actor, (snapshot) => selectApplicationView(snapshot, true).status === 'ready')
+			actor.send({ type: 'LOGOUT' })
+			await vi.waitFor(() => expect(logout).toHaveBeenCalledOnce())
+			const child = actor.getSnapshot().children.logout
+			clock.increment(30_000)
+			expect(selectApplicationView(actor.getSnapshot(), true)).toMatchObject({
+				feedback: 'identityFailed',
+				requiresReload: true,
+				canLogout: false,
+				canRetry: false
+			})
+			expect(actor.getSnapshot().children.logout).toBe(child)
+			pending.resolve()
+			await waitFor(actor, (snapshot) =>
+				snapshot.matches({ active: { flow: { running: 'signedOut' } } })
+			)
+			expect(selectApplicationView(actor.getSnapshot(), true).requiresReload).toBe(false)
+			expect(logout).toHaveBeenCalledOnce()
+		} finally {
+			pending.resolve()
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			source.owner.stop()
+		}
+	})
 	it('reopens the native session before retrying a failed library bootstrap', async () => {
 		const staleRead = vi.fn(async () => {
 			throw new Error('Synthetic refused connection')

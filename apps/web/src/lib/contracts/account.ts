@@ -1,4 +1,5 @@
 import type { LibraryCapability } from './library.js'
+import type { SignOutSessionStatus } from 'delightful-local-first/session/sign-out/contracts'
 import type { SessionOwnerRef } from 'delightful-local-first/session/workflow'
 import type {
 	SessionScope,
@@ -30,6 +31,8 @@ export type AccountObservation =
 			clientBinding?: object
 			databaseBinding?: object
 			prepare?: () => Promise<void>
+			logout?: () => Promise<void>
+			logoutStatus?: () => SignOutSessionStatus
 			accountId: string
 			signedIn?: boolean
 			library?: LibraryCapability

@@ -1,6 +1,6 @@
 import { createActor, toPromise } from 'xstate'
 import { expect, it, vi } from 'vitest'
-import { signOutMachine } from './sign-out.js'
+import { signOutMachine, signOutInput } from './sign-out.js'
 import type { AccountHost } from '../../contracts/account.js'
 
 function fixture(signOut: () => Promise<void>) {
@@ -25,7 +25,10 @@ function fixture(signOut: () => Promise<void>) {
 			}
 		}
 	}
-	return { logout, actor: createActor(signOutMachine, { input }) }
+	return {
+		logout,
+		actor: createActor(signOutMachine, { input: signOutInput(input, input.read()) })
+	}
 }
 it('waits for provider cookie clearance before native Jazz logout', async () => {
 	const cleared = Promise.withResolvers<void>()
@@ -41,6 +44,6 @@ it('does not log Jazz out after a provider sign-out failure', async () => {
 		throw new Error('Provider unavailable')
 	})
 	f.actor.subscribe({ error: () => {} })
-	await expect(toPromise(f.actor.start())).rejects.toThrow('Provider unavailable')
+	expect(await toPromise(f.actor.start())).toEqual({ outcome: 'failed', stage: 'provider' })
 	expect(f.logout).not.toHaveBeenCalled()
 })

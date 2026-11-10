@@ -40,6 +40,8 @@ if (process.argv.includes('--installed')) {
 		'delightful-local-first/worker/effect-drain/workflow',
 		'delightful-local-first/backend/jazz/startup',
 		'delightful-local-first/session/workflow',
+		'delightful-local-first/session/sign-out/contracts',
+		'delightful-local-first/session/sign-out/workflow',
 		'delightful-local-first/backend/jazz/session',
 		'delightful-local-first/backend/jazz/session-readiness',
 		'delightful-local-first/backend/jazz/recovery',

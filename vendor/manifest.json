@@ -26,5 +26,9 @@
 	{
 		"file": "delightful-local-first-worker-transport-1571ba2-alpha60.tgz",
 		"sha256": "1ffa8d8490915da61fb7dc9a600733eed00dcce33cdc772ca0a12d1bbf0d95b1"
+	},
+	{
+		"file": "delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz",
+		"sha256": "eca27c4841b46340adaf4cd9fc5d2708cee17b702ae2d48610a74108d7f05783"
 	}
 ]

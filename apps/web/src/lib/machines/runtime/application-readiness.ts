@@ -1,4 +1,4 @@
-import { signOutMachine } from './sign-out.js'
+import { signOutMachine, signOutInput, type SignOutStage } from './sign-out.js'
 import type { EventPayload } from '../events.js'
 import {
 	types,
@@ -46,6 +46,7 @@ type Event<Session extends object> =
 	| { type: 'OBSERVED'; observation: AccountObservation }
 	| { type: 'LIBRARY_BOUND'; binding: AccountBinding }
 	| { type: 'LIBRARY_ADOPTED' }
+	| { type: 'SIGN_OUT_OVERDUE'; stage: SignOutStage }
 	| {
 			type: 'HOST_BOUND'
 			scope: Context<Session>['scope']
@@ -233,6 +234,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 				OBSERVED: types<EventPayload<Event<Session>, 'OBSERVED'>>(),
 				LIBRARY_BOUND: types<EventPayload<Event<Session>, 'LIBRARY_BOUND'>>(),
 				LIBRARY_ADOPTED: types(),
+				SIGN_OUT_OVERDUE: types<{ stage: SignOutStage }>(),
 				RETRY: types<EventPayload<Event<Session>, 'RETRY'>>(),
 				SHUTDOWN: types<EventPayload<Event<Session>, 'SHUTDOWN'>>(),
 				CREATE: types<EventPayload<Event<Session>, 'CREATE'>>(),
@@ -357,10 +359,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									},
 									loggingOut: {
 										id: 'application-active-flow-running-loggingOut',
-										states: {
-											active: {},
-											stopping: {}
-										}
+										states: { active: {}, overdue: {}, stopping: {} }
 									},
 									library: {
 										id: 'application-active-flow-running-library',
@@ -1228,38 +1227,47 @@ export function createApplicationReadinessMachine<Session extends object>(
 										id: 'application-active-flow-running-loggingOut',
 										initial: 'active',
 										states: {
-											active: {},
+											active: {
+												on: {
+													SIGN_OUT_OVERDUE: (_args, enq) => {
+														enq.raise({ type: 'IDENTITY_FAILED' })
+														return { target: 'overdue' }
+													}
+												}
+											},
+											overdue: {
+												meta: {
+													...accountStatus('working', t('account.feedback.identityFailed')),
+													variant: 'error'
+												}
+											},
 											stopping: { meta: accountStatus('closing', t('account.status.closing')) }
 										},
-										on: { SHUTDOWN: { target: '.stopping' } },
+										on: {
+											SHUTDOWN: { target: '.stopping' },
+											SIGN_OUT_OVERDUE: (_args, enq) => {
+												enq.raise({ type: 'IDENTITY_FAILED' })
+											}
+										},
 										invoke: {
 											id: 'logout',
 											src: 'logout',
-											input: ({ context }) => context.host,
-											onDone: (args, _enq) => {
-												let pendingContext = {}
-
-												if (args.guards.stoppingLogout(args)) {
-													return {
-														context: pendingContext,
-														target: '#application-active-flow-running-draining'
-													}
-												}
-
-												return { context: pendingContext, target: 'refreshing' }
+											input: ({ context, self }) =>
+												signOutInput(context.host, context.observation, (stage) =>
+													self.send({ type: 'SIGN_OUT_OVERDUE', stage })
+												),
+											onDone: (args, enq) => {
+												if (args.event.output.outcome === 'failed')
+													enq.raise({ type: 'IDENTITY_FAILED' })
+												return args.guards.stoppingLogout(args)
+													? { target: '#application-active-flow-running-draining' }
+													: { target: 'refreshing' }
 											},
 											onError: (args, enq) => {
-												let pendingContext = {}
-
-												if (args.guards.stoppingLogout(args)) {
-													return {
-														context: pendingContext,
-														target: '#application-active-flow-running-draining'
-													}
-												}
 												enq.raise({ type: 'IDENTITY_FAILED' })
-
-												return { context: pendingContext, target: 'refreshing' }
+												return args.guards.stoppingLogout(args)
+													? { target: '#application-active-flow-running-draining' }
+													: { target: 'refreshing' }
 											}
 										}
 									},
@@ -1666,7 +1674,11 @@ export function selectApplicationView<Session extends object>(
 			snapshot.can({ type: 'LOGOUT' }),
 		canRestore: snapshot?.can({ type: 'RESTORE', phrase: '' }) ?? false,
 		canRetry: snapshot?.can({ type: 'RETRY' }) ?? false,
-		requiresReload: snapshot?.matches('ownerFailed') || snapshot?.matches('cleanupFailed') || false
+		requiresReload:
+			snapshot?.matches('ownerFailed') ||
+			snapshot?.matches('cleanupFailed') ||
+			snapshot?.matches({ active: { flow: { running: { loggingOut: 'overdue' } } } }) ||
+			false
 	}
 }
 export function selectRecoveryBinding<Session extends object>(

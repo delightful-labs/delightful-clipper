@@ -172,7 +172,8 @@ See the [checkpoint record](workflow-hardening-progress.md#checkpoint-qualificat
 for final repository, Worker, packaged-extension and production-offline results.
 These are bounded qualifications, not exhaustive native scheduling proofs.
 
-D retains provider/OAuth HTTP deadlines and ordered sign-out recovery; C covers
-only the host/acquisition/session-close part of REC-6. E retains search deadlines
+D now supplies provider/OAuth HTTP deadlines and ordered sign-out recovery; see
+[its ownership and qualification record](auth-request-lifecycle.md). C covers the
+host/acquisition/session-close part of REC-6. E retains search deadlines
 and viewport transport failure/uncertainty recovery beyond this host-owned cleanup
 protocol. F/G remain separate work. No new DLF source/artifact is required by C.

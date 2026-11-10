@@ -12,8 +12,62 @@ import {
 import type { LibraryCapability } from '../../contracts/library.js'
 import type { SaveResult } from '../../contracts/storage.js'
 import { createWorkerHostFixture } from './host-machine.test-support.js'
+import { selectApplicationView } from '../../machines/runtime/application-readiness.js'
 
 const cleanups = new Set<() => void>()
+
+it.each(['provider', 'session'] as const)(
+	'retains the %s sign-out effect during overdue feedback and actual realm shutdown',
+	async (stage) => {
+		const native = fixture(),
+			pending = Promise.withResolvers<void>(),
+			clock = new SimulatedClock()
+		const provider = vi.fn(() => (stage === 'provider' ? pending.promise : Promise.resolve()))
+		const session = vi.fn(async () => {
+			if (stage === 'session') await pending.promise
+			native.emit({ status: 'signed-out' })
+		})
+		const observation = native.current()
+		if (observation.status !== 'ready') throw new Error('Missing native identity')
+		native.emit({ ...observation, signedIn: true, logout: session })
+		const f = createWorkerHostFixture(undefined, undefined, undefined, {
+			account: { ...native.account, signOut: provider },
+			clock,
+			closePolicy: { drainMs: 5 }
+		})
+		try {
+			f.actor.start()
+			await waitFor(f.actor, (snapshot) => !!snapshot.context.library, { timeout: 1000 })
+			f.actor.send({
+				type: 'ACCOUNT',
+				scope: f.actor.getSnapshot().context.scope,
+				event: { type: 'LOGOUT' }
+			})
+			await vi.waitFor(() =>
+				expect(stage === 'provider' ? provider : session).toHaveBeenCalledOnce()
+			)
+			const application = f.actor.getSnapshot().children.application!,
+				owner = application.getSnapshot().children.logout
+			clock.increment(30_000)
+			expect(selectApplicationView(application.getSnapshot(), true).requiresReload).toBe(true)
+			f.actor.send({ type: 'SHUTDOWN' })
+			clock.increment(5)
+			expect(f.actor.getSnapshot().status).toBe('active')
+			expect(f.close).not.toHaveBeenCalled()
+			expect(application.getSnapshot().children.logout).toBe(owner)
+			if (stage === 'provider') expect(session).not.toHaveBeenCalled()
+			pending.resolve()
+			await waitFor(f.actor, (snapshot) => snapshot.status === 'done', { timeout: 1000 })
+			expect(f.close).toHaveBeenCalledOnce()
+			expect(provider).toHaveBeenCalledOnce()
+			expect(session).toHaveBeenCalledOnce()
+		} finally {
+			pending.resolve()
+			f.actor.stop()
+			f.owner.stop()
+		}
+	}
+)
 afterEach(() => {
 	for (const cleanup of cleanups) cleanup()
 	cleanups.clear()

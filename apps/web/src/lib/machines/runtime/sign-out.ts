@@ -1,46 +1,26 @@
-import { createAsyncLogic, setup, types, type ActorRefFrom } from 'xstate'
-import type { AccountHost } from '../../contracts/account.js'
+import { createOrderedSignOutMachine } from 'delightful-local-first/session/sign-out/workflow'
+import type {
+	OrderedSignOutInput,
+	SignOutStage
+} from 'delightful-local-first/session/sign-out/contracts'
+import type { AccountHost, AccountObservation } from '../../contracts/account.js'
 
-// The application drains the library before invoking this child and retains it
-// through shutdown. Clearing the provider cookie precedes the native Jazz logout.
-const actors = {
-	provider: createAsyncLogic({
-		run: ({ input }: { input: AccountHost }) => input.signOut?.() ?? Promise.resolve()
-	}),
-	session: createAsyncLogic({ run: ({ input }: { input: AccountHost }) => input.logout() })
-}
-export const signOutMachine = setup({
-	schemas: {
-		context: types<AccountHost>(),
-		input: types<AccountHost>(),
-		events: { UNUSED: types<{}>() },
-		children: {
-			provider: types<ActorRefFrom<typeof actors.provider>>(),
-			session: types<ActorRefFrom<typeof actors.session>>()
-		}
-	},
-	actors
-}).createMachine({
-	id: 'sign-out',
-	context: ({ input }) => input,
-	initial: 'provider',
-	states: {
-		provider: {
-			invoke: {
-				id: 'provider',
-				src: 'provider',
-				input: ({ context }) => context,
-				onDone: { target: 'session' }
-			}
-		},
-		session: {
-			invoke: {
-				id: 'session',
-				src: 'session',
-				input: ({ context }) => context,
-				onDone: { target: 'done' }
-			}
-		},
-		done: { type: 'final' }
+export type { SignOutStage }
+export const signOutMachine = createOrderedSignOutMachine()
+
+/** Select immutable native capabilities before starting the shared owner. */
+export function signOutInput(
+	host: AccountHost,
+	observation: AccountObservation,
+	onOverdue?: (stage: SignOutStage) => void
+): OrderedSignOutInput {
+	const provider = host.signOut
+	const observeSession = observation.status === 'ready' ? observation.logoutStatus : undefined
+	return {
+		...(provider ? { provider } : {}),
+		...(observeSession ? { observeSession } : {}),
+		session:
+			observation.status === 'ready' && observation.logout ? observation.logout : host.logout,
+		...(onOverdue ? { onOverdue } : {})
 	}
-})
+}

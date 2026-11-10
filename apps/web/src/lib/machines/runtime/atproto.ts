@@ -2,22 +2,36 @@ import { createAsyncLogic, setup, types, type ActorRefFrom, type SnapshotFrom } 
 import { identityLogic } from '../identity.js'
 import { z } from 'zod'
 import { t } from '../../localization/index.js'
+import { stateFeedback, type NamedState } from '../../contracts/feedback.js'
 
-async function requestJSON(path: string, init: RequestInit): Promise<unknown> {
+export const AUTH_REQUEST_TIMEOUT_MS = 30_000
+
+const monotonicNow = () => performance.now()
+async function requestJSON(path: string, init: RequestInit, now: () => number) {
+	const startedAt = now()
 	const response = await fetch(path, {
 		...init,
 		credentials: 'same-origin',
 		cache: 'no-store',
 		redirect: 'error'
 	})
-	if (!response.ok) throw new Error('Authentication request failed')
-	return response.json()
+	if (!response.ok) {
+		void response.body?.cancel().catch(() => {})
+		throw new Error('Authentication request failed')
+	}
+	const value: unknown = await response.json()
+	init.signal?.throwIfAborted()
+	return { value, elapsedMs: now() - startedAt }
 }
 const completionSchema = z.object({ attemptId: z.uuid(), userId: z.string().min(1) })
 const redirectSchema = z.object({
 	url: z.url().refine((value) => new URL(value).protocol === 'https:')
 })
-type Input = { callbackAttempt?: string | null | undefined }
+type Input = {
+	callbackAttempt?: string | null | undefined
+	requestTimeoutMs?: number
+	now?: () => number
+}
 type Context = Input
 type Event = { type: 'BEGIN'; handle: string }
 const actors = {
@@ -27,28 +41,42 @@ const actors = {
 			input,
 			signal
 		}: {
-			input: { handle: string; attemptId: string }
+			input: { handle: string; attemptId: string; now: () => number }
 			signal: AbortSignal
 		}) => {
-			const value = await requestJSON('/api/auth/sign-in/atproto', {
-				method: 'POST',
-				signal,
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					handle: input.handle,
-					callbackURL: '/?atproto_attempt=' + input.attemptId
-				})
-			})
-			return redirectSchema.parse(value).url
+			const result = await requestJSON(
+				'/api/auth/sign-in/atproto',
+				{
+					method: 'POST',
+					signal,
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						handle: input.handle,
+						callbackURL: '/?atproto_attempt=' + input.attemptId
+					})
+				},
+				input.now
+			)
+			return { url: redirectSchema.parse(result.value).url, elapsedMs: result.elapsedMs }
 		}
 	}),
 	complete: createAsyncLogic({
-		run: async ({ input, signal }: { input: string; signal: AbortSignal }) => {
-			const attempt = z.uuid().parse(input)
-			const completion = completionSchema.parse(
-				await requestJSON('/api/auth/atproto/completion', { method: 'POST', signal })
+		run: async ({
+			input,
+			signal
+		}: {
+			input: { attemptId: string; now: () => number }
+			signal: AbortSignal
+		}) => {
+			const attempt = z.uuid().parse(input.attemptId)
+			const result = await requestJSON(
+				'/api/auth/atproto/completion',
+				{ method: 'POST', signal },
+				input.now
 			)
+			const completion = completionSchema.parse(result.value)
 			if (completion.attemptId !== attempt) throw new Error('OAuth attempt did not complete')
+			return { elapsedMs: result.elapsedMs }
 		}
 	})
 }
@@ -60,6 +88,7 @@ export const atprotoMachine = setup({
 		input: types<Input>(),
 		events: { BEGIN: types<{ handle: string }>() },
 		tags: types<string>(),
+		meta: types<NamedState & { confirmation?: 'uncertain' }>(),
 		children: {
 			identity: types<ActorRefFrom<typeof actors.identity>>(),
 			authorize: types<ActorRefFrom<typeof actors.authorize>>(),
@@ -70,6 +99,7 @@ export const atprotoMachine = setup({
 		starting: {},
 		idle: {},
 		failed: {},
+		completionUncertain: {},
 		issuingAttempt: {
 			schemas: { context: types<{ handle: string }>() }
 		},
@@ -78,7 +108,11 @@ export const atprotoMachine = setup({
 		completing: { schemas: { input: types<{ attemptId: string }>() } }
 	},
 	actors,
+	delays: { requestDeadline: ({ context }) => context.requestTimeoutMs ?? AUTH_REQUEST_TIMEOUT_MS },
 	guards: {
+		withinDeadline: ({ context }: { context: Context }, result: { elapsedMs: number }) =>
+			result.elapsedMs >= 0 &&
+			result.elapsedMs < (context.requestTimeoutMs ?? AUTH_REQUEST_TIMEOUT_MS),
 		returning: ({ context }) => context.callbackAttempt != null,
 		validHandle: ({ event }: { event: Event }) => event.handle.trim().length > 0
 	}
@@ -104,6 +138,7 @@ export const atprotoMachine = setup({
 		},
 		issuingAttempt: {
 			tags: ['busy'],
+			meta: { name: t('account.status.working'), variant: 'info' },
 			invoke: {
 				id: 'identity',
 				src: 'identity',
@@ -116,34 +151,64 @@ export const atprotoMachine = setup({
 		},
 		authorizing: {
 			tags: ['busy'],
+			meta: { name: t('account.status.working'), variant: 'info' },
+			timeout: 'requestDeadline',
+			onTimeout: { target: 'failed' },
 			invoke: {
 				id: 'authorize',
 				src: 'authorize',
-				input: ({ input }) => input,
-				onDone: ({ event }) => ({ target: 'redirecting', input: { url: event.output } }),
+				input: ({ context, input }) => ({ ...input, now: context.now ?? monotonicNow }),
+				onDone: (args) =>
+					args.guards.withinDeadline(args, args.event.output)
+						? { target: 'redirecting', input: { url: args.event.output.url } }
+						: { target: 'failed' },
 				onError: { target: 'failed' }
 			}
 		},
 		redirecting: {
 			tags: ['busy'],
+			meta: { name: t('account.status.working'), variant: 'info' },
 			entry: ({ input, parent }, enq) => {
 				enq.sendTo(parent, { type: 'OAUTH_REDIRECT', url: input.url })
 			}
 		},
 		completing: {
 			tags: ['busy'],
+			meta: { name: t('account.status.working'), variant: 'info' },
+			timeout: 'requestDeadline',
+			onTimeout: { target: 'completionUncertain' },
 			invoke: {
 				id: 'complete',
 				src: 'complete',
-				input: ({ input }) => input.attemptId,
-				onDone: ({ parent }, enq) => {
+				input: ({ context, input }) => ({
+					attemptId: input.attemptId,
+					now: context.now ?? monotonicNow
+				}),
+				onDone: (args, enq) => {
+					if (!args.guards.withinDeadline(args, args.event.output))
+						return { target: 'completionUncertain' }
+					const { parent } = args
 					enq.sendTo(parent, { type: 'OAUTH_RETURNED' })
 					return { target: 'idle' }
 				},
-				onError: { target: 'failed' }
+				onError: { target: 'completionUncertain' }
+			}
+		},
+		completionUncertain: {
+			meta: {
+				name: t('account.feedback.identityFailed'),
+				variant: 'error',
+				confirmation: 'uncertain'
+			},
+			on: {
+				BEGIN: (args) => {
+					if (!args.guards.validHandle(args)) return
+					return { target: 'issuingAttempt', context: { handle: args.event.handle.trim() } }
+				}
 			}
 		},
 		failed: {
+			meta: { name: t('account.feedback.identityFailed'), variant: 'error' },
 			on: {
 				BEGIN: (args) => {
 					if (!args.guards.validHandle(args)) return
@@ -154,12 +219,12 @@ export const atprotoMachine = setup({
 	}
 })
 export function selectAtprotoView(snapshot: SnapshotFrom<typeof atprotoMachine> | undefined) {
+	const metadata = snapshot ? Object.values(snapshot.getMeta()) : []
 	return {
 		busy: snapshot?.hasTag('busy') === true,
-		message: snapshot?.matches('failed')
-			? { text: t('account.feedback.identityFailed'), variant: 'error' as const }
-			: snapshot?.hasTag('busy')
-				? { text: t('account.status.working'), variant: 'info' as const }
-				: undefined
+		...(metadata.some((meta) => meta?.confirmation === 'uncertain')
+			? { confirmation: 'uncertain' as const }
+			: {}),
+		message: stateFeedback(metadata)
 	}
 }
