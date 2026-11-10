@@ -14,5 +14,9 @@
 	{
 		"file": "delightful-ui-7a7f61b-xstate-v6.tgz",
 		"sha256": "28d2139b7eb377e365a821743bb4fe998de2cbc59066ca15bd78862867891407"
+	},
+	{
+		"file": "delightful-local-first-domain-transaction-alpha60.tgz",
+		"sha256": "388faab60b1c2848b16e03f29d4038f30c5ff75874f58c4f08da73c01e22569b"
 	}
 ]

@@ -28,6 +28,8 @@ if (process.argv.includes('--installed')) {
 	const require = createRequire(new URL('apps/web/package.json', root))
 	for (const name of [
 		'delightful-local-first/diagnostics/logger',
+		'delightful-local-first/transactions/workflow',
+		'delightful-local-first/transactions/contracts',
 		'delightful-local-first/backend/jazz/startup',
 		'delightful-local-first/session/workflow',
 		'delightful-local-first/backend/jazz/session',

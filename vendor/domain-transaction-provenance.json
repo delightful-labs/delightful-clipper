@@ -1,0 +1,17 @@
+{
+	"file": "delightful-local-first-domain-transaction-alpha60.tgz",
+	"sha256": "388faab60b1c2848b16e03f29d4038f30c5ff75874f58c4f08da73c01e22569b",
+	"baseline": {
+		"file": "delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz",
+		"sha256": "8bf38f5fb030e5fd233fdfb7a10a58e9da4dacbc438b662d5b7318794adf8709"
+	},
+	"dlfBase": "9d2b0f6ae10d6a19f4dfa3cf7d606edbe4554e50",
+	"sourceFiles": {
+		"src/lib/contracts/domain-transaction.ts": "b3f77689acd59ab8deccf9af8479c6fef2f07592563bcc2e048d01a416cd8b0b",
+		"src/lib/machines/workspaces/domain-transaction.ts": "b3ab288107c6756ac7241e9c39e6f224da0dae578980897a63faac750ead90d7"
+	},
+	"adaptation": "Add only generic transaction bridge JS/declarations and public exports; retain all baseline modules and alpha.60 adapters unchanged. The existing pnpm recovery/view patch remains applied separately at installation.",
+	"xstate": "6.0.0-beta.1",
+	"jazz": "2.0.0-alpha.60",
+	"dlfSource": "9b3f094a1d79b1ac0b557e266d244a2c2391226f"
+}
