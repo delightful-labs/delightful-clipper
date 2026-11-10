@@ -83,6 +83,15 @@ export default defineConfig(({ command, mode }) => {
 			svg()
 		],
 		server: {
+			watch: {
+				ignored: [
+					'**/.clipper-dev/**',
+					'**/.netlify/**',
+					'**/.offline-test-builds/**',
+					'**/.svelte-kit/output/**',
+					'**/build/**'
+				]
+			},
 			host: process.env.CLIPPER_TEST === 'true' ? '127.0.0.1' : '0.0.0.0',
 			port: 5173,
 			strictPort: true,

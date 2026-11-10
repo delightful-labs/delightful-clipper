@@ -4,12 +4,13 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "pnpm build:parser-worker && vite dev",
+		"dev": "pnpm build:parser-worker:dev && vite dev",
 		"build": "pnpm build:parser-worker && vite build",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig tsconfig.json --fail-on-warnings && tsc --project src/service-worker/tsconfig.json",
 		"prepare": "svelte-kit sync",
-		"dev:agent": "pnpm build:parser-worker && vite dev --mode agent --port 5180",
+		"dev:agent": "pnpm build:parser-worker:dev && vite dev --mode agent --port 5180",
+		"build:parser-worker:dev": "pnpm build:parser-worker --outfile=.clipper-dev/parser/extract-worker.mjs",
 		"build:parser-worker": "esbuild src/lib/server/capture/extract-worker.ts --bundle --platform=node --format=esm --target=node24 --external:jsdom --external:@mozilla/readability --external:dompurify --outfile=.netlify/v1/parser/extract-worker.mjs"
 	},
 	"dependencies": {
