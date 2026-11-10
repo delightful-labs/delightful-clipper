@@ -153,7 +153,7 @@
 		font-family: var(--reader-font, Georgia, serif);
 		font-size: var(--reader-size, 20px);
 		line-height: var(--reader-spacing, 1.6);
-		max-width: var(--reader-width, 65ch);
+		max-width: var(--reader-width, 65%);
 		margin-inline: auto;
 		overflow-wrap: anywhere;
 	}

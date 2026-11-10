@@ -7,7 +7,7 @@ export const preferenceSchemas = {
 	font: z.enum(['serif', 'sans']),
 	size: z.number().int().min(16).max(32),
 	spacing: z.number().min(1.3).max(2),
-	width: z.number().int().min(40).max(90)
+	width: z.number().int().min(40).max(100)
 }
 export const preferencesSchema = z.object(preferenceSchemas)
 export type ReaderPreferences = z.infer<typeof preferencesSchema>

@@ -167,7 +167,7 @@
 						: 'system-ui, sans-serif'}
 					style:--reader-size={preferences.size + 'px'}
 					style:--reader-spacing={preferences.spacing}
-					style:--reader-width={preferences.width + 'ch'}
+					style:--reader-width={preferences.width + '%'}
 				>
 					<SavedContent
 						{imageViews}

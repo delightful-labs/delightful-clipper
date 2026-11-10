@@ -58,7 +58,7 @@
 	<InputRange
 		label={t('reader.reading_width')}
 		min={40}
-		max={90}
+		max={100}
 		step={1}
 		{disabled}
 		bind:value={
