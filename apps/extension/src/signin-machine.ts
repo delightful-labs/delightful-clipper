@@ -72,6 +72,7 @@ export function createSignInMachine(cap: {
 	}
 
 	return model.createMachine({
+		id: 'extension-sign-in',
 		initial: 'idle',
 		context: {
 			observation: { kind: 'waiting' },

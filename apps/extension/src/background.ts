@@ -3,6 +3,7 @@ import { createConnectStoreMachine } from './connect-store-machine.js'
 import { authorizationSchema, connectionFor, connectionKey } from './connection.js'
 import { createLaunchMachine } from './launch-machine.js'
 import { createActor, toPromise } from 'xstate'
+import { inspectMachines } from '../../web/src/lib/diagnostics/inspect.js'
 import { z } from 'zod'
 import {
 	acknowledgmentSchema,
@@ -85,7 +86,7 @@ const notifications = createNotificationMachine({
 })
 chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 	if (connectMessageSchema.safeParse(message).success) {
-		const actor = createActor(connections, { input: { message, sender } })
+		const actor = createActor(connections, { input: { message, sender }, inspect: inspectMachines })
 		void toPromise(actor)
 			.then(reply, () => reply({ accepted: false }))
 			.finally(() => actor.stop())

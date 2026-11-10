@@ -1,3 +1,4 @@
+import { isArticlePath } from '../../src/lib/reader/routes.js'
 import type { Jazz } from 'jazz-tools/backend'
 import { createServer } from 'node:http'
 import { readFile, stat } from 'node:fs/promises'
@@ -63,7 +64,10 @@ export function staticShellServer(initialRoot: string) {
 		}
 		const path = resolve(
 			root,
-			'.' + decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname)
+			'.' +
+				decodeURIComponent(
+					url.pathname === '/' || isArticlePath(url.pathname) ? '/index.html' : url.pathname
+				)
 		)
 		if (!path.startsWith(root + sep)) {
 			res.writeHead(404)

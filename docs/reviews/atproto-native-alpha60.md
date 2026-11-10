@@ -178,3 +178,38 @@ browser was closed after verification; no credentials or authentication state
 were saved as artifacts. Live-identity full-process/offline restart, refresh,
 revocation, backend restart and returning-device checks remain distinct from
 this result. See [the current spec](../../specs/001-jazz-clipper/atproto.md#hosted-live-provider-check--passed-2026-11-10).
+
+## Sign-in qualification follow-up — PR #32, 2026-11-10
+
+The existing nine native callback, completion, migration and configuration tests
+pass again on Node `24.22.2`. Three additional session lifecycle regressions use
+the installed Better Auth server, actual Jazz adapter and disposable SQLite
+stores. They verify that a due app session renews without changing identity and
+retains its renewed expiry after backend restart; expired and explicitly revoked
+app sessions remain rejected after restart without deleting their user. These
+checks pass without a product change, SDK patch, new dependency or test auth route.
+They do not establish live AT Protocol access-token refresh or provider revocation.
+
+All 21 account browser cases pass locally, including the offline-save/full-process
+restart/independent-restoration case. Linux CI run `42851581957` at `9a09485`
+failed that case's independent-profile read, then failed eight later cases.
+Tooling/types/build passed. One rerun of the failed browser job has passed the
+complete web suite and reached schema tests; later steps are still in progress.
+The passing rerun does not explain or resolve the intermittent Linux failure.
+
+The deployed PR preview initially returned `503 invalid_auth_configuration` with
+the missing field names `AUTH_BASE_URL` and `AUTH_SECRET`. These previously approved
+settings are now scoped to preview branch `test/atproto-cold-reader`, using its
+stable branch origin and an independent sensitive preview secret. Redeployment
+`dpl_6QtwDidBv7Qr87LJL4J7n685wNsk` serves unchanged commit `9a09485`; its session
+endpoint returns HTTP 200. Production configuration is unchanged.
+
+The authenticated Chrome session reaches the actual preview, but its Jazz backend
+cannot open: the SDK-generated preview drive name exceeds Vercel's 64-character
+limit. The app already supports the native `CLIPPER_JAZZ_CORE_NAME` override.
+Selecting `clipper-atproto-pr32` for this branch's disposable preview store is
+awaiting user approval. No override or new store has been selected yet. Fresh
+returning-provider sign-in, the normally deployed reader repair, hosted backend
+restart, live refresh and revocation checks remain pending behind this blocker.
+The separate Linux extension recovery issue and its three user-approved temporary
+skips remain deferred.

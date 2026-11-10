@@ -203,6 +203,24 @@ for (const mode of ['linked', 'existing', 'expired'])
 			await readingControls(page)
 			await page.getByRole('link', { name: 'Open library', exact: true }).click()
 
+			// A fresh authenticated replica must support opening the saved reader URL
+			// without visiting the library or caching its content first.
+			const coldBrowser = await chromium.launch({ headless: true })
+			try {
+				const coldContext = await coldBrowser.newContext()
+				await coldContext.addCookies(await context.cookies(origin))
+				const coldReader = await coldContext.newPage()
+				const readerResponse = await coldReader.goto(origin + '/articles/' + id)
+				expect(readerResponse?.status()).toBe(200)
+
+				await expect(coldReader.getByRole('article')).toContainText(
+					'Readable native backend capture.',
+					{ timeout: 30000 }
+				)
+			} finally {
+				await coldBrowser.close()
+			}
+
 			if (mode === 'expired') {
 				const sessions = await authority.backend.db.all(
 					app.better_auth_session.where({ userId: user.id })

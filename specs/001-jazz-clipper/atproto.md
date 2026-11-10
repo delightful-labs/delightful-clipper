@@ -5,6 +5,8 @@ merge `168cd0b` including fix `152d679`. This is the current Clipper checkpoint;
 older JWT/Neon/source-build experiments are historical. Product decisions below
 are accepted requirements, not claims that publication has been implemented.
 Shared identity/lifecycle belongs to DLF; Clipper owns annotations and publication.
+The PR #32 follow-up below records implemented reader work awaiting merge and
+normal deployment verification; it is separate from the merged baseline.
 
 ## Implemented identity integration
 
@@ -49,14 +51,42 @@ provider identities are synthetic; this is not a hosted live-provider consent te
 See [native auth qualification](../../docs/reviews/atproto-native-alpha60.md) and
 [extension investigation](../../docs/reviews/extension-startup-2026-11-09.md).
 CI for `152d679` passed tooling/types/build, but [the browser job](https://github.com/delightful-labs/delightful-clipper/actions/runs/42802719477)
-failed at `pnpm test:e2e`, before its extension step. This run supplies no Linux
-extension qualification; resolving the browser CI failure remains open.
+failed at `pnpm test:e2e`, before its extension step. A later PR #32 run reached
+the extension suite and exposed the known Linux failure recorded below.
 
 The original Jazz-only Window-teardown reproducer remains evidence of an upstream
 boundary, not a repair to Jazz itself. Linux extension CI, further hosted lifecycle
 qualification, cross-app Finance adoption, and all published Jazz
 pending-write/account-switch caveats remain separate qualification gates. Do not
 claim complete integration/release readiness from these local passes.
+
+### Known issue: Linux extension recovery sign-in — 2026-11-10
+
+[Linux CI run 42845035130, browser job 129930124826](https://github.com/delightful-labs/delightful-clipper/actions/runs/42845035130/job/129930124826)
+on PR #32 commit `77cf813` passed tooling/types/build, web browser tests, schema
+migrations, dedicated-worker tests and the full offline restart suite. The packaged
+extension suite passed nine cases and failed three:
+
+- Signed-out toolbar capture: after submitting a valid recovery phrase, the sign-in
+  popup did not close within the existing 15-second wait.
+- Stale connection for another account: setup did not obtain a confirmed
+  `clipper.connection` within the existing five-second assertion.
+- Repeated settings teardown/capture: setup failed at the same confirmation step.
+  Both setup failures showed “Updating your account…”, no alerts and no Chrome
+  local-storage keys.
+
+All 12 packaged extension cases pass locally on macOS/Chromium. The Linux cause
+remains unresolved: the evidence does not locate the stall in restoration,
+connection confirmation or shutdown settlement. This is Jazz recovery-phrase
+sign-in through the extension's trusted page; direct AT Protocol provider sign-in
+in the extension remains deferred. Diagnostic follow-up is not an established fix.
+At the user's request, commit `07acf39` temporarily skips these three cases on
+Linux, retaining them on macOS and leaving the other nine enabled on Linux.
+A green run with these skips does not establish a repair or Linux qualification.
+
+Linux extension qualification and complete release readiness remain blocked by
+this issue. Passing web/native offline evidence remains valid within its tested
+scope. Further investigation is deferred pending a separate scope discussion.
 
 ### Hosted live-provider check — passed 2026-11-10
 
@@ -90,13 +120,21 @@ from that replica's library rendered the saved text. Extraction was synthetic,
 while authentication and Jazz persistence/sync used production. The fresh replica
 reused only this app's session in memory; this was not another-device OAuth login.
 
-A separate production reader gap remains: direct URL navigation in a fresh replica
-twice reported the article unavailable while online, whereas opening from the
-library worked. Corrected local cold-reader cases pass without application changes,
-so neither the cause nor a fix is established. No speculative wait/retry change
-was retained or deployed. [PR #32](https://github.com/delightful-labs/delightful-clipper/pull/32)
-contains the bounded live evidence and added test coverage. The marked article
-remains in the private library; the native test profile stays local for continuation.
+A separate production reader failure was reproduced: direct URL navigation in a
+fresh replica reported unavailable while online, whereas library navigation worked.
+Investigation confirmed that a temporary snapshot miss while Jazz was connecting
+became a terminal reader result. [PR #32](https://github.com/delightful-labs/delightful-clipper/pull/32)
+implements the approved reader-owned connection wait and one further local-first
+read. Cached reads remain immediate; cancellation, account scope and listener
+cleanup stay explicit. This is an application fix, not an SDK patch.
+
+The implementation passed `pnpm verify` (683 unit/native tests), eight offline,
+six worker and seven reader browser cases. The actual built worker passed the
+original failure scenario and three reloads in each of two isolated fresh contexts
+against production using local asset substitution. Those checks did not deploy
+the repair. Normal PR deployment/merge verification remains open. See the
+[reader investigation and qualification](../../docs/reviews/reader-direct-open-2026-11-10.md).
+The marked article remains private and the native test profile stays local.
 
 ## Accepted publication behavior — not implemented
 
@@ -140,9 +178,9 @@ retain proposals beyond their explicitly approved subsets.
 
 | Work | Status / next evidence |
 | --- | --- |
-| Production reader gap | Investigate the reproducible direct-reader URL failure in a fresh local replica. Library-link reading works; the corrected local cold-reader case does not reproduce it. No fix deployed. |
-| Browser CI | Resolve the general web-test failure in run `42802719477`, then obtain Linux extension evidence; local macOS passes are a separate result. |
-| Hosted identity check | Real-provider round trip and three same-account reloads passed on production. Two live-identity offline process restarts and remote propagation now pass. Returning-device provider access, deployed persistence/refresh and revoke/expire behavior remain open. |
+| Production reader gap | Approved fix implemented and locally qualified in PR #32, including isolated built-worker checks against production. Merge and verify the normally deployed artifact; no production deployment claim. |
+| Linux extension CI | Known recovery sign-in failure: run `42845035130` failed three of 12 extension cases after passing web/schema/worker/offline checks. Those three are temporarily skipped on Linux by user request; cause and repair remain unresolved. Latest-head CI still needs confirmation. |
+| Hosted identity check | Real-provider round trip/reloads and two live-identity offline process restarts/propagation pass. Native app-session renewal, expiry and revocation across backend restart now pass three added regressions. Fresh returning-provider access, deployed persistence and live provider refresh/revocation remain open; preview auth is configured, but the SDK-generated storage name exceeds Vercel's limit. A branch-only shorter name is awaiting approval. See the current native auth follow-up. |
 | Shared DLF adoption | Extract only evidenced reusable provider/server/lifecycle boundaries, review interfaces, then qualify Finance independently with its existing data/backup obligations. No cross-app session/token transfer. |
 | Local annotations | Finish independently identified highlights, article notes, attached notes and anchors; existing draft/revision groundwork is not the completed model or editor. Review native text/history/anchor facilities before custom machinery. |
 | Public vocabulary | Select the real controlled companion namespace; resolve exact payload/projector, public keys/discovery, anchoring/version rules, and oversized retained/imported content. Example `com.example.*` names are not selected production NSIDs. |

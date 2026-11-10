@@ -27,7 +27,8 @@ import type { LibraryArticle } from '../../contracts/articles.js'
 export function createLibraryRecords(
 	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'beginSerializableTransaction' | 'subscribe'>,
 	libraryId: string,
-	isCurrent: () => boolean
+	isCurrent: () => boolean,
+	observeConnection?: ReadCapabilities['observeConnection']
 ) {
 	const readLocal = async (
 		resource: TransactionResource,
@@ -114,6 +115,7 @@ export function createLibraryRecords(
 		}),
 		readCapabilities: {
 			isCurrent,
+			observeConnection,
 			document: async (id) => {
 				const article = await db.one(app.articles.where({ id, libraryId }), {
 					tier: ReadTier.LocalFirst

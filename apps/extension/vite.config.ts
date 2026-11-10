@@ -78,6 +78,7 @@ export default defineConfig(({ mode }) => {
 			]
 		},
 		define: {
+			'import.meta.env.PUBLIC_DEBUG': JSON.stringify(env.PUBLIC_DEBUG ?? 'false'),
 			__CLIPPER_APP_ID__: JSON.stringify(appId ?? ''),
 			__CLIPPER_SERVER__: JSON.stringify(server.href),
 			__CLIPPER_WEB__: JSON.stringify(web.href)
