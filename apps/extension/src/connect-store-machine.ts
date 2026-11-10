@@ -46,6 +46,7 @@ export function createConnectStoreMachine(cap: {
 		},
 		actors
 	}).createMachine({
+		id: 'extension-connection-store',
 		initial: 'admitting',
 		context: ({ input }) => ({
 			...input,

@@ -1,6 +1,7 @@
 import type { AccountWorkerReply } from './account-client.js'
 import { z } from 'zod'
 import { createActor } from 'xstate'
+import { inspectMachines } from '../../web/src/lib/diagnostics/inspect.js'
 import type { accountInput } from '../../web/src/lib/backend/jazz/account.js'
 import { serveApplicationWorker } from '../../web/src/lib/runtime/worker/serve-application.js'
 import { extensionAccountStorageKey } from './account-storage.js'
@@ -63,7 +64,8 @@ export function serveExtensionAccount(options: {
 									event: { type: 'RESTORE', phrase }
 								})
 						}
-					})
+					}),
+					{ inspect: inspectMachines }
 				)
 				const publish = () => {
 					const snapshot = connection.getSnapshot()

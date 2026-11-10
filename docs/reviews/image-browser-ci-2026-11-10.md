@@ -78,3 +78,19 @@ failure without exposing content or account identifiers. Four fresh repetitions
 of the offline-save/independent-profile case pass locally with this wiring. The
 new Linux run must establish the outcome; this does not qualify the separate
 Jazz multi-writer issue.
+
+## Linux extension qualification reached
+
+Run `42845035130` at `77cf813` passes tooling/types/build, the complete main web
+suite, schema migrations, dedicated-worker cases and complete offline suite.
+It then fails three extension restoration cases: the signed-out popup does not
+close within its existing deadline, and two setup helpers observe “Updating your
+account…” with no confirmed connection. Nine extension cases pass; sample-data
+checks are not reached. The same 12-case packaged-extension suite passes locally.
+
+The extension test build now enables the shared, sanitized state observer through
+the existing `PUBLIC_DEBUG` setting. Sign-in/confirmation charts have stable
+diagnostic IDs; bounded console evidence captures their state paths and technical
+errors on failure. No deadlines or account workflow decisions change. Linux
+evidence is still required to distinguish restoration, Chrome confirmation and
+native shutdown settlement; this diagnostic addition is not an extension repair.
