@@ -1,6 +1,6 @@
 import { waitFor } from 'xstate'
 import { expect, it, vi } from 'vitest'
-import { fixture } from './host-machine.test-support.js'
+import { createWorkerHostFixture as fixture } from './host-machine.test-support.js'
 
 it('closes the SDK only after the application has acknowledged clean shutdown', async () => {
 	const f = fixture()

@@ -1,7 +1,7 @@
-import { createActor } from 'xstate'
+import { createActor, type ActorRefFrom } from 'xstate'
 import { z } from 'zod'
 import { viewportMachine } from './viewport.js'
-import type { ActorRefFrom } from 'xstate'
+
 import type { ViewportElements } from './viewport.js'
 import { positionSchema } from './schema.js'
 import { nativeReaderSurface } from './native-surface.js'
@@ -65,7 +65,10 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 							position: actor.getSnapshot().output?.position
 						}),
 					error: () =>
-						port.postMessage({ type: 'VIEWPORT_FAILED', attachmentId: message.attachmentId })
+						port.postMessage({
+							type: 'VIEWPORT_FAILED',
+							attachmentId: message.attachmentId
+						})
 				})
 				actor.start()
 				break

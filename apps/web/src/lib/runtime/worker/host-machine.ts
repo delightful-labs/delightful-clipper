@@ -1,7 +1,8 @@
 import { atprotoMachine } from '../../machines/runtime/atproto.js'
+import type { EventPayload } from '../../machines/events.js'
+import { types, createCallbackLogic, setup, createAsyncLogic, type ActorRefFrom } from 'xstate'
 import { hasDetachedTransactions } from '../../backend/jazz/transaction.js'
-import { assign, fromCallback, fromPromise, raise, sendTo, setup, stopChild } from 'xstate'
-import type { ActorRefFrom } from 'xstate'
+
 import type { Session } from '../../backend/jazz/account.js'
 import type { SessionOwnerReply } from 'delightful-local-first/session/contracts'
 import type { AccountInput, RecoveryBinding } from '../../contracts/account.js'
@@ -21,6 +22,7 @@ function required<T>(value: T | undefined): T {
 }
 const application = createApplicationReadinessMachine<Session>(observeBrowserConnection)
 type Input = AccountInput<Session> & {
+	scope: string
 	callbackAttempt?: string | null | undefined
 	authReturned?: () => void
 }
@@ -34,14 +36,12 @@ type Context = {
 	scope: string
 	limit: number
 	tagArticleId: string
-	tagForm: ActorRefFrom<typeof tagFormMachine> | undefined
+	tagForm: import('xstate').ActorFromLogic<typeof tagFormMachine> | undefined
 }
 type Event =
 	| RuntimeCommand
-	| { type: 'OAUTH_REDIRECT'; url: string }
-	| { type: 'OAUTH_RETURNED' }
 	| { type: 'BIND_RECOVERY'; binding: RecoveryBinding | undefined }
-	| { type: 'BIND_LIBRARY'; library: LibraryRef | undefined }
+	| { type: 'BIND_LIBRARY'; library: LibraryRef | undefined; scope: string }
 	| {
 			type: 'ATTACH_BOUND'
 			scope: string
@@ -49,11 +49,13 @@ type Event =
 			sources: string[]
 			surface: ReaderSurface
 	  }
+	| { type: 'OAUTH_REDIRECT'; url: string }
+	| { type: 'OAUTH_RETURNED' }
 	| { type: 'SHUTDOWN' }
 	| { type: 'OWNER_READY'; session: Session }
 	| { type: 'OWNER_EMPTY' }
 	| { type: 'APPLICATION_CLOSED'; clean: boolean }
-const owner = fromCallback<SessionOwnerReply<Session>, Input>(
+const owner = createCallbackLogic<SessionOwnerReply<Session>, Input>(
 	({ input, self, receive, sendBack }) => {
 		const scope = { binding: input.startup.scope.binding, attachment: {}, generation: 0 }
 		receive((event) => {
@@ -69,56 +71,62 @@ const actors = {
 	application,
 	owner,
 	tagForm: tagFormMachine,
-	close: fromPromise(({ input }: { input: Session }) => input.close())
+	close: createAsyncLogic({ run: ({ input }: { input: Session }) => input.close() })
 }
 
 /** Realm owner. Application detach drains domain work first; then wait for a
  * pending DLF acquisition and close its actual SDK session before releasing ports.
  * A failed drain never acknowledges safe worker termination. */
-export const workerHostMachine = setup<
-	Context,
-	Event,
-	typeof actors,
-	{ application: 'application'; oauth: 'oauth' },
-	{
-		reportApplicationClosed: undefined
-		bindLibrary: undefined
-		forwardLibrary: undefined
-		attachSurface: undefined
-		forwardTagForm: undefined
-		resetTagForm: undefined
-		bindRecovery: undefined
-		forwardRecovery: undefined
+export const workerHostMachine = setup({
+	schemas: {
+		context: types<Context>(),
+		events: {
+			SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>(),
+			ATPROTO: types<EventPayload<Event, 'ATPROTO'>>(),
+			OAUTH_REDIRECT: types<EventPayload<Event, 'OAUTH_REDIRECT'>>(),
+			OAUTH_RETURNED: types<EventPayload<Event, 'OAUTH_RETURNED'>>(),
+			CONNECTIVITY: types<EventPayload<Event, 'CONNECTIVITY'>>(),
+			RECOVERY: types<EventPayload<Event, 'RECOVERY'>>(),
+			ACCOUNT: types<EventPayload<Event, 'ACCOUNT'>>(),
+			LIBRARY: types<EventPayload<Event, 'LIBRARY'>>(),
+			MORE: types<EventPayload<Event, 'MORE'>>(),
+			TAG_EDIT: types<EventPayload<Event, 'TAG_EDIT'>>(),
+			ATTACH: types<EventPayload<Event, 'ATTACH'>>(),
+			TAG_FORM: types<EventPayload<Event, 'TAG_FORM'>>(),
+			BIND_RECOVERY: types<EventPayload<Event, 'BIND_RECOVERY'>>(),
+			BIND_LIBRARY: types<EventPayload<Event, 'BIND_LIBRARY'>>(),
+			ATTACH_BOUND: types<EventPayload<Event, 'ATTACH_BOUND'>>(),
+			OWNER_READY: types<EventPayload<Event, 'OWNER_READY'>>(),
+			OWNER_EMPTY: types<EventPayload<Event, 'OWNER_EMPTY'>>(),
+			APPLICATION_CLOSED: types<EventPayload<Event, 'APPLICATION_CLOSED'>>()
+		},
+		input: types<Input>(),
+		tags: types<string>(),
+		children: {
+			oauth: types<ActorRefFrom<typeof atprotoMachine>>(),
+			application: types<import('xstate').ActorRefFrom<(typeof actors)['application']>>(),
+			owner: types<import('xstate').ActorRefFrom<(typeof actors)['owner']>>(),
+			tagForm: types<import('xstate').ActorRefFrom<(typeof actors)['tagForm']>>(),
+			close: types<import('xstate').ActorRefFrom<(typeof actors)['close']>>()
+		}
 	},
-	{
-		custodyClear: undefined
-		applicationDrained: undefined
-		currentLibrary: undefined
-		currentAccount: undefined
-		currentReader: undefined
-		resettingTags: undefined
-		suppliedLibrary: undefined
-		suppliedRecovery: undefined
-		currentRecovery: undefined
-	},
-	never,
-	string,
-	Input
->({
 	actors,
 	guards: {
 		custodyClear: () => !hasDetachedTransactions(),
-		suppliedRecovery: ({ event }) => event.type === 'BIND_RECOVERY' && !!event.binding,
-		currentRecovery: ({ context, event }) =>
+		suppliedRecovery: ({ event }: { event: Event }) =>
+			event.type === 'BIND_RECOVERY' && !!event.binding,
+		currentRecovery: ({ context, event }: { context: Context; event: Event }) =>
 			event.type === 'RECOVERY' && event.scope === context.scope && !!context.recovery,
-		suppliedLibrary: ({ event }) => event.type === 'BIND_LIBRARY' && !!event.library,
-		resettingTags: ({ context, event }) =>
+		suppliedLibrary: ({ event }: { event: Event }) =>
+			event.type === 'BIND_LIBRARY' && !!event.library,
+		resettingTags: ({ context, event }: { context: Context; event: Event }) =>
 			event.type === 'TAG_FORM' &&
 			event.event.type === 'RESET' &&
 			event.scope === context.scope &&
 			!!context.tagForm,
-		currentAccount: ({ context, event }) => 'scope' in event && event.scope === context.scope,
-		currentReader: ({ context, event }) => {
+		currentAccount: ({ context, event }: { context: Context; event: Event }) =>
+			'scope' in event && event.scope === context.scope,
+		currentReader: ({ context, event }: { context: Context; event: Event }) => {
 			const reader = context.library?.getSnapshot().context.reader
 			return (
 				event.type === 'ATTACH_BOUND' &&
@@ -127,89 +135,65 @@ export const workerHostMachine = setup<
 				reader.document.snapshotId === event.documentId
 			)
 		},
-		currentLibrary: ({ context, event }) =>
+		currentLibrary: ({ context, event }: { context: Context; event: Event }) =>
 			'scope' in event &&
 			event.scope === context.scope &&
 			!!context.library?.getSnapshot().context.capability?.isCurrent() &&
 			context.library.getSnapshot().matches({ running: { control: 'active' } }),
-		applicationDrained: ({ event }) => event.type === 'APPLICATION_CLOSED' && event.clean
+		applicationDrained: ({ event }: { event: Event }) =>
+			event.type === 'APPLICATION_CLOSED' && event.clean
 	},
 	actions: {
-		bindRecovery: assign(({ event, spawn }) => {
+		bindRecovery: ({
+			event,
+			spawn
+		}: {
+			event: Event
+			spawn: import('xstate').EnqueueObject<
+				Event,
+				never,
+				import('xstate').SystemRegistry,
+				typeof actors
+			>['spawn']
+		}) => {
 			if (event.type !== 'BIND_RECOVERY') throw new Error('Recovery binding unavailable')
-			return { recovery: spawn(createRecoveryOwner(required(event.binding)), { input: undefined }) }
-		}),
-		forwardRecovery: sendTo(
-			({ context }) => required(context.recovery),
-			({ event }) => {
-				if (event.type !== 'RECOVERY') throw new Error('Recovery intent unavailable')
-				return event.event
+			return {
+				context: {
+					recovery: spawn(createRecoveryOwner(required(event.binding)), { input: undefined })
+				}
 			}
-		),
-		bindLibrary: assign(({ event, spawn }) => {
+		},
+
+		bindLibrary: ({
+			event,
+			spawnTagForm
+		}: {
+			event: Event
+			spawnTagForm: (library: LibraryRef) => import('xstate').ActorFromLogic<typeof tagFormMachine>
+		}) => {
 			if (event.type !== 'BIND_LIBRARY') throw new Error('Library binding unavailable')
 			const library = required(event.library)
 			return {
-				tagArticleId: '',
-				library,
-				scope: crypto.randomUUID(),
-				limit: 50,
-				tagForm: spawn('tagForm', { input: { library } })
-			}
-		}),
-		forwardLibrary: sendTo(
-			({ context }) => required(context.library),
-			({ event }) => {
-				if (event.type !== 'LIBRARY') throw new Error('Library intent unavailable')
-				return event.event
-			}
-		),
-		attachSurface: sendTo(
-			({ context }) => required(context.library),
-			({ event }) => {
-				if (event.type !== 'ATTACH_BOUND') throw new Error('Reader surface unavailable')
-				return {
-					type: 'READER_EVENT',
-					event: {
-						type: 'ATTACH_SURFACE',
-						surface: event.surface,
-						documentId: event.documentId,
-						sources: event.sources
-					}
-				} satisfies LibraryEvent
-			}
-		),
-		forwardTagForm: sendTo(
-			({ context }) => required(context.tagForm),
-			({ context, event }) => {
-				if (event.type !== 'TAG_FORM' || event.event.type !== 'SELECT')
-					throw new Error('Tag selection unavailable')
-				const intent = event.event
-				const snapshot = context.library?.getSnapshot()
-				const row = snapshot?.context.rows.find((row) => row.id === intent.id)
-				return {
-					...intent,
-					previous: row?.tags ?? [],
-					enabled: !!row && snapshot?.context.capability?.isCurrent() === true
+				context: {
+					tagArticleId: '',
+					library,
+					scope: event.scope,
+					limit: 50,
+					tagForm: spawnTagForm(library)
 				}
 			}
-		),
-		resetTagForm: sendTo(({ context }) => required(context.tagForm), { type: 'RESET' }),
-		reportApplicationClosed: raise(({ self }) => ({
-			type: 'APPLICATION_CLOSED',
-			clean: self.getSnapshot().children.application?.getSnapshot().matches('closed') === true
-		}))
+		}
 	}
 }).createMachine({
 	id: 'worker-host',
 	initial: 'running',
 	context: ({ input }) => ({
-		input,
 		redirect: undefined,
+		input,
 		recovery: undefined,
 		session: undefined,
 		library: undefined,
-		scope: crypto.randomUUID(),
+		scope: input.scope,
 		limit: 50,
 		tagForm: undefined,
 		tagArticleId: ''
@@ -218,10 +202,12 @@ export const workerHostMachine = setup<
 		running: {
 			initial: 'accepting',
 			on: {
-				APPLICATION_CLOSED: [
-					{ guard: 'applicationDrained', target: 'settlingAcquisition' },
-					{ target: 'failed' }
-				]
+				APPLICATION_CLOSED: (args) => {
+					if (args.guards.applicationDrained(args)) {
+						return { target: 'settlingAcquisition' }
+					}
+					return { target: 'failed' }
+				}
 			},
 			invoke: [
 				{
@@ -232,127 +218,191 @@ export const workerHostMachine = setup<
 				{
 					id: 'application',
 					src: 'application',
-					input: ({ context }) => context.input,
-					onDone: { actions: 'reportApplicationClosed' },
-					onError: 'failed'
+					input: ({ context }: { context: Context }) => context.input,
+					onDone: (args, enq) => {
+						enq.raise({
+							type: 'APPLICATION_CLOSED',
+							clean: args.event.output.clean
+						})
+					},
+					onError: { target: 'failed' }
 				}
 			],
 			states: {
 				accepting: {
 					on: {
-						ATPROTO: {
-							guard: 'currentAccount',
-							actions: sendTo('oauth', ({ event }) => ({
-								type: 'BEGIN' as const,
-								handle: event.handle
-							}))
+						ATPROTO: (args, enq) => {
+							if (!args.guards.currentAccount(args)) return
+							enq.sendTo('oauth', { type: 'BEGIN', handle: args.event.handle })
 						},
-						OAUTH_RETURNED: { actions: ({ context }) => context.input.authReturned?.() },
-						OAUTH_REDIRECT: {
-							target: 'draining',
-							actions: [
-								assign({ redirect: ({ event }) => event.url }),
-								sendTo('application', { type: 'SHUTDOWN' })
-							]
+						OAUTH_RETURNED: ({ context }, enq) => {
+							enq(() => context.input.authReturned?.())
 						},
-						BIND_RECOVERY: [
-							{
-								guard: 'suppliedRecovery',
-								actions: [
-									stopChild(({ context }) => context.recovery ?? 'absent-recovery'),
-									'bindRecovery'
-								]
-							},
-							{
-								actions: [
-									stopChild(({ context }) => context.recovery ?? 'absent-recovery'),
-									assign({ recovery: undefined })
-								]
+						OAUTH_REDIRECT: ({ event }, enq) => {
+							enq.sendTo('application', { type: 'SHUTDOWN' })
+							return { target: 'draining', context: { redirect: event.url } }
+						},
+
+						BIND_RECOVERY: (args, enq) => {
+							const { context } = args
+							if (args.guards.suppliedRecovery(args)) {
+								enq.stop(context.recovery)
+								return { context: args.actions.bindRecovery({ ...args, spawn: enq.spawn }).context }
 							}
-						],
-						RECOVERY: { guard: 'currentRecovery', actions: 'forwardRecovery' },
-						BIND_LIBRARY: [
-							{
-								guard: 'suppliedLibrary',
-								actions: [
-									stopChild(({ context }) => context.tagForm ?? 'absent-tag-form'),
-									'bindLibrary'
-								]
-							},
-							{
-								actions: [
-									stopChild(({ context }) => context.tagForm ?? 'absent-tag-form'),
-									assign({
-										library: undefined,
-										tagForm: undefined,
-										scope: () => crypto.randomUUID(),
-										limit: 50
-									})
-								]
+							enq.stop(context.recovery)
+							return { context: { recovery: undefined } }
+						},
+						RECOVERY: (args, enq) => {
+							if (!args.guards.currentRecovery(args)) return
+							enq.sendTo(
+								required(args.context.recovery),
+								(({ event }) => {
+									if (event.type !== 'RECOVERY') throw new Error('Recovery intent unavailable')
+									return event.event
+								})(args)
+							)
+						},
+						BIND_LIBRARY: (args, enq) => {
+							const { context } = args
+							if (args.guards.suppliedLibrary(args)) {
+								enq.stop(context.tagForm)
+								return {
+									context: args.actions.bindLibrary({
+										...args,
+										spawnTagForm: (library) =>
+											enq.spawn(args.actors.tagForm, { input: { library } })
+									}).context
+								}
 							}
-						],
-						LIBRARY: {
-							guard: 'currentLibrary',
-							actions: [
-								'forwardLibrary',
-								assign(({ event, context }) =>
-									['QUERY', 'FILTER', 'TAG_FILTER'].includes(event.event.type)
-										? { limit: 50 }
-										: { limit: context.limit }
+							enq.stop(context.tagForm)
+							return {
+								context: {
+									library: undefined,
+									tagForm: undefined,
+									scope: args.event.scope,
+									limit: 50
+								}
+							}
+						},
+						LIBRARY: (args, enq) => {
+							if (!args.guards.currentLibrary(args)) return
+							const { context, event } = args
+							enq.sendTo(
+								required(context.library),
+								(({ event }) => {
+									if (event.type !== 'LIBRARY') throw new Error('Library intent unavailable')
+									return event.event
+								})(args)
+							)
+							return {
+								context: ['QUERY', 'FILTER', 'TAG_FILTER'].includes(event.event.type)
+									? { limit: 50 }
+									: { limit: context.limit }
+							}
+						},
+						TAG_EDIT: (args) => {
+							if (!args.guards.currentLibrary(args)) return
+							return { context: { tagArticleId: args.event.id ?? '' } }
+						},
+						MORE: (args) => {
+							if (!args.guards.currentLibrary(args)) return
+							return { context: { limit: args.context.limit + 50 } }
+						},
+						ATTACH_BOUND: (args, enq) => {
+							if (!args.guards.currentReader(args)) return
+							enq.sendTo(
+								required(args.context.library),
+								(({ event }) => {
+									if (event.type !== 'ATTACH_BOUND') throw new Error('Reader surface unavailable')
+									return {
+										type: 'READER_EVENT',
+										event: {
+											type: 'ATTACH_SURFACE',
+											surface: event.surface,
+											documentId: event.documentId,
+											sources: event.sources
+										}
+									} satisfies LibraryEvent
+								})(args)
+							)
+						},
+						TAG_FORM: (args, enq) => {
+							const { context } = args
+							if (args.guards.resettingTags(args)) {
+								enq.sendTo(required(context.tagForm), { type: 'RESET' })
+								return {}
+							}
+							if (args.guards.currentLibrary(args)) {
+								enq.sendTo(
+									required(context.tagForm),
+									(({ context, event }) => {
+										if (event.type !== 'TAG_FORM' || event.event.type !== 'SELECT')
+											throw new Error('Tag selection unavailable')
+										const intent = event.event
+										const snapshot = context.library?.getSnapshot()
+										const row = snapshot?.context.rows.find((row) => row.id === intent.id)
+										return {
+											...intent,
+											previous: row?.tags ?? [],
+											enabled: !!row && snapshot?.context.capability?.isCurrent() === true
+										}
+									})(args)
 								)
-							]
+								return {}
+							}
 						},
-						TAG_EDIT: {
-							guard: 'currentLibrary',
-							actions: assign({ tagArticleId: ({ event }) => event.id ?? '' })
+						ACCOUNT: (args, enq) => {
+							if (!args.guards.currentAccount(args)) return
+							enq.sendTo('application', args.event.event)
 						},
-						MORE: {
-							guard: 'currentLibrary',
-							actions: assign({ limit: ({ context }) => context.limit + 50 })
-						},
-						ATTACH_BOUND: { guard: 'currentReader', actions: 'attachSurface' },
-						TAG_FORM: [
-							{ guard: 'resettingTags', actions: 'resetTagForm' },
-							{ guard: 'currentLibrary', actions: 'forwardTagForm' }
-						],
-						ACCOUNT: {
-							guard: 'currentAccount',
-							actions: sendTo('application', ({ event }) => event.event)
-						},
-						SHUTDOWN: { target: 'draining', actions: sendTo('application', { type: 'SHUTDOWN' }) }
+						SHUTDOWN: (args, enq) => {
+							enq.sendTo('application', { type: 'SHUTDOWN' })
+							return { target: 'draining' }
+						}
 					}
 				},
 				draining: {}
 			}
 		},
 		settlingAcquisition: {
-			invoke: { src: 'owner', input: ({ context }) => context.input },
+			invoke: {
+				id: 'owner',
+				src: 'owner',
+				input: ({ context }: { context: Context }) => context.input
+			},
 			on: {
-				OWNER_READY: [
-					{
-						guard: 'custodyClear',
-						target: 'closingSession',
-						actions: assign({ session: ({ event }) => event.session })
-					},
-					{ target: 'failed' }
-				],
-				OWNER_EMPTY: [{ guard: 'custodyClear', target: 'closed' }, { target: 'failed' }]
+				OWNER_READY: (args) => {
+					if (args.guards.custodyClear()) {
+						return { target: 'closingSession', context: { session: args.event.session } }
+					}
+					return { target: 'failed' }
+				},
+				OWNER_EMPTY: (args) => {
+					if (args.guards.custodyClear()) {
+						return { target: 'closed' }
+					}
+					return { target: 'failed' }
+				}
 			}
 		},
 		closingSession: {
 			invoke: {
+				id: 'close',
 				src: 'close',
-				input: ({ context }) => {
+				input: ({ context }: { context: Context }) => {
 					if (!context.session) throw new Error('Worker session unavailable')
 					return context.session
 				},
-				onDone: 'closed',
-				onError: 'failed'
+				onDone: { target: 'closed' },
+				onError: { target: 'failed' }
 			}
 		},
 		closed: {
 			type: 'final',
-			entry: [({ context }) => context.input.startup.owner.stop(), assign({ session: undefined })]
+			entry: (args, enq) => {
+				enq(({ context }) => context.input.startup.owner.stop(), args)
+				return { context: { session: undefined } }
+			}
 		},
 		failed: {}
 	}

@@ -1,18 +1,25 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { createActor, setup, waitFor } from 'xstate'
+import { createActor, setup, waitFor, types, type ActorRefFrom } from 'xstate'
 import { atprotoMachine, selectAtprotoView } from './atproto.js'
 
 function fixture(callbackAttempt: string | null = null) {
 	const redirect = vi.fn(),
 		returned = vi.fn()
-	type Event = { type: 'OAUTH_REDIRECT'; url: string } | { type: 'OAUTH_RETURNED' }
-	const parent = setup<object, Event, { oauth: typeof atprotoMachine }>({
+	const parent = setup({
+		schemas: {
+			events: { OAUTH_REDIRECT: types<{ url: string }>(), OAUTH_RETURNED: types<{}>() },
+			children: { oauth: types<ActorRefFrom<typeof atprotoMachine>>() }
+		},
 		actors: { oauth: atprotoMachine }
 	}).createMachine({
 		invoke: { id: 'oauth', src: 'oauth', input: { callbackAttempt } },
 		on: {
-			OAUTH_REDIRECT: { actions: ({ event }) => redirect(event.url) },
-			OAUTH_RETURNED: { actions: returned }
+			OAUTH_REDIRECT: ({ event }, enq) => {
+				enq(() => redirect(event.url))
+			},
+			OAUTH_RETURNED: (_args, enq) => {
+				enq(returned)
+			}
 		}
 	})
 	const owner = createActor(parent).start()
@@ -104,8 +111,32 @@ it('cancels an outstanding provider request when its worker owner stops', async 
 	)
 	const f = fixture()
 	f.actor.send({ type: 'BEGIN', handle: 'derocher.me' })
+	await waitFor(f.actor, (snapshot) => snapshot.matches('authorizing'))
 	expect(signal?.aborted).toBe(false)
 	f.owner.stop()
 	expect(signal?.aborted).toBe(true)
 	expect(f.redirect).not.toHaveBeenCalled()
+})
+
+it('keeps admission probes pure and issues identity only for an accepted attempt', async () => {
+	const issue = vi.spyOn(crypto, 'randomUUID')
+	const fetch = vi.fn(async () =>
+		Response.json({ url: 'https://provider.example.invalid/authorize' })
+	)
+	vi.stubGlobal('fetch', fetch)
+	const f = fixture()
+	try {
+		expect(f.actor.getSnapshot().can({ type: 'BEGIN', handle: '  ' })).toBe(false)
+		for (let probe = 0; probe < 3; probe++)
+			expect(f.actor.getSnapshot().can({ type: 'BEGIN', handle: 'derocher.me' })).toBe(true)
+		expect(issue).not.toHaveBeenCalled()
+		expect(fetch).not.toHaveBeenCalled()
+		f.actor.send({ type: 'BEGIN', handle: 'derocher.me' })
+		await waitFor(f.actor, (snapshot) => snapshot.matches('redirecting'))
+		expect(issue).toHaveBeenCalledOnce()
+		expect(fetch).toHaveBeenCalledOnce()
+	} finally {
+		f.owner.stop()
+		issue.mockRestore()
+	}
 })

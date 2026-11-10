@@ -1,5 +1,5 @@
 import { it, expect, vi } from 'vitest'
-import { createActor, createMachine, fromPromise, waitFor, toPromise } from 'xstate'
+import { createActor, createMachine, waitFor, toPromise, createAsyncLogic } from 'xstate'
 import { createLogger } from 'delightful-local-first/diagnostics/logger'
 import { createMachineObserver } from './machines.js'
 
@@ -22,10 +22,12 @@ it('logs a caught child error and modeled failure without copying input, context
 			states: {
 				reading: {
 					invoke: {
-						src: fromPromise(async () => {
-							throw error
+						src: createAsyncLogic({
+							run: async () => {
+								throw error
+							}
 						}),
-						onError: 'failed'
+						onError: { target: 'failed' }
 					}
 				},
 				failed: { type: 'final' }
@@ -43,10 +45,12 @@ it('logs a caught child error and modeled failure without copying input, context
 it('sanitizes credentials and source data embedded in error messages', async () => {
 	const { sink, inspect } = fixture()
 	const actor = createActor(
-		fromPromise(async () => {
-			throw new Error(
-				'Failed Bearer secret-credential at https://private.example/a?token=hidden with {"text":"private-content"}'
-			)
+		createAsyncLogic({
+			run: async () => {
+				throw new Error(
+					'Failed Bearer secret-credential at https://private.example/a?token=hidden with {"text":"private-content"}'
+				)
+			}
 		}),
 		{ inspect }
 	)

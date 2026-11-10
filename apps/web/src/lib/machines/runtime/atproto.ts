@@ -1,4 +1,5 @@
-import { assign, fromPromise, sendParent, setup, type SnapshotFrom } from 'xstate'
+import { createAsyncLogic, setup, types, type ActorRefFrom, type SnapshotFrom } from 'xstate'
+import { identityLogic } from '../identity.js'
 import { z } from 'zod'
 import { t } from '../../localization/index.js'
 
@@ -17,11 +18,12 @@ const redirectSchema = z.object({
 	url: z.url().refine((value) => new URL(value).protocol === 'https:')
 })
 type Input = { callbackAttempt?: string | null | undefined }
-type Context = Input & { attemptId: string; handle: string; url: string }
+type Context = Input
 type Event = { type: 'BEGIN'; handle: string }
 const actors = {
-	authorize: fromPromise(
-		async ({
+	identity: identityLogic,
+	authorize: createAsyncLogic({
+		run: async ({
 			input,
 			signal
 		}: {
@@ -39,90 +41,113 @@ const actors = {
 			})
 			return redirectSchema.parse(value).url
 		}
-	),
-	complete: fromPromise(async ({ input, signal }: { input: string; signal: AbortSignal }) => {
-		const attempt = z.uuid().parse(input)
-		const completion = completionSchema.parse(
-			await requestJSON('/api/auth/atproto/completion', { method: 'POST', signal })
-		)
-		if (completion.attemptId !== attempt) throw new Error('OAuth attempt did not complete')
+	}),
+	complete: createAsyncLogic({
+		run: async ({ input, signal }: { input: string; signal: AbortSignal }) => {
+			const attempt = z.uuid().parse(input)
+			const completion = completionSchema.parse(
+				await requestJSON('/api/auth/atproto/completion', { method: 'POST', signal })
+			)
+			if (completion.attemptId !== attempt) throw new Error('OAuth attempt did not complete')
+		}
 	})
 }
 /** Only the provider redirect belongs to Clipper. Jazz follows the verified backend
  * cookie itself; there are no JWT sources, saved selections or manual links here. */
-export const atprotoMachine = setup<
-	Context,
-	Event,
-	typeof actors,
-	{},
-	{},
-	{
-		returning: undefined
-		validHandle: undefined
+export const atprotoMachine = setup({
+	schemas: {
+		context: types<Context>(),
+		input: types<Input>(),
+		events: { BEGIN: types<{ handle: string }>() },
+		tags: types<string>(),
+		children: {
+			identity: types<ActorRefFrom<typeof actors.identity>>(),
+			authorize: types<ActorRefFrom<typeof actors.authorize>>(),
+			complete: types<ActorRefFrom<typeof actors.complete>>()
+		}
 	},
-	never,
-	string,
-	Input
->({
+	states: {
+		starting: {},
+		idle: {},
+		failed: {},
+		issuingAttempt: {
+			schemas: { context: types<{ handle: string }>() }
+		},
+		authorizing: { schemas: { input: types<{ handle: string; attemptId: string }>() } },
+		redirecting: { schemas: { input: types<{ url: string }>() } },
+		completing: { schemas: { input: types<{ attemptId: string }>() } }
+	},
 	actors,
 	guards: {
 		returning: ({ context }) => context.callbackAttempt != null,
-		validHandle: ({ event }) => event.handle.trim().length > 0
+		validHandle: ({ event }: { event: Event }) => event.handle.trim().length > 0
 	}
 }).createMachine({
 	id: 'atproto',
-	context: ({ input }) => ({
-		...input,
-		attemptId: input.callbackAttempt ?? '',
-		handle: '',
-		url: ''
-	}),
+	context: ({ input }) => input,
 	initial: 'starting',
 	states: {
-		starting: { always: [{ guard: 'returning', target: 'completing' }, { target: 'idle' }] },
+		starting: {
+			type: 'choice',
+			choice: (args) =>
+				args.guards.returning(args)
+					? { target: 'completing', input: { attemptId: args.context.callbackAttempt! } }
+					: { target: 'idle' }
+		},
 		idle: {
 			on: {
-				BEGIN: {
-					guard: 'validHandle',
-					target: 'authorizing',
-					actions: assign({
-						handle: ({ event }) => event.handle.trim(),
-						attemptId: () => crypto.randomUUID()
-					})
+				BEGIN: (args) => {
+					if (!args.guards.validHandle(args)) return
+					return { target: 'issuingAttempt', context: { handle: args.event.handle.trim() } }
 				}
 			}
 		},
-		authorizing: {
-			tags: 'busy',
+		issuingAttempt: {
+			tags: ['busy'],
 			invoke: {
+				id: 'identity',
+				src: 'identity',
+				onDone: ({ event, context }) => ({
+					target: 'authorizing',
+					input: { handle: context.handle, attemptId: event.output }
+				}),
+				onError: { target: 'failed' }
+			}
+		},
+		authorizing: {
+			tags: ['busy'],
+			invoke: {
+				id: 'authorize',
 				src: 'authorize',
-				input: ({ context }) => ({ handle: context.handle, attemptId: context.attemptId }),
-				onDone: { target: 'redirecting', actions: assign({ url: ({ event }) => event.output }) },
-				onError: 'failed'
+				input: ({ input }) => input,
+				onDone: ({ event }) => ({ target: 'redirecting', input: { url: event.output } }),
+				onError: { target: 'failed' }
 			}
 		},
 		redirecting: {
-			tags: 'busy',
-			entry: sendParent(({ context }) => ({ type: 'OAUTH_REDIRECT' as const, url: context.url }))
+			tags: ['busy'],
+			entry: ({ input, parent }, enq) => {
+				enq.sendTo(parent, { type: 'OAUTH_REDIRECT', url: input.url })
+			}
 		},
 		completing: {
-			tags: 'busy',
+			tags: ['busy'],
 			invoke: {
+				id: 'complete',
 				src: 'complete',
-				input: ({ context }) => context.attemptId,
-				onDone: { target: 'idle', actions: sendParent({ type: 'OAUTH_RETURNED' }) },
-				onError: 'failed'
+				input: ({ input }) => input.attemptId,
+				onDone: ({ parent }, enq) => {
+					enq.sendTo(parent, { type: 'OAUTH_RETURNED' })
+					return { target: 'idle' }
+				},
+				onError: { target: 'failed' }
 			}
 		},
 		failed: {
 			on: {
-				BEGIN: {
-					guard: 'validHandle',
-					target: 'authorizing',
-					actions: assign({
-						handle: ({ event }) => event.handle.trim(),
-						attemptId: () => crypto.randomUUID()
-					})
+				BEGIN: (args) => {
+					if (!args.guards.validHandle(args)) return
+					return { target: 'issuingAttempt', context: { handle: args.event.handle.trim() } }
 				}
 			}
 		}

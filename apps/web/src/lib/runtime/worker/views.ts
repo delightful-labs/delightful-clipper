@@ -19,7 +19,7 @@ function readerRevision(reader: object | undefined) {
 	return revision
 }
 /** Only explicit render projections cross the channel. SDK/actor contexts never do. */
-export function projectRuntime(snapshot: SnapshotFrom<typeof workerHostMachine>) {
+function projectRuntimePayload(snapshot: SnapshotFrom<typeof workerHostMachine>) {
 	const application = snapshot.children.application?.getSnapshot()
 	const library = snapshot.context.library?.getSnapshot()
 	const view = selectLibraryView(library)
@@ -53,7 +53,6 @@ export function projectRuntime(snapshot: SnapshotFrom<typeof workerHostMachine>)
 			? view.readerExperience.progress[reader.document.snapshotId]
 			: undefined
 	return {
-		type: 'VIEW' as const,
 		scope: snapshot.context.scope,
 		account: selectApplicationView(application, true),
 		oauth: selectAtprotoView(snapshot.children.oauth?.getSnapshot()),
@@ -97,5 +96,8 @@ export function projectRuntime(snapshot: SnapshotFrom<typeof workerHostMachine>)
 		worker: { windowPresent: typeof window !== 'undefined' }
 	}
 }
-export type RuntimeView = ReturnType<typeof projectRuntime>
+export type RuntimeView = ReturnType<typeof projectRuntimePayload> & { type: 'VIEW' }
+export function projectRuntime(snapshot: SnapshotFrom<typeof workerHostMachine>): RuntimeView {
+	return { type: 'VIEW', ...projectRuntimePayload(snapshot) }
+}
 export type LibraryRender = NonNullable<RuntimeView['library']>

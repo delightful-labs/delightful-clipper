@@ -9,13 +9,13 @@
 	},
 	"dependencies": {
 		"@mozilla/readability": "0.6.0",
-		"delightful-local-first": "file:../../vendor/delightful-local-first-jazz-alpha60.tgz",
-		"delightful-ui": "file:../../vendor/delightful-ui-dd358b8-typography.tgz",
+		"delightful-local-first": "file:../../vendor/delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz",
+		"delightful-ui": "file:../../vendor/delightful-ui-7a7f61b-xstate-v6.tgz",
 		"dompurify": "3.4.17",
 		"i18next": "26.7.1",
 		"jazz-tools": "2.0.0-alpha.60",
 		"svelte": "5.57.2",
-		"xstate": "5.33.2",
+		"xstate": "6.0.0-beta.1",
 		"zod": "4.6.7"
 	},
 	"devDependencies": {

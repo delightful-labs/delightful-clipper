@@ -1,4 +1,6 @@
-import { assign, fromPromise, setup } from 'xstate'
+import type { EventPayload } from '../../web/src/lib/machines/events.js'
+import { types, setup, createAsyncLogic } from 'xstate'
+
 import {
 	captureSchema,
 	messageSchema,
@@ -25,35 +27,39 @@ export function createCaptureReadMachine(cap: {
 	capture: (capture: Capture) => Promise<unknown>
 }) {
 	const actors = {
-		read: fromPromise(({ input }: { input: string }) => cap.read(input)),
-		tab: fromPromise(({ input }: { input: number }) => cap.tab(input)),
-		capture: fromPromise(({ input }: { input: Capture }) => cap.capture(input))
+		read: createAsyncLogic({ run: ({ input }: { input: string }) => cap.read(input) }),
+		tab: createAsyncLogic({ run: ({ input }: { input: number }) => cap.tab(input) }),
+		capture: createAsyncLogic({ run: ({ input }: { input: Capture }) => cap.capture(input) })
 	}
-	const model = setup<
-		Context,
-		{ type: 'UNUSED' },
-		typeof actors,
-		{},
-		{},
-		{},
-		never,
-		string,
-		Input,
-		Reply
-	>({ actors }).extend({
+	const model = setup({
+		schemas: {
+			context: types<Context>(),
+			events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+			input: types<Input>(),
+			output: types<Reply>(),
+			tags: types<string>(),
+			children: {
+				read: types<import('xstate').ActorRefFrom<(typeof actors)['read']>>(),
+				tab: types<import('xstate').ActorRefFrom<(typeof actors)['tab']>>(),
+				capture: types<import('xstate').ActorRefFrom<(typeof actors)['capture']>>()
+			}
+		},
+		actors,
 		actions: {
-			useMetadata: assign({ result: ({ context }): Reply => ({ capture: context.capture! }) })
+			useMetadata: ({ context }: { context: Context }) => ({
+				context: { result: { capture: context.capture! } }
+			})
 		},
 		guards: {
-			matchingCapture: ({ context }, params: { value: unknown }) =>
+			matchingCapture: ({ context }: { context: Context }, params: { value: unknown }) =>
 				captureFor(params.value, messageSchema.parse(context.message).id),
-			issuedMatchingCapture: ({ context }, params: { value: unknown }) =>
+			issuedMatchingCapture: ({ context }: { context: Context }, params: { value: unknown }) =>
 				captureFor(params.value, messageSchema.parse(context.message).id) &&
 				captureSchema.parse(params.value).phase === 'issued',
-			matchingTab: ({ context }, params: { tab: chrome.tabs.Tab }) =>
+			matchingTab: ({ context }: { context: Context }, params: { tab: chrome.tabs.Tab }) =>
 				params.tab.id === context.capture!.tabId &&
 				sameSource(params.tab.url, context.capture!.url),
-			matchingSource: ({ context }, params: { source: unknown }) =>
+			matchingSource: ({ context }: { context: Context }, params: { source: unknown }) =>
 				matchingSource(params.source, context.capture!)
 		}
 	})
@@ -69,92 +75,95 @@ export function createCaptureReadMachine(cap: {
 		output: ({ context }) => context.result,
 		states: {
 			admitting: {
-				always: [
-					{
-						guard: ({ context }) =>
-							trustedSender(context.sender, cap.id, cap.page) &&
-							messageSchema.safeParse(context.message).success,
-						target: 'reading'
-					},
-					{ target: 'failed' }
-				]
+				type: 'choice',
+				choice: (args) => {
+					const { context } = args
+					if (
+						trustedSender(context.sender, cap.id, cap.page) &&
+						messageSchema.safeParse(context.message).success
+					) {
+						return { target: 'reading' }
+					}
+					return { target: 'failed' }
+				}
 			},
 			reading: {
 				invoke: {
+					id: 'read',
 					src: 'read',
-					input: ({ context }) => messageSchema.parse(context.message).id,
-					onDone: [
-						{
-							guard: {
-								type: 'issuedMatchingCapture',
-								params: ({ event }) => ({ value: event.output })
-							},
-							target: 'done',
-							actions: [
-								assign({ capture: ({ event }) => captureSchema.parse(event.output) }),
-								'useMetadata'
-							]
-						},
-						{
-							guard: {
-								type: 'matchingCapture',
-								params: ({ event }) => ({ value: event.output })
-							},
-							target: 'checkingTab',
-							actions: assign({ capture: ({ event }) => captureSchema.parse(event.output) })
-						},
-						{ target: 'failed' }
-					],
-					onError: 'failed'
+					input: ({ context }: { context: Context }) => messageSchema.parse(context.message).id,
+					onDone: (args) => {
+						const { event } = args
+						if (args.guards.issuedMatchingCapture(args, { value: event.output })) {
+							let context = args.context
+							let patch = {}
+							patch = { ...patch, capture: captureSchema.parse(event.output) }
+							context = { ...args.context, ...patch }
+							patch = { ...patch, ...args.actions.useMetadata({ ...args, context }).context }
+							context = { ...args.context, ...patch }
+							return { target: 'done', context: patch }
+						}
+						if (args.guards.matchingCapture(args, { value: event.output })) {
+							return {
+								target: 'checkingTab',
+								context: { capture: captureSchema.parse(event.output) }
+							}
+						}
+						return { target: 'failed' }
+					},
+					onError: { target: 'failed' }
 				}
 			},
 			checkingTab: {
 				invoke: {
+					id: 'tab',
 					src: 'tab',
-					input: ({ context }) => context.capture!.tabId,
-					onDone: [
-						{
-							guard: { type: 'matchingTab', params: ({ event }) => ({ tab: event.output }) },
-							target: 'capturing',
-							actions: assign({ tab: ({ event }) => event.output })
-						},
-						{ target: 'done', actions: 'useMetadata' }
-					],
-					onError: { target: 'done', actions: 'useMetadata' }
+					input: ({ context }: { context: Context }) => context.capture!.tabId,
+					onDone: (args) => {
+						const { event } = args
+						if (args.guards.matchingTab(args, { tab: event.output })) {
+							return { target: 'capturing', context: { tab: event.output } }
+						}
+						return { target: 'done', context: args.actions.useMetadata(args).context }
+					},
+					onError: (args) => {
+						return { target: 'done', context: args.actions.useMetadata(args).context }
+					}
 				}
 			},
 			capturing: {
 				invoke: {
+					id: 'capture',
 					src: 'capture',
-					input: ({ context }) => context.capture!,
-					onDone: [
-						{
-							guard: {
-								type: 'matchingSource',
-								params: ({ event }) => ({ source: event.output })
-							},
-							target: 'done',
-							actions: assign({
-								result: ({ context, event }) => ({
-									capture: context.capture!,
-									source: sourceSchema.parse(event.output)
-								})
-							})
-						},
-						{ target: 'done', actions: 'useMetadata' }
-					],
-					onError: { target: 'done', actions: 'useMetadata' }
+					input: ({ context }: { context: Context }) => context.capture!,
+					onDone: (args) => {
+						const { event } = args
+						if (args.guards.matchingSource(args, { source: event.output })) {
+							return {
+								target: 'done',
+								context: {
+									result: {
+										capture: args.context.capture!,
+										source: sourceSchema.parse(event.output)
+									}
+								}
+							}
+						}
+						return { target: 'done', context: args.actions.useMetadata(args).context }
+					},
+					onError: (args) => {
+						return { target: 'done', context: args.actions.useMetadata(args).context }
+					}
 				}
 			},
 			failed: { type: 'final' },
 			done: {
 				type: 'final',
-				entry: assign({
-					message: undefined,
-					source: undefined,
-					tab: undefined,
-					capture: undefined
-				})
+				entry: () => {
+					return {
+						context: { message: undefined, source: undefined, tab: undefined, capture: undefined }
+					}
+				}
 			}
 		}
 	})

@@ -90,3 +90,45 @@ runs as qualification of this final tree or claim the complete integration usabl
 Schema-separation experiments and temporary diagnostic hooks are not retained.
 The native auth web/offline evidence above remains valid and independent of this
 packaged-extension issue. Live provider consent is also still a hosted check.
+
+## XState 6 refresh (November 9)
+
+Merged main `4132edb` (PR #28), including published `xstate@6.0.0-beta.1`,
+main's matching DLF/DUI archives and generated lifecycle campaigns. The AT Protocol
+and provider-first sign-out charts now use v6 schemas, async logic and queued
+parent reports. Authorization and callback payloads use state input; the preparation
+state retains the original account/binding as a typed fact so a stale guest failure
+cannot poison Jazz's replacement account. Native observations, session adoption,
+account scopes, transaction custody and drain acknowledgments follow main's runtime.
+
+OAuth attempt identity is issued by an owned async actor. Admission probes are
+pure: repeated `.can()` checks issue neither an identity nor an HTTP request.
+Cancellation still aborts the provider request, callback confirmation remains
+attempt-bound, and navigation waits for clean application drain and native close.
+Provider-cookie clearance still precedes native Jazz logout.
+
+Vendor integrity, formatting, lint and strict web/extension/service-worker types
+pass. All 661 unit/native tests in 105 files pass, including the generated campaigns.
+The full native schema/migration bundle validates with 20 tables; its existing
+`storageOperations.createdAt` provenance warning remains. All eight production
+offline cases pass directly on this merged worktree, including linked, existing
+and expired-session accounts across full browser-process restarts, retained offline
+edits and reconnect reconciliation. No temporary source copy or port remapping was
+needed for these runs.
+
+All 55 general web cases, eight historical-schema cases in Chromium/Firefox, six
+worker cases and two fake-data cases pass directly on this worktree. The Vercel
+production build passes with a synthetic preview deployment hostname; this checks
+packaging without accessing the hosted environment.
+
+The existing user-approved Better Auth plugin compatibility patch is unchanged.
+It adapts the plugin's older account lookup to Better Auth 1.7's account-key API;
+this merge adds no dependency patch or XState declaration override. Native Jazz
+continues to own account following and durable auth storage, without Neon.
+
+The rebuilt macOS extension passed the first toolbar capture case, then failed
+the source-message/navigation case waiting for its toolbar bar. The run used
+`--max-failures=1`, so the other nine cases did not run. This reproduces the earlier
+startup/bar symptom without establishing its cause. No assertion was removed or
+weakened. The macOS packaged-extension qualification caveat and live-provider
+consent check remain open; the XState update does not resolve or waive them.

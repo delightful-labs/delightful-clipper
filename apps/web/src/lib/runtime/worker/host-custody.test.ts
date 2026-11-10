@@ -1,6 +1,6 @@
 import { waitFor } from 'xstate'
 import { expect, it, vi } from 'vitest'
-import { fixture } from './host-machine.test-support.js'
+import { createWorkerHostFixture as fixture } from './host-machine.test-support.js'
 import { retainDetachedTransaction } from '../../backend/jazz/transaction.js'
 
 // Custody is intentionally retained for this worker realm's entire lifetime.

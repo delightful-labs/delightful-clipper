@@ -5,13 +5,13 @@ import type { Authorization } from './connection.js'
 import { createLaunchMachine } from './launch-machine.js'
 const id = '77777777-7777-4777-8777-777777777777'
 const url = 'https://example.com/article'
-const capture = {
-	version: 1 as const,
+const capture: Capture = {
+	version: 1,
 	id,
 	tabId: 7,
 	documentId: 'document',
 	url,
-	phase: 'ready' as const
+	phase: 'ready'
 }
 function fixture(
 	pending: Capture[] = [],
@@ -138,6 +138,7 @@ it('opens one sign-in popup and saves nothing when it is canceled', async () => 
 	await waitFor(actor, (s) => s.matches('waitingForSignIn'))
 	actor.send({ type: 'CLIP', tab: { id: 7, url } })
 	expect(popup).toHaveBeenCalledOnce()
+	expect(popup).toHaveBeenCalledWith(id)
 	expect(inspect).not.toHaveBeenCalled()
 	expect(persist).not.toHaveBeenCalled()
 	closed()
@@ -148,9 +149,9 @@ it('opens one sign-in popup and saves nothing when it is canceled', async () => 
 
 it('waits for a cold offscreen listener before admitting capture without replaying a write', async () => {
 	let attempts = 0
-	const authorize = vi.fn(async () => {
+	const authorize = vi.fn<() => Promise<Authorization>>(async () => {
 		if (++attempts < 5) throw new Error('Receiving end does not exist yet')
-		return 'connected' as const
+		return 'connected'
 	})
 	const f = fixture([], undefined, async () => true, authorize)
 	try {

@@ -1,4 +1,4 @@
-import type { ActorLogic, Snapshot } from 'xstate'
+import type { Snapshot } from 'xstate'
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { SaveRequest, SaveResult, SyncReceipt, DocumentHeader } from './storage.js'
 export type { Article } from '../capture/article-schema.js'
@@ -17,25 +17,26 @@ export type ArticleSaveResult =
 	| { kind: 'duplicate'; operationId: string; ready: boolean; receipts: SyncReceipt[] }
 export type ArticleDraft = { article: Article; content?: SaveRequest; target: string }
 export type ArticleStageResult = WorkspaceCreationResult<ArticleDraft, SyncReceipt>
-export type ArticleStage<S extends Snapshot<ArticleStageResult>> = ActorLogic<
-	S,
-	{ type: 'SHUTDOWN' | 'CANCEL' },
-	{
-		attempt: { operationId: string; workspaceId: string; membershipId: string; draft: ArticleDraft }
-	}
->
-export type ArticleSaveCapability<
-	S extends Snapshot<ArticleStageResult>,
-	C extends Snapshot<SaveResult>
-> = {
+export type ArticleStageInput = {
+	attempt: { operationId: string; workspaceId: string; membershipId: string; draft: ArticleDraft }
+}
+export type ArticleStageOperation = (
+	spawn: import('../machines/children.js').ChildSpawner,
+	input: ArticleStageInput
+) => import('xstate').ActorInstance<Snapshot<ArticleStageResult>, { type: 'SHUTDOWN' | 'CANCEL' }>
+export type ContentOperation = (
+	spawn: import('../machines/children.js').ChildSpawner,
+	input: SaveRequest
+) => import('xstate').ActorInstance<Snapshot<SaveResult>, { type: 'SHUTDOWN' }>
+export type ArticleSaveCapability = {
 	isCurrent: () => boolean
 	prepare: (request: SaveArticleRequest) => Promise<ArticleDraft>
 	read: (id: string) => Promise<Article | null>
 	document: (id: string) => Promise<DocumentHeader | null>
 	intent: (id: string) => Promise<boolean>
-	ensure: ArticleStage<S>
-	attach: ArticleStage<S>
-	content: ActorLogic<C, { type: 'SHUTDOWN' }, SaveRequest>
+	ensure: ArticleStageOperation
+	attach: ArticleStageOperation
+	content: ContentOperation
 }
 export type LibraryArticle = {
 	readingProgress?: number | undefined

@@ -1,8 +1,8 @@
 import { imageUrlSchema } from '../../images/schema.js'
 import { bindWorkerConnectivity } from '../../offline/connectivity.js'
 /// <reference lib="webworker" />
-import { createActor } from 'xstate'
-import type { AnyActorRef } from 'xstate'
+import { createActor, type AnyActorRef } from 'xstate'
+
 import { z } from 'zod'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { accountInput } from '../../backend/jazz/account.js'
@@ -25,8 +25,8 @@ import { brokerHostClient } from './broker-channel.js'
 let updateConnectivity: ((online: boolean) => void) | undefined
 const initialize = z.object({
 	online: z.boolean().optional(),
-	type: z.literal('INITIALIZE'),
 	callbackAttempt: z.string().max(256).nullable().optional(),
+	type: z.literal('INITIALIZE'),
 	appId: z.string().uuid(),
 	serverUrl: z.string().url(),
 	storage: z.instanceof(MessagePort),
@@ -81,7 +81,11 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 			} else {
 				host.send(message)
 				if (message.type === 'LIBRARY' || message.type === 'TAG_FORM')
-					self.postMessage({ type: 'RECEIVED', requestId: message.requestId, scope: message.scope })
+					self.postMessage({
+						type: 'RECEIVED',
+						requestId: message.requestId,
+						scope: message.scope
+					})
 			}
 		}
 		return
@@ -103,6 +107,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 	const actor = createActor(workerHostMachine, {
 		input: {
 			...input,
+			scope: crypto.randomUUID(),
 			callbackAttempt: decoded.data.callbackAttempt,
 			authReturned: () => self.postMessage({ type: 'AUTH_RETURNED' })
 		},
@@ -132,12 +137,12 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		const library = selectLibraryActor(snapshot)
 		if (library !== observedLibrary) {
 			observedLibrary = library
-			actor.send({ type: 'BIND_LIBRARY', library })
+			actor.send({ type: 'BIND_LIBRARY', library, scope: crypto.randomUUID() })
 			return
 		}
 		const watched: AnyActorRef[] = [
-			application,
 			actor.getSnapshot().children.oauth,
+			application,
 			library,
 			actor.getSnapshot().context.tagForm,
 			recovery,
@@ -157,6 +162,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		for (const surface of surfaces) {
 			if (
 				readerContext?.attachment?.surface !== surface &&
+				readerContext?.pendingAttachment?.surface !== surface &&
 				readerContext?.display !== surface.fullscreen
 			) {
 				surface.dispose()

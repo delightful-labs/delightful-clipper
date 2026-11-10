@@ -1,16 +1,28 @@
+import type { EventPayload } from '../machines/events.js'
+import { types, createActor, setup, waitFor, type InputFrom } from 'xstate'
 import { expect, it, vi } from 'vitest'
-import { createActor, setup, waitFor } from 'xstate'
-import type { InputFrom } from 'xstate'
+
 import { imageViewMachine } from './view-machine.js'
 import type { ImageViewReport } from './view-machine.js'
 import type { ArticleImage } from './schema.js'
 function owner(input: InputFrom<typeof imageViewMachine>) {
 	const reports: ImageViewReport[] = []
-	const model = setup<{}, ImageViewReport, { view: typeof imageViewMachine }, { view: 'view' }>({
+	const model = setup({
+		schemas: {
+			context: types<{}>(),
+			events: { IMAGE_VIEW: types<EventPayload<ImageViewReport, 'IMAGE_VIEW'>>() },
+			children: { view: types<import('xstate').ActorRefFrom<typeof imageViewMachine>>() }
+		},
 		actors: { view: imageViewMachine }
 	}).createMachine({
+		context: {},
 		invoke: { id: 'view', src: 'view', input },
-		on: { IMAGE_VIEW: { actions: ({ event }) => reports.push(event) } }
+		on: {
+			IMAGE_VIEW: (args, enq) => {
+				const { event } = args
+				enq(() => reports.push(event))
+			}
+		}
 	})
 	const actor = createActor(model).start()
 	return { actor, reports, child: actor.getSnapshot().children.view! }
@@ -50,7 +62,7 @@ it('reports pending/failed native rows to its owning actor and disposes its subs
 it('owns blob URLs, reports decode errors, reloads saved bytes on Retry and ignores stale URL errors', async () => {
 	const revoke = vi.spyOn(URL, 'revokeObjectURL'),
 		dispose = vi.fn(),
-		ready = { ...row, status: 'ready' as const, assetId: row.id }
+		ready: ArticleImage = { ...row, status: 'ready', assetId: row.id }
 	const payload = new Uint8Array(
 		Buffer.from(
 			'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',

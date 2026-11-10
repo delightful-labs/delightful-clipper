@@ -6,7 +6,7 @@ import type { Session } from '../../backend/jazz/account.js'
 import type { AccountInput } from '../../contracts/account.js'
 import { workerHostMachine } from './host-machine.js'
 
-export function fixture() {
+export function createWorkerHostFixture(acquisition?: Promise<void>) {
 	bindWorkerConnectivity(true)
 	const unused = vi.fn(async () => {})
 	const close = vi.fn(async () => {})
@@ -23,7 +23,16 @@ export function fixture() {
 	}
 	const binding = {}
 	const owner = createActor(createSessionAcquisitionMachine<Session>(), {
-		input: { binding, capability: { open: async () => session }, existing: session }
+		input: {
+			binding,
+			capability: {
+				open: async () => {
+					await acquisition
+					return session
+				}
+			},
+			...(acquisition ? {} : { existing: session })
+		}
 	}).start()
 	const input: AccountInput<Session> = {
 		startup: { owner, scope: { binding, attachment: {}, generation: 0 } },
@@ -53,5 +62,9 @@ export function fixture() {
 			}
 		})
 	}
-	return { close, owner, actor: createActor(workerHostMachine, { input }) }
+	return {
+		close,
+		owner,
+		actor: createActor(workerHostMachine, { input: { ...input, scope: 'test-scope' } })
+	}
 }

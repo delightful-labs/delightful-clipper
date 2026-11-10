@@ -1,4 +1,6 @@
-import { assign, sendTo, setup, type ActorRef, type Snapshot, type SnapshotFrom } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup, type ActorRef, type Snapshot, type SnapshotFrom } from 'xstate'
+
 import type { LibraryEvent } from '../../contracts/library.js'
 import { tagSelectionChange, type Tag, type TagSelectionChange } from '../../capture/tags.js'
 import { stateFeedback } from '../../contracts/feedback.js'
@@ -13,32 +15,23 @@ function membership(change: TagSelectionChange) {
 	return change
 }
 /** DUI owns editing/chips/suggestions; this actor validates and delegates one native membership change. */
-const tagFormModel = setup<
-	Context,
-	TagFormEvent,
-	{},
-	{},
-	{},
-	{},
-	never,
-	string,
-	{ library: Library }
->({}).extend({
-	actions: {
-		submitMembership: sendTo(
-			({ context }) => context.library,
-			({ context }) =>
-				({
-					type: 'ORGANIZE',
-					request: {
-						id: context.id,
-						field: 'tag',
-						value: membership(context.change).name,
-						assigned: membership(context.change).assigned
-					}
-				}) satisfies LibraryEvent
-		)
-	}
+const tagFormModel = setup({
+	schemas: {
+		meta: types<{
+			name?: string
+			variant?: 'info' | 'error'
+			channel?: string
+			priority?: number
+		}>(),
+		context: types<Context>(),
+		events: {
+			SELECT: types<EventPayload<TagFormEvent, 'SELECT'>>(),
+			RESET: types<EventPayload<TagFormEvent, 'RESET'>>()
+		},
+		input: types<{ library: Library }>(),
+		tags: types<string>()
+	},
+	actions: {}
 })
 export const tagFormMachine = tagFormModel.createMachine({
 	id: 'article-tag-form',
@@ -51,30 +44,43 @@ export const tagFormMachine = tagFormModel.createMachine({
 	}),
 	on: {
 		RESET: { target: '.editing' },
-		SELECT: [
-			{ guard: ({ event }) => !event.enabled },
-			{
-				target: '.validating',
-				actions: assign({
-					id: ({ event }) => event.id,
-					change: ({ event }) => tagSelectionChange(event.previous, event.names),
-					revision: ({ context }) => context.revision + 1
-				})
+		SELECT: (args) => {
+			const { event } = args
+			if (!event.enabled) {
+				return {}
 			}
-		]
+			return {
+				target: '.validating',
+				context: {
+					id: event.id,
+					change: tagSelectionChange(event.previous, event.names),
+					revision: args.context.revision + 1
+				}
+			}
+		}
 	},
 	states: {
 		editing: {},
 		validating: {
-			always: [
-				{ guard: ({ context }) => context.change.kind === 'invalid', target: 'invalid' },
-				{
-					guard: ({ context }) => context.change.kind === 'changed',
-					target: 'editing',
-					actions: 'submitMembership'
-				},
-				{ target: 'editing' }
-			]
+			always: (args, enq) => {
+				const { context } = args
+				if (context.change.kind === 'invalid') {
+					return { target: 'invalid' }
+				}
+				if (context.change.kind === 'changed') {
+					enq.sendTo(context.library, {
+						type: 'ORGANIZE',
+						request: {
+							id: context.id,
+							field: 'tag',
+							value: membership(context.change).name,
+							assigned: membership(context.change).assigned
+						}
+					} satisfies LibraryEvent)
+					return { target: 'editing' }
+				}
+				return { target: 'editing' }
+			}
 		},
 		invalid: {
 			meta: { name: t('forms.enter_subject', { subject: noun('tag') }), variant: 'error' }

@@ -1,4 +1,4 @@
-import type { ActorLogic, ActorRef, Snapshot } from 'xstate'
+import type { ActorRef, Snapshot } from 'xstate'
 import type {
 	WorkspaceCreationAttempt,
 	WorkspaceCreationResult
@@ -56,16 +56,20 @@ export type SaveResult =
 	| { kind: 'saved'; operationId: string; receipts: SyncReceipt[] }
 	| { kind: 'failed' | 'unknown' | 'interrupted' | 'scopeChanged' | 'blocked'; operationId: string }
 export type StageResult = WorkspaceCreationResult<PreparedSave, SyncReceipt>
-export type StageLogic<S extends Snapshot<StageResult>> = ActorLogic<
-	S,
-	{ type: 'SHUTDOWN' | 'CANCEL' },
-	{ attempt: WorkspaceCreationAttempt<PreparedSave> }
+export type StageInput = { attempt: WorkspaceCreationAttempt<PreparedSave> }
+export type StageRef = import('xstate').ActorInstance<
+	Snapshot<StageResult>,
+	{ type: 'SHUTDOWN' | 'CANCEL' }
 >
-export type SaveCapabilities<S extends Snapshot<StageResult>> = {
+export type StageOperation = (
+	spawn: import('../machines/children.js').ChildSpawner,
+	input: StageInput
+) => StageRef
+export type SaveCapabilities = {
 	isCurrent: () => boolean
 	prepare: (request: SaveRequest) => Promise<PreparedSave>
-	intent: StageLogic<S>
-	publish: StageLogic<S>
+	intent: StageOperation
+	publish: StageOperation
 }
 export type AssetResult =
 	| { kind: 'available'; bytes: Uint8Array; mediaType: string }

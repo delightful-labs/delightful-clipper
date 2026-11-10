@@ -756,6 +756,29 @@ it('opens an existing library without reporting a new write or remote acceptance
 	await waitFor(actor, (s) => s.status === 'done')
 })
 
+it('rejects forged private completion events while session acquisition is pending', async () => {
+	const opening = Promise.withResolvers<AccountHost>()
+	const session = startup(() => opening.promise)
+	const rejected = vi.fn()
+	const actor = createActor(applicationReadinessMachine, {
+		input: session.attach(),
+		onRejectedEvent: rejected
+	}).start()
+	const before = actor.getSnapshot()
+	// Simulate an untyped external caller; the public TypeScript protocol also rejects it.
+	// @ts-expect-error STARTUP_CLOSED is private coordination, not a public command.
+	actor.send({ type: 'STARTUP_CLOSED' })
+	expect(actor.getSnapshot()).toBe(before)
+	expect(actor.getSnapshot().context.clean).toBe(false)
+	expect(rejected).toHaveBeenCalledOnce()
+	opening.resolve(fixture({ status: 'signed-out' }).host)
+	await waitFor(actor, (snapshot) => snapshot.matches({ active: { flow: 'running' } }))
+	actor.send({ type: 'SHUTDOWN' })
+	await waitFor(actor, (snapshot) => snapshot.status === 'done')
+	expect(actor.getSnapshot().output).toEqual({ clean: true })
+	session.owner.stop()
+})
+
 it('does not apply a superseded guest preparation failure to the backend account Jazz has opened', async () => {
 	const pending = Promise.withResolvers<void>()
 	const access = root(Promise.resolve(), Promise.resolve())

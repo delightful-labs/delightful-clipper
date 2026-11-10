@@ -11,7 +11,7 @@ import type {
 import type { SyncReceipt } from '../../contracts/storage.js'
 import type { FailureDraft } from './article-worker-call.js'
 import { createArticleWorkerHostMachine } from './article-worker-host.js'
-import type { HostResourceEvent } from './article-worker-host.js'
+import type { HostResourceEvent, HostCapability } from './article-worker-host.js'
 import { controlledSave } from './library.test-support.js'
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Missing fixture resource')
@@ -58,13 +58,13 @@ function fixture(
 		persistLocal: persistFailure,
 		rollback: () => true
 	})
-	const network = vi.fn(async (_call: unknown, signal: AbortSignal) =>
+	const network = vi.fn<HostCapability['network']>(async (_call: unknown, signal: AbortSignal) =>
 		options.network
 			? options.network(signal)
-			: { method: 'resolve' as const, status: 200, bytes: new Uint8Array([1]) }
+			: { method: 'resolve', status: 200, bytes: new Uint8Array([1]) }
 	)
-	const lookup = vi.fn(
-		options.lookup ?? (async () => ({ method: 'document' as const, exists: false }))
+	const lookup = vi.fn<HostCapability['lookup']>(
+		options.lookup ?? (async () => ({ method: 'document', exists: false }))
 	)
 	const report = vi.fn((event: QueueReport) => {
 		order.push(event.type)
@@ -77,8 +77,8 @@ function fixture(
 		debug: false,
 		online: () => true,
 		isCurrent: () => current,
-		save,
-		failure,
+		save: (spawn, input) => spawn(save, { input }),
+		failure: (spawn, input) => spawn(failure, { input }),
 		network,
 		lookup,
 		open: (next) => {
@@ -109,16 +109,16 @@ function fixture(
 		}
 	}
 }
-const saveCall = {
-	type: 'CALL' as const,
+const saveCall: WorkerOutput = {
+	type: 'CALL',
 	id: 'save',
-	method: 'save' as const,
+	method: 'save',
 	request: { url: 'https://example.com/' }
 }
-const networkCall = {
-	type: 'CALL' as const,
+const networkCall: WorkerOutput = {
+	type: 'CALL',
 	id: 'fetch',
-	method: 'resolve' as const,
+	method: 'resolve',
 	url: 'https://example.com/',
 	requestId: 'request'
 }

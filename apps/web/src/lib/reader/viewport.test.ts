@@ -1,5 +1,7 @@
+import type { EventPayload } from '../machines/events.js'
+import { types, createActor, setup } from 'xstate'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createActor, setup } from 'xstate'
+
 import { viewportMachine, type ViewportElements, type ViewportResult } from './viewport.js'
 import type { ReadingPosition } from './schema.js'
 import type { ReaderExperienceEvent } from '../machines/reader/experience.js'
@@ -33,12 +35,75 @@ function owner(elements: ViewportElements, position: ReadingPosition | undefined
 		outputs: ViewportResult[] = [],
 		errors: unknown[] = []
 	const actor = createActor(
-		setup<
-			{},
-			ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' },
-			{ viewport: typeof viewportMachine },
-			{ viewport: 'viewport' }
-		>({ actors: { viewport: viewportMachine } }).createMachine({
+		setup({
+			schemas: {
+				context: types<{}>(),
+				events: {
+					SYNC: types<
+						EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'SYNC'>
+					>(),
+					MEASURE:
+						types<EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'MEASURE'>>(),
+					VIEWPORT_FAILED:
+						types<
+							EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'VIEWPORT_FAILED'>
+						>(),
+					CHANGE:
+						types<EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'CHANGE'>>(),
+					ROWS: types<
+						EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'ROWS'>
+					>(),
+					ATTACH:
+						types<EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'ATTACH'>>(),
+					ATTACH_SURFACE:
+						types<
+							EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'ATTACH_SURFACE'>
+						>(),
+					SHUTDOWN:
+						types<
+							EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'SHUTDOWN'>
+						>(),
+					REFLOW:
+						types<EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'REFLOW'>>(),
+					DETACH:
+						types<EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'DETACH'>>(),
+					FOCUS:
+						types<EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'FOCUS'>>(),
+					SHOW_CONTROLS:
+						types<
+							EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'SHOW_CONTROLS'>
+						>(),
+					OBSERVATION_FAILED:
+						types<
+							EventPayload<
+								ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' },
+								'OBSERVATION_FAILED'
+							>
+						>(),
+					REFRESH_SYNC:
+						types<
+							EventPayload<ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' }, 'REFRESH_SYNC'>
+						>(),
+					FULLSCREEN_CHANGED:
+						types<
+							EventPayload<
+								ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' },
+								'FULLSCREEN_CHANGED'
+							>
+						>(),
+					FULLSCREEN_OBSERVED:
+						types<
+							EventPayload<
+								ReaderExperienceEvent | { type: 'DETACH' | 'REFLOW' },
+								'FULLSCREEN_OBSERVED'
+							>
+						>()
+				},
+				children: { viewport: types<import('xstate').ActorRefFrom<typeof viewportMachine>>() }
+			},
+			actors: { viewport: viewportMachine }
+		}).createMachine({
+			context: {},
 			initial: 'active',
 			states: {
 				active: {
@@ -46,25 +111,25 @@ function owner(elements: ViewportElements, position: ReadingPosition | undefined
 						id: 'viewport',
 						src: 'viewport',
 						input: { ...elements, attachmentId: 'current', position },
-						onDone: {
-							target: 'closed',
-							actions: ({ event }) => {
+						onDone: (args, enq) => {
+							enq(({ event }) => {
 								outputs.push(event.output)
-							}
+							}, args)
+							return { target: 'closed' }
 						},
-						onError: {
-							target: 'failed',
-							actions: ({ event }) => {
+						onError: (args, enq) => {
+							enq(({ event }) => {
 								errors.push(event.error)
-							}
+							}, args)
+							return { target: 'failed' }
 						}
 					},
 					on: {
-						DETACH: {
-							actions: ({ self }) => self.getSnapshot().children.viewport?.send({ type: 'DETACH' })
+						DETACH: (args, enq) => {
+							enq(() => args.self.getSnapshot().children.viewport?.send({ type: 'DETACH' }))
 						},
-						REFLOW: {
-							actions: ({ self }) => self.getSnapshot().children.viewport?.send({ type: 'REFLOW' })
+						REFLOW: (args, enq) => {
+							enq(() => args.self.getSnapshot().children.viewport?.send({ type: 'REFLOW' }))
 						}
 					}
 				},
@@ -72,10 +137,10 @@ function owner(elements: ViewportElements, position: ReadingPosition | undefined
 				failed: {}
 			},
 			on: {
-				'*': {
-					actions: ({ event }) => {
+				'*': (args, enq) => {
+					enq(({ event }) => {
 						if (event.type === 'MEASURE' || event.type === 'VIEWPORT_FAILED') reports.push(event)
-					}
+					}, args)
 				}
 			}
 		})

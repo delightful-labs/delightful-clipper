@@ -1,4 +1,6 @@
-import { assign, fromPromise, setup } from 'xstate'
+import type { EventPayload } from '../../web/src/lib/machines/events.js'
+import { types, setup, createAsyncLogic } from 'xstate'
+
 import type { WorkflowMessage } from '../../web/src/lib/contracts/feedback.js'
 import type { ApplicationSnapshot } from '../../web/src/lib/machines/runtime/application-readiness.js'
 import {
@@ -40,108 +42,149 @@ export function createSignInMachine(cap: {
 	connected: () => void
 	restore?: { can: () => boolean; send: (phrase: string) => void }
 }) {
-	const actors = { connect: fromPromise(({ input }: { input: string }) => cap.connect(input)) }
-	const model = setup<
-		Context,
-		Event,
-		typeof actors,
-		{},
-		{},
-		{ restorable: undefined },
-		never,
-		string
-	>({
+	const actors = {
+		connect: createAsyncLogic({ run: ({ input }: { input: string }) => cap.connect(input) })
+	}
+	const model = setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				OBSERVED: types<EventPayload<Event, 'OBSERVED'>>(),
+				RESTORE: types<EventPayload<Event, 'RESTORE'>>(),
+				RETRY: types<EventPayload<Event, 'RETRY'>>(),
+				SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>()
+			},
+			tags: types<string>(),
+			children: { connect: types<import('xstate').ActorRefFrom<(typeof actors)['connect']>>() }
+		},
 		actors,
 		guards: { restorable: () => cap.restore?.can() ?? false }
 	})
-	const restore = {
-		guard: 'restorable' as const,
-		actions: model.createAction(({ event }) => {
-			if (event.type === 'RESTORE') cap.restore?.send(event.phrase)
-		})
+	const restore = (
+		{
+			event,
+			guards
+		}: { event: Extract<Event, { type: 'RESTORE' }>; guards: { restorable: () => boolean } },
+		enqueue: (effect: () => void) => void
+	) => {
+		if (!guards.restorable()) return
+		enqueue(() => cap.restore?.send(event.phrase))
 	}
+
 	return model.createMachine({
 		initial: 'idle',
-		context: { observation: { kind: 'waiting' }, accountId: undefined, message: undefined },
+		context: {
+			observation: { kind: 'waiting' },
+			accountId: undefined,
+			message: undefined
+		},
 		on: {
-			OBSERVED: { actions: assign({ observation: ({ event }) => event.observation }) },
-			SHUTDOWN: '.closed'
+			OBSERVED: (args) => {
+				return { context: { observation: args.event.observation } }
+			},
+			SHUTDOWN: { target: '.closed' }
 		},
 		states: {
 			idle: {
-				always: {
-					guard: ({ context }) => context.observation.kind === 'restoring',
-					target: 'restoring'
+				always: (args) => {
+					if (!(args.context.observation.kind === 'restoring')) return
+					return { target: 'restoring' }
 				},
 				on: { RESTORE: restore }
 			},
 			restoring: {
-				entry: assign({ message: undefined }),
-				always: [
-					{ guard: ({ context }) => context.observation.kind === 'failed', target: 'idle' },
-					{
-						guard: ({ context }) => context.observation.kind === 'ready',
-						target: 'confirming',
-						actions: assign({
-							accountId: ({ context }) =>
-								context.observation.kind === 'ready' ? context.observation.accountId : undefined
-						})
+				entry: () => {
+					return { context: { message: undefined } }
+				},
+				always: (args) => {
+					const { context } = args
+					if (context.observation.kind === 'failed') {
+						return { target: 'idle' }
 					}
-				]
+					if (context.observation.kind === 'ready') {
+						return {
+							target: 'confirming',
+							context: {
+								accountId:
+									context.observation.kind === 'ready' ? context.observation.accountId : undefined
+							}
+						}
+					}
+				}
 			},
 			confirming: {
-				tags: 'confirming',
-				entry: assign({
-					message: () => ({ text: t('account.status.working'), variant: 'info' as const })
-				}),
+				tags: ['confirming'],
+				entry: () => {
+					return {
+						context: { message: { text: t('account.status.working'), variant: 'info' } }
+					}
+				},
 				invoke: {
+					id: 'connect',
 					src: 'connect',
-					input: ({ context }) => context.accountId!,
-					onDone: [
-						{
-							guard: ({ context }) =>
-								context.observation.kind === 'ready' &&
-								context.observation.accountId === context.accountId,
-							target: 'connected'
-						},
-						{ target: 'idle' }
-					],
-					onError: 'failed'
+					input: ({ context }: { context: Context }) => context.accountId!,
+					onDone: (args) => {
+						const { context } = args
+						if (
+							context.observation.kind === 'ready' &&
+							context.observation.accountId === context.accountId
+						) {
+							return { target: 'connected' }
+						}
+						return { target: 'idle' }
+					},
+					onError: { target: 'failed' }
 				}
 			},
 			connected: {
-				entry: [assign({ message: undefined }), () => cap.connected()],
-				always: {
-					guard: ({ context }) => context.observation.kind === 'restoring',
-					target: 'restoring'
+				entry: (args, enq) => {
+					enq(() => cap.connected())
+					return { context: { message: undefined } }
+				},
+				always: (args) => {
+					if (!(args.context.observation.kind === 'restoring')) return
+					return { target: 'restoring' }
 				},
 				on: { RESTORE: restore }
 			},
 			failed: {
-				entry: assign({
-					message: () => ({ text: t('account.feedback.identityFailed'), variant: 'error' as const })
-				}),
-				on: {
-					RESTORE: restore,
-					RETRY: {
-						guard: ({ context }) =>
-							context.observation.kind === 'ready' &&
-							context.observation.accountId === context.accountId,
-						target: 'confirming'
+				entry: () => {
+					return {
+						context: {
+							message: { text: t('account.feedback.identityFailed'), variant: 'error' }
+						}
 					}
 				},
-				always: {
-					guard: ({ context }) => context.observation.kind === 'restoring',
-					target: 'restoring'
+				on: {
+					RESTORE: restore,
+					RETRY: (args) => {
+						const { context } = args
+						if (
+							!(
+								context.observation.kind === 'ready' &&
+								context.observation.accountId === context.accountId
+							)
+						)
+							return
+						return { target: 'confirming' }
+					}
+				},
+				always: (args) => {
+					if (!(args.context.observation.kind === 'restoring')) return
+					return { target: 'restoring' }
 				}
 			},
 			closed: {
 				type: 'final',
-				entry: assign({
-					observation: { kind: 'waiting' },
-					accountId: undefined,
-					message: undefined
-				})
+				entry: () => {
+					return {
+						context: {
+							observation: { kind: 'waiting' },
+							accountId: undefined,
+							message: undefined
+						}
+					}
+				}
 			}
 		}
 	})

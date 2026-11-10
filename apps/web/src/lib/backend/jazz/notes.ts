@@ -161,32 +161,44 @@ export function createNoteRecords(
 		return { ...rows, request, note, source, history, expected, missing }
 	}
 	const create = createDomainTransaction<NoteCreate>(
-		createNoteCreationMachine({
-			read: readCreation,
-			insertArticle,
-			insertDocument,
-			receipt: transactionReceipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createNoteCreationMachine({
+					read: readCreation,
+					insertArticle,
+					insertDocument,
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 	const stage = createDomainTransaction<NoteRevision>(
-		createNoteRevisionMachine({
-			read: readRevisionFacts,
-			insertRevision,
-			receipt: transactionReceipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createNoteRevisionMachine({
+					read: readRevisionFacts,
+					insertRevision,
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 	const importLegacy = createDomainTransaction<NoteCreate>(
-		createLegacyNoteImportMachine({
-			read: readImport,
-			insertArticle,
-			insertDocument,
-			insertRevisions: (resource, revisions) => {
-				for (const revision of revisions) insertRevision(resource, revision)
-			},
-			receipt: transactionReceipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createLegacyNoteImportMachine({
+					read: readImport,
+					insertArticle,
+					insertDocument,
+					insertRevisions: (resource, revisions) => {
+						for (const revision of revisions) insertRevision(resource, revision)
+					},
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 	const read = async (noteId: string) => {

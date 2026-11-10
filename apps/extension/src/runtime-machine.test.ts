@@ -28,7 +28,8 @@ const content = {
 const saved: ArticleSaveResult = { kind: 'saved', operationId: id, ready: true, receipts: [] }
 function fixture(
 	write: Promise<ArticleSaveResult> = Promise.resolve(saved),
-	marker = Promise.resolve()
+	marker = Promise.resolve(),
+	current: () => boolean = () => true
 ) {
 	const work = vi.fn(async () => write)
 	const cancel = vi.fn()
@@ -56,7 +57,7 @@ function fixture(
 			clip: (library) => ({
 				library,
 				accountId: id,
-				current: () => true,
+				current,
 				read: async (requested) => ({
 					capture: { ...capture, id: requested },
 					source: { url: capture.url, base: capture.url, html: '<html>article</html>' }
@@ -162,6 +163,23 @@ it('refuses a queued save for another account even if background admission was s
 	f.runtime.send({ type: 'BIND', library: f.owner })
 	f.runtime.send({ type: 'RUN', id, accountId: next })
 	expect(f.runtime.getSnapshot().context.queue).toEqual([])
+	expect(f.work).not.toHaveBeenCalled()
+	f.close()
+})
+
+it('supervises an unexpected clip failure and refuses queued retries', async () => {
+	const error = new Error('unexpected clip failure')
+	const f = fixture(Promise.resolve(saved), Promise.resolve(), () => {
+		throw error
+	})
+	f.runtime.send({ type: 'BIND', library: f.owner })
+	f.runtime.send({ type: 'RUN', id, accountId: id })
+	f.runtime.send({ type: 'RUN', id: next, accountId: id })
+	await waitFor(f.runtime, (snapshot) => snapshot.matches('failed'))
+	expect(f.runtime.getSnapshot().context.clipError).toBe(error)
+	expect(f.runtime.getSnapshot().context.queue).toEqual([])
+	expect(f.runtime.getSnapshot().can({ type: 'RUN', id: next, accountId: id })).toBe(false)
+	expect(f.issue).not.toHaveBeenCalled()
 	expect(f.work).not.toHaveBeenCalled()
 	f.close()
 })

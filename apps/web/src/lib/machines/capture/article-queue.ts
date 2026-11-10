@@ -1,9 +1,11 @@
+import type { EventPayload } from '../events.js'
+import { types, setup, createAsyncLogic } from 'xstate'
 import { isPendingArticle } from '../../capture/article-policy.js'
-import { assign, fromPromise, setup } from 'xstate'
+
 import type { Article, ArticleContent, SaveArticleRequest } from '../../contracts/articles.js'
 import type { QueueCapability } from '../../contracts/article-worker.js'
 import { articleId } from '../../capture/source.js'
-import type { WorkflowMessage } from '../../contracts/feedback.js'
+
 import { t } from '../../localization/index.js'
 const transient = new Set([
 	'networkUnavailable',
@@ -38,80 +40,75 @@ function required<T>(v: T | undefined): T {
 /** Runs inside a dedicated module worker. Selection and every capture transition live here. */
 export function createArticleQueueMachine(cap: QueueCapability) {
 	const actors = {
-		resolve: fromPromise(({ input, signal }: { input: Context; signal: AbortSignal }) =>
-			cap.resolve(required(input.current).url, required(input.current).id, signal)
-		),
-		identify: fromPromise(({ input }: { input: string }) => articleId(cap.libraryId, input)),
-		document: fromPromise(({ input, signal }: { input: string; signal: AbortSignal }) =>
-			cap.document(input, signal)
-		),
-		intent: fromPromise(({ input, signal }: { input: string; signal: AbortSignal }) =>
-			cap.intent(input, signal)
-		),
-		extract: fromPromise(({ input, signal }: { input: Context; signal: AbortSignal }) =>
-			cap.extract(required(input.current).url, required(input.current).id, signal)
-		),
-		save: fromPromise(({ input }: { input: SaveArticleRequest }) => cap.save(input)),
-		fail: fromPromise(({ input }: { input: Context }) =>
-			cap.fail(required(input.current).id, input.failure)
-		)
+		resolve: createAsyncLogic({
+			run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
+				cap.resolve(required(input.current).url, required(input.current).id, signal)
+		}),
+		identify: createAsyncLogic({
+			run: ({ input }: { input: string }) => articleId(cap.libraryId, input)
+		}),
+		document: createAsyncLogic({
+			run: ({ input, signal }: { input: string; signal: AbortSignal }) =>
+				cap.document(input, signal)
+		}),
+		intent: createAsyncLogic({
+			run: ({ input, signal }: { input: string; signal: AbortSignal }) => cap.intent(input, signal)
+		}),
+		extract: createAsyncLogic({
+			run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
+				cap.extract(required(input.current).url, required(input.current).id, signal)
+		}),
+		save: createAsyncLogic({ run: ({ input }: { input: SaveArticleRequest }) => cap.save(input) }),
+		fail: createAsyncLogic({
+			run: ({ input }: { input: Context }) => cap.fail(required(input.current).id, input.failure)
+		})
 	}
 	const input = ({ context }: { context: Context }) => context
-	const model = setup<
-		Context,
-		Event,
-		typeof actors,
-		{},
-		{ problem: undefined },
-		{
-			isUnknownFailure: undefined
-			isSessionFailure: undefined
-			isRateLimitedFailure: undefined
-			isCanceledFailure: undefined
-		}
-	>({
+	const model = setup({
+		schemas: {
+			meta: types<{
+				name?: string
+				variant?: 'info' | 'error'
+				channel?: string
+				priority?: number
+			}>(),
+			context: types<Context>(),
+			events: {
+				ROWS: types<EventPayload<Event, 'ROWS'>>(),
+				STOP: types<EventPayload<Event, 'STOP'>>(),
+				WAKE: types<EventPayload<Event, 'WAKE'>>(),
+				RETRY: types<EventPayload<Event, 'RETRY'>>(),
+				CANCEL: types<EventPayload<Event, 'CANCEL'>>()
+			},
+			children: {
+				resolve: types<import('xstate').ActorRefFrom<(typeof actors)['resolve']>>(),
+				identify: types<import('xstate').ActorRefFrom<(typeof actors)['identify']>>(),
+				document: types<import('xstate').ActorRefFrom<(typeof actors)['document']>>(),
+				intent: types<import('xstate').ActorRefFrom<(typeof actors)['intent']>>(),
+				extract: types<import('xstate').ActorRefFrom<(typeof actors)['extract']>>(),
+				save: types<import('xstate').ActorRefFrom<(typeof actors)['save']>>(),
+				fail: types<import('xstate').ActorRefFrom<(typeof actors)['fail']>>()
+			}
+		},
 		actors,
 		guards: {
-			isUnknownFailure: ({ context }) => context.failure === 'unknown',
-			isSessionFailure: ({ context }) => context.failure === 'sessionUnavailable',
-			isRateLimitedFailure: ({ context }) => context.failure === 'rateLimited',
-			isCanceledFailure: ({ context }) => context.failure === 'canceled'
+			isUnknownFailure: ({ context }: { context: Context }) => context.failure === 'unknown',
+			isSessionFailure: ({ context }: { context: Context }) =>
+				context.failure === 'sessionUnavailable',
+			isRateLimitedFailure: ({ context }: { context: Context }) =>
+				context.failure === 'rateLimited',
+			isCanceledFailure: ({ context }: { context: Context }) => context.failure === 'canceled'
 		},
 		actions: {
-			problem: assign({
-				failure: ({ event }) =>
-					'error' in event && event.error instanceof Error ? event.error.message : 'captureFailed'
+			problem: ({ event }: { event: { type: string; error?: unknown } }) => ({
+				context: {
+					failure:
+						'error' in event && event.error instanceof Error ? event.error.message : 'captureFailed'
+				}
 			})
 		}
 	})
-	const status = (name: string, variant: WorkflowMessage['variant'], cancelable: boolean) =>
-		model.createStateConfig({
-			meta: { name, variant },
-			entry: ({ context }) =>
-				cap.report({
-					type: 'STATUS',
-					id: required(context.current).id,
-					message: { text: name, variant },
-					cancelable
-				})
-		})
-	const saveStep = (payload: (args: { context: Context }) => SaveArticleRequest) =>
-		model.createStateConfig({
-			invoke: {
-				src: 'save',
-				input: payload,
-				onDone: [
-					{
-						guard: ({ event }) =>
-							(event.output.kind === 'saved' || event.output.kind === 'duplicate') &&
-							event.output.ready,
-						target: 'idle'
-					},
-					{ target: 'failing', actions: assign({ failure: 'unknown' }) }
-				],
-				onError: { target: 'failing', actions: 'problem' }
-			}
-		})
+
 	return model.createMachine({
 		id: 'article-queue',
 		initial: 'idle',
@@ -125,186 +122,385 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 			failure: ''
 		},
 		on: {
-			STOP: '.closed',
-			ROWS: { actions: assign({ rows: ({ event }) => event.rows }) },
-			WAKE: { actions: assign({ seen: {} }) },
-			RETRY: {
-				actions: assign({
-					seen: ({ context, event }) =>
-						context.current?.id === event.id
-							? context.seen
-							: Object.fromEntries(Object.entries(context.seen).filter(([id]) => id !== event.id))
-				})
+			STOP: { target: '.closed' },
+			ROWS: (args) => {
+				return { context: { rows: args.event.rows } }
+			},
+			WAKE: () => {
+				return { context: { seen: {} } }
+			},
+			RETRY: (args) => {
+				const { context, event } = args
+				return {
+					context: {
+						seen:
+							context.current?.id === event.id
+								? context.seen
+								: Object.fromEntries(Object.entries(context.seen).filter(([id]) => id !== event.id))
+					}
+				}
 			}
 		},
 		states: {
 			idle: {
-				entry: assign({
-					current: undefined,
-					content: undefined,
-					destination: '',
-					operationId: '',
-					failure: ''
-				}),
-				always: {
-					guard: ({ context }) =>
-						context.rows.some((article) => canProcessArticle(article, context.seen)),
-					target: 'selecting'
+				entry: () => {
+					return {
+						context: {
+							current: undefined,
+							content: undefined,
+							destination: '',
+							operationId: '',
+							failure: ''
+						}
+					}
+				},
+				always: (args) => {
+					const { context } = args
+					if (!context.rows.some((article) => canProcessArticle(article, context.seen))) return
+					return { target: 'selecting' }
 				}
 			},
 			selecting: {
-				entry: assign(({ context }) => {
-					const current = [...context.rows]
-						.sort(
-							(a, b) =>
-								a.originalSavedAt.localeCompare(b.originalSavedAt) || a.id.localeCompare(b.id)
-						)
-						.find((article) => canProcessArticle(article, context.seen))
+				entry: (args) => {
 					return {
-						current,
-						seen: current ? { ...context.seen, [current.id]: true } : context.seen,
-						operationId: current?.operationId ?? ''
+						context: (({ context }) => {
+							const current = [...context.rows]
+								.sort(
+									(a, b) =>
+										a.originalSavedAt.localeCompare(b.originalSavedAt) || a.id.localeCompare(b.id)
+								)
+								.find((article) => canProcessArticle(article, context.seen))
+							return {
+								current,
+								seen: current ? { ...context.seen, [current.id]: true } : context.seen,
+								operationId: current?.operationId ?? ''
+							}
+						})(args)
 					}
-				}),
-				always: [
-					{ guard: ({ context }) => !context.current, target: 'idle' },
-					{ guard: ({ context }) => !!context.current?.operationId, target: 'checkingReserved' },
-					{ target: 'resolving' }
-				]
+				},
+				always: (args) => {
+					const { context } = args
+					if (!context.current) {
+						return { target: 'idle' }
+					}
+					if (context.current?.operationId) {
+						return { target: 'checkingReserved' }
+					}
+					return { target: 'resolving' }
+				}
 			},
 			resolving: {
-				...status(t('capture.status.pending'), 'info', true),
+				meta: {
+					name: t('capture.status.pending'),
+					variant: 'info'
+				},
+				entry: ({ context }, enq) => {
+					enq(() =>
+						cap.report({
+							type: 'STATUS',
+							id: required(context.current).id,
+							message: {
+								text: t('capture.status.pending'),
+								variant: 'info'
+							},
+							cancelable: true
+						})
+					)
+				},
 				on: {
-					CANCEL: {
-						guard: ({ context, event }) => context.current?.id === event.id,
-						target: 'failing',
-						actions: assign({ failure: 'canceled' })
+					CANCEL: (args) => {
+						if (!(args.context.current?.id === args.event.id)) return
+						return {
+							target: 'failing',
+							context: { failure: 'canceled' }
+						}
 					}
 				},
 				invoke: {
+					id: 'resolve',
 					src: 'resolve',
 					input,
-					onDone: {
-						target: 'identifying',
-						actions: assign({ destination: ({ event }) => event.output })
+					onDone: (args) => {
+						return {
+							target: 'identifying',
+							context: { destination: args.event.output }
+						}
 					},
-					onError: { target: 'failing', actions: 'problem' }
+					onError: (args) => {
+						return {
+							target: 'failing',
+							context: args.actions.problem(args).context
+						}
+					}
 				}
 			},
 			identifying: {
 				invoke: {
+					id: 'identify',
 					src: 'identify',
-					input: ({ context }) => context.destination,
-					onDone: {
-						target: 'checkingDocument',
-						actions: assign({ operationId: ({ event }) => event.output })
+					input: ({ context }: { context: Context }) => context.destination,
+					onDone: (args) => {
+						return { target: 'checkingDocument', context: { operationId: args.event.output } }
 					},
-					onError: { target: 'failing', actions: 'problem' }
+					onError: (args) => {
+						return { target: 'failing', context: args.actions.problem(args).context }
+					}
 				}
 			},
 			checkingReserved: {
 				invoke: {
+					id: 'document',
 					src: 'document',
-					input: ({ context }) => context.operationId,
-					onDone: [
-						{ guard: ({ event }) => event.output, target: 'saving' },
-						{ target: 'failing', actions: assign({ failure: 'unknown' }) }
-					],
-					onError: { target: 'failing', actions: 'problem' }
+					input: ({ context }: { context: Context }) => context.operationId,
+					onDone: (args) => {
+						if (args.event.output) {
+							return { target: 'saving' }
+						}
+						return { target: 'failing', context: { failure: 'unknown' } }
+					},
+					onError: (args) => {
+						return { target: 'failing', context: args.actions.problem(args).context }
+					}
 				}
 			},
 			checkingDocument: {
 				invoke: {
+					id: 'document',
 					src: 'document',
-					input: ({ context }) => context.operationId,
-					onDone: [
-						{ guard: ({ event }) => event.output, target: 'saving' },
-						{ target: 'checkingIntent' }
-					],
-					onError: { target: 'failing', actions: 'problem' }
+					input: ({ context }: { context: Context }) => context.operationId,
+					onDone: (args) => {
+						if (args.event.output) {
+							return { target: 'saving' }
+						}
+						return { target: 'checkingIntent' }
+					},
+					onError: (args) => {
+						return { target: 'failing', context: args.actions.problem(args).context }
+					}
 				}
 			},
 			checkingIntent: {
 				invoke: {
+					id: 'intent',
 					src: 'intent',
-					input: ({ context }) => context.operationId,
-					onDone: [
-						{
-							guard: ({ event }) => event.output,
-							target: 'failing',
-							actions: assign({ failure: 'unknown' })
-						},
-						{ guard: ({ context }) => !!context.content, target: 'saving' },
-						{ target: 'extracting' }
-					],
-					onError: { target: 'failing', actions: 'problem' }
+					input: ({ context }: { context: Context }) => context.operationId,
+					onDone: (args) => {
+						if (args.event.output) {
+							return { target: 'failing', context: { failure: 'unknown' } }
+						}
+						if (args.context.content) {
+							return { target: 'saving' }
+						}
+						return { target: 'extracting' }
+					},
+					onError: (args) => {
+						return { target: 'failing', context: args.actions.problem(args).context }
+					}
 				}
 			},
 			extracting: {
 				on: {
-					CANCEL: {
-						guard: ({ context, event }) => context.current?.id === event.id,
-						target: 'failing',
-						actions: assign({ failure: 'canceled' })
+					CANCEL: (args) => {
+						if (!(args.context.current?.id === args.event.id)) return
+						return { target: 'failing', context: { failure: 'canceled' } }
 					}
 				},
 				invoke: {
+					id: 'extract',
 					src: 'extract',
 					input,
-					onDone: {
-						target: 'identifying',
-						actions: assign({
-							destination: ({ event }) => event.output.finalUrl,
-							content: ({ event }) => ({
-								title: event.output.title,
-								text: event.output.text,
-								html: event.output.html,
-								finalUrl: event.output.finalUrl,
-								provenance: event.output.provenance
-							})
-						})
+					onDone: (args) => {
+						const { event } = args
+						return {
+							target: 'identifying',
+							context: {
+								destination: event.output.finalUrl,
+								content: {
+									title: event.output.title,
+									text: event.output.text,
+									html: event.output.html,
+									finalUrl: event.output.finalUrl,
+									provenance: event.output.provenance
+								}
+							}
+						}
 					},
-					onError: { target: 'failing', actions: 'problem' }
+					onError: (args) => {
+						return { target: 'failing', context: args.actions.problem(args).context }
+					}
 				}
 			},
 			saving: {
-				...status(t('capture.status.saving'), 'info', false),
-				always: [
-					{ guard: ({ context }) => !!context.content, target: 'savingContent' },
-					{ target: 'attachingExisting' }
-				]
+				meta: {
+					name: t('capture.status.saving'),
+					variant: 'info'
+				},
+				entry: ({ context }, enq) => {
+					enq(() =>
+						cap.report({
+							type: 'STATUS',
+							id: required(context.current).id,
+							message: {
+								text: t('capture.status.saving'),
+								variant: 'info'
+							},
+							cancelable: false
+						})
+					)
+				},
+				always: (args) => {
+					if (args.context.content) {
+						return { target: 'savingContent' }
+					}
+					return { target: 'attachingExisting' }
+				}
 			},
-			savingContent: saveStep(({ context }) => ({
-				url: required(context.current).url,
-				content: required(context.content)
-			})),
-			attachingExisting: saveStep(({ context }) => ({
-				url: required(context.current).url,
-				contentId: context.operationId
-			})),
+			savingContent: {
+				invoke: {
+					id: 'save',
+					src: 'save',
+					input: ({ context }) => ({
+						url: required(context.current).url,
+						content: required(context.content)
+					}),
+					onDone: (args) => {
+						const { event } = args
+						if (
+							(event.output.kind === 'saved' || event.output.kind === 'duplicate') &&
+							event.output.ready
+						) {
+							return { target: 'idle' }
+						}
+						return { target: 'failing', context: { failure: 'unknown' } }
+					},
+					onError: (args) => {
+						return { target: 'failing', context: args.actions.problem(args).context }
+					}
+				}
+			},
+			attachingExisting: {
+				invoke: {
+					id: 'save',
+					src: 'save',
+					input: ({ context }) => ({
+						url: required(context.current).url,
+						contentId: context.operationId
+					}),
+					onDone: (args) => {
+						const { event } = args
+						if (
+							(event.output.kind === 'saved' || event.output.kind === 'duplicate') &&
+							event.output.ready
+						) {
+							return { target: 'idle' }
+						}
+						return { target: 'failing', context: { failure: 'unknown' } }
+					},
+					onError: (args) => {
+						return { target: 'failing', context: args.actions.problem(args).context }
+					}
+				}
+			},
 			failing: {
 				initial: 'deciding',
 				states: {
 					deciding: {
-						always: [
-							{ guard: 'isUnknownFailure', target: 'unknown' },
-							{ guard: 'isSessionFailure', target: 'sessionUnavailable' },
-							{ guard: 'isRateLimitedFailure', target: 'rateLimited' },
-							{ guard: 'isCanceledFailure', target: 'canceled' },
-							{ target: 'captureFailed' }
-						]
+						type: 'choice',
+						choice: (args) => {
+							if (args.guards.isUnknownFailure(args)) {
+								return { target: 'unknown' }
+							}
+							if (args.guards.isSessionFailure(args)) {
+								return { target: 'sessionUnavailable' }
+							}
+							if (args.guards.isRateLimitedFailure(args)) {
+								return { target: 'rateLimited' }
+							}
+							if (args.guards.isCanceledFailure(args)) {
+								return { target: 'canceled' }
+							}
+							return { target: 'captureFailed' }
+						}
 					},
-					unknown: status(t('capture.status.unknown'), 'error', false),
-					sessionUnavailable: status(t('capture.errors.session_unavailable'), 'error', false),
-					rateLimited: status(t('capture.errors.rate_limited'), 'error', false),
-					canceled: status(t('capture.status.canceled'), 'error', false),
-					captureFailed: status(t('capture.status.failed'), 'error', false)
+					unknown: {
+						meta: { name: t('capture.status.unknown'), variant: 'error' },
+						entry: ({ context }, enq) => {
+							enq(() =>
+								cap.report({
+									type: 'STATUS',
+									id: required(context.current).id,
+									message: { text: t('capture.status.unknown'), variant: 'error' },
+									cancelable: false
+								})
+							)
+						}
+					},
+					sessionUnavailable: {
+						meta: { name: t('capture.errors.session_unavailable'), variant: 'error' },
+						entry: ({ context }, enq) => {
+							enq(() =>
+								cap.report({
+									type: 'STATUS',
+									id: required(context.current).id,
+									message: { text: t('capture.errors.session_unavailable'), variant: 'error' },
+									cancelable: false
+								})
+							)
+						}
+					},
+					rateLimited: {
+						meta: { name: t('capture.errors.rate_limited'), variant: 'error' },
+						entry: ({ context }, enq) => {
+							enq(() =>
+								cap.report({
+									type: 'STATUS',
+									id: required(context.current).id,
+									message: { text: t('capture.errors.rate_limited'), variant: 'error' },
+									cancelable: false
+								})
+							)
+						}
+					},
+					canceled: {
+						meta: { name: t('capture.status.canceled'), variant: 'error' },
+						entry: ({ context }, enq) => {
+							enq(() =>
+								cap.report({
+									type: 'STATUS',
+									id: required(context.current).id,
+									message: { text: t('capture.status.canceled'), variant: 'error' },
+									cancelable: false
+								})
+							)
+						}
+					},
+					captureFailed: {
+						meta: { name: t('capture.status.failed'), variant: 'error' },
+						entry: ({ context }, enq) => {
+							enq(() =>
+								cap.report({
+									type: 'STATUS',
+									id: required(context.current).id,
+									message: { text: t('capture.status.failed'), variant: 'error' },
+									cancelable: false
+								})
+							)
+						}
+					}
 				},
-				invoke: { src: 'fail', input, onDone: 'idle', onError: 'idle' }
+				invoke: {
+					id: 'fail',
+					src: 'fail',
+					input,
+					onDone: { target: 'idle' },
+					onError: { target: 'idle' }
+				}
 			},
 			closed: {
 				type: 'final',
-				entry: assign({ rows: [], current: undefined, content: undefined, seen: {} })
+				entry: () => {
+					return { context: { rows: [], current: undefined, content: undefined, seen: {} } }
+				}
 			}
 		}
 	})

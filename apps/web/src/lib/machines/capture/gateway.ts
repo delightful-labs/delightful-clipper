@@ -1,8 +1,11 @@
-import { assign, fromPromise, setup } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup, createAsyncLogic } from 'xstate'
+
 import { CaptureError } from '../../server/capture/errors.js'
 import { sourceUrl } from '../../server/capture/destination.js'
 import type { extract } from '../../server/capture/extract.js'
 import type { Hop } from '../../server/capture/transport.js'
+type ObservedHop = Hop & { observedAt: string }
 type Destination = { address: string; family: number }
 type Redirect = { from: string; to: string; status: number }
 type Extraction = Awaited<ReturnType<typeof extract>>
@@ -27,7 +30,7 @@ type Context = Input & {
 	visited: string[]
 	redirects: Redirect[]
 	destination: Destination | undefined
-	hop: Hop | undefined
+	hop: ObservedHop | undefined
 	output: GatewayResult | undefined
 }
 function isSupportedImageResponse(hop: Hop | undefined) {
@@ -53,114 +56,151 @@ export function createGatewayMachine(capability: {
 	) => Extraction | Promise<Extraction>
 }) {
 	const actors = {
-		redirect: fromPromise(async ({ input }: { input: Context }) => {
-			if (!input.hop?.location) throw new CaptureError('sourceUnavailable', 502)
-			const target = sourceUrl(new URL(input.hop.location, input.current).href).href
-			return target
+		redirect: createAsyncLogic({
+			run: async ({ input }: { input: Context }) => {
+				if (!input.hop?.location) throw new CaptureError('sourceUnavailable', 502)
+				const target = sourceUrl(new URL(input.hop.location, input.current).href).href
+				return target
+			}
 		}),
-		resolve: fromPromise(({ input }: { input: Context }) =>
-			capability.resolve(sourceUrl(input.current), input.signal)
-		),
-		fetch: fromPromise(({ input }: { input: Context }) => {
-			if (!input.destination) throw new Error('Missing destination')
-			return capability.fetch(sourceUrl(input.current), input.destination, input.signal, input.mode)
+		resolve: createAsyncLogic({
+			run: ({ input }: { input: Context }) =>
+				capability.resolve(sourceUrl(input.current), input.signal)
 		}),
-		extract: fromPromise(async ({ input }: { input: Context }) => {
-			input.signal.throwIfAborted()
-			if (!input.hop) throw new Error('Missing response')
-			try {
-				return await capability.extract(
-					input.hop.body,
-					input.hop.mediaType,
-					input.current,
-					input.signal
+		fetch: createAsyncLogic({
+			run: async ({ input }: { input: Context }) => {
+				if (!input.destination) throw new Error('Missing destination')
+				const hop = await capability.fetch(
+					sourceUrl(input.current),
+					input.destination,
+					input.signal,
+					input.mode
 				)
-			} catch (error) {
-				throw error instanceof CaptureError ? error : new CaptureError('parseFailed', 422)
+				return { ...hop, observedAt: new Date().toISOString() }
+			}
+		}),
+		extract: createAsyncLogic({
+			run: async ({ input }: { input: Context }) => {
+				input.signal.throwIfAborted()
+				if (!input.hop) throw new Error('Missing response')
+				try {
+					return await capability.extract(
+						input.hop.body,
+						input.hop.mediaType,
+						input.current,
+						input.signal
+					)
+				} catch (error) {
+					throw error instanceof CaptureError ? error : new CaptureError('parseFailed', 422)
+				}
 			}
 		})
 	}
-	const model = setup<
-		Context,
-		{ type: 'CANCEL' },
-		typeof actors,
-		{},
-		{},
-		{},
-		never,
-		string,
-		Input,
-		GatewayResult
-	>({ actors }).extend({
+	const model = setup({
+		schemas: {
+			context: types<Context>(),
+			events: { CANCEL: types<EventPayload<{ type: 'CANCEL' }, 'CANCEL'>>() },
+			input: types<Input>(),
+			output: types<GatewayResult>(),
+			tags: types<string>(),
+			children: {
+				redirect: types<import('xstate').ActorRefFrom<(typeof actors)['redirect']>>(),
+				resolve: types<import('xstate').ActorRefFrom<(typeof actors)['resolve']>>(),
+				fetch: types<import('xstate').ActorRefFrom<(typeof actors)['fetch']>>(),
+				extract: types<import('xstate').ActorRefFrom<(typeof actors)['extract']>>()
+			}
+		},
+		actors,
 		guards: {
-			aborted: ({ context }) => context.signal.aborted,
-			redirectLimitReached: ({ context }, { hop }: { hop: Hop }) =>
+			aborted: ({ context }: { context: Context }) => context.signal.aborted,
+			redirectLimitReached: ({ context }: { context: Context }, { hop }: { hop: Hop }) =>
 				isRedirectResponse(hop) && context.redirects.length >= 8,
-			redirectLocationMissing: (_, { hop }: { hop: Hop }) =>
+			redirectLocationMissing: (_: { context: Context }, { hop }: { hop: Hop }) =>
 				isRedirectResponse(hop) && !hop.location,
-			redirectResponse: (_, { hop }: { hop: Hop }) => isRedirectResponse(hop),
-			resolutionResponse: ({ context }, { hop }: { hop: Hop }) =>
+			redirectResponse: (_: { context: Context }, { hop }: { hop: Hop }) => isRedirectResponse(hop),
+			resolutionResponse: ({ context }: { context: Context }, { hop }: { hop: Hop }) =>
 				hop.status === 200 && context.mode === 'resolve',
-			unsupportedAssetResponse: ({ context }, { hop }: { hop: Hop }) =>
+			unsupportedAssetResponse: ({ context }: { context: Context }, { hop }: { hop: Hop }) =>
 				hop.status === 200 && context.mode === 'asset' && !isSupportedImageResponse(hop),
-			assetResponse: ({ context }, { hop }: { hop: Hop }) =>
+			assetResponse: ({ context }: { context: Context }, { hop }: { hop: Hop }) =>
 				hop.status === 200 && context.mode === 'asset',
-			successfulResponse: (_, { hop }: { hop: Hop }) => hop.status === 200
+			successfulResponse: (_: { context: Context }, { hop }: { hop: Hop }) => hop.status === 200
 		},
 		actions: {
-			produceResolution: assign(({ context }) => ({
-				hop: undefined,
-				output: {
-					kind: 'success' as const,
-					finalUrl: context.current,
-					provenance: {
-						submittedUrl: context.url,
-						redirects: context.redirects,
-						resolvedAt: new Date().toISOString()
-					},
-					extraction: undefined
+			produceResolution: ({
+				context
+			}: {
+				context: Context
+			}): { context: Pick<Context, 'hop' | 'output'> } => ({
+				context: {
+					hop: undefined,
+					output: {
+						kind: 'success',
+						finalUrl: context.current,
+						provenance: {
+							submittedUrl: context.url,
+							redirects: context.redirects,
+							resolvedAt: context.hop!.observedAt
+						},
+						extraction: undefined
+					}
 				}
-			})),
-			produceAsset: assign(({ context }) => ({
-				output: {
-					kind: 'success',
-					finalUrl: context.current,
-					provenance: {
-						submittedUrl: context.url,
-						redirects: context.redirects,
-						resolvedAt: new Date().toISOString()
-					},
-					extraction: undefined,
-					asset: { bytes: context.hop!.body, mediaType: context.hop!.mediaType.split(';')[0]! }
+			}),
+			produceAsset: ({ context }: { context: Context }): { context: Pick<Context, 'output'> } => ({
+				context: {
+					output: {
+						kind: 'success',
+						finalUrl: context.current,
+						provenance: {
+							submittedUrl: context.url,
+							redirects: context.redirects,
+							resolvedAt: context.hop!.observedAt
+						},
+						extraction: undefined,
+						asset: { bytes: context.hop!.body, mediaType: context.hop!.mediaType.split(';')[0]! }
+					}
 				}
-			})),
-			rememberHop: assign({ hop: (_, { hop }: { hop: Hop }) => hop, destination: undefined }),
-			abortFailure: assign({
-				output: ({ context }): GatewayResult => ({ kind: 'failed', error: context.signal.reason })
 			}),
-			redirectLimitFailure: assign({
-				output: (): GatewayResult => ({
-					kind: 'failed',
-					error: new CaptureError('redirectLoop', 400)
-				})
+			rememberHop: (args: { context: Context }, params: { hop: ObservedHop }) => ({
+				context: {
+					hop: ((_, { hop }: { hop: ObservedHop }) => hop)(args, params),
+					destination: undefined
+				}
 			}),
-			redirectLocationFailure: assign({
-				output: (): GatewayResult => ({
-					kind: 'failed',
-					error: new CaptureError('sourceUnavailable', 502)
-				})
+			abortFailure: ({ context }: { context: Context }): { context: Pick<Context, 'output'> } => ({
+				context: { output: { kind: 'failed', error: context.signal.reason } }
 			}),
-			unsupportedAssetFailure: assign({
-				output: (): GatewayResult => ({
-					kind: 'failed',
-					error: new CaptureError('unsupportedMedia', 415)
-				})
+			redirectLimitFailure: (): { context: Pick<Context, 'output'> } => ({
+				context: {
+					output: {
+						kind: 'failed',
+						error: new CaptureError('redirectLoop', 400)
+					}
+				}
 			}),
-			sourceFailure: assign({
-				output: (): GatewayResult => ({
-					kind: 'failed',
-					error: new CaptureError('sourceUnavailable', 502, true)
-				})
+			redirectLocationFailure: (): { context: Pick<Context, 'output'> } => ({
+				context: {
+					output: {
+						kind: 'failed',
+						error: new CaptureError('sourceUnavailable', 502)
+					}
+				}
+			}),
+			unsupportedAssetFailure: (): { context: Pick<Context, 'output'> } => ({
+				context: {
+					output: {
+						kind: 'failed',
+						error: new CaptureError('unsupportedMedia', 415)
+					}
+				}
+			}),
+			sourceFailure: (): { context: Pick<Context, 'output'> } => ({
+				context: {
+					output: {
+						kind: 'failed',
+						error: new CaptureError('sourceUnavailable', 502, true)
+					}
+				}
 			})
 		}
 	})
@@ -181,7 +221,11 @@ export function createGatewayMachine(capability: {
 				output: undefined
 			}
 		},
-		on: { CANCEL: { actions: ({ context }) => context.controller.abort() } },
+		on: {
+			CANCEL: (args, enq) => {
+				enq(() => args.context.controller.abort())
+			}
+		},
 		output: ({ context }) => {
 			if (!context.output) throw new Error('Missing gateway outcome')
 			return context.output
@@ -189,97 +233,97 @@ export function createGatewayMachine(capability: {
 		states: {
 			resolving: {
 				invoke: {
+					id: 'resolve',
 					src: 'resolve',
-					input: ({ context }) => context,
-					onDone: {
-						target: 'fetching',
-						actions: assign({ destination: ({ event }) => event.output })
+					input: ({ context }: { context: Context }) => context,
+					onDone: (args) => {
+						return { target: 'fetching', context: { destination: args.event.output } }
 					},
-					onError: {
-						target: 'failed',
-						actions: assign({ output: ({ event }) => ({ kind: 'failed', error: event.error }) })
+					onError: (args) => {
+						return {
+							target: 'failed',
+							context: { output: { kind: 'failed', error: args.event.error } }
+						}
 					}
 				}
 			},
 			fetching: {
 				invoke: {
+					id: 'fetch',
 					src: 'fetch',
-					input: ({ context }) => context,
-					onDone: [
-						{ guard: 'aborted', target: 'failed', actions: 'abortFailure' },
-						{
-							guard: {
-								type: 'redirectLimitReached',
-								params: ({ event }) => ({ hop: event.output })
-							},
+					input: ({ context }: { context: Context }) => context,
+					onDone: (args) => {
+						const { event } = args
+						if (args.guards.aborted(args)) {
+							return { target: 'failed', context: args.actions.abortFailure(args).context }
+						}
+						if (args.guards.redirectLimitReached(args, { hop: event.output })) {
+							return { target: 'failed', context: args.actions.redirectLimitFailure().context }
+						}
+						if (args.guards.redirectLocationMissing(args, { hop: event.output })) {
+							return { target: 'failed', context: args.actions.redirectLocationFailure().context }
+						}
+						if (args.guards.redirectResponse(args, { hop: event.output })) {
+							return {
+								target: 'redirecting',
+								context: args.actions.rememberHop(args, { hop: event.output }).context
+							}
+						}
+						if (args.guards.resolutionResponse(args, { hop: event.output })) {
+							let context = args.context
+							let patch = {}
+							patch = { ...patch, ...args.actions.rememberHop(args, { hop: event.output }).context }
+							context = { ...args.context, ...patch }
+							patch = { ...patch, ...args.actions.produceResolution({ ...args, context }).context }
+							context = { ...args.context, ...patch }
+							return { target: 'done', context: patch }
+						}
+						if (args.guards.unsupportedAssetResponse(args, { hop: event.output })) {
+							return { target: 'failed', context: args.actions.unsupportedAssetFailure().context }
+						}
+						if (args.guards.assetResponse(args, { hop: event.output })) {
+							let context = args.context
+							let patch = {}
+							patch = { ...patch, ...args.actions.rememberHop(args, { hop: event.output }).context }
+							context = { ...args.context, ...patch }
+							patch = { ...patch, ...args.actions.produceAsset({ ...args, context }).context }
+							context = { ...args.context, ...patch }
+							return { target: 'done', context: patch }
+						}
+						if (args.guards.successfulResponse(args, { hop: event.output })) {
+							return {
+								target: 'extracting',
+								context: args.actions.rememberHop(args, { hop: event.output }).context
+							}
+						}
+						return { target: 'failed', context: args.actions.sourceFailure().context }
+					},
+					onError: (args) => {
+						return {
 							target: 'failed',
-							actions: 'redirectLimitFailure'
-						},
-						{
-							guard: {
-								type: 'redirectLocationMissing',
-								params: ({ event }) => ({ hop: event.output })
-							},
-							target: 'failed',
-							actions: 'redirectLocationFailure'
-						},
-						{
-							guard: { type: 'redirectResponse', params: ({ event }) => ({ hop: event.output }) },
-							target: 'redirecting',
-							actions: { type: 'rememberHop', params: ({ event }) => ({ hop: event.output }) }
-						},
-						{
-							guard: { type: 'resolutionResponse', params: ({ event }) => ({ hop: event.output }) },
-							target: 'done',
-							actions: [
-								{ type: 'rememberHop', params: ({ event }) => ({ hop: event.output }) },
-								'produceResolution'
-							]
-						},
-						{
-							guard: {
-								type: 'unsupportedAssetResponse',
-								params: ({ event }) => ({ hop: event.output })
-							},
-							target: 'failed',
-							actions: 'unsupportedAssetFailure'
-						},
-						{
-							guard: { type: 'assetResponse', params: ({ event }) => ({ hop: event.output }) },
-							target: 'done',
-							actions: [
-								{ type: 'rememberHop', params: ({ event }) => ({ hop: event.output }) },
-								'produceAsset'
-							]
-						},
-						{
-							guard: { type: 'successfulResponse', params: ({ event }) => ({ hop: event.output }) },
-							target: 'extracting',
-							actions: { type: 'rememberHop', params: ({ event }) => ({ hop: event.output }) }
-						},
-						{ target: 'failed', actions: 'sourceFailure' }
-					],
-					onError: {
-						target: 'failed',
-						actions: assign({ output: ({ event }) => ({ kind: 'failed', error: event.error }) })
+							context: { output: { kind: 'failed', error: args.event.error } }
+						}
 					}
 				}
 			},
 			redirecting: {
 				invoke: {
+					id: 'redirect',
 					src: 'redirect',
-					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: ({ context, event }) => context.visited.includes(event.output),
-							target: 'failed',
-							actions: assign({
-								output: { kind: 'failed', error: new CaptureError('redirectLoop', 400) }
-							})
-						},
-						{
+					input: ({ context }: { context: Context }) => context,
+					onDone: (args) => {
+						const { context, event } = args
+						if (context.visited.includes(event.output)) {
+							return {
+								target: 'failed',
+								context: {
+									output: { kind: 'failed', error: new CaptureError('redirectLoop', 400) }
+								}
+							}
+						}
+						return {
 							target: 'resolving',
-							actions: assign(({ context, event }) => ({
+							context: {
 								current: event.output,
 								visited: [...context.visited, event.output],
 								redirects: [
@@ -287,43 +331,61 @@ export function createGatewayMachine(capability: {
 									{ from: context.current, to: event.output, status: context.hop?.status ?? 302 }
 								],
 								hop: undefined
-							}))
+							}
 						}
-					],
-					onError: {
-						target: 'failed',
-						actions: assign({ output: ({ event }) => ({ kind: 'failed', error: event.error }) })
+					},
+					onError: (args) => {
+						return {
+							target: 'failed',
+							context: { output: { kind: 'failed', error: args.event.error } }
+						}
 					}
 				}
 			},
 			extracting: {
 				invoke: {
+					id: 'extract',
 					src: 'extract',
-					input: ({ context }) => context,
-					onDone: {
-						target: 'done',
-						actions: assign(({ context, event }) => ({
-							hop: undefined,
-							output: {
-								kind: 'success',
-								finalUrl: context.current,
-								provenance: {
-									submittedUrl: context.url,
-									redirects: context.redirects,
-									resolvedAt: new Date().toISOString()
-								},
-								extraction: event.output
+					input: ({ context }: { context: Context }) => context,
+					onDone: (args) => {
+						const { context } = args
+						return {
+							target: 'done',
+							context: {
+								hop: undefined,
+								output: {
+									kind: 'success',
+									finalUrl: context.current,
+									provenance: {
+										submittedUrl: context.url,
+										redirects: context.redirects,
+										resolvedAt: context.hop!.observedAt
+									},
+									extraction: args.event.output
+								}
 							}
-						}))
+						}
 					},
-					onError: {
-						target: 'failed',
-						actions: assign({ output: ({ event }) => ({ kind: 'failed', error: event.error }) })
+					onError: (args) => {
+						return {
+							target: 'failed',
+							context: { output: { kind: 'failed', error: args.event.error } }
+						}
 					}
 				}
 			},
-			done: { type: 'final', entry: assign({ hop: undefined, destination: undefined }) },
-			failed: { type: 'final', entry: assign({ hop: undefined, destination: undefined }) }
+			done: {
+				type: 'final',
+				entry: () => {
+					return { context: { hop: undefined, destination: undefined } }
+				}
+			},
+			failed: {
+				type: 'final',
+				entry: () => {
+					return { context: { hop: undefined, destination: undefined } }
+				}
+			}
 		}
 	})
 }
