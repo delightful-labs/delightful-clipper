@@ -49,19 +49,22 @@ function fixture(
 		options.extract ? options.extract(signal) : content
 	)
 	const clock = new SimulatedClock()
-	const actor = createActor(
-		createClipMachine({
-			library: owner,
-			accountId: id,
-			current: () => true,
-			read: async () =>
-				options.read ?? { capture: { ...capture, phase: options.phase ?? 'ready' }, source },
-			issue,
-			remove,
-			extract
-		}),
-		{ clock, input: { id } }
-	).start()
+	const actor = createActor(createClipMachine(), {
+		clock,
+		input: {
+			id,
+			capability: {
+				library: owner,
+				accountId: id,
+				current: () => true,
+				read: async () =>
+					options.read ?? { capture: { ...capture, phase: options.phase ?? 'ready' }, source },
+				issue,
+				remove,
+				extract
+			}
+		}
+	}).start()
 	return { actor, owner, work, shutdown, issue, remove, extract, clock }
 }
 it('supplies content through the common URL save operation after durable admission', async () => {

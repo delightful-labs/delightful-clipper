@@ -1,4 +1,6 @@
-import { assign, fromPromise, setup, stateIn } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup, createAsyncLogic, matchesState } from 'xstate'
+
 import type { RootAccess, RootWrite } from '../../contracts/account.js'
 
 type Result =
@@ -10,52 +12,60 @@ function receipt(context: Context) {
 	return context.write
 }
 const actors = {
-	read: fromPromise(({ input }: { input: RootAccess }) => input.read()),
-	issue: fromPromise(async ({ input }: { input: RootAccess }) => input.ensure()),
-	persist: fromPromise(({ input }: { input: RootWrite }) => input.local())
+	read: createAsyncLogic({ run: ({ input }: { input: RootAccess }) => input.read() }),
+	issue: createAsyncLogic({ run: async ({ input }: { input: RootAccess }) => input.ensure() }),
+	persist: createAsyncLogic({ run: ({ input }: { input: RootWrite }) => input.local() })
 }
 // The write region retains both issue and local settlement when shutdown is requested.
-export const rootBootstrapMachine = setup<
-	Context,
-	{ type: 'SHUTDOWN' },
-	typeof actors,
-	{},
-	{},
-	{ stopping: undefined; existingRoot: { result: string }; incompatibleRoot: { result: string } },
-	never,
-	string,
-	RootAccess,
-	Result
->({
+export const rootBootstrapMachine = setup({
+	schemas: {
+		context: types<Context>(),
+		events: { SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>() },
+		input: types<RootAccess>(),
+		output: types<Result>(),
+		tags: types<string>(),
+		children: {
+			read: types<import('xstate').ActorRefFrom<(typeof actors)['read']>>(),
+			issue: types<import('xstate').ActorRefFrom<(typeof actors)['issue']>>(),
+			persist: types<import('xstate').ActorRefFrom<(typeof actors)['persist']>>()
+		}
+	},
 	actors,
 	guards: {
-		stopping: stateIn({ writing: { lifetime: 'stopping' } }),
-		existingRoot: (_args, { result }) => result === 'compatible',
-		incompatibleRoot: (_args, { result }) => result === 'incompatible'
+		stopping: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ writing: { lifetime: 'stopping' } }, value),
+		existingRoot: (_args: { context: Context }, { result }: { result: string }) =>
+			result === 'compatible',
+		incompatibleRoot: (_args: { context: Context }, { result }: { result: string }) =>
+			result === 'incompatible'
 	}
 }).createMachine({
 	id: 'root-bootstrap',
 	initial: 'reading',
-	context: ({ input }) => ({ root: input, write: undefined, result: { outcome: 'failed' } }),
+	context: ({ input }) => ({
+		root: input,
+		write: undefined,
+		result: { outcome: 'failed' }
+	}),
 	output: ({ context }) => context.result,
 	states: {
 		reading: {
-			on: { SHUTDOWN: 'closed' },
+			on: { SHUTDOWN: { target: 'closed' } },
 			invoke: {
+				id: 'read',
 				src: 'read',
-				input: ({ context }) => context.root,
-				onDone: [
-					{
-						guard: { type: 'incompatibleRoot', params: ({ event }) => ({ result: event.output }) },
-						target: 'conflict'
-					},
-					{
-						guard: { type: 'existingRoot', params: ({ event }) => ({ result: event.output }) },
-						target: 'existing'
-					},
-					{ target: 'writing' }
-				],
-				onError: 'failed'
+				input: ({ context }: { context: Context }) => context.root,
+				onDone: (args) => {
+					const { event } = args
+					if (args.guards.incompatibleRoot(args, { result: event.output })) {
+						return { target: 'conflict' }
+					}
+					if (args.guards.existingRoot(args, { result: event.output })) {
+						return { target: 'existing' }
+					}
+					return { target: 'writing' }
+				},
+				onError: { target: 'failed' }
 			}
 		},
 		writing: {
@@ -63,37 +73,47 @@ export const rootBootstrapMachine = setup<
 			states: {
 				lifetime: {
 					initial: 'active',
-					states: { active: { on: { SHUTDOWN: 'stopping' } }, stopping: { on: { SHUTDOWN: {} } } }
+					states: {
+						active: { on: { SHUTDOWN: { target: 'stopping' } } },
+						stopping: { on: { SHUTDOWN: {} } }
+					}
 				},
 				operation: {
 					initial: 'issuing',
 					states: {
 						issuing: {
 							invoke: {
+								id: 'issue',
 								src: 'issue',
-								input: ({ context }) => context.root,
-								onDone: {
-									target: 'persisting',
-									actions: assign({ write: ({ event }) => event.output })
+								input: ({ context }: { context: Context }) => context.root,
+								onDone: (args) => {
+									return { target: 'persisting', context: { write: args.event.output } }
 								},
-								onError: [
-									{ guard: 'stopping', target: '#root-bootstrap.closed' },
-									{ target: '#root-bootstrap.failed' }
-								]
+								onError: (args) => {
+									if (matchesState({ writing: { lifetime: 'stopping' } }, args.value)) {
+										return { target: '#root-bootstrap.closed' }
+									}
+									return { target: '#root-bootstrap.failed' }
+								}
 							}
 						},
 						persisting: {
 							invoke: {
+								id: 'persist',
 								src: 'persist',
-								input: ({ context }) => receipt(context),
-								onDone: [
-									{ guard: 'stopping', target: '#root-bootstrap.closed' },
-									{ target: '#root-bootstrap.ready' }
-								],
-								onError: [
-									{ guard: 'stopping', target: '#root-bootstrap.closed' },
-									{ target: '#root-bootstrap.failed' }
-								]
+								input: ({ context }: { context: Context }) => receipt(context),
+								onDone: (args) => {
+									if (matchesState({ writing: { lifetime: 'stopping' } }, args.value)) {
+										return { target: '#root-bootstrap.closed' }
+									}
+									return { target: '#root-bootstrap.ready' }
+								},
+								onError: (args) => {
+									if (matchesState({ writing: { lifetime: 'stopping' } }, args.value)) {
+										return { target: '#root-bootstrap.closed' }
+									}
+									return { target: '#root-bootstrap.failed' }
+								}
 							}
 						}
 					}
@@ -102,11 +122,29 @@ export const rootBootstrapMachine = setup<
 		},
 		ready: {
 			type: 'final',
-			entry: assign({ result: ({ context }) => ({ outcome: 'ready', write: receipt(context) }) })
+			entry: (args) => {
+				const { context } = args
+				return { context: { result: { outcome: 'ready', write: receipt(context) } } }
+			}
 		},
-		existing: { type: 'final', entry: assign({ result: { outcome: 'ready' } }) },
+		existing: {
+			type: 'final',
+			entry: () => {
+				return { context: { result: { outcome: 'ready' } } }
+			}
+		},
 		failed: { type: 'final' },
-		conflict: { type: 'final', entry: assign({ result: { outcome: 'conflict' } }) },
-		closed: { type: 'final', entry: assign({ result: { outcome: 'closed' } }) }
+		conflict: {
+			type: 'final',
+			entry: () => {
+				return { context: { result: { outcome: 'conflict' } } }
+			}
+		},
+		closed: {
+			type: 'final',
+			entry: () => {
+				return { context: { result: { outcome: 'closed' } } }
+			}
+		}
 	}
 })

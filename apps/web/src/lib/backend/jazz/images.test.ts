@@ -1,12 +1,12 @@
 import { beforeAll, afterAll, expect, it } from 'vitest'
-import { createActor, toPromise } from 'xstate'
+import { createActor, toPromise, setup } from 'xstate'
 import { createPolicyTestApp } from 'jazz-tools/testing'
 import type { PolicyTestApp, PolicyTestSession } from 'jazz-tools/testing'
 import { app } from './schema.js'
 import permissions from './permissions.js'
 import { createLibraryRecords } from './records.js'
 import { imageRowSchema } from '../../images/schema.js'
-import type { ImageSpawner } from '../../contracts/images.js'
+import type { ImageStageRef } from '../../contracts/images.js'
 import type { ImageWrite } from '../../images/schema.js'
 let fixture: PolicyTestApp
 beforeAll(async () => {
@@ -48,13 +48,26 @@ async function owner(name: string) {
 	return { db, id, records, documentId, image }
 }
 async function write(account: Awaited<ReturnType<typeof owner>>, draft: ImageWrite) {
-	const spawn: ImageSpawner = (logic, options) => createActor(logic, options).start()
+	const created = Promise.withResolvers<ImageStageRef>()
 	const capability = account.records.images.capability
-	const result = await toPromise(
-		draft.kind === 'ready'
-			? capability.spawnReady(spawn, draft)
-			: capability.spawnFailure(spawn, draft)
-	)
+	const parent = createActor(
+		setup({}).createMachine({
+			entry: (_, enq) => {
+				const ref =
+					draft.kind === 'ready'
+						? capability.spawnReady(enq.spawn, draft)
+						: capability.spawnFailure(enq.spawn, draft)
+				enq(() => created.resolve(ref))
+			}
+		})
+	).start()
+	let result
+	try {
+		result = await toPromise(await created.promise)
+	} finally {
+		parent.stop()
+	}
+
 	if (result.settlement.kind === 'locallyPersisted') await result.settlement.workspace.global()
 	return result
 }

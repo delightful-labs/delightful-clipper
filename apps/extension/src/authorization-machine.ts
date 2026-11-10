@@ -1,4 +1,6 @@
-import { assign, fromCallback, setup } from 'xstate'
+import type { EventPayload } from '../../web/src/lib/machines/events.js'
+import { types, createCallbackLogic, setup } from 'xstate'
+
 import type { RuntimeSnapshot } from './runtime-machine.js'
 import type { Authorization } from './connection.js'
 export type AccountAccess =
@@ -23,46 +25,58 @@ export function createAuthorizationMachine(
 	watch: (notify: (value: AccountAccess) => void) => () => void
 ) {
 	const actors = {
-		account: fromCallback(({ sendBack }) => watch((value) => sendBack({ type: 'ACCOUNT', value })))
+		account: createCallbackLogic(({ sendBack }) =>
+			watch((value) => sendBack({ type: 'ACCOUNT', value }))
+		)
 	}
-	return setup<
-		{ expected: string; status: Authorization },
-		Event,
-		typeof actors,
-		{},
-		{},
-		{},
-		never,
-		string,
-		{ expected: string },
-		{ status: Authorization }
-	>({ actors }).createMachine({
+	return setup({
+		schemas: {
+			context: types<{ expected: string; status: Authorization }>(),
+			events: { ACCOUNT: types<EventPayload<Event, 'ACCOUNT'>>() },
+			input: types<{ expected: string }>(),
+			output: types<{ status: Authorization }>(),
+			tags: types<string>(),
+			children: { account: types<import('xstate').ActorRefFrom<(typeof actors)['account']>>() }
+		},
+		actors
+	}).createMachine({
 		initial: 'waiting',
 		context: ({ input }) => ({ ...input, status: 'unavailable' }),
-		invoke: { src: 'account' },
+		invoke: { id: 'account', src: 'account' },
 		output: ({ context }) => ({ status: context.status }),
 		states: {
 			waiting: {
-				after: { 15000: 'unavailable' },
+				after: { 15000: { target: 'unavailable' } },
 				on: {
-					ACCOUNT: [
-						{ guard: ({ event }) => event.value.kind === 'waiting' },
-						{
-							guard: ({ context, event }) =>
-								event.value.kind === 'ready' && event.value.accountId === context.expected,
-							target: 'connected'
-						},
-						{
-							guard: ({ event }) =>
-								event.value.kind === 'signed-out' || event.value.kind === 'ready',
-							target: 'signedOut'
-						},
-						{ guard: ({ event }) => event.value.kind === 'unavailable', target: 'unavailable' }
-					]
+					ACCOUNT: (args) => {
+						const { event } = args
+						if (event.value.kind === 'waiting') {
+							return {}
+						}
+						if (event.value.kind === 'ready' && event.value.accountId === args.context.expected) {
+							return { target: 'connected' }
+						}
+						if (event.value.kind === 'signed-out' || event.value.kind === 'ready') {
+							return { target: 'signedOut' }
+						}
+						if (event.value.kind === 'unavailable') {
+							return { target: 'unavailable' }
+						}
+					}
 				}
 			},
-			connected: { type: 'final', entry: assign({ status: 'connected' }) },
-			signedOut: { type: 'final', entry: assign({ status: 'signed-out' }) },
+			connected: {
+				type: 'final',
+				entry: () => {
+					return { context: { status: 'connected' } }
+				}
+			},
+			signedOut: {
+				type: 'final',
+				entry: () => {
+					return { context: { status: 'signed-out' } }
+				}
+			},
 			unavailable: { type: 'final' }
 		}
 	})

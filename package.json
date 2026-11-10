@@ -35,6 +35,9 @@
 		"oxlint": "1.88.0",
 		"typescript": "6.0.3",
 		"vitest": "4.1.8",
-		"@playwright/test": "1.64.0"
+		"@playwright/test": "1.64.0",
+		"@xstate/test": "2.0.0-beta.0",
+		"fast-check": "4.10.2",
+		"xstate": "6.0.0-beta.1"
 	}
 }

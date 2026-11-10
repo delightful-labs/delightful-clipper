@@ -1,8 +1,7 @@
-import { and, not } from 'xstate'
+import { types } from 'xstate'
 import type { OrganizationDraft } from './organize.js'
 import { canOrganizeArticle } from '../../capture/organization.js'
 import type { TransactionResource } from '../../backend/jazz/transaction.js'
-import { required } from './domain-transaction.js'
 import { transactionDomainModel, domainContext } from './domain-model.js'
 import type { DomainRead, DomainReceipt } from './domain-model.js'
 export type OrganizationFacts = {
@@ -23,76 +22,171 @@ export function createOrganizationDomain(io: {
 	receipt: DomainReceipt
 }) {
 	const model = transactionDomainModel(io.read, 'Article unavailable').extend({
+		states: {
+			reading: {},
+			ready: { schemas: { context: types<{ facts: OrganizationFacts }>() } },
+			invalidParent: { schemas: { context: types<{ facts: OrganizationFacts }>() } },
+			blocked: {},
+			done: {},
+			insertTagArticle: { schemas: { context: types<{ facts: OrganizationFacts }>() } },
+			insertTagDocument: { schemas: { context: types<{ facts: OrganizationFacts }>() } },
+			insertArticle: { schemas: { context: types<{ facts: OrganizationFacts }>() } },
+			insertDocument: { schemas: { context: types<{ facts: OrganizationFacts }>() } }
+		},
 		guards: {
 			parentAvailable: (_, { facts }: { facts: OrganizationFacts }) =>
 				canOrganizeArticle(facts.article, facts.document),
-			tagAssignment: ({ context }) => required(context.facts).draft.field === 'tag',
-			hasArticleParent: ({ context }) => required(context.facts).article != null,
-			hasDocumentParent: ({ context }) => required(context.facts).document != null
+			tagAssignment: (_, { facts }: { facts: OrganizationFacts }) => facts.draft.field === 'tag',
+			hasArticleParent: (_, { facts }: { facts: OrganizationFacts }) => facts.article != null,
+			hasDocumentParent: (_, { facts }: { facts: OrganizationFacts }) => facts.document != null
 		},
 		actions: {
 			failParent: () => {
 				throw new Error('Missing organization parent')
 			},
-			insertArticle: ({ context }) => io.insertArticle(context.resource, required(context.facts)),
-			insertDocument: ({ context }) => io.insertDocument(context.resource, required(context.facts)),
-			insertTagArticle: ({ context }) =>
-				io.insertTagArticle(context.resource, required(context.facts)),
-			insertTagDocument: ({ context }) =>
-				io.insertTagDocument(context.resource, required(context.facts))
+			insertArticle: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+				},
+				{ facts }: { facts: OrganizationFacts }
+			) => io.insertArticle(context.resource, facts),
+			insertDocument: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+				},
+				{ facts }: { facts: OrganizationFacts }
+			) => io.insertDocument(context.resource, facts),
+			insertTagArticle: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+				},
+				{ facts }: { facts: OrganizationFacts }
+			) => io.insertTagArticle(context.resource, facts),
+			insertTagDocument: (
+				{
+					context
+				}: {
+					context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+				},
+				{ facts }: { facts: OrganizationFacts }
+			) => io.insertTagDocument(context.resource, facts)
 		}
 	})
 	return model.createMachine({
 		id: 'organization-domain',
 		context: domainContext<OrganizationDraft, OrganizationFacts>,
 		initial: 'reading',
-		output: ({ context }) => io.receipt(context.resource),
+		output: ({
+			context
+		}: {
+			context: import('./domain-model.js').DomainContext<OrganizationDraft, OrganizationFacts>
+		}) => io.receipt(context.resource),
 		states: {
 			reading: {
 				invoke: {
 					src: 'read',
 					input: ({ context }) => context,
-					onDone: [
-						{
-							guard: { type: 'parentAvailable', params: ({ event }) => ({ facts: event.output }) },
-							target: 'ready',
-							actions: { type: 'rememberFacts', params: ({ event }) => ({ facts: event.output }) }
-						},
-						{ target: 'blocked' }
-					]
+					onDone: (args) => {
+						if (args.guards.parentAvailable(args, { facts: args.event.output })) {
+							return { target: 'ready', context: { facts: args.event.output } }
+						}
+						return { target: 'blocked' }
+					}
 				}
 			},
 			ready: {
-				entry: 'allow',
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.allow(args)
+					})
+				},
 				on: {
-					STAGE: [
-						{
-							guard: and(['tagAssignment', 'hasArticleParent']),
-							target: 'done',
-							actions: 'insertTagArticle'
-						},
-						{
-							guard: and(['tagAssignment', 'hasDocumentParent']),
-							target: 'done',
-							actions: 'insertTagDocument'
-						},
-						{
-							guard: and([not('tagAssignment'), 'hasArticleParent']),
-							target: 'done',
-							actions: 'insertArticle'
-						},
-						{
-							guard: and([not('tagAssignment'), 'hasDocumentParent']),
-							target: 'done',
-							actions: 'insertDocument'
-						},
-						{ target: 'invalidParent' }
-					]
+					STAGE: (args) => {
+						if (
+							args.guards.tagAssignment(args, { facts: args.context.facts }) &&
+							args.guards.hasArticleParent(args, { facts: args.context.facts })
+						) {
+							return { target: 'insertTagArticle' }
+						}
+						if (
+							args.guards.tagAssignment(args, { facts: args.context.facts }) &&
+							args.guards.hasDocumentParent(args, { facts: args.context.facts })
+						) {
+							return { target: 'insertTagDocument' }
+						}
+						if (
+							!args.guards.tagAssignment(args, { facts: args.context.facts }) &&
+							args.guards.hasArticleParent(args, { facts: args.context.facts })
+						) {
+							return { target: 'insertArticle' }
+						}
+						if (
+							!args.guards.tagAssignment(args, { facts: args.context.facts }) &&
+							args.guards.hasDocumentParent(args, { facts: args.context.facts })
+						) {
+							return { target: 'insertDocument' }
+						}
+						return { target: 'invalidParent' }
+					}
 				}
 			},
-			invalidParent: { entry: 'failParent' },
-			blocked: { entry: 'block' },
-			done: { type: 'final' }
+			invalidParent: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.failParent()
+					})
+				}
+			},
+			blocked: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.block(args)
+					})
+				}
+			},
+			done: { type: 'final' },
+			insertTagArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertTagArticle(args, { facts: args.context.facts })
+						args.self.send({ type: 'STAGED' })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertTagDocument: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertTagDocument(args, { facts: args.context.facts })
+						args.self.send({ type: 'STAGED' })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertArticle: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertArticle(args, { facts: args.context.facts })
+						args.self.send({ type: 'STAGED' })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			},
+			insertDocument: {
+				entry: (args, enq) => {
+					enq(() => {
+						args.actions.insertDocument(args, { facts: args.context.facts })
+						args.self.send({ type: 'STAGED' })
+					})
+				},
+				on: { STAGED: { target: 'done' } }
+			}
 		}
 	})
 }

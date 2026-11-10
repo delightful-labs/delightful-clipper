@@ -12,19 +12,19 @@ import { transactionLifecycle, transactionReceipt } from './transaction.js'
 import type { TransactionResource } from './transaction.js'
 import { ReadTier } from 'jazz-tools'
 import type { Db } from 'jazz-tools'
-import type { ActorLogic, Snapshot } from 'xstate'
+
 import { createSaveArticleMachine } from '../../machines/storage/save-article.js'
 import { articleRecord, prepareArticle, uuid } from '../../capture/articles.js'
 import type { Article, ArticleDraft, LibraryArticle } from '../../contracts/articles.js'
-import type { SaveRequest, SaveResult } from '../../contracts/storage.js'
+
 import { app } from './schema.js'
 /** Reads stay bound to this DB/library; owning actors gate admission and late-result consumption.
  * Native write admission and commit scope protection live in transactionLifecycle. */
-export function createArticleRecords<S extends Snapshot<SaveResult>>(
+export function createArticleRecords(
 	db: Pick<Db, 'one' | 'all' | 'beginTransaction' | 'subscribe'>,
 	libraryId: string,
 	isCurrent: () => boolean,
-	content: ActorLogic<S, { type: 'SHUTDOWN' }, SaveRequest>
+	content: import('../../contracts/articles.js').ContentOperation
 ) {
 	const read = async (id: string) => {
 		const row = await db.one(app.articles.where({ id: uuid(id), libraryId }), {
@@ -55,56 +55,72 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 		return { draft, article }
 	}
 	const ensure = createDomainTransaction<ArticleDraft>(
-		createArticleEnsureDomain({
-			read: readArticle,
-			insertArticle: (resource, { draft }) => {
-				const { id, ...row } = articleRecord(draft.article, libraryId)
-				resource.tx.insert(app.articles, row, { id })
-			},
-			receipt: transactionReceipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createArticleEnsureDomain({
+					read: readArticle,
+					insertArticle: (resource, { draft }) => {
+						const { id, ...row } = articleRecord(draft.article, libraryId)
+						resource.tx.insert(app.articles, row, { id })
+					},
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 	const attach = createDomainTransaction<ArticleDraft>(
-		createArticleAttachmentDomain({
-			read: async (resource, draft) => {
-				const facts = await readArticle(resource, draft)
-				const document = await resource.tx.one(
-					app.documents.where({ id: draft.target, libraryId }),
-					{ tier: ReadTier.LocalFirst }
-				)
-				return { ...facts, available: document !== null }
-			},
-			attachContent: (resource, { draft }) => {
-				resource.tx.update(app.articles, draft.article.id, {
-					contentId: draft.target,
-					failure: null
-				})
-			},
-			createArticle: (resource, { draft }) => {
-				const { id, ...row } = articleRecord(draft.article, libraryId)
-				resource.tx.insert(app.articles, { ...row, contentId: draft.target, failure: null }, { id })
-			},
-			receipt: transactionReceipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createArticleAttachmentDomain({
+					read: async (resource, draft) => {
+						const facts = await readArticle(resource, draft)
+						const document = await resource.tx.one(
+							app.documents.where({ id: draft.target, libraryId }),
+							{ tier: ReadTier.LocalFirst }
+						)
+						return { ...facts, available: document !== null }
+					},
+					attachContent: (resource, { draft }) => {
+						resource.tx.update(app.articles, draft.article.id, {
+							contentId: draft.target,
+							failure: null
+						})
+					},
+					createArticle: (resource, { draft }) => {
+						const { id, ...row } = articleRecord(draft.article, libraryId)
+						resource.tx.insert(
+							app.articles,
+							{ ...row, contentId: draft.target, failure: null },
+							{ id }
+						)
+					},
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 	const failure = createDomainTransaction<ArticleFailure>(
-		createArticleFailureDomain({
-			read: async (resource, draft) => {
-				const article = await resource.tx.one(
-					app.articles.where({ id: uuid(draft.id), libraryId }),
-					{ tier: ReadTier.LocalFirst }
-				)
-				return { draft, article }
-			},
-			recordFailure: (resource, { draft }) => {
-				if (draft.code !== null && draft.code.length > 100)
-					throw new Error('Invalid article failure')
-				resource.tx.update(app.articles, draft.id, { failure: draft.code })
-			},
-			receipt: transactionReceipt
-		}),
+		(spawn, input) =>
+			spawn(
+				createArticleFailureDomain({
+					read: async (resource, draft) => {
+						const article = await resource.tx.one(
+							app.articles.where({ id: uuid(draft.id), libraryId }),
+							{ tier: ReadTier.LocalFirst }
+						)
+						return { draft, article }
+					},
+					recordFailure: (resource, { draft }) => {
+						if (draft.code !== null && draft.code.length > 100)
+							throw new Error('Invalid article failure')
+						resource.tx.update(app.articles, draft.id, { failure: draft.code })
+					},
+					receipt: transactionReceipt
+				}),
+				{ input }
+			),
 		lifecycle
 	)
 
@@ -146,8 +162,8 @@ export function createArticleRecords<S extends Snapshot<SaveResult>>(
 			read,
 			document,
 			intent,
-			ensure,
-			attach,
+			ensure: (spawn, input) => spawn(ensure, { input }),
+			attach: (spawn, input) => spawn(attach, { input }),
 			content
 		}),
 		subscribePending: (next: (rows: Article[]) => void, error: () => void) =>

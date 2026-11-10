@@ -10,6 +10,7 @@ function fixture(
 	options: {
 		read?: (signal: AbortSignal) => Promise<CaptureInput>
 		extract?: (signal: AbortSignal) => Promise<ExtractedContent>
+		now?: () => number
 		mode?: 'resolve' | 'extract'
 	} = {}
 ) {
@@ -37,7 +38,13 @@ function fixture(
 		extract
 	})
 	const actor = createActor(
-		createCaptureRequestMachine({ acquire, read, gateway, now: () => clock.now(), deadlineMs: 20 }),
+		createCaptureRequestMachine({
+			acquire,
+			read,
+			gateway,
+			now: options.now ?? (() => clock.now()),
+			deadlineMs: 20
+		}),
 		{
 			clock,
 			input: {
@@ -177,5 +184,25 @@ it('preserves a typed input failure even when the deadline expires during drain'
 	const response = await toPromise(f.actor)
 	expect(response.status).toBe(413)
 	expect(await response.json()).toEqual({ code: 'sourceTooLarge', retryable: false })
+	expect(f.release).toHaveBeenCalledOnce()
+})
+
+it('samples an overdue deadline at the I/O boundary before a delayed timer fires', async () => {
+	let now = 0
+	const gate = Promise.withResolvers<CaptureInput>()
+	const readClock = vi.fn(() => now)
+	const f = fixture({ read: () => gate.promise, now: readClock })
+	await vi.waitFor(() => expect(f.read).toHaveBeenCalledOnce())
+	const calls = readClock.mock.calls.length
+	const before = f.actor.getSnapshot()
+	now = 21
+	before.can({ type: 'CANCEL' })
+	before.can({ type: 'CANCEL' })
+	expect(readClock).toHaveBeenCalledTimes(calls)
+	expect(f.actor.getSnapshot()).toBe(before)
+	gate.resolve(parsed)
+	const response = await toPromise(f.actor)
+	expect(f.clock.now()).toBe(0)
+	expect(response.status).toBe(504)
 	expect(f.release).toHaveBeenCalledOnce()
 })

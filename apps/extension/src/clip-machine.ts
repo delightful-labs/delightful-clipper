@@ -1,5 +1,14 @@
-import { not, assign, fromCallback, fromPromise, sendTo, setup, stateIn } from 'xstate'
-import type { ActorRefFrom, SnapshotFrom } from 'xstate'
+import type { EventPayload } from '../../web/src/lib/machines/events.js'
+import {
+	types,
+	createCallbackLogic,
+	setup,
+	createAsyncLogic,
+	type ActorRefFrom,
+	type SnapshotFrom,
+	matchesState
+} from 'xstate'
+
 import { z } from 'zod'
 import { captureSchema, contentSchema, sourceSchema, matchingContent } from './protocol.js'
 import type { Capture, Source } from './protocol.js'
@@ -12,6 +21,7 @@ type Event =
 	| { type: 'SHUTDOWN' }
 	| { type: 'LIBRARY'; snapshot: SnapshotFrom<typeof libraryMachine> }
 type Context = {
+	capability: ClipCapability
 	id: string
 	capture: Capture | undefined
 	source: Source | undefined
@@ -29,180 +39,104 @@ export type ClipCapability = {
 	issue: (capture: Capture, accountId: string) => Promise<void>
 	remove: (id: string) => Promise<void>
 }
-export function createClipMachine(cap: ClipCapability) {
+export function createClipMachine() {
 	const actors = {
-		feedback: fromCallback<{ type: 'UNUSED' }, Library>(({ input, sendBack }) => {
+		current: createAsyncLogic({
+			run: async ({ input }: { input: ClipCapability }) => input.current()
+		}),
+		feedback: createCallbackLogic<{ type: 'UNUSED' }, Library>(({ input, sendBack }) => {
 			const subscription = input.subscribe((snapshot) => sendBack({ type: 'LIBRARY', snapshot }))
 			sendBack({ type: 'LIBRARY', snapshot: input.getSnapshot() })
 			return () => subscription.unsubscribe()
 		}),
-		read: fromPromise(({ input }: { input: string }) => cap.read(input)),
-		extract: fromPromise(({ input, signal }: { input: Source; signal: AbortSignal }) =>
-			cap.extract(input, signal)
-		),
-		issue: fromPromise(({ input }: { input: Capture }) => cap.issue(input, cap.accountId)),
-		remove: fromPromise(({ input }: { input: string }) => cap.remove(input)),
-		save: fromCallback<{ type: 'CANCEL' }, Context>(({ input, sendBack, receive }) => {
-			cap.library.send({
+		read: createAsyncLogic({
+			run: ({ input }: { input: Pick<Context, 'capability' | 'id'> }) =>
+				input.capability.read(input.id)
+		}),
+		extract: createAsyncLogic({
+			run: ({
+				input,
+				signal
+			}: {
+				input: { capability: ClipCapability; source: Source }
+				signal: AbortSignal
+			}) => input.capability.extract(input.source, signal)
+		}),
+		issue: createAsyncLogic({
+			run: ({ input }: { input: { capability: ClipCapability; capture: Capture } }) =>
+				input.capability.issue(input.capture, input.capability.accountId)
+		}),
+		remove: createAsyncLogic({
+			run: ({ input }: { input: Pick<Context, 'capability' | 'id'> }) =>
+				input.capability.remove(input.id)
+		}),
+		save: createCallbackLogic<{ type: 'CANCEL' }, Context>(({ input, sendBack, receive }) => {
+			input.capability.library.send({
 				type: 'ADD',
 				url: input.capture!.url,
 				...(input.content ? { content: input.content } : {})
 			})
-			const subscription = cap.library.subscribe((snapshot) =>
+			const subscription = input.capability.library.subscribe((snapshot) =>
 				sendBack({ type: 'LIBRARY', snapshot })
 			)
-			sendBack({ type: 'LIBRARY', snapshot: cap.library.getSnapshot() })
-			receive(() => cap.library.send({ type: 'CANCEL' }))
+			sendBack({ type: 'LIBRARY', snapshot: input.capability.library.getSnapshot() })
+			receive(() => input.capability.library.send({ type: 'CANCEL' }))
 			return () => subscription.unsubscribe()
 		})
 	}
-	const model = setup<
-		Context,
-		Event,
-		typeof actors,
-		{},
-		{},
-		{ stopping: undefined; current: undefined },
-		never,
-		string,
-		{ id: string }
-	>({
+	const model = setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>(),
+				LIBRARY: types<EventPayload<Event, 'LIBRARY'>>()
+			},
+			input: types<{ id: string; capability: ClipCapability }>(),
+			tags: types<string>(),
+			children: {
+				current: types<ActorRefFrom<typeof actors.current>>(),
+				feedback: types<import('xstate').ActorRefFrom<(typeof actors)['feedback']>>(),
+				read: types<import('xstate').ActorRefFrom<(typeof actors)['read']>>(),
+				extract: types<import('xstate').ActorRefFrom<(typeof actors)['extract']>>(),
+				issue: types<import('xstate').ActorRefFrom<(typeof actors)['issue']>>(),
+				remove: types<import('xstate').ActorRefFrom<(typeof actors)['remove']>>(),
+				save: types<import('xstate').ActorRefFrom<(typeof actors)['save']>>()
+			}
+		},
 		actors,
-		guards: { stopping: stateIn({ running: { issuing: 'stopping' } }), current: cap.current }
-	}).extend({
 		guards: {
-			validReply: (_, { value }: { value: unknown }) => replySchema.safeParse(value).success,
-			issuedReply: (_, { value }: { value: unknown }) =>
+			stopping: ({ value }: { value: import('xstate').StateValue }) =>
+				matchesState({ running: { issuing: 'stopping' } }, value),
+			validReply: (
+				_: { context: Context; value: import('xstate').StateValue },
+				{ value }: { value: unknown }
+			) => replySchema.safeParse(value).success,
+			issuedReply: (
+				_: { context: Context; value: import('xstate').StateValue },
+				{ value }: { value: unknown }
+			) =>
 				replySchema.safeParse(value).success && replySchema.parse(value).capture.phase === 'issued',
-			sourceReply: (_, { value }: { value: unknown }) =>
-				replySchema.safeParse(value).success && !!replySchema.parse(value).source,
-			matchingContent: ({ context }, { value }: { value: unknown }) =>
+			sourceReply: (
+				_: { context: Context; value: import('xstate').StateValue },
+				{ value }: { value: unknown }
+			) => replySchema.safeParse(value).success && !!replySchema.parse(value).source,
+			matchingContent: ({ context }: { context: Context }, { value }: { value: unknown }) =>
 				matchingContent(value, context.capture!)
 		},
 		actions: {
-			rememberReply: assign((_, { value }: { value: unknown }) => {
+			rememberReply: (
+				_: { context: Context; value: import('xstate').StateValue },
+				{ value }: { value: unknown }
+			) => {
 				const reply = replySchema.parse(value)
-				return { capture: reply.capture, source: reply.source }
-			})
-		}
-	})
-	const message = (key: Parameters<typeof t>[0], variant: WorkflowMessage['variant'] = 'info') =>
-		model.assign({ message: (): WorkflowMessage => ({ text: t(key), variant }) })
-	const work = model.createStateConfig({
-		initial: 'loading',
-		states: {
-			loading: {
-				invoke: {
-					src: 'read',
-					input: ({ context }) => context.id,
-					onDone: [
-						{
-							guard: { type: 'issuedReply', params: ({ event }) => ({ value: event.output }) },
-							target: '#extension-clip.unknown',
-							actions: { type: 'rememberReply', params: ({ event }) => ({ value: event.output }) }
-						},
-						{
-							guard: { type: 'sourceReply', params: ({ event }) => ({ value: event.output }) },
-							target: 'extracting',
-							actions: { type: 'rememberReply', params: ({ event }) => ({ value: event.output }) }
-						},
-						{
-							guard: { type: 'validReply', params: ({ event }) => ({ value: event.output }) },
-							target: 'linkOnly',
-							actions: { type: 'rememberReply', params: ({ event }) => ({ value: event.output }) }
-						},
-						{ target: '#extension-clip.unknown' }
-					],
-					onError: '#extension-clip.unknown'
-				}
-			},
-			extracting: {
-				after: { 15000: 'linkOnly' },
-				entry: message('capture.status.pending'),
-				on: { SHUTDOWN: '#extension-clip.closed' },
-				invoke: {
-					src: 'extract',
-					input: ({ context }) => context.source!,
-					onDone: [
-						{ guard: not('current'), target: '#extension-clip.closed' },
-						{
-							guard: { type: 'matchingContent', params: ({ event }) => ({ value: event.output }) },
-							target: 'issuing',
-							actions: assign({
-								content: ({ event }) => contentSchema.parse(event.output),
-								source: undefined
-							})
-						},
-						{ target: 'linkOnly' }
-					],
-					onError: 'linkOnly'
-				}
-			},
-			linkOnly: {
-				entry: assign({ source: undefined }),
-				always: [{ guard: 'current', target: 'issuing' }, { target: '#extension-clip.closed' }]
-			},
-
-			issuing: {
-				initial: 'active',
-				states: { active: { on: { SHUTDOWN: 'stopping' } }, stopping: { on: { SHUTDOWN: {} } } },
-				entry: message('capture.status.saving'),
-				invoke: {
-					src: 'issue',
-					input: ({ context }) => context.capture!,
-					onDone: [
-						{ guard: 'stopping', target: '#extension-clip.closed' },
-						{ guard: 'current', target: 'saving' },
-						{ target: '#extension-clip.unknown' }
-					],
-					onError: '#extension-clip.failed'
-				}
-			},
-			saving: {
-				initial: 'active',
-				states: {
-					active: {
-						on: { SHUTDOWN: { target: 'stopping', actions: sendTo('save', { type: 'CANCEL' }) } }
-					},
-					stopping: { on: { SHUTDOWN: {} } }
-				},
-				invoke: { id: 'save', src: 'save', input: ({ context }) => context },
-				on: {
-					LIBRARY: [
-						{
-							guard: ({ event }) => event.snapshot.matches({ running: { capture: 'saved' } }),
-							target: 'clearing',
-							actions: assign({
-								articleId: ({ event }) => event.snapshot.context.captureId,
-								message: ({ event }) => selectLibraryView(event.snapshot).captureMessage
-							})
-						},
-						{
-							guard: ({ event }) =>
-								event.snapshot.matches({ running: { capture: 'uncertain' } }) ||
-								event.snapshot.matches({ running: { capture: 'canceled' } }),
-							target: '#extension-clip.unknown'
-						},
-						{
-							guard: ({ event }) =>
-								event.snapshot.matches({ running: { capture: 'failed' } }) ||
-								event.snapshot.status === 'done',
-							target: '#extension-clip.failed'
-						}
-					]
-				}
-			},
-			clearing: {
-				on: { SHUTDOWN: {} },
-				invoke: {
-					src: 'remove',
-					input: ({ context }) => context.id,
-					onDone: '#extension-clip.saved',
-					onError: '#extension-clip.saved'
-				}
+				return { context: { capture: reply.capture, source: reply.source } }
 			}
 		}
 	})
+	const message =
+		(key: Parameters<typeof t>[0], variant: WorkflowMessage['variant'] = 'info') =>
+		() => ({ context: { message: { text: t(key), variant } } })
+
 	return model.createMachine({
 		id: 'extension-clip',
 		initial: 'running',
@@ -215,37 +149,224 @@ export function createClipMachine(cap: ClipCapability) {
 			articleId: undefined
 		}),
 		states: {
-			running: { ...work, on: { SHUTDOWN: '#extension-clip.closed' } },
-			saved: {
-				invoke: { src: 'feedback', input: () => cap.library },
-				on: {
-					SHUTDOWN: 'closed',
-					LIBRARY: {
-						guard: ({ context, event }) => context.articleId === event.snapshot.context.captureId,
-						actions: assign({
-							message: ({ event }) => selectLibraryView(event.snapshot).captureMessage
-						})
+			running: {
+				initial: 'loading',
+				states: {
+					loading: {
+						invoke: {
+							id: 'read',
+							src: 'read',
+							input: ({ context }: { context: Context }) => ({
+								id: context.id,
+								capability: context.capability
+							}),
+							onDone: (args) => {
+								const { event } = args
+								if (args.guards.issuedReply(args, { value: event.output })) {
+									return {
+										target: '#extension-clip.unknown',
+										context: args.actions.rememberReply(args, { value: event.output }).context
+									}
+								}
+								if (args.guards.sourceReply(args, { value: event.output })) {
+									return {
+										target: 'extracting',
+										context: args.actions.rememberReply(args, { value: event.output }).context
+									}
+								}
+								if (args.guards.validReply(args, { value: event.output })) {
+									return {
+										target: 'linkOnly',
+										context: args.actions.rememberReply(args, { value: event.output }).context
+									}
+								}
+								return { target: '#extension-clip.unknown' }
+							},
+							onError: { target: '#extension-clip.unknown' }
+						}
+					},
+					extracting: {
+						after: { 15000: { target: 'linkOnly' } },
+						entry: message('capture.status.pending'),
+						on: { SHUTDOWN: { target: '#extension-clip.closed' } },
+						invoke: {
+							id: 'extract',
+							src: 'extract',
+							input: ({ context }: { context: Context }) => ({
+								source: context.source!,
+								capability: context.capability
+							}),
+							onDone: (args) => {
+								const { event } = args
+								if (args.guards.matchingContent(args, { value: event.output })) {
+									return {
+										target: 'checkingIssue',
+										context: { content: contentSchema.parse(event.output), source: undefined }
+									}
+								}
+								return { target: 'linkOnly' }
+							},
+							onError: { target: 'linkOnly' }
+						}
+					},
+					linkOnly: {
+						entry: () => {
+							return { context: { source: undefined } }
+						},
+						always: { target: 'checkingIssue' }
+					},
+
+					checkingIssue: {
+						on: { SHUTDOWN: { target: '#extension-clip.closed' } },
+						invoke: {
+							id: 'current',
+							src: 'current',
+							input: ({ context }) => context.capability,
+							onDone: ({ event }) => ({
+								target: event.output ? 'issuing' : '#extension-clip.closed'
+							})
+						}
+					},
+
+					issuing: {
+						initial: 'active',
+						states: {
+							active: { on: { SHUTDOWN: { target: 'stopping' } } },
+							stopping: { on: { SHUTDOWN: {} } }
+						},
+						entry: message('capture.status.saving'),
+						invoke: {
+							id: 'issue',
+							src: 'issue',
+							input: ({ context }: { context: Context }) => ({
+								capture: context.capture!,
+								capability: context.capability
+							}),
+							onDone: (args) => {
+								if (args.guards.stopping(args)) {
+									return { target: '#extension-clip.closed' }
+								}
+								return { target: 'checkingSave' }
+							},
+							onError: { target: '#extension-clip.failed' }
+						}
+					},
+					checkingSave: {
+						on: { SHUTDOWN: { target: '#extension-clip.closed' } },
+						invoke: {
+							id: 'current',
+							src: 'current',
+							input: ({ context }) => context.capability,
+							onDone: ({ event }) => ({
+								target: event.output ? 'saving' : '#extension-clip.unknown'
+							})
+						}
+					},
+
+					saving: {
+						initial: 'active',
+						states: {
+							active: {
+								on: {
+									SHUTDOWN: (args, enq) => {
+										enq.sendTo('save', { type: 'CANCEL' })
+										return { target: 'stopping' }
+									}
+								}
+							},
+							stopping: { on: { SHUTDOWN: {} } }
+						},
+						invoke: {
+							id: 'save',
+							src: 'save',
+							input: ({ context }: { context: Context }) => context
+						},
+						on: {
+							LIBRARY: (args) => {
+								const { event } = args
+								if (event.snapshot.matches({ running: { capture: 'saved' } })) {
+									return {
+										target: 'clearing',
+										context: {
+											articleId: event.snapshot.context.captureId,
+											message: selectLibraryView(event.snapshot).captureMessage
+										}
+									}
+								}
+								if (
+									event.snapshot.matches({ running: { capture: 'uncertain' } }) ||
+									event.snapshot.matches({ running: { capture: 'canceled' } })
+								) {
+									return { target: '#extension-clip.unknown' }
+								}
+								if (
+									event.snapshot.matches({ running: { capture: 'failed' } }) ||
+									event.snapshot.status === 'done'
+								) {
+									return { target: '#extension-clip.failed' }
+								}
+							}
+						}
+					},
+					clearing: {
+						on: { SHUTDOWN: {} },
+						invoke: {
+							id: 'remove',
+							src: 'remove',
+							input: ({ context }: { context: Context }) => ({
+								id: context.id,
+								capability: context.capability
+							}),
+							onDone: { target: '#extension-clip.saved' },
+							onError: { target: '#extension-clip.saved' }
+						}
 					}
 				},
-				entry: assign({ source: undefined, content: undefined })
+				on: { SHUTDOWN: { target: '#extension-clip.closed' } }
+			},
+			saved: {
+				invoke: {
+					id: 'feedback',
+					src: 'feedback',
+					input: ({ context }) => context.capability.library
+				},
+				on: {
+					SHUTDOWN: { target: 'closed' },
+					LIBRARY: (args) => {
+						const { event } = args
+						if (!(args.context.articleId === event.snapshot.context.captureId)) return
+						return { context: { message: selectLibraryView(event.snapshot).captureMessage } }
+					}
+				},
+				entry: () => {
+					return { context: { source: undefined, content: undefined } }
+				}
 			},
 			unknown: {
-				on: { SHUTDOWN: 'closed' },
-				entry: [
-					message('capture.status.unknown', 'error'),
-					assign({ source: undefined, content: undefined })
-				]
+				on: { SHUTDOWN: { target: 'closed' } },
+				entry: () => ({
+					context: {
+						...message('capture.status.unknown', 'error')().context,
+						source: undefined,
+						content: undefined
+					}
+				})
 			},
 			failed: {
-				on: { SHUTDOWN: 'closed' },
-				entry: [
-					message('capture.status.save_failed', 'error'),
-					assign({ source: undefined, content: undefined })
-				]
+				on: { SHUTDOWN: { target: 'closed' } },
+				entry: () => ({
+					context: {
+						...message('capture.status.save_failed', 'error')().context,
+						source: undefined,
+						content: undefined
+					}
+				})
 			},
 			closed: {
 				type: 'final',
-				entry: assign({ source: undefined, content: undefined, capture: undefined })
+				entry: () => {
+					return { context: { source: undefined, content: undefined, capture: undefined } }
+				}
 			}
 		}
 	})

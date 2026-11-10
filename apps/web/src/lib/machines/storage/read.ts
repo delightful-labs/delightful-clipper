@@ -1,4 +1,6 @@
-import { assign, enqueueActions, fromPromise, setup } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup, createAsyncLogic } from 'xstate'
+
 import type {
 	ArticleSource,
 	DocumentHeader,
@@ -57,59 +59,59 @@ function available(context: Context): ReadResult {
 	}
 }
 const actors = {
-	document: fromPromise(({ input, signal }: { input: Context; signal: AbortSignal }) =>
-		required(input.capability).document(input.id, signal)
-	),
-	snapshot: fromPromise(({ input, signal }: { input: Context; signal: AbortSignal }) =>
-		required(input.capability).snapshot(required(input.document).snapshotId, signal)
-	),
-	asset: fromPromise(({ input, signal }: { input: Context; signal: AbortSignal }) =>
-		required(input.capability).asset(required(input.document).assetId, signal)
-	),
-	source: fromPromise(({ input, signal }: { input: Context; signal: AbortSignal }) =>
-		required(input.capability).source(input.id, signal)
-	)
+	document: createAsyncLogic({
+		run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
+			required(input.capability).document(input.id, signal)
+	}),
+	snapshot: createAsyncLogic({
+		run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
+			required(input.capability).snapshot(required(input.document).snapshotId, signal)
+	}),
+	asset: createAsyncLogic({
+		run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
+			required(input.capability).asset(required(input.document).assetId, signal)
+	}),
+	source: createAsyncLogic({
+		run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
+			required(input.capability).source(input.id, signal)
+	})
 }
-const model = setup<
-	Context,
-	{ type: 'SHUTDOWN' },
-	typeof actors,
-	{},
-	{ report: { result: ReadResult } },
-	{
-		scopeLost: undefined
-		missingSnapshot: { snapshot: TextSnapshot | null }
-		invalidSnapshot: { snapshot: TextSnapshot | null }
-		missingDocument: { document: DocumentHeader | null }
-		invalidDocument: { document: DocumentHeader | null }
+const model = setup({
+	schemas: {
+		context: types<Context>(),
+		events: { SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>() },
+		input: types<ReadInput>(),
+		emitted: { record: types<{ result: ReadResult }>() },
+		output: types<ReadOutcome>(),
+		tags: types<string>(),
+		children: {
+			document: types<import('xstate').ActorRefFrom<(typeof actors)['document']>>(),
+			snapshot: types<import('xstate').ActorRefFrom<(typeof actors)['snapshot']>>(),
+			asset: types<import('xstate').ActorRefFrom<(typeof actors)['asset']>>(),
+			source: types<import('xstate').ActorRefFrom<(typeof actors)['source']>>()
+		}
 	},
-	never,
-	string,
-	ReadInput,
-	ReadOutcome,
-	{ type: 'record'; result: ReadResult }
->({
 	actors,
 	guards: {
-		scopeLost: ({ context }) => !context.capability?.isCurrent(),
-		missingDocument: (_args, { document }) => document === null,
-		invalidDocument: ({ context }, { document }) => !isValidDocument(document, context.id),
-		missingSnapshot: (_args, { snapshot }) => snapshot === null,
-		invalidSnapshot: ({ context }, { snapshot }) =>
-			!isValidSnapshot(snapshot, required(context.document))
+		scopeLost: ({ context }: { context: Context }) => !context.capability?.isCurrent(),
+		missingDocument: (
+			_args: { context: Context },
+			{ document }: { document: DocumentHeader | null }
+		) => document === null,
+		invalidDocument: (
+			{ context }: { context: Context },
+			{ document }: { document: DocumentHeader | null }
+		) => !isValidDocument(document, context.id),
+		missingSnapshot: (
+			_args: { context: Context },
+			{ snapshot }: { snapshot: TextSnapshot | null }
+		) => snapshot === null,
+		invalidSnapshot: (
+			{ context }: { context: Context },
+			{ snapshot }: { snapshot: TextSnapshot | null }
+		) => !isValidSnapshot(snapshot, required(context.document))
 	},
-	actions: {
-		report: enqueueActions(({ context, enqueue }, { result }) => {
-			enqueue.emit({ type: 'record', result })
-			if (context.reportTo)
-				enqueue.sendTo(context.reportTo, {
-					type: 'READ_RESULT',
-					generation: context.generation,
-					result
-				})
-			enqueue.assign({ ...clear, result: { kind: result.kind } })
-		})
-	}
+	actions: {}
 })
 const input = ({ context }: { context: Context }) => context
 /** Own every read, including optional metadata. Only the consumer retains emitted content. */
@@ -125,65 +127,57 @@ export const readRecordMachine = model.createMachine({
 		result: { kind: 'unavailable' }
 	}),
 	output: ({ context }) => context.result,
-	on: { SHUTDOWN: '.unavailable' },
+	on: { SHUTDOWN: { target: '.unavailable' } },
 	states: {
 		document: {
 			invoke: {
+				id: 'document',
 				src: 'document',
 				input,
-				onDone: [
-					{ guard: 'scopeLost', target: 'unavailable' },
-					{
-						guard: { type: 'missingDocument', params: ({ event }) => ({ document: event.output }) },
-						target: 'missing'
-					},
-					{
-						guard: { type: 'invalidDocument', params: ({ event }) => ({ document: event.output }) },
-						target: 'corrupt'
-					},
-					{
-						target: 'resources',
-						actions: assign({ document: ({ event }) => event.output ?? undefined })
+				onDone: (args) => {
+					const { event } = args
+					if (args.guards.scopeLost(args)) {
+						return { target: 'unavailable' }
 					}
-				],
-				onError: 'unavailable'
+					if (args.guards.missingDocument(args, { document: event.output })) {
+						return { target: 'missing' }
+					}
+					if (args.guards.invalidDocument(args, { document: event.output })) {
+						return { target: 'corrupt' }
+					}
+					return { target: 'resources', context: { document: event.output ?? undefined } }
+				},
+				onError: { target: 'unavailable' }
 			}
 		},
 		// Once the header is validated, these independent reads share one owner.
 		// Only the required snapshot can fail the read; asset/source remain optional.
 		resources: {
 			type: 'parallel',
-			onDone: 'available',
+			onDone: { target: 'available' },
 			states: {
 				snapshot: {
 					initial: 'reading',
 					states: {
 						reading: {
 							invoke: {
+								id: 'snapshot',
 								src: 'snapshot',
 								input,
-								onDone: [
-									{ guard: 'scopeLost', target: '#read-record.unavailable' },
-									{
-										guard: {
-											type: 'missingSnapshot',
-											params: ({ event }) => ({ snapshot: event.output })
-										},
-										target: '#read-record.unavailable'
-									},
-									{
-										guard: {
-											type: 'invalidSnapshot',
-											params: ({ event }) => ({ snapshot: event.output })
-										},
-										target: '#read-record.corrupt'
-									},
-									{
-										target: 'ready',
-										actions: assign({ snapshot: ({ event }) => event.output ?? undefined })
+								onDone: (args) => {
+									const { event } = args
+									if (args.guards.scopeLost(args)) {
+										return { target: '#read-record.unavailable' }
 									}
-								],
-								onError: '#read-record.unavailable'
+									if (args.guards.missingSnapshot(args, { snapshot: event.output })) {
+										return { target: '#read-record.unavailable' }
+									}
+									if (args.guards.invalidSnapshot(args, { snapshot: event.output })) {
+										return { target: '#read-record.corrupt' }
+									}
+									return { target: 'ready', context: { snapshot: event.output ?? undefined } }
+								},
+								onError: { target: '#read-record.unavailable' }
 							}
 						},
 						ready: { type: 'final' }
@@ -194,19 +188,21 @@ export const readRecordMachine = model.createMachine({
 					states: {
 						reading: {
 							invoke: {
+								id: 'asset',
 								src: 'asset',
 								input,
-								onDone: [
-									{ guard: 'scopeLost', target: '#read-record.unavailable' },
-									{
-										target: 'ready',
-										actions: assign({ asset: ({ event }) => event.output ?? undefined })
+								onDone: (args) => {
+									if (args.guards.scopeLost(args)) {
+										return { target: '#read-record.unavailable' }
 									}
-								],
-								onError: [
-									{ guard: 'scopeLost', target: '#read-record.unavailable' },
-									{ target: 'ready' }
-								]
+									return { target: 'ready', context: { asset: args.event.output ?? undefined } }
+								},
+								onError: (args) => {
+									if (args.guards.scopeLost(args)) {
+										return { target: '#read-record.unavailable' }
+									}
+									return { target: 'ready' }
+								}
 							}
 						},
 						ready: { type: 'final' }
@@ -217,19 +213,21 @@ export const readRecordMachine = model.createMachine({
 					states: {
 						reading: {
 							invoke: {
+								id: 'source',
 								src: 'source',
 								input,
-								onDone: [
-									{ guard: 'scopeLost', target: '#read-record.unavailable' },
-									{
-										target: 'ready',
-										actions: assign({ source: ({ event }) => event.output ?? undefined })
+								onDone: (args) => {
+									if (args.guards.scopeLost(args)) {
+										return { target: '#read-record.unavailable' }
 									}
-								],
-								onError: [
-									{ guard: 'scopeLost', target: '#read-record.unavailable' },
-									{ target: 'ready' }
-								]
+									return { target: 'ready', context: { source: args.event.output ?? undefined } }
+								},
+								onError: (args) => {
+									if (args.guards.scopeLost(args)) {
+										return { target: '#read-record.unavailable' }
+									}
+									return { target: 'ready' }
+								}
 							}
 						},
 						ready: { type: 'final' }
@@ -239,29 +237,115 @@ export const readRecordMachine = model.createMachine({
 		},
 		available: {
 			type: 'final',
-			entry: { type: 'report', params: ({ context }) => ({ result: available(context) }) }
+			entry: (args, enq) => {
+				let pendingContext = {}
+
+				const { context } = args
+				{
+					const params = { result: available(context) }
+					const { result } = params
+					enq.emit({ type: 'record', result })
+					if (context.reportTo)
+						enq.sendTo(context.reportTo, {
+							type: 'READ_RESULT',
+							generation: context.generation,
+							result
+						})
+					pendingContext = {
+						...pendingContext,
+						...clear,
+						result: { kind: result.kind }
+					}
+				}
+
+				return { context: pendingContext }
+			}
 		},
 		missing: {
 			type: 'final',
-			entry: {
-				type: 'report',
-				params: ({ context }) => ({
-					result: { kind: context.capability?.isCurrent() ? 'missing' : 'unavailable' }
-				})
+			entry: (args, enq) => {
+				let pendingContext = {}
+
+				const { context } = args
+				{
+					const params: { result: ReadResult } = {
+						result: {
+							kind: context.capability?.isCurrent() ? 'missing' : 'unavailable'
+						}
+					}
+					const { result } = params
+					enq.emit({ type: 'record', result })
+					if (context.reportTo)
+						enq.sendTo(context.reportTo, {
+							type: 'READ_RESULT',
+							generation: context.generation,
+							result
+						})
+					pendingContext = {
+						...pendingContext,
+						...clear,
+						result: { kind: result.kind }
+					}
+				}
+
+				return { context: pendingContext }
 			}
 		},
 		corrupt: {
 			type: 'final',
-			entry: {
-				type: 'report',
-				params: ({ context }) => ({
-					result: { kind: context.capability?.isCurrent() ? 'corrupt' : 'unavailable' }
-				})
+			entry: (args, enq) => {
+				let pendingContext = {}
+
+				const { context } = args
+				{
+					const params: { result: ReadResult } = {
+						result: {
+							kind: context.capability?.isCurrent() ? 'corrupt' : 'unavailable'
+						}
+					}
+					const { result } = params
+					enq.emit({ type: 'record', result })
+					if (context.reportTo)
+						enq.sendTo(context.reportTo, {
+							type: 'READ_RESULT',
+							generation: context.generation,
+							result
+						})
+					pendingContext = {
+						...pendingContext,
+						...clear,
+						result: { kind: result.kind }
+					}
+				}
+
+				return { context: pendingContext }
 			}
 		},
 		unavailable: {
 			type: 'final',
-			entry: { type: 'report', params: { result: { kind: 'unavailable' } } }
+			entry: (args, enq) => {
+				let pendingContext = {}
+
+				const { context } = args
+				{
+					const params: { result: ReadResult } = { result: { kind: 'unavailable' } }
+					const { result } = params
+					enq.emit({ type: 'record', result })
+					if (context.reportTo)
+						enq.sendTo(context.reportTo, {
+							type: 'READ_RESULT',
+							generation: context.generation,
+							result
+						})
+					pendingContext = {
+						...pendingContext,
+						...clear,
+						result: { kind: result.kind }
+					}
+				}
+
+				return { context: pendingContext }
+			}
 		}
 	}
 })

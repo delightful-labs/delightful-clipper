@@ -58,7 +58,7 @@ function statePaths(value: unknown, prefix = '', depth = 0): string[] {
 export function createMachineObserver(logger: Logger, enabled: boolean) {
 	const previous = new WeakMap<object, string>()
 	return (event: InspectionEvent) => {
-		if (!enabled || (event.type !== '@xstate.snapshot' && event.type !== '@xstate.event')) return
+		if (!enabled || event.type !== '@xstate.transition') return
 		try {
 			const actor = event.actorRef
 			const machine = identifier(field(field(field(actor, 'logic'), 'config'), 'id'))
@@ -68,9 +68,8 @@ export function createMachineObserver(logger: Logger, enabled: boolean) {
 				String(field(actor, 'id')).includes('recovery-phrase')
 			)
 				return
-			const snapshot: unknown =
-				event.type === '@xstate.snapshot' ? event.snapshot : actor.getSnapshot()
-			const errorEvent = event.event.type.startsWith('xstate.error.actor.')
+			const snapshot: unknown = event.snapshot
+			const errorEvent = event.event.type === 'xstate.error.actor'
 			const error =
 				field(snapshot, 'error') ?? (errorEvent ? field(event.event, 'error') : undefined)
 			// Promise actors have no modeled machine id; report only their errors.

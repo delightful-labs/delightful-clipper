@@ -230,13 +230,20 @@ test('shows live progress before a debounced save and keeps the furthest progres
 	await page.mouse.wheel(0, 6000)
 	await expect.poll(() => main.evaluate((node) => node.scrollTop)).toBeGreaterThan(2000)
 	await page.clock.runFor(100)
+	// Viewport measurement crosses a MessagePort to the worker and back. Advancing
+	// the page clock does not wait for the worker's live progress projection.
+	await expect
+		.poll(async () =>
+			Number(await page.locator('.reader-workspace progress').getAttribute('value'))
+		)
+		.toBeGreaterThan(0)
 	const progress = Number(await page.locator('.reader-workspace progress').getAttribute('value'))
 	expect(progress).toBeGreaterThan(0)
 	expect((await state(page)).progress).toEqual({})
 	const paragraph = Number(await visibleParagraph(page))
 	await page.mouse.wheel(0, -3000)
-	await expect.poll(() => visibleParagraph(page)).not.toBe(String(paragraph))
 	await page.clock.runFor(100)
+	await expect.poll(() => visibleParagraph(page)).not.toBe(String(paragraph))
 	expect(Number(await visibleParagraph(page))).toBeLessThan(paragraph)
 	await expect(page.locator('.reader-workspace progress')).toHaveAttribute(
 		'value',

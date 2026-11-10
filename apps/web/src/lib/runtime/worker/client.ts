@@ -1,4 +1,6 @@
-import { assign, createActor, fromCallback, sendTo, setup } from 'xstate'
+import type { EventPayload } from '../../machines/events.js'
+import { types, createActor, createCallbackLogic, setup } from 'xstate'
+
 import { serveBrokerHost } from './broker-channel.js'
 import { serveAccountStorage, ACCOUNT_STORAGE_PREFIX } from './storage-channel.js'
 import { serveReaderSurface } from '../../reader/surface-host.js'
@@ -26,8 +28,10 @@ type Event =
 	| { type: 'VIEW'; view: RuntimeView }
 	| { type: 'UI_DETACHED' }
 	| { type: 'SHUTDOWN' | 'CLOSED' | 'FAILED' }
-const resource = fromCallback<Event, Input>(({ input, receive, sendBack }) => {
-	const worker = new Worker(new URL('./application.worker.ts', import.meta.url), { type: 'module' })
+const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }) => {
+	const worker = new Worker(new URL('./application.worker.ts', import.meta.url), {
+		type: 'module'
+	})
 	const storage = new MessageChannel(),
 		broker = new MessageChannel()
 	const releaseBroker = serveBrokerHost(broker.port1)
@@ -94,28 +98,43 @@ const resource = fromCallback<Event, Input>(({ input, receive, sendBack }) => {
 /** UI-native transport lifetime only. It never retries commands or terminates a
  * worker before the domain owner acknowledges that all issued work has drained. */
 type ClientContext = Input & { pending: string[] }
-const clientMachine = setup<
-	ClientContext,
-	Event,
-	{ resource: typeof resource },
-	{ resource: 'resource' },
-	{},
-	{},
-	never,
-	string,
-	Input
->({ actors: { resource } }).createMachine({
+const clientMachine = setup({
+	schemas: {
+		context: types<ClientContext>(),
+		events: {
+			SEND: types<EventPayload<Event, 'SEND'>>(),
+			RECEIVED: types<EventPayload<Event, 'RECEIVED'>>(),
+			VIEW: types<EventPayload<Event, 'VIEW'>>(),
+			UI_DETACHED: types<EventPayload<Event, 'UI_DETACHED'>>(),
+			SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>(),
+			CLOSED: types<EventPayload<Event, 'CLOSED'>>(),
+			FAILED: types<EventPayload<Event, 'FAILED'>>()
+		},
+		input: types<Input>(),
+		tags: types<string>(),
+		children: { resource: types<import('xstate').ActorRefFrom<typeof resource>>() }
+	},
+	actors: { resource }
+}).createMachine({
 	id: 'application-ui-port',
 	initial: 'attached',
 	context: ({ input }) => ({ ...input, pending: [] }),
-	invoke: { id: 'resource', src: 'resource', input: ({ context }) => context },
+	invoke: {
+		id: 'resource',
+		src: 'resource',
+		input: ({ context }: { context: ClientContext }) => context
+	},
 	states: {
 		attached: {
 			on: {
-				VIEW: { actions: ({ context, event }) => context.publish(event.view) },
-				SEND: {
-					actions: [
-						assign(({ context, event }) => {
+				VIEW: (args, enq) => {
+					enq(() => args.context.publish(args.event.view))
+				},
+				SEND: (args, enq) => {
+					const { event } = args
+					enq.sendTo('resource', event)
+					return {
+						context: (({ context, event }) => {
 							const message = event.message
 							const waiting =
 								(message.type === 'LIBRARY' && message.event.type === 'ORGANIZE') ||
@@ -126,28 +145,43 @@ const clientMachine = setup<
 										? [...context.pending, message.requestId]
 										: context.pending
 							}
-						}),
-						sendTo('resource', ({ event }) => event)
-					]
+						})(args)
+					}
 				},
-				RECEIVED: {
-					actions: assign({
-						pending: ({ context, event }) => context.pending.filter((id) => id !== event.requestId)
-					})
+				RECEIVED: (args) => {
+					return {
+						context: { pending: args.context.pending.filter((id) => id !== args.event.requestId) }
+					}
 				},
-				SHUTDOWN: { target: 'draining', actions: sendTo('resource', { type: 'SHUTDOWN' }) },
-				FAILED: { target: 'failed', actions: ({ context }) => context.failed() }
+				SHUTDOWN: (args, enq) => {
+					enq.sendTo('resource', { type: 'SHUTDOWN' })
+					return { target: 'draining' }
+				},
+				FAILED: (args, enq) => {
+					enq(() => args.context.failed())
+					return { target: 'failed' }
+				}
 			}
 		},
 		draining: {
 			on: {
-				CLOSED: 'closed',
-				FAILED: { target: 'failed', actions: ({ context }) => context.failed() }
+				CLOSED: { target: 'closed' },
+				FAILED: (args, enq) => {
+					enq(() => args.context.failed())
+					return { target: 'failed' }
+				}
 			}
 		},
 		failed: {
-			entry: sendTo('resource', { type: 'UI_DETACHED' }),
-			on: { SHUTDOWN: { target: 'draining', actions: sendTo('resource', { type: 'SHUTDOWN' }) } }
+			entry: (args, enq) => {
+				enq.sendTo('resource', { type: 'UI_DETACHED' })
+			},
+			on: {
+				SHUTDOWN: (args, enq) => {
+					enq.sendTo('resource', { type: 'SHUTDOWN' })
+					return { target: 'draining' }
+				}
+			}
 		},
 		closed: { type: 'final' }
 	}

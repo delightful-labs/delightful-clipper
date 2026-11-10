@@ -29,6 +29,15 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
+      - name: Preserve generated test counterexamples
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: xstate-counterexamples
+          path: .xstate-test/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
 
   browser:
     name: Account, library and offline browser tests

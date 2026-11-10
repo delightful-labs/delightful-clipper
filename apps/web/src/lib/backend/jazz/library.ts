@@ -31,8 +31,8 @@ export function createLibraryCapability(
 			call.method === 'document'
 				? { method: 'document', exists: await records.hasDocument(call.operationId) }
 				: { method: 'intent', exists: await records.hasIntent(call.operationId) },
-		save: records.articles.saveMachine,
-		failure: records.articles.failure
+		save: (spawn, input) => spawn(records.articles.saveMachine, { input }),
+		failure: (spawn, input) => spawn(records.articles.failure, { input })
 	})
 	return {
 		reader: records.reader.capability,

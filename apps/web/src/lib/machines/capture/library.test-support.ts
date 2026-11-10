@@ -1,4 +1,6 @@
-import { assign, fromPromise, setup } from 'xstate'
+import type { EventPayload } from '../events.js'
+import { types, setup, createAsyncLogic } from 'xstate'
+
 import type { LibraryCapability, SaveSpawner } from '../../contracts/library.js'
 import type { Candidate } from '../../capture/source.js'
 import type { SaveArticleRequest, ArticleSaveResult } from '../../contracts/articles.js'
@@ -7,19 +9,20 @@ export function controlledSave(
 	work: (request: SaveArticleRequest) => Promise<ArticleSaveResult>,
 	shutdown: () => void = () => {}
 ) {
-	const actors = { work: fromPromise(({ input }: { input: SaveArticleRequest }) => work(input)) }
-	return setup<
-		{ request: SaveArticleRequest; result: ArticleSaveResult | undefined },
-		{ type: 'SHUTDOWN' },
-		typeof actors,
-		{},
-		{},
-		{},
-		never,
-		string,
-		SaveArticleRequest,
-		ArticleSaveResult
-	>({ actors }).createMachine({
+	const actors = {
+		work: createAsyncLogic({ run: ({ input }: { input: SaveArticleRequest }) => work(input) })
+	}
+	return setup({
+		schemas: {
+			context: types<{ request: SaveArticleRequest; result: ArticleSaveResult | undefined }>(),
+			events: { SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>() },
+			input: types<SaveArticleRequest>(),
+			output: types<ArticleSaveResult>(),
+			tags: types<string>(),
+			children: { work: types<import('xstate').ActorRefFrom<(typeof actors)['work']>>() }
+		},
+		actors
+	}).createMachine({
 		initial: 'running',
 		context: ({ input }) => ({ request: input, result: undefined }),
 		output: ({ context }) => {
@@ -30,13 +33,27 @@ export function controlledSave(
 			running: {
 				initial: 'active',
 				states: {
-					active: { on: { SHUTDOWN: { target: 'stopping', actions: shutdown } } },
+					active: {
+						on: {
+							SHUTDOWN: (_, enq) => {
+								enq(shutdown)
+								return { target: 'stopping' }
+							}
+						}
+					},
 					stopping: {}
 				},
 				invoke: {
+					id: 'work',
 					src: 'work',
-					input: ({ context }) => context.request,
-					onDone: { target: 'done', actions: assign({ result: ({ event }) => event.output }) }
+					input: ({
+						context
+					}: {
+						context: { request: SaveArticleRequest; result: ArticleSaveResult | undefined }
+					}) => context.request,
+					onDone: (args) => {
+						return { target: 'done', context: { result: args.event.output } }
+					}
 				}
 			},
 			done: { type: 'final' }

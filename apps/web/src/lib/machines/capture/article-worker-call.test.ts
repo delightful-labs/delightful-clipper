@@ -40,7 +40,13 @@ function fixture(call: HostCall) {
 	})
 	const lookup = vi.fn(() => reply.promise)
 	const actor = createActor(
-		createArticleWorkerCallMachine({ isCurrent: () => current, network, lookup, save, failure }),
+		createArticleWorkerCallMachine({
+			isCurrent: () => current,
+			network,
+			lookup,
+			save: (spawn, input) => spawn(save, { input }),
+			failure: (spawn, input) => spawn(failure, { input })
+		}),
 		{ input: call }
 	).start()
 	return {

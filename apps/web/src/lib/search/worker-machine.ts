@@ -1,4 +1,6 @@
-import { assign, fromPromise, setup } from 'xstate'
+import type { EventPayload } from '../machines/events.js'
+import { types, setup, createAsyncLogic } from 'xstate'
+
 import type MiniSearch from 'minisearch'
 import type { CachedIndex } from './cache.js'
 import { buildIndex, restoreIndex, searchFingerprint, searchIndex } from './engine.js'
@@ -20,33 +22,44 @@ export function createSearchWorkerMachine(cap: {
 	write: (key: string, value: CachedIndex) => Promise<void>
 	report: (message: SearchWorkerOutput) => void
 }) {
-	const model = setup<
-		Context,
-		SearchWorkerInput | { type: 'STOP' },
-		{
-			fingerprint: ReturnType<typeof fromPromise<string, Dataset>>
-			read: ReturnType<typeof fromPromise<CachedIndex | undefined, string>>
-			restore: ReturnType<typeof fromPromise<MiniSearch<SearchDocument>, string>>
-			build: ReturnType<typeof fromPromise<MiniSearch<SearchDocument>, Dataset>>
-			write: ReturnType<typeof fromPromise<void, { key: string; value: CachedIndex }>>
+	const model = setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				INDEX: types<EventPayload<SearchWorkerInput | { type: 'STOP' }, 'INDEX'>>(),
+				QUERY: types<EventPayload<SearchWorkerInput | { type: 'STOP' }, 'QUERY'>>(),
+				STOP: types<EventPayload<SearchWorkerInput | { type: 'STOP' }, 'STOP'>>()
+			},
+			tags: types<string>()
 		},
-		{},
-		{},
-		{ cacheMatches: { cached: CachedIndex | undefined }; currentQuery: undefined },
-		never,
-		string
-	>({
 		actors: {
-			fingerprint: fromPromise(({ input }) => searchFingerprint(input.documents)),
-			read: fromPromise(({ input }) => cap.read(input)),
-			restore: fromPromise(async ({ input }) => restoreIndex(input)),
-			build: fromPromise(({ input }) => buildIndex(input.documents)),
-			write: fromPromise(({ input }) => cap.write(input.key, input.value))
+			fingerprint: createAsyncLogic({
+				run: ({ input }: { input: Dataset }) => searchFingerprint(input.documents)
+			}),
+			read: createAsyncLogic({ run: ({ input }: { input: string }) => cap.read(input) }),
+			restore: createAsyncLogic({
+				run: async ({ input }: { input: string }) => restoreIndex(input)
+			}),
+			build: createAsyncLogic({
+				run: ({ input }: { input: Dataset }) => buildIndex(input.documents)
+			}),
+			write: createAsyncLogic({
+				run: ({ input }: { input: { key: string; value: CachedIndex } }) =>
+					cap.write(input.key, input.value)
+			})
 		},
 		guards: {
-			cacheMatches: ({ context }, params) => params.cached?.fingerprint === context.fingerprint,
-			currentQuery: ({ context, event }) =>
-				event.type === 'QUERY' && event.generation === context.dataset?.generation
+			cacheMatches: (
+				{ context }: { context: Context },
+				params: { cached: CachedIndex | undefined }
+			) => params.cached?.fingerprint === context.fingerprint,
+			currentQuery: ({
+				context,
+				event
+			}: {
+				context: Context
+				event: SearchWorkerInput | { type: 'STOP' }
+			}) => event.type === 'QUERY' && event.generation === context.dataset?.generation
 		}
 	})
 	return model.createMachine({
@@ -54,95 +67,116 @@ export function createSearchWorkerMachine(cap: {
 		initial: 'waiting',
 		context: { dataset: undefined, fingerprint: '', cached: undefined, index: undefined },
 		on: {
-			INDEX: {
-				target: '.fingerprinting',
-				actions: assign({
-					dataset: ({ event }) => event,
-					fingerprint: '',
-					cached: undefined,
-					index: undefined
-				})
+			INDEX: (args) => {
+				const { event } = args
+				return {
+					target: '.fingerprinting',
+					context: { dataset: event, fingerprint: '', cached: undefined, index: undefined }
+				}
 			},
-			STOP: '.closed'
+			STOP: { target: '.closed' }
 		},
 		states: {
 			waiting: {},
 			fingerprinting: {
 				invoke: {
+					id: 'fingerprint',
 					src: 'fingerprint',
-					input: ({ context }) => required(context.dataset),
-					onDone: {
-						target: 'readingCache',
-						actions: assign({ fingerprint: ({ event }) => event.output })
+					input: ({ context }: { context: Context }) => required(context.dataset),
+					onDone: (args) => {
+						return { target: 'readingCache', context: { fingerprint: args.event.output } }
 					},
-					onError: 'failed'
+					onError: { target: 'failed' }
 				}
 			},
 			readingCache: {
 				invoke: {
+					id: 'read',
 					src: 'read',
-					input: ({ context }) => required(context.dataset).key,
-					onDone: [
-						{
-							guard: { type: 'cacheMatches', params: ({ event }) => ({ cached: event.output }) },
-							target: 'restoring',
-							actions: assign({ cached: ({ event }) => event.output })
-						},
-						{ target: 'building' }
-					],
-					onError: 'building'
+					input: ({ context }: { context: Context }) => required(context.dataset).key,
+					onDone: (args) => {
+						const { event } = args
+						if (args.guards.cacheMatches(args, { cached: event.output })) {
+							return { target: 'restoring', context: { cached: event.output } }
+						}
+						return { target: 'building' }
+					},
+					onError: { target: 'building' }
 				}
 			},
 			restoring: {
 				invoke: {
+					id: 'restore',
 					src: 'restore',
-					input: ({ context }) => required(context.cached).index,
-					onDone: { target: 'ready', actions: assign({ index: ({ event }) => event.output }) },
-					onError: 'building'
+					input: ({ context }: { context: Context }) => required(context.cached).index,
+					onDone: (args) => {
+						return { target: 'ready', context: { index: args.event.output } }
+					},
+					onError: { target: 'building' }
 				}
 			},
 			building: {
 				invoke: {
+					id: 'build',
 					src: 'build',
-					input: ({ context }) => required(context.dataset),
-					onDone: { target: 'persisting', actions: assign({ index: ({ event }) => event.output }) },
-					onError: 'failed'
+					input: ({ context }: { context: Context }) => required(context.dataset),
+					onDone: (args) => {
+						return { target: 'persisting', context: { index: args.event.output } }
+					},
+					onError: { target: 'failed' }
 				}
 			},
 			persisting: {
 				invoke: {
+					id: 'write',
 					src: 'write',
-					input: ({ context }) => ({
+					input: ({ context }: { context: Context }) => ({
 						key: required(context.dataset).key,
 						value: {
 							fingerprint: context.fingerprint,
 							index: JSON.stringify(required(context.index))
 						}
 					}),
-					onDone: 'ready',
-					onError: 'ready'
+					onDone: { target: 'ready' },
+					onError: { target: 'ready' }
 				}
 			},
 			ready: {
-				entry: ({ context }) =>
-					cap.report({ type: 'INDEX_READY', generation: required(context.dataset).generation }),
+				entry: ({ context }, enq) => {
+					enq(() =>
+						cap.report({
+							type: 'INDEX_READY',
+							generation: required(context.dataset).generation
+						})
+					)
+				},
 				on: {
-					QUERY: {
-						guard: 'currentQuery',
-						actions: ({ context, event }) =>
+					QUERY: (args, enq) => {
+						if (!args.guards.currentQuery(args)) return
+						const { event } = args
+						enq(() =>
 							cap.report({
 								type: 'RESULT',
 								generation: event.generation,
 								query: event.query,
-								ids: searchIndex(required(context.index), event.query)
+								ids: searchIndex(required(args.context.index), event.query)
 							})
+						)
 					}
 				}
 			},
-			failed: { entry: () => cap.report({ type: 'WORKER_ERROR' }) },
+			failed: {
+				entry: (_args, enq) => {
+					enq(() => cap.report({ type: 'WORKER_ERROR' }))
+				}
+			},
 			closed: {
 				type: 'final',
-				entry: assign({ dataset: undefined, fingerprint: '', cached: undefined, index: undefined })
+				entry: () => {
+					return {
+						context: { dataset: undefined, fingerprint: '', cached: undefined, index: undefined }
+					}
+				}
 			}
 		}
 	})

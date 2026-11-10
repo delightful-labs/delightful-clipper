@@ -1,11 +1,13 @@
-import { createActor, fromCallback } from 'xstate'
+import { createActor, createCallbackLogic } from 'xstate'
 import { expect, it, vi } from 'vitest'
 import type { LibraryEvent } from '../../contracts/library.js'
 import { tagKey, tagSelectionChange } from '../../capture/tags.js'
 import { tagFormMachine, selectTagFormView } from './tag-form.js'
 it('validates DUI selections and delegates only one canonical membership edit', () => {
 	const submit = vi.fn()
-	const library = createActor(fromCallback<LibraryEvent>(({ receive }) => receive(submit))).start()
+	const library = createActor(
+		createCallbackLogic<LibraryEvent>(({ receive }) => receive(submit))
+	).start()
 	const actor = createActor(tagFormMachine, { input: { library } }).start()
 	const choose = (
 		names: string[],

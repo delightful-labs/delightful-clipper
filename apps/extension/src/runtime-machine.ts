@@ -1,16 +1,14 @@
+import type { EventPayload } from '../../web/src/lib/machines/events.js'
 import {
-	and,
-	assign,
-	createActor,
-	fromCallback,
-	fromPromise,
-	not,
-	sendTo,
+	types,
+	createCallbackLogic,
 	setup,
-	stateIn
+	createAsyncLogic,
+	matchesState,
+	type ActorRefFrom,
+	type SnapshotFrom
 } from 'xstate'
-import type { ActorRefFrom, SnapshotFrom } from 'xstate'
-import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
+
 import { createClipMachine } from './clip-machine.js'
 import type { ApplicationStatus } from '../../web/src/lib/machines/runtime/application-readiness.js'
 import type { WorkflowMessage } from '../../web/src/lib/contracts/feedback.js'
@@ -36,6 +34,7 @@ type Context = {
 	revision: number
 	accountMessage: WorkflowMessage | undefined
 	accountStatus: ApplicationStatus | undefined
+	clipError: unknown
 }
 export function createRuntimeMachine(cap: {
 	reload: () => Promise<void>
@@ -51,74 +50,63 @@ export function createRuntimeMachine(cap: {
 	report: (snapshot: ClipSnapshot, revision: number) => Promise<unknown>
 }) {
 	const actors = {
-		reload: fromPromise(() => cap.reload()),
-		account: fromCallback(({ sendBack }) =>
+		clip: createClipMachine(),
+		reload: createAsyncLogic({ run: () => cap.reload() }),
+		account: createCallbackLogic(({ sendBack }) =>
 			cap.account((library, message, accountStatus) =>
 				sendBack({ type: 'BIND', library, message, accountStatus })
 			)
-		),
-		clip: fromCallback<{ type: 'SHUTDOWN' }, { library: Library; id: string }>(
-			({ input, sendBack, receive }) => {
-				const actor = createActor(createClipMachine(cap.clip(input.library)), {
-					input: { id: input.id }
-				})
-				const subscription = actor.subscribe((snapshot) => sendBack({ type: 'CLIP', snapshot }))
-				receive((event) => actor.send(event))
-				actor.start()
-				return () => {
-					subscription.unsubscribe()
-					stopAfterShutdown(actor)
-				}
-			}
 		)
 	}
-	return setup<
-		Context,
-		Event,
-		typeof actors,
-		{},
-		{ report: undefined; accountFeedback: undefined },
-		{
-			queued: undefined
-			admit: undefined
-			changedOwner: undefined
-			settled: undefined
-			closed: undefined
-			differentAccount: undefined
-		}
-	>({
+	const model = setup({
+		schemas: {
+			context: types<Context>(),
+			events: {
+				BIND: types<EventPayload<Event, 'BIND'>>(),
+				RUN: types<EventPayload<Event, 'RUN'>>(),
+				ACCOUNT_CHANGED: types<EventPayload<Event, 'ACCOUNT_CHANGED'>>()
+			},
+			internalEvents: { CLIP: types<EventPayload<Event, 'CLIP'>>() },
+			children: {
+				reload: types<import('xstate').ActorRefFrom<(typeof actors)['reload']>>(),
+				account: types<import('xstate').ActorRefFrom<(typeof actors)['account']>>(),
+				clip: types<ActorRefFrom<ReturnType<typeof createClipMachine>>>()
+			}
+		},
 		actors,
 		guards: {
-			queued: ({ context }) => !!context.library && context.queue.length > 0,
-			admit: ({ context, event }) =>
+			queued: ({ context }: { context: Context }) => !!context.library && context.queue.length > 0,
+			admit: ({ context, event }: { context: Context; event: Event }) =>
 				event.type === 'RUN' &&
 				event.accountId === context.library?.getSnapshot().context.capability?.libraryId &&
 				context.queue.length < 8 &&
 				context.id !== event.id &&
 				!context.queue.includes(event.id),
-			changedOwner: ({ context, event }) =>
+			changedOwner: ({ context, event }: { context: Context; event: Event }) =>
 				event.type === 'BIND' && event.library !== context.owner,
-			settled: ({ event }) =>
+			settled: ({ event }: { event: Event }) =>
 				event.type === 'CLIP' &&
 				(event.snapshot.matches('saved') ||
 					event.snapshot.matches('unknown') ||
 					event.snapshot.matches('failed')),
-			closed: ({ event }) => event.type === 'CLIP' && event.snapshot.status === 'done',
-			differentAccount: ({ context, event }) =>
+			closed: ({ event }: { event: Event }) =>
+				event.type === 'CLIP' && event.snapshot.status === 'done',
+			differentAccount: ({ context, event }: { context: Context; event: Event }) =>
 				event.type === 'ACCOUNT_CHANGED' &&
 				event.accountId !== context.library?.getSnapshot().context.capability?.libraryId
 		},
 		actions: {
-			accountFeedback: ({ context }) => {
+			accountFeedback: ({ context }: { context: Context }) => {
 				if (!context.accountMessage) return
 				void cap.waiting(context.queue, context.accountMessage, context.revision).catch(() => {})
 			},
-			report: ({ context, event }) => {
+			report: ({ context, event }: { context: Context; event: Event }) => {
 				if (event.type !== 'CLIP') return
 				void cap.report(event.snapshot, context.revision).catch(() => {})
 			}
 		}
-	}).createMachine({
+	})
+	return model.createMachine({
 		id: 'extension-runtime',
 		initial: 'idle',
 		context: {
@@ -128,49 +116,70 @@ export function createRuntimeMachine(cap: {
 			id: '',
 			revision: 0,
 			accountMessage: undefined,
-			accountStatus: undefined
+			accountStatus: undefined,
+			clipError: undefined
 		},
-		invoke: { src: 'account' },
+		invoke: { id: 'account', src: 'account' },
 		on: {
-			ACCOUNT_CHANGED: {
-				guard: 'differentAccount',
-				target: '.reloading',
-				actions: assign({ queue: [] })
+			ACCOUNT_CHANGED: (args) => {
+				if (!args.guards.differentAccount(args)) return
+				return { target: '.reloading', context: { queue: [] } }
 			},
-			BIND: {
-				actions: [
-					assign({
-						library: ({ event }) => event.library,
-						accountMessage: ({ event }) => event.message,
-						accountStatus: ({ event }) => event.accountStatus,
-						revision: ({ context }) => context.revision + 1
-					}),
-					'accountFeedback'
-				]
+			BIND: (args, enq) => {
+				const { event } = args
+				let context = args.context
+				let patch = {}
+				patch = {
+					...patch,
+					library: event.library,
+					accountMessage: event.message,
+					accountStatus: event.accountStatus,
+					revision: context.revision + 1
+				}
+				context = { ...args.context, ...patch }
+				enq(args.actions.accountFeedback, { ...args, context })
+				return { context: patch }
 			},
-			RUN: {
-				guard: and(['admit', not(stateIn('reloading')), not(stateIn({ job: 'restarting' }))]),
-				actions: [
-					assign({
-						queue: ({ context, event }) => [...context.queue, event.id],
-						revision: ({ context }) => context.revision + 1
-					}),
-					'accountFeedback'
-				]
+			RUN: (args, enq) => {
+				if (
+					!(
+						args.guards.admit(args) &&
+						!matchesState('reloading', args.value) &&
+						!matchesState('failed', args.value) &&
+						!matchesState({ job: 'restarting' }, args.value)
+					)
+				)
+					return
+				let context = args.context
+				let patch = {}
+				patch = {
+					...patch,
+					queue: [...context.queue, args.event.id],
+					revision: context.revision + 1
+				}
+				context = { ...args.context, ...patch }
+				enq(args.actions.accountFeedback, { ...args, context })
+				return { context: patch }
 			}
 		},
 		states: {
-			reloading: { invoke: { src: 'reload' }, on: { ACCOUNT_CHANGED: {} } },
+			failed: {},
+			reloading: { invoke: { id: 'reload', src: 'reload' }, on: { ACCOUNT_CHANGED: {} } },
 			idle: {
-				entry: assign({ owner: undefined, id: '' }),
-				always: {
-					guard: 'queued',
-					target: 'job',
-					actions: assign({
-						owner: ({ context }) => context.library,
-						id: ({ context }) => context.queue[0]!,
-						queue: ({ context }) => context.queue.slice(1)
-					})
+				entry: () => {
+					return { context: { owner: undefined, id: '' } }
+				},
+				always: (args) => {
+					if (!args.guards.queued(args)) return
+					const { context } = args
+					return {
+						target: 'job',
+						context: {
+							owner: context.library,
+							id: context.queue[0]!,
+							queue: context.queue.slice(1)
+						}
+					}
 				}
 			},
 			job: {
@@ -178,53 +187,89 @@ export function createRuntimeMachine(cap: {
 				invoke: {
 					id: 'clip',
 					src: 'clip',
-					input: ({ context }) => ({ library: context.owner!, id: context.id })
+					input: ({ context }) => ({ id: context.id, capability: cap.clip(context.owner!) }),
+					onSnapshot: ({ event }, enq) => {
+						enq.raise({ type: 'CLIP', snapshot: event.snapshot })
+					},
+					onDone: ({ value }) => ({
+						target: matchesState({ job: 'restarting' }, value)
+							? '#extension-runtime.reloading'
+							: '#extension-runtime.idle'
+					}),
+					onError: ({ event }) => ({
+						target: '#extension-runtime.failed',
+						context: { clipError: event.error, queue: [] }
+					})
 				},
 				on: {
-					ACCOUNT_CHANGED: {
-						guard: 'differentAccount',
-						target: '.restarting',
-						actions: [assign({ queue: [] }), sendTo('clip', { type: 'SHUTDOWN' })]
+					ACCOUNT_CHANGED: (args, enq) => {
+						if (!args.guards.differentAccount(args)) return
+						enq.sendTo('clip', { type: 'SHUTDOWN' })
+						return { target: '.restarting', context: { queue: [] } }
 					},
-					BIND: {
-						guard: 'changedOwner',
-						target: '.draining',
-						actions: [
-							assign({ library: ({ event }) => event.library, queue: [] }),
-							sendTo('clip', { type: 'SHUTDOWN' })
-						]
+					BIND: (args, enq) => {
+						if (!args.guards.changedOwner(args)) return
+						enq.sendTo('clip', { type: 'SHUTDOWN' })
+						return { target: '.draining', context: { library: args.event.library, queue: [] } }
 					},
-					CLIP: { actions: [assign({ revision: ({ context }) => context.revision + 1 }), 'report'] }
+					CLIP: (args, enq) => {
+						let context = args.context
+						let patch = {}
+						patch = { ...patch, revision: context.revision + 1 }
+						context = { ...args.context, ...patch }
+						enq(args.actions.report, { ...args, context })
+						return { context: patch }
+					}
 				},
 				states: {
 					active: {
 						on: {
-							CLIP: [
-								{
-									guard: 'settled',
-									target: 'observing',
-									actions: [assign({ revision: ({ context }) => context.revision + 1 }), 'report']
-								},
-								{ guard: 'closed', target: '#extension-runtime.idle' }
-							]
+							CLIP: (args, enq) => {
+								if (args.guards.settled(args)) {
+									let context = args.context
+									let patch = {}
+									patch = { ...patch, revision: context.revision + 1 }
+									context = { ...args.context, ...patch }
+									enq(args.actions.report, { ...args, context })
+									return { target: 'observing', context: patch }
+								}
+								if (args.guards.closed(args)) {
+									return { target: '#extension-runtime.idle' }
+								}
+							}
 						}
 					},
-					observing: { always: { guard: 'queued', target: '#extension-runtime.idle' } },
+					observing: {
+						always: (args) => {
+							if (!args.guards.queued(args)) return
+							return { target: '#extension-runtime.idle' }
+						}
+					},
 					restarting: {
 						on: {
 							ACCOUNT_CHANGED: {},
-							CLIP: [
-								{ guard: 'closed', target: '#extension-runtime.reloading' },
-								{ guard: 'settled', actions: sendTo('clip', { type: 'SHUTDOWN' }) }
-							]
+							CLIP: (args, enq) => {
+								if (args.guards.closed(args)) {
+									return { target: '#extension-runtime.reloading' }
+								}
+								if (args.guards.settled(args)) {
+									enq.sendTo('clip', { type: 'SHUTDOWN' })
+									return {}
+								}
+							}
 						}
 					},
 					draining: {
 						on: {
-							CLIP: [
-								{ guard: 'closed', target: '#extension-runtime.idle' },
-								{ guard: 'settled', actions: sendTo('clip', { type: 'SHUTDOWN' }) }
-							]
+							CLIP: (args, enq) => {
+								if (args.guards.closed(args)) {
+									return { target: '#extension-runtime.idle' }
+								}
+								if (args.guards.settled(args)) {
+									enq.sendTo('clip', { type: 'SHUTDOWN' })
+									return {}
+								}
+							}
 						}
 					}
 				}

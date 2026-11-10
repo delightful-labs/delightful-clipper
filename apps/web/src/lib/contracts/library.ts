@@ -1,25 +1,16 @@
 import type { OrganizationRequest, LibraryView } from '../capture/organization.js'
-import type { ActorLogic, ActorRef, Snapshot } from 'xstate'
+import type { ActorInstance, Snapshot } from 'xstate'
 import type { ArticleSaveResult, LibraryArticle, SaveArticleRequest } from './articles.js'
 import type { QueueOpen, QueueReport } from './article-worker.js'
 import type { ReadCapabilities, ReadReport, SyncReport } from './storage.js'
-export type SaveRef = ActorRef<Snapshot<ArticleSaveResult>, { type: 'SHUTDOWN' }>
-export type SaveSpawner = <S extends Snapshot<ArticleSaveResult>>(
-	logic: ActorLogic<S, { type: 'SHUTDOWN' }, SaveArticleRequest>,
-	options: { input: SaveArticleRequest }
-) => ActorRef<S, { type: 'SHUTDOWN' }>
-export type OrganizationSpawner = <S extends Snapshot<ArticleSaveResult>>(
-	logic: ActorLogic<S, { type: 'SHUTDOWN' }, OrganizationRequest>,
-	options: { input: OrganizationRequest }
-) => ActorRef<S, { type: 'SHUTDOWN' }>
-export type FakeDataRef = ActorRef<
+export type SaveRef = ActorInstance<Snapshot<ArticleSaveResult>, { type: 'SHUTDOWN' }>
+export type SaveSpawner = import('../machines/children.js').ChildSpawner
+export type OrganizationSpawner = import('../machines/children.js').ChildSpawner
+export type FakeDataRef = ActorInstance<
 	Snapshot<import('../samples/machine.js').FakeDataOutcome>,
 	{ type: 'SHUTDOWN' }
 >
-export type FakeDataSpawner = <S extends Snapshot<import('../samples/machine.js').FakeDataOutcome>>(
-	logic: ActorLogic<S, { type: 'SHUTDOWN' }, undefined>,
-	options: { input: undefined }
-) => FakeDataRef
+export type FakeDataSpawner = import('../machines/children.js').ChildSpawner
 export type LibraryCapability = {
 	images?: import('./images.js').ImageCapability
 	reader?: import('./reader.js').ReaderCapability

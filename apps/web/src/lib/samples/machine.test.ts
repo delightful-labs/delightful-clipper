@@ -42,7 +42,7 @@ function fixture(
 		enabled: options.enabled ?? true,
 		libraryId: 'library',
 		isCurrent: () => true,
-		stage,
+		stage: (spawn, input) => spawn(stage, { input }),
 		local,
 		authority
 	})
@@ -113,7 +113,7 @@ it('keeps the library owner alive until an issued seed settles during shutdown',
 		enabled: true,
 		libraryId: 'library',
 		isCurrent: () => true,
-		stage,
+		stage: (spawn, input) => spawn(stage, { input }),
 		local: async () => ({ hasData: false, owned: true }),
 		authority: async () => ({ hasData: false, owned: true })
 	})

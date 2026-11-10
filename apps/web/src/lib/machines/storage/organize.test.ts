@@ -48,7 +48,10 @@ it.each(['open', 'read', 'stage', 'commit', 'local', 'unknown', 'scope'] as cons
 			rollback
 		})
 		const actor = createActor(
-			createOrganizationMachine(stage, () => current),
+			createOrganizationMachine(
+				(spawn, input) => spawn(stage, { input }),
+				() => current
+			),
 			{ input: request }
 		).start()
 		await entered.promise
@@ -85,7 +88,10 @@ it('rejects stale admission before opening a transaction', async () => {
 		(
 			await toPromise(
 				createActor(
-					createOrganizationMachine(stage, () => false),
+					createOrganizationMachine(
+						(spawn, input) => spawn(stage, { input }),
+						() => false
+					),
 					{ input: request }
 				).start()
 			)
@@ -122,7 +128,10 @@ it('snapshots the desired scalar before asynchronous transaction work', async ()
 		rollback: () => true
 	})
 	const actor = createActor(
-		createOrganizationMachine(stage, () => true),
+		createOrganizationMachine(
+			(spawn, input) => spawn(stage, { input }),
+			() => true
+		),
 		{ input }
 	).start()
 	await entered.promise
@@ -156,7 +165,7 @@ it.each(['shutdown', 'scope', 'failure'] as const)(
 		})
 		const actor = createActor(
 			createOrganizationMachine(
-				stage,
+				(spawn, input) => spawn(stage, { input }),
 				() => current,
 				async () => {
 					entered.resolve()
@@ -176,3 +185,20 @@ it.each(['shutdown', 'scope', 'failure'] as const)(
 		expect(actor.getSnapshot().context.operations).toEqual([])
 	}
 )
+
+it('retains the issued identity when shutdown precedes operation admission', async () => {
+	const stage = vi.fn(() => {
+		throw new Error('Shutdown must precede native writes')
+	})
+	const actor = createActor(
+		createOrganizationMachine(stage, () => true),
+		{ input: request }
+	).start()
+	actor.send({ type: 'SHUTDOWN' })
+	const result = await toPromise(actor)
+	expect(result.kind).toBe('interrupted')
+	expect(result.operationId).toMatch(
+		/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+	)
+	expect(stage).not.toHaveBeenCalled()
+})

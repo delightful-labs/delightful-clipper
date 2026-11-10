@@ -1,8 +1,8 @@
 import { imageUrlSchema } from '../../images/schema.js'
 import { bindWorkerConnectivity } from '../../offline/connectivity.js'
 /// <reference lib="webworker" />
-import { createActor } from 'xstate'
-import type { AnyActorRef } from 'xstate'
+import { createActor, type AnyActorRef } from 'xstate'
+
 import { z } from 'zod'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { accountInput } from '../../backend/jazz/account.js'
@@ -80,7 +80,11 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 			} else {
 				host.send(message)
 				if (message.type === 'LIBRARY' || message.type === 'TAG_FORM')
-					self.postMessage({ type: 'RECEIVED', requestId: message.requestId, scope: message.scope })
+					self.postMessage({
+						type: 'RECEIVED',
+						requestId: message.requestId,
+						scope: message.scope
+					})
 			}
 		}
 		return
@@ -99,7 +103,10 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		store: createWorkerAccountStore(key, storage),
 		runtimeSources: { wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION, browserWorkerHost: broker }
 	})
-	const actor = createActor(workerHostMachine, { input, inspect: inspectMachines })
+	const actor = createActor(workerHostMachine, {
+		input: { ...input, scope: crypto.randomUUID() },
+		inspect: inspectMachines
+	})
 	host = actor
 	const publish = () => {
 		if (actor.getSnapshot().matches('failed')) {
@@ -124,7 +131,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		const library = selectLibraryActor(snapshot)
 		if (library !== observedLibrary) {
 			observedLibrary = library
-			actor.send({ type: 'BIND_LIBRARY', library })
+			actor.send({ type: 'BIND_LIBRARY', library, scope: crypto.randomUUID() })
 			return
 		}
 		const watched: AnyActorRef[] = [
@@ -148,6 +155,7 @@ self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		for (const surface of surfaces) {
 			if (
 				readerContext?.attachment?.surface !== surface &&
+				readerContext?.pendingAttachment?.surface !== surface &&
 				readerContext?.display !== surface.fullscreen
 			) {
 				surface.dispose()

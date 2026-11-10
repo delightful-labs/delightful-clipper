@@ -1,21 +1,15 @@
+import type { EventPayload } from '../machines/events.js'
+import { types, createCallbackLogic, setup, createAsyncLogic, matchesState } from 'xstate'
 import { connectivityEvents, isOnline } from '../offline/connectivity.js'
 import { t } from '../localization/index.js'
 import { canRetryImageFetch, imageRetryDelay } from './failure.js'
-import {
-	assign,
-	raise,
-	enqueueActions,
-	fromCallback,
-	fromPromise,
-	setup,
-	stateIn,
-	and,
-	not,
-	stopChild,
-	sendTo
-} from 'xstate'
-import type { ActorRefFrom } from 'xstate'
-import type { ImageCapability, ImageStageRef, ImageStageResult } from '../contracts/images.js'
+
+import type {
+	ImageCapability,
+	ImageSpawner,
+	ImageStageRef,
+	ImageStageResult
+} from '../contracts/images.js'
 import type { ReaderExperienceEvent } from '../machines/reader/experience.js'
 import { imageViewMachine } from './view-machine.js'
 import type { ImageView, ImageViewReport } from './view-machine.js'
@@ -37,13 +31,13 @@ type Event =
 	| { type: 'RETRY'; id: string }
 	| { type: 'IMAGE_ERROR'; id: string; url: string }
 	| { type: 'WAKE' }
-	| { type: `xstate.done.actor.${string}`; actorId: string; output: ImageStageResult }
-	| { type: `xstate.error.actor.${string}`; actorId: string; error: unknown }
+	| { type: 'WRITE_DONE'; actorId: string; output: ImageStageResult }
+	| { type: 'WRITE_ERROR'; actorId: string; error: unknown }
 type Context = Input & {
 	worker: Worker | undefined
 	observationFailed: boolean
 	issue: unknown
-	notBefore: number
+	quotaDelayMs: number
 	rows: ArticleImage[]
 	online: boolean
 	attempts: Record<string, number>
@@ -55,16 +49,22 @@ type Context = Input & {
 	retryable: boolean
 	write: ImageStageRef | undefined
 	documentId: string
-	slots: ActorRefFrom<typeof imageViewMachine>[]
+	slots: import('xstate').ActorFromLogic<typeof imageViewMachine>[]
 	views: Record<string, ImageView>
 }
-const observe = fromCallback<Event, ImageCapability>(({ input, sendBack }) =>
+// Stable per-operation jitter keeps predictive calculation free of entropy reads.
+function retryJitter(id: string, attempt: number) {
+	let hash = attempt
+	for (const char of id) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
+	return (hash >>> 0) / 4294967295
+}
+const observe = createCallbackLogic<Event, ImageCapability>(({ input, sendBack }) =>
 	input.subscribe(
 		(rows) => sendBack({ type: 'IMAGE_ROWS', rows }),
 		() => sendBack({ type: 'OBSERVATION_FAILED' })
 	)
 )
-const connectivity = fromCallback<Event>(({ sendBack }) => {
+const connectivity = createCallbackLogic<Event>(({ sendBack }) => {
 	const report = () => sendBack({ type: 'CONNECTIVITY', online: isOnline() })
 	connectivityEvents().addEventListener('online', report)
 	connectivityEvents().addEventListener('offline', report)
@@ -74,14 +74,14 @@ const connectivity = fromCallback<Event>(({ sendBack }) => {
 		connectivityEvents().removeEventListener('offline', report)
 	}
 })
-const reconcile = fromPromise<boolean, Context>(({ input, signal }) =>
-	input.capability!.hasIntent(input.selected!.id, signal)
-)
-const fetchImage = fromPromise<{ bytes: Uint8Array; mediaType: string }, Context>(
-	({ input, signal }) =>
+const reconcile = createAsyncLogic<boolean, Context>({
+	run: ({ input, signal }) => input.capability!.hasIntent(input.selected!.id, signal)
+})
+const fetchImage = createAsyncLogic<{ bytes: Uint8Array; mediaType: string }, Context>({
+	run: ({ input, signal }) =>
 		input.capability!.request(input.selected!.sourceUrl, input.selected!.id, signal)
-)
-const process = fromCallback<Event>(({ sendBack }) => {
+})
+const process = createCallbackLogic<Event>(({ sendBack }) => {
 	const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
 	worker.onmessage = (event) => sendBack({ type: 'WORKER_RESULT', value: event.data })
 	worker.onerror = () => sendBack({ type: 'WORKER_RESULT', value: undefined })
@@ -92,7 +92,7 @@ const process = fromCallback<Event>(({ sendBack }) => {
 		worker.terminate()
 	}
 })
-const post = fromCallback<Event, Context>(({ input, sendBack }) => {
+const post = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
 	input.worker!.postMessage(input.fetched)
 	sendBack({ type: 'POSTED' })
 })
@@ -105,46 +105,51 @@ function nextImage(context: Context) {
 	)
 	return eligible.find((row) => row.status === 'pending') ?? eligible[0]
 }
-const model = setup<
-	Context,
-	Event,
-	{
-		observe: typeof observe
-		connectivity: typeof connectivity
-		fetchImage: typeof fetchImage
-		reconcile: typeof reconcile
-		process: typeof process
-		post: typeof post
-		receipts: typeof syncOwnerMachine
-		view: typeof imageViewMachine
+const model = setup({
+	schemas: {
+		context: types<Context>(),
+		events: {
+			WRITE_DONE: types<{ actorId: string; output: ImageStageResult }>(),
+			WRITE_ERROR: types<{ actorId: string; error: unknown }>(),
+			SYNC: types<EventPayload<Event, 'SYNC'>>(),
+			MEASURE: types<EventPayload<Event, 'MEASURE'>>(),
+			VIEWPORT_FAILED: types<EventPayload<Event, 'VIEWPORT_FAILED'>>(),
+			CHANGE: types<EventPayload<Event, 'CHANGE'>>(),
+			ROWS: types<EventPayload<Event, 'ROWS'>>(),
+			ATTACH: types<EventPayload<Event, 'ATTACH'>>(),
+			ATTACH_SURFACE: types<EventPayload<Event, 'ATTACH_SURFACE'>>(),
+			SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>(),
+			REFLOW: types<EventPayload<Event, 'REFLOW'>>(),
+			DETACH: types<EventPayload<Event, 'DETACH'>>(),
+			FOCUS: types<EventPayload<Event, 'FOCUS'>>(),
+			SHOW_CONTROLS: types<EventPayload<Event, 'SHOW_CONTROLS'>>(),
+			OBSERVATION_FAILED: types<EventPayload<Event, 'OBSERVATION_FAILED'>>(),
+			REFRESH_SYNC: types<EventPayload<Event, 'REFRESH_SYNC'>>(),
+			FULLSCREEN_CHANGED: types<EventPayload<Event, 'FULLSCREEN_CHANGED'>>(),
+			FULLSCREEN_OBSERVED: types<EventPayload<Event, 'FULLSCREEN_OBSERVED'>>(),
+			IMAGE_VIEW: types<EventPayload<Event, 'IMAGE_VIEW'>>(),
+			IMAGE_ROWS: types<EventPayload<Event, 'IMAGE_ROWS'>>(),
+			CONNECTIVITY: types<EventPayload<Event, 'CONNECTIVITY'>>(),
+			WORKER_RESULT: types<EventPayload<Event, 'WORKER_RESULT'>>(),
+			WORKER_OPENED: types<EventPayload<Event, 'WORKER_OPENED'>>(),
+			POSTED: types<EventPayload<Event, 'POSTED'>>(),
+			RETRY: types<EventPayload<Event, 'RETRY'>>(),
+			IMAGE_ERROR: types<EventPayload<Event, 'IMAGE_ERROR'>>(),
+			WAKE: types<EventPayload<Event, 'WAKE'>>()
+		},
+		input: types<Input>(),
+		tags: types<string>(),
+		children: {
+			observe: types<import('xstate').ActorRefFrom<typeof observe>>(),
+			connectivity: types<import('xstate').ActorRefFrom<typeof connectivity>>(),
+			fetchImage: types<import('xstate').ActorRefFrom<typeof fetchImage>>(),
+			reconcile: types<import('xstate').ActorRefFrom<typeof reconcile>>(),
+			process: types<import('xstate').ActorRefFrom<typeof process>>(),
+			post: types<import('xstate').ActorRefFrom<typeof post>>(),
+			receipts: types<import('xstate').ActorRefFrom<typeof syncOwnerMachine>>(),
+			view: types<import('xstate').ActorRefFrom<typeof imageViewMachine>>()
+		}
 	},
-	{ receipts: 'receipts' },
-	{
-		attach: undefined
-		detach: undefined
-		startReady: undefined
-		startFailure: undefined
-		recordReady: undefined
-		recordFailure: undefined
-		selectNext: undefined
-	},
-	{
-		current: undefined
-		eligible: undefined
-		closing: undefined
-		ownCompletion: undefined
-		workerSucceeded: undefined
-		online: undefined
-		retryableFetch: undefined
-		currentView: undefined
-		uncertainView: undefined
-		readyView: undefined
-		quotaCoolingDown: undefined
-	},
-	'retryDelay' | 'quotaDelay',
-	string,
-	Input
->({
 	actors: {
 		observe,
 		connectivity,
@@ -161,149 +166,100 @@ const model = setup<
 				300000,
 				1000 *
 					2 ** Math.max(0, (context.attempts[context.selected!.id] ?? 1) - 1) *
-					(0.8 + Math.random() * 0.4)
+					(0.8 +
+						retryJitter(context.selected!.id, context.attempts[context.selected!.id] ?? 1) * 0.4)
 			),
-		quotaDelay: ({ context }) => Math.max(0, context.notBefore - Date.now())
+		quotaDelay: ({ context }) => context.quotaDelayMs
 	},
 	guards: {
-		quotaCoolingDown: ({ context }) => context.notBefore > Date.now(),
-		currentView: ({ context, event }) =>
+		quotaCoolingDown: ({ context }: { context: Context }) => context.quotaDelayMs > 0,
+		currentView: ({ context, event }: { context: Context; event: Event }) =>
 			event.type === 'IMAGE_VIEW' &&
 			context.capability?.isCurrent() === true &&
 			event.documentId === context.documentId,
-		uncertainView: ({ context, event }) =>
+		uncertainView: ({ context, event }: { context: Context; event: Event }) =>
 			event.type === 'IMAGE_VIEW' && !!event.view.id && context.uncertain.includes(event.view.id),
-		readyView: ({ event }) => event.type === 'IMAGE_VIEW' && event.view.status === 'ready',
-		retryableFetch: ({ context }) => canRetryImageFetch(context.issue),
-		current: ({ context }) => context.capability?.isCurrent() === true,
-		online: ({ context }) => context.online,
-		eligible: ({ context }) => !!nextImage(context),
-		closing: stateIn({ running: { control: 'closing' } }),
-		ownCompletion: ({ context, event }) =>
+		readyView: ({ event }: { event: Event }) =>
+			event.type === 'IMAGE_VIEW' && event.view.status === 'ready',
+		retryableFetch: ({ context }: { context: Context }) => canRetryImageFetch(context.issue),
+		current: ({ context }: { context: Context }) => context.capability?.isCurrent() === true,
+		online: ({ context }: { context: Context }) => context.online,
+		eligible: ({ context }: { context: Context }) => !!nextImage(context),
+		closing: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ running: { control: 'closing' } }, value),
+		ownCompletion: ({ context, event }: { context: Context; event: Event }) =>
 			'actorId' in event && event.actorId === context.write?.id,
-		workerSucceeded: ({ event }) =>
+		workerSucceeded: ({ event }: { event: Event }) =>
 			event.type === 'WORKER_RESULT' && imageWorkerResultSchema.safeParse(event.value).success
 	},
 	actions: {
-		selectNext: assign({
-			selected: ({ context }) => nextImage(context),
-			retryable: true,
-			fetched: undefined,
-			result: undefined
+		selectNext: ({ context }: { context: Context }) => ({
+			context: {
+				selected: nextImage(context),
+				retryable: true,
+				fetched: undefined,
+				result: undefined
+			}
 		}),
-		startReady: assign(({ context, spawn }) => ({
-			write: context.capability!.spawnReady(spawn, {
-				image: context.selected!,
-				kind: 'ready',
-				result: context.result!
-			})
-		})),
-		startFailure: assign(({ context, spawn }) => ({
-			write: context.capability!.spawnFailure(spawn, {
-				image: context.selected!,
-				kind: 'failed',
-				retryable: context.retryable
-			})
-		})),
-		recordReady: assign(({ context }) => ({
-			rows: context.rows.map((row) =>
-				row.id === context.selected!.id
-					? { ...row, status: 'ready' as const, assetId: row.id, retryable: false }
-					: row
-			),
-			blocked: [...context.blocked, context.selected!.id],
-			write: undefined,
-			fetched: undefined,
-			result: undefined
-		})),
-		recordFailure: assign(({ context }) => ({
-			rows: context.rows.map((row) =>
-				row.id === context.selected!.id
-					? { ...row, status: 'failed' as const, assetId: null, retryable: context.retryable }
-					: row
-			),
-			write: undefined,
-			fetched: undefined,
-			result: undefined
-		})),
-		detach: enqueueActions(({ context, enqueue }) => {
-			for (const slot of context.slots) enqueue.stopChild(slot)
-			enqueue.assign({ slots: [], views: {}, documentId: '' })
+		startReady: ({ context, spawn }: { context: Context; spawn: ImageSpawner }) => ({
+			context: {
+				write: context.capability!.spawnReady(spawn, {
+					image: context.selected!,
+					kind: 'ready',
+					result: context.result!
+				})
+			}
 		}),
-		attach: enqueueActions(({ context, event, enqueue }) => {
-			if (event.type !== 'ATTACH' && event.type !== 'ATTACH_SURFACE') return
-			for (const slot of context.slots) enqueue.stopChild(slot)
-			const urls = event.type === 'ATTACH' ? imageSources(event.root.innerHTML) : event.sources
-			enqueue.assign(({ context, spawn }) => ({
-				documentId: event.documentId,
-				views: {},
-				slots: urls.map((sourceUrl) =>
-					spawn('view', {
-						input: { capability: context.capability!, documentId: event.documentId, sourceUrl }
-					})
-				)
-			}))
-		})
-	}
-}).extend({
-	actions: {
-		notifyUncertain: ({ context }) => {
+		startFailure: ({ context, spawn }: { context: Context; spawn: ImageSpawner }) => ({
+			context: {
+				write: context.capability!.spawnFailure(spawn, {
+					image: context.selected!,
+					kind: 'failed',
+					retryable: context.retryable
+				})
+			}
+		}),
+		recordReady: ({ context }: { context: Context }): { context: Partial<Context> } => ({
+			context: {
+				rows: context.rows.map((row) =>
+					row.id === context.selected!.id
+						? { ...row, status: 'ready', assetId: row.id, retryable: false }
+						: row
+				),
+				blocked: [...context.blocked, context.selected!.id],
+				write: undefined,
+				fetched: undefined,
+				result: undefined
+			}
+		}),
+		recordFailure: ({ context }: { context: Context }): { context: Partial<Context> } => ({
+			context: {
+				rows: context.rows.map((row) =>
+					row.id === context.selected!.id
+						? { ...row, status: 'failed', assetId: null, retryable: context.retryable }
+						: row
+				),
+				write: undefined,
+				fetched: undefined,
+				result: undefined
+			}
+		}),
+		notifyUncertain: ({ context }: { context: Context }) => {
 			for (const slot of context.slots)
 				slot.send({ type: 'UNKNOWN', sourceUrl: context.selected!.sourceUrl })
 		},
-		recordUncertain: assign({
-			blocked: ({ context }) => [...context.blocked, context.selected!.id],
-			uncertain: ({ context }) => [...context.uncertain, context.selected!.id],
-			write: undefined,
-			fetched: undefined,
-			result: undefined
+		recordUncertain: ({ context }: { context: Context }): { context: Partial<Context> } => ({
+			context: {
+				blocked: [...context.blocked, context.selected!.id],
+				uncertain: [...context.uncertain, context.selected!.id],
+				write: undefined,
+				fetched: undefined,
+				result: undefined
+			}
 		})
 	}
 })
-const writing = (start: 'startReady' | 'startFailure', settled: 'recordReady' | 'recordFailure') =>
-	model.createStateConfig({
-		entry: start,
-		exit: stopChild(({ context }) => context.write!),
-		on: {
-			SHUTDOWN: {},
-			OBSERVATION_FAILED: { actions: assign({ observationFailed: true }) },
-			WAKE: {},
-			'xstate.done.actor.*': [
-				{
-					guard: and([
-						'ownCompletion',
-						({ event }) => !event.output || event.output.settlement.kind === 'unresolved'
-					]),
-					target: 'routing',
-					actions: ['notifyUncertain', 'recordUncertain']
-				},
-				{
-					guard: and([
-						'ownCompletion',
-						({ event }) => event.output?.settlement.kind === 'locallyPersisted'
-					]),
-					target: 'routing',
-					actions: [
-						sendTo('receipts', ({ context, event }) => ({
-							type: 'WATCH',
-							id: context.selected!.id,
-							receipts:
-								event.output?.settlement.kind === 'locallyPersisted'
-									? [event.output.settlement.workspace]
-									: []
-						})),
-						settled
-					]
-				},
-				{ guard: 'ownCompletion', target: 'routing', actions: 'recordUncertain' }
-			],
-			'xstate.error.actor.*': {
-				guard: 'ownCompletion',
-				target: 'routing',
-				actions: ['notifyUncertain', 'recordUncertain']
-			}
-		}
-	})
+
 export const imageQueueMachine = model.createMachine({
 	id: 'image-queue',
 	initial: 'admitting',
@@ -312,7 +268,7 @@ export const imageQueueMachine = model.createMachine({
 		worker: undefined,
 		observationFailed: false,
 		issue: undefined,
-		notBefore: 0,
+		quotaDelayMs: 0,
 		rows: [],
 		online: false,
 		attempts: {},
@@ -328,264 +284,501 @@ export const imageQueueMachine = model.createMachine({
 		views: {}
 	}),
 	states: {
-		admitting: { always: [{ guard: 'current', target: 'running' }, { target: 'closed' }] },
+		admitting: {
+			type: 'choice',
+			choice: (args) => {
+				if (args.guards.current(args)) {
+					return { target: 'running' }
+				}
+				return { target: 'closed' }
+			}
+		},
 		running: {
 			type: 'parallel',
 			invoke: [
 				{
+					id: 'observe',
 					src: 'observe',
-					input: ({ context }) => context.capability!,
-					onError: { actions: raise({ type: 'OBSERVATION_FAILED' }) }
+					input: ({ context }: { context: Context }) => context.capability!,
+					onError: (args, enq) => {
+						enq.raise({ type: 'OBSERVATION_FAILED' })
+					}
 				},
-				{ src: 'connectivity' },
+				{ id: 'connectivity', src: 'connectivity' },
 				{ id: 'receipts', src: 'receipts', input: ({ self }) => ({ reportTo: self }) }
 			],
-			always: {
-				guard: and([
-					'closing',
-					not(stateIn({ running: { queue: 'savingReady' } })),
-					not(stateIn({ running: { queue: 'savingFailure' } }))
-				]),
-				target: 'closed'
+			always: (args) => {
+				if (
+					!(
+						args.guards.closing(args) &&
+						!(({ value }: { value: import('xstate').StateValue }) =>
+							matchesState({ running: { queue: 'savingReady' } }, value))(args) &&
+						!(({ value }: { value: import('xstate').StateValue }) =>
+							matchesState({ running: { queue: 'savingFailure' } }, value))(args)
+					)
+				)
+					return
+				return { target: 'closed' }
 			},
 			on: {
-				IMAGE_ROWS: {
-					guard: 'current',
-					actions: [
-						assign({ rows: ({ event }) => event.rows }),
-						({ self }) => self.send({ type: 'WAKE' })
-					]
+				IMAGE_ROWS: (args, enq) => {
+					if (!args.guards.current(args)) return
+					enq(() => args.self.send({ type: 'WAKE' }))
+					return { context: { rows: args.event.rows } }
 				},
-				CONNECTIVITY: {
-					actions: [
-						assign(({ context, event }) => ({
+				CONNECTIVITY: (args, enq) => {
+					const { context, event } = args
+					enq(() => args.self.send({ type: 'WAKE' }))
+					return {
+						context: {
 							online: event.online,
 							attempts: event.online && !context.online ? {} : context.attempts
-						})),
-						({ self }) => self.send({ type: 'WAKE' })
-					]
+						}
+					}
 				},
-				RETRY: {
-					guard: ({ context, event }) =>
-						context.capability?.isCurrent() === true &&
-						(!context.blocked.includes(event.id) ||
-							context.rows.some((row) => row.id === event.id && row.status === 'ready')),
-					actions: [
-						({ context, event }) => {
-							for (const slot of context.slots) slot.send({ type: 'RETRY', id: event.id })
-						},
-						assign(({ context, event }) => ({
+				RETRY: (args, enq) => {
+					const { context, event } = args
+					if (
+						!(
+							context.capability?.isCurrent() === true &&
+							(!context.blocked.includes(event.id) ||
+								context.rows.some((row) => row.id === event.id && row.status === 'ready'))
+						)
+					)
+						return
+					enq(({ context, event }) => {
+						for (const slot of context.slots) slot.send({ type: 'RETRY', id: event.id })
+					}, args)
+					enq(() => args.self.send({ type: 'WAKE' }))
+					return {
+						context: {
 							attempts: { ...context.attempts, [event.id]: 0 },
 							rows: context.rows.map((row) =>
 								row.id === event.id && row.status !== 'ready'
-									? { ...row, status: 'pending' as const, retryable: true }
+									? { ...row, status: 'pending', retryable: true }
 									: row
 							)
-						})),
-						({ self }) => self.send({ type: 'WAKE' })
-					]
+						}
+					}
 				},
-				IMAGE_ERROR: {
-					actions: ({ context, event }) => {
+				IMAGE_ERROR: (args, enq) => {
+					enq(({ context, event }) => {
 						for (const slot of context.slots) slot.send(event)
+					}, args)
+				},
+				ATTACH: (args, enq) => {
+					if (!args.guards.current(args)) return
+					const { context, event } = args
+					for (const slot of context.slots) enq.stop(slot)
+					const urls = imageSources(event.root.innerHTML)
+					return {
+						context: {
+							documentId: event.documentId,
+							views: {},
+							slots: urls.map((sourceUrl) =>
+								enq.spawn('view', {
+									input: {
+										capability: context.capability!,
+										documentId: event.documentId,
+										sourceUrl
+									}
+								})
+							)
+						}
 					}
 				},
-				ATTACH: { guard: 'current', actions: 'attach' },
-				ATTACH_SURFACE: { guard: 'current', actions: 'attach' },
-				DETACH: { actions: 'detach' },
-				IMAGE_VIEW: [
-					{
-						guard: and(['currentView', 'uncertainView', 'readyView']),
-						actions: assign({
-							views: ({ context, event }) => ({
-								...context.views,
-								[event.sourceUrl]: {
-									...event.view,
-									retry: false,
-									message: { text: t('status.save_unknown'), variant: 'error' as const }
-								}
-							})
-						})
-					},
-					{
-						guard: and(['currentView', 'uncertainView']),
-						actions: assign({
-							views: ({ context, event }) => ({
-								...context.views,
-								[event.sourceUrl]: {
-									...event.view,
-									status: 'unknown' as const,
-									retry: false,
-									message: { text: t('status.save_unknown'), variant: 'error' as const }
-								}
-							})
-						})
-					},
-					{
-						guard: 'currentView',
-						actions: assign({
-							views: ({ context, event }) => ({ ...context.views, [event.sourceUrl]: event.view })
-						})
+				ATTACH_SURFACE: (args, enq) => {
+					if (!args.guards.current(args)) return
+					const { context, event } = args
+					for (const slot of context.slots) enq.stop(slot)
+					const urls = event.sources
+					return {
+						context: {
+							documentId: event.documentId,
+							views: {},
+							slots: urls.map((sourceUrl) =>
+								enq.spawn('view', {
+									input: {
+										capability: context.capability!,
+										documentId: event.documentId,
+										sourceUrl
+									}
+								})
+							)
+						}
 					}
-				]
+				},
+				DETACH: ({ context }, enq) => {
+					for (const slot of context.slots) enq.stop(slot)
+					return { context: { slots: [], views: {}, documentId: '' } }
+				},
+				IMAGE_VIEW: (args) => {
+					const { context, event } = args
+					if (
+						args.guards.currentView(args) &&
+						args.guards.uncertainView(args) &&
+						args.guards.readyView(args)
+					) {
+						return {
+							context: {
+								views: {
+									...context.views,
+									[event.sourceUrl]: {
+										...event.view,
+										retry: false,
+										message: { text: t('status.save_unknown'), variant: 'error' }
+									}
+								}
+							}
+						}
+					}
+					if (args.guards.currentView(args) && args.guards.uncertainView(args)) {
+						return {
+							context: {
+								views: {
+									...context.views,
+									[event.sourceUrl]: {
+										...event.view,
+										status: 'unknown',
+										retry: false,
+										message: { text: t('status.save_unknown'), variant: 'error' }
+									}
+								}
+							}
+						}
+					}
+					if (args.guards.currentView(args)) {
+						return { context: { views: { ...context.views, [event.sourceUrl]: event.view } } }
+					}
+				}
 			},
 			states: {
 				control: {
 					initial: 'accepting',
-					states: { accepting: { on: { SHUTDOWN: 'closing' } }, closing: {} }
+					states: { accepting: { on: { SHUTDOWN: { target: 'closing' } } }, closing: {} }
 				},
 				queue: {
 					initial: 'routing',
 					on: {
-						OBSERVATION_FAILED: {
-							target: '.unavailable',
-							actions: assign({ observationFailed: true })
+						OBSERVATION_FAILED: () => {
+							return { target: '.unavailable', context: { observationFailed: true } }
 						}
 					},
 					states: {
 						routing: {
-							always: [
-								{ guard: ({ context }) => context.observationFailed, target: 'unavailable' },
-								{
-									guard: and(['current', 'online', 'eligible', not('closing'), 'quotaCoolingDown']),
-									target: 'quotaBackoff'
-								},
-								{
-									guard: and(['current', 'online', 'eligible', not('closing')]),
-									target: 'selecting'
-								},
-								{ target: 'idle' }
-							]
+							type: 'choice',
+							choice: (args) => {
+								if (args.context.observationFailed) {
+									return { target: 'unavailable' }
+								}
+								if (
+									args.guards.current(args) &&
+									args.guards.online(args) &&
+									args.guards.eligible(args) &&
+									!args.guards.closing(args) &&
+									args.guards.quotaCoolingDown(args)
+								) {
+									return { target: 'quotaBackoff' }
+								}
+								if (
+									args.guards.current(args) &&
+									args.guards.online(args) &&
+									args.guards.eligible(args) &&
+									!args.guards.closing(args)
+								) {
+									return { target: 'selecting' }
+								}
+								return { target: 'idle' }
+							}
 						},
-						idle: { on: { WAKE: 'routing' } },
+						idle: { on: { WAKE: { target: 'routing' } } },
 						selecting: {
-							entry: 'selectNext',
-							always: [
-								{
-									guard: ({ context }) => (context.attempts[context.selected!.id] ?? 0) > 0,
-									target: 'backoff'
-								},
-								{ target: 'reconciling' }
-							]
+							entry: (args) => {
+								return { context: args.actions.selectNext(args).context }
+							},
+							always: (args) => {
+								const { context } = args
+								if ((context.attempts[context.selected!.id] ?? 0) > 0) {
+									return { target: 'backoff' }
+								}
+								return { target: 'reconciling' }
+							}
 						},
-						quotaBackoff: { after: { quotaDelay: 'quotaSelecting' }, on: { WAKE: 'routing' } },
+						quotaBackoff: {
+							after: { quotaDelay: { target: 'quotaSelecting', context: { quotaDelayMs: 0 } } },
+							on: { WAKE: {} }
+						},
 						quotaSelecting: {
-							entry: 'selectNext',
-							always: [
-								{
-									guard: and(['current', 'online', 'eligible', not('closing')]),
-									target: 'reconciling'
-								},
-								{ target: 'idle' }
-							]
+							entry: (args) => {
+								return { context: args.actions.selectNext(args).context }
+							},
+							always: (args) => {
+								if (
+									args.guards.current(args) &&
+									args.guards.online(args) &&
+									args.guards.eligible(args) &&
+									!args.guards.closing(args)
+								) {
+									return { target: 'reconciling' }
+								}
+								return { target: 'idle' }
+							}
 						},
-						backoff: { after: { retryDelay: 'reconciling' }, on: { WAKE: 'routing' } },
+						backoff: {
+							after: { retryDelay: { target: 'reconciling' } },
+							on: { WAKE: { target: 'routing' } }
+						},
 						reconciling: {
 							invoke: {
+								id: 'reconcile',
 								src: 'reconcile',
-								input: ({ context }) => context,
-								onDone: [
-									{ guard: not('current'), target: 'idle' },
-									{ guard: not('online'), target: 'idle' },
-									{
-										guard: ({ event }) => event.output,
-										target: 'routing',
-										actions: ['notifyUncertain', 'recordUncertain']
-									},
-									{ target: 'fetching' }
-								],
-								onError: { target: 'routing', actions: ['notifyUncertain', 'recordUncertain'] }
+								input: ({ context }: { context: Context }) => context,
+								onDone: (args, enq) => {
+									if (!args.guards.current(args)) {
+										return { target: 'idle' }
+									}
+									if (!args.guards.online(args)) {
+										return { target: 'idle' }
+									}
+									if (args.event.output) {
+										enq(args.actions.notifyUncertain, args)
+										return {
+											target: 'routing',
+											context: args.actions.recordUncertain(args).context
+										}
+									}
+									return { target: 'fetching' }
+								},
+								onError: (args, enq) => {
+									enq(args.actions.notifyUncertain, args)
+									return { target: 'routing', context: args.actions.recordUncertain(args).context }
+								}
 							}
 						},
 						fetching: {
-							entry: assign({
-								attempts: ({ context }) => ({
-									...context.attempts,
-									[context.selected!.id]: (context.attempts[context.selected!.id] ?? 0) + 1
-								})
-							}),
-							invoke: {
-								src: 'fetchImage',
-								input: ({ context }) => context,
-								onDone: [
-									{
-										guard: 'current',
-										target: 'processing',
-										actions: assign({ fetched: ({ event }) => event.output })
-									},
-									{ target: 'idle' }
-								],
-								onError: {
-									target: 'fetchFailed',
-									actions: assign({
-										issue: ({ event }) => event.error,
-										notBefore: ({ event }) => Date.now() + imageRetryDelay(event.error)
-									})
+							entry: (args) => {
+								const { context } = args
+								return {
+									context: {
+										attempts: {
+											...context.attempts,
+											[context.selected!.id]: (context.attempts[context.selected!.id] ?? 0) + 1
+										}
+									}
 								}
 							},
-							after: { 25000: { target: 'savingFailure', actions: assign({ retryable: true }) } },
-							on: { WAKE: { guard: not('online'), target: 'idle' } }
+							invoke: {
+								id: 'fetchImage',
+								src: 'fetchImage',
+								input: ({ context }: { context: Context }) => context,
+								onDone: (args) => {
+									if (args.guards.current(args)) {
+										return { target: 'processing', context: { fetched: args.event.output } }
+									}
+									return { target: 'idle' }
+								},
+								onError: (args) => {
+									const { event } = args
+									return {
+										target: 'fetchFailed',
+										context: {
+											issue: event.error,
+											quotaDelayMs: imageRetryDelay(event.error)
+										}
+									}
+								}
+							},
+							after: {
+								25000: () => {
+									return { target: 'savingFailure', context: { retryable: true } }
+								}
+							},
+							on: {
+								WAKE: (args) => {
+									if (args.guards.online(args)) return
+									return { target: 'idle' }
+								}
+							}
 						},
 						fetchFailed: {
-							always: [
-								{ guard: not('current'), target: 'idle' },
-								{
-									guard: 'retryableFetch',
-									target: 'savingFailure',
-									actions: assign({ retryable: true })
-								},
-								{ target: 'savingFailure', actions: assign({ retryable: false }) }
-							]
+							always: (args) => {
+								if (!args.guards.current(args)) {
+									return { target: 'idle' }
+								}
+								if (args.guards.retryableFetch(args)) {
+									return { target: 'savingFailure', context: { retryable: true } }
+								}
+								return { target: 'savingFailure', context: { retryable: false } }
+							}
 						},
 						processing: {
 							initial: 'creating',
 							states: {
 								creating: {
 									on: {
-										WORKER_OPENED: {
-											target: 'posting',
-											actions: assign({ worker: ({ event }) => event.worker })
+										WORKER_OPENED: (args) => {
+											return { target: 'posting', context: { worker: args.event.worker } }
 										}
 									}
 								},
 								posting: {
 									invoke: {
+										id: 'post',
 										src: 'post',
-										input: ({ context }) => context,
-										onError: {
-											target: '#image-queue.running.queue.savingFailure',
-											actions: assign({ retryable: false })
+										input: ({ context }: { context: Context }) => context,
+										onError: () => {
+											return {
+												target: '#image-queue.running.queue.savingFailure',
+												context: { retryable: false }
+											}
 										}
 									},
-									on: { POSTED: { target: 'waiting', actions: assign({ fetched: undefined }) } }
+									on: {
+										POSTED: () => {
+											return { target: 'waiting', context: { fetched: undefined } }
+										}
+									}
 								},
 								waiting: {}
 							},
 							invoke: {
+								id: 'process',
 								src: 'process',
-								onError: { target: 'savingFailure', actions: assign({ retryable: false }) }
+								onError: () => {
+									return { target: 'savingFailure', context: { retryable: false } }
+								}
 							},
 							on: {
-								WORKER_RESULT: [
-									{
-										guard: not('current'),
-										target: 'idle',
-										actions: assign({ fetched: undefined, result: undefined })
-									},
-									{
-										guard: 'workerSucceeded',
-										target: 'savingReady',
-										actions: assign({
-											result: ({ event }) => imageWorkerResultSchema.parse(event.value).result
-										})
-									},
-									{ target: 'savingFailure', actions: assign({ retryable: false }) }
-								]
+								WORKER_RESULT: (args) => {
+									if (!args.guards.current(args)) {
+										return { target: 'idle', context: { fetched: undefined, result: undefined } }
+									}
+									if (args.guards.workerSucceeded(args)) {
+										return {
+											target: 'savingReady',
+											context: { result: imageWorkerResultSchema.parse(args.event.value).result }
+										}
+									}
+									return { target: 'savingFailure', context: { retryable: false } }
+								}
 							},
-							after: { 20000: { target: 'savingFailure', actions: assign({ retryable: false }) } }
+							after: {
+								20000: () => {
+									return { target: 'savingFailure', context: { retryable: false } }
+								}
+							}
 						},
-						savingReady: writing('startReady', 'recordReady'),
-						savingFailure: writing('startFailure', 'recordFailure'),
+						savingReady: {
+							entry: (args, enq) => {
+								const result = args.actions['startReady']({ ...args, spawn: enq.spawn })
+								const ref = result.context.write
+								enq.subscribeTo(ref, {
+									done: (output): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
+										type: 'WRITE_DONE',
+										actorId: ref.id,
+										output
+									}),
+									error: (error): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
+										type: 'WRITE_ERROR',
+										actorId: ref.id,
+										error
+									})
+								})
+								return result
+							},
+							exit: (args, enq) => {
+								enq.stop(args.context.write!)
+							},
+							on: {
+								SHUTDOWN: {},
+								OBSERVATION_FAILED: () => {
+									return { context: { observationFailed: true } }
+								},
+								WAKE: {},
+								WRITE_DONE: (args, enq) => {
+									if (!args.guards.ownCompletion(args)) return
+									const { context, event } = args
+									if (!event.output || event.output.settlement.kind === 'unresolved') {
+										enq(args.actions.notifyUncertain, args)
+										return {
+											target: 'routing',
+											context: args.actions.recordUncertain(args).context
+										}
+									}
+									if (event.output.settlement.kind === 'locallyPersisted') {
+										enq.sendTo('receipts', {
+											type: 'WATCH',
+											id: context.selected!.id,
+											receipts: [event.output.settlement.workspace]
+										})
+										return { target: 'routing', context: args.actions['recordReady'](args).context }
+									}
+									return { target: 'routing', context: args.actions.recordUncertain(args).context }
+								},
+								WRITE_ERROR: (args, enq) => {
+									if (!args.guards.ownCompletion(args)) return
+									enq(args.actions.notifyUncertain, args)
+									return { target: 'routing', context: args.actions.recordUncertain(args).context }
+								}
+							}
+						},
+						savingFailure: {
+							entry: (args, enq) => {
+								const result = args.actions['startFailure']({ ...args, spawn: enq.spawn })
+								const ref = result.context.write
+								enq.subscribeTo(ref, {
+									done: (output): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
+										type: 'WRITE_DONE',
+										actorId: ref.id,
+										output
+									}),
+									error: (error): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
+										type: 'WRITE_ERROR',
+										actorId: ref.id,
+										error
+									})
+								})
+								return result
+							},
+							exit: (args, enq) => {
+								enq.stop(args.context.write!)
+							},
+							on: {
+								SHUTDOWN: {},
+								OBSERVATION_FAILED: () => {
+									return { context: { observationFailed: true } }
+								},
+								WAKE: {},
+								WRITE_DONE: (args, enq) => {
+									if (!args.guards.ownCompletion(args)) return
+									const { context, event } = args
+									if (!event.output || event.output.settlement.kind === 'unresolved') {
+										enq(args.actions.notifyUncertain, args)
+										return {
+											target: 'routing',
+											context: args.actions.recordUncertain(args).context
+										}
+									}
+									if (event.output.settlement.kind === 'locallyPersisted') {
+										enq.sendTo('receipts', {
+											type: 'WATCH',
+											id: context.selected!.id,
+											receipts: [event.output.settlement.workspace]
+										})
+										return {
+											target: 'routing',
+											context: args.actions['recordFailure'](args).context
+										}
+									}
+									return { target: 'routing', context: args.actions.recordUncertain(args).context }
+								},
+								WRITE_ERROR: (args, enq) => {
+									if (!args.guards.ownCompletion(args)) return
+									enq(args.actions.notifyUncertain, args)
+									return { target: 'routing', context: args.actions.recordUncertain(args).context }
+								}
+							}
+						},
 						unavailable: {}
 					}
 				}
@@ -593,17 +786,22 @@ export const imageQueueMachine = model.createMachine({
 		},
 		closed: {
 			type: 'final',
-			entry: [
-				'detach',
-				assign({
-					rows: [],
-					capability: undefined,
-					selected: undefined,
-					fetched: undefined,
-					result: undefined,
-					write: undefined
-				})
-			]
+			entry: ({ context }, enq) => {
+				for (const slot of context.slots) enq.stop(slot)
+				return {
+					context: {
+						slots: [],
+						views: {},
+						documentId: '',
+						rows: [],
+						capability: undefined,
+						selected: undefined,
+						fetched: undefined,
+						result: undefined,
+						write: undefined
+					}
+				}
+			}
 		}
 	}
 })

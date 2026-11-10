@@ -2,9 +2,10 @@ import { expect, it, vi } from 'vitest'
 import { createActor, toPromise } from 'xstate'
 import { createConnectStoreMachine } from './connect-store-machine.js'
 import { connectionFor, newlyConfirmedConnection } from './connection.js'
+import type { Connection } from './connection.js'
 const id = '77777777-7777-4777-8777-777777777777'
 const scope = { appId: id, serverUrl: 'https://sync.test/' }
-const connection = { version: 1 as const, accountId: id, confirmationId: id, ...scope }
+const connection: Connection = { version: 1, accountId: id, confirmationId: id, ...scope }
 it('rejects absent, malformed and differently scoped confirmations', () => {
 	expect(connectionFor(undefined, scope)).toBeUndefined()
 	expect(connectionFor({ accountId: id }, scope)).toBeUndefined()
@@ -39,12 +40,13 @@ it('refuses website senders before writing connection metadata', async () => {
 })
 it('keeps a confirmed account durable even if no offscreen runtime exists yet', async () => {
 	const write = vi.fn(async () => {})
+	const identity = vi.fn(() => id)
 	const actor = createActor(
 		createConnectStoreMachine({
 			id: 'clipper',
 			pages: ['chrome-extension://clipper/signin.html'],
 			scope,
-			idForConfirmation: () => id,
+			idForConfirmation: identity,
 			write,
 			notify: async () => {
 				throw new Error('runtime not started')
@@ -58,9 +60,11 @@ it('keeps a confirmed account durable even if no offscreen runtime exists yet', 
 		}
 	)
 	const result = toPromise(actor)
+	expect(identity).not.toHaveBeenCalled()
 	actor.start()
 	expect(await result).toEqual({ accepted: true })
 	expect(write).toHaveBeenCalledWith(connection)
+	expect(identity).toHaveBeenCalledOnce()
 })
 
 it('does not notify the runtime or grant confirmation when local persistence fails', async () => {

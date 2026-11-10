@@ -1,7 +1,8 @@
 # XState v6 migration and worker ownership specification
 
-Status: proposed specification for review, 2026-11-09. No runtime conversion in
-this PR. Source baseline: main `78d611f8bcf8e7a05d61408515545a711c7598bd`.
+Status: implementation and qualification in progress, 2026-11-09.
+Implementation baseline: merged specification `787ef256d4f854921d440acf98d47096a51514f6`.
+Original design source baseline: `78d611f8bcf8e7a05d61408515545a711c7598bd`.
 Active feature and accepted product scope remain unchanged.
 
 ## Goal and versions
@@ -17,7 +18,7 @@ implementation start and record any delta. Read the installed package's
 `docs/index.md`, `agents.md`, `api-stability.json` and relevant mechanism guides.
 Do not add XState patches, declaration overrides or untyped actor escapes.
 
-Current web/extension pins are v5.33.2. Main already has the application worker
+Baseline web/extension pins were v5.33.2; implementation pins are v6.0.0-beta.1. Main already has the application worker
 and configured Jazz alpha.60 patches. Reuse that implementation, not an older
 article-extraction worker or an unmerged historical checkout. The current
 `pnpm-workspace.yaml`, `patches/jazz-tools@2.0.0-alpha.60.patch`, shared archives
@@ -85,7 +86,7 @@ syntax examples are reconciled when each connected unit converts.
 
 ## Concrete purity finding
 
-`runtime/worker/host-machine.ts` currently generates `crypto.randomUUID()` in
+The baseline `runtime/worker/host-machine.ts` generated `crypto.randomUUID()` in
 the `bindLibrary` assignment. v6 transition selection may evaluate that function
 without accepting it. Move scope issuance to an explicit host admission/leaf
 boundary and carry the issued identity into the binding event; do not mint a new
@@ -161,8 +162,91 @@ are enabled. Promote meaningful fixed failures into tracked regression fixtures
 using `replayTest` with `expect: 'pass'`; the automatic store removes fixed failures.
 Do not build another custom sequence runner or patch XState/test declarations.
 
-This repository still uses XState v5. Install the v6 test beta when the connected
-actor graph moves to v6, rather than introducing incompatible peers now. Plan
-independent UI/worker contract models for cancellation, stale replies, duplicate
-completion, account switches and disposal, then verify actual worker/Jazz adapters
-with integration tests. Preserve existing implementation-review gates.
+The connected graph now uses v6 and the exact test beta/peer above. The first
+campaign independently models binding replacement, pagination, pure probes,
+stale intents and disposal against the real worker host and real library/tag
+actors. Seed 60381, 100 runs, at most 60 commands; require all modeled states,
+events and transitions plus an observed A → B → A sequence. This bounded model
+does not establish all asynchronous/native interleavings; existing integration
+coverage remains required. CI preserves `.xstate-test` on failure.
+
+## Implementation review record
+
+- Rebuilt DUI from merged `7a7f61b236220bb5edb2bef4390b9db075775e43` and DLF
+  from merged `2532309d1b1d77518d166c145d392368e9d0fe1c`. The reproducible
+  `tooling/build-v6-vendor.mjs`, `vendor/manifest.json` and
+  `vendor/xstate-v6-provenance.json` record archives, hashes and the existing
+  narrow alpha.60 adapter compatibility delta. Jazz and presentation patches
+  retain their separate ownership; XState has no patch or declaration override.
+- Manual migration sites include generic capability spawning contracts, subscribed
+  child completion/error reports, final output acknowledgment, source injection,
+  state predicates under `active.flow`, and parallel frame invocation IDs.
+- Mutation charts acknowledge selected native staging before calculating receipt
+  output. The native transaction adapter retains write handles in its own
+  closure instead of mutating a plain resource frozen by v6.
+- Account binding has an owned native custodian and explicit adoption handshake;
+  native reads report observations through a callback actor. Draft issue facts
+  are retained before the persistence invocation consumes its input.
+- Total pure routing nodes use `choice`; waits and context/effect steps retain
+  `always`. Full-root state predicates preserve cancellation precedence, while
+  explicit retained child refs preserve source injection and cooperative drain.
+- Native identity issuance runs in owned logic. Attachment identity uses a
+  synchronous callback to preserve fullscreen user activation; write/failure
+  operation identity is retained before spawning the native write owner.
+  Pending reader surfaces remain owned during identity admission; the worker
+  must include pending custody when releasing stale ports. Extension sign-in
+  and confirmation IDs also come from owned callbacks before invocation input
+  or durable metadata consumes them. Gateway provenance timestamps are native
+  response facts, and image quota
+  windows use owned timers with deterministic per-operation retry jitter.
+- Operation receipts, retained transaction state and cross-region drain facts
+  deliberately remain shared immutable context. State-local data must not vanish
+  while an issued write still requires settlement. Typestate/state-input adoption
+  is bounded by those lifetimes and the beta's generic actor inference; avoid
+  casts that merely claim a resource exists.
+- A generated `.can()` probe exposed a registered-source lookup in predicted
+  spawning. The binding helper now receives a typed concrete-source spawning
+  capability supplied by the provided actor source, preserving customization.
+
+Qualification: see the final implementation handoff entry for commands, counts,
+engine versions and any remaining limitations.
+
+
+## PR #28 documentation-review corrections (2026-11-09)
+
+The follow-up review identified retained v5-era design gaps, rather than only
+literal-inference issues. The extension runtime now invokes the actual clip
+machine with a typed per-job capability input. Snapshots are raised privately;
+completion and unexpected failure are supervised by the runtime. A failed job
+clears queued work and rejects new work, without replaying an issued operation.
+The clip chart samples account currency in owned async logic before issue and
+when the issued marker settles, rather than consulting native state in guards.
+
+Request resource construction, clock reads and cancellation observations now
+belong to owned logic. Explicit completion checkpoints supply facts to pure
+routing, retaining deadline precedence even when the timer callback is delayed.
+Cancellation still aborts cooperatively and holds the admission lease until the
+outstanding body/parser/gateway settles. Lease release is an enqueued effect.
+Self-raised account acknowledgements and feedback coordination use
+`schemas.internalEvents`; native/child reports remain public actor events.
+
+Transaction owners expose checked read/stage/prepared ports. Concrete domain
+sources are spawned through a typed capability by the controller, which retains
+and stops the child ref and supervises errors; no separate root is created.
+DLF retains transaction acquisition, commit, rollback and local/unknown settlement.
+Domain state schemas guarantee validated facts in ready/mutation states. The
+account chart similarly guarantees host/readiness scope while running, and its
+unadopted session travels through binding state input. Receipts and drain custody
+retain their existing lifetimes. Compile-only regressions reject unrelated
+recipients, unsupported port commands and mismatched domain input.
+
+The binding campaign now reuses previously issued valid scopes, including after
+A → B → A, instead of manufacturing a malformed scope suffix. Two additional
+independent `propertyTest` campaigns cover delayed acquisition with shutdown and
+duplicate acquisition completion (seed 60382, 60 runs, 12 commands), and issued
+write draining, uncertain settlement and duplicate completion after uncertainty
+(seed 60383, 100 runs, 20 commands). Each requires complete modeled
+state/event/transition coverage; these bounds do not prove all native schedules.
+
+Fresh qualification for these corrections is recorded in the implementation
+handoff. Existing CI triggers and native acceptance cases remain enabled.

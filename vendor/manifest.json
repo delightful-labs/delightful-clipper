@@ -6,5 +6,13 @@
 	{
 		"file": "delightful-ui-dd358b8-typography.tgz",
 		"sha256": "7bc29ecf345c1a82ff2732ff04362b1f3f3402ac93da29c2b9ad33b1459a96cf"
+	},
+	{
+		"file": "delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz",
+		"sha256": "8bf38f5fb030e5fd233fdfb7a10a58e9da4dacbc438b662d5b7318794adf8709"
+	},
+	{
+		"file": "delightful-ui-7a7f61b-xstate-v6.tgz",
+		"sha256": "28d2139b7eb377e365a821743bb4fe998de2cbc59066ca15bd78862867891407"
 	}
 ]
