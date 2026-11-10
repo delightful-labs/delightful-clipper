@@ -114,6 +114,7 @@
 	},
 	"library": {
 		"heading": "Saved articles",
+		"all_articles": "All articles",
 		"empty": "No saved articles on this device yet.",
 		"list_failed": "The saved article list is unavailable. Reload to reconnect.",
 		"sync_pending": "Sync pending.",

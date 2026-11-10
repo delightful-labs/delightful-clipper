@@ -1,4 +1,10 @@
 import {
+	openAccountSettings,
+	openAllArticles,
+	readRecoveryPhrase,
+	restoreAccount
+} from './account-ui.js'
+import {
 	readingControls as controls,
 	closeReadingControls,
 	visibleReadingParagraph as visibleParagraph
@@ -60,10 +66,7 @@ async function readMiddle(page: Page) {
 	return visibleParagraph(page)
 }
 async function phrase(page: Page) {
-	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-	const dialog = page.getByRole('dialog')
-	const value = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	const value = await readRecoveryPhrase(page)
 	return value
 }
 test('uses shared reader controls, keyboard contents/footnotes, persistent focus-mode exit and explicit Archive', async ({
@@ -164,8 +167,7 @@ test('synchronizes independent settings and latest positions without scrolling a
 	try {
 		const other = await context.newPage()
 		await other.goto('/')
-		await other.getByLabel('Recovery phrase', { exact: true }).fill(recovery)
-		await other.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(other, recovery)
 		await other.locator(`[data-article-id="${id}"]`).getByRole('link').click()
 		const before = await other.getByRole('main').evaluate((node) => node.scrollTop)
 		await readMiddle(page)
@@ -211,9 +213,11 @@ test('retains offline reading settings and location through a complete browser r
 		await closeReadingControls(reopened)
 		authority = await startLocalJazzServer(options())
 		stopped = false
+		await openAccountSettings(reopened)
 		await expect(
 			reopened.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
+		await openAllArticles(reopened)
 	} finally {
 		await context.close()
 		if (stopped) authority = await startLocalJazzServer(options())

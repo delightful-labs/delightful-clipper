@@ -23,7 +23,7 @@
 		gatewayEnabled: boolean
 		createWorker?: import('../runtime/worker/client.js').Input['createWorker']
 		atprotoEnabled?: boolean
-		shell?: Snippet<[Snippet, Snippet, WorkflowMessage | undefined]>
+		shell?: Snippet<[Snippet, Snippet, WorkflowMessage | undefined, WorkflowMessage | undefined]>
 	} = $props()
 	let view = $state<RuntimeView['account']>()
 	let library = $state<LibraryClient>()
@@ -109,7 +109,7 @@
 				<Button type="submit" disabled={oauth?.busy}>{t('account.atproto.sign_in')}</Button>
 			</form>
 		{/if}
-		{#if view?.message.text}<StatusMessage {...view.message} />{/if}
+		{#if !shell && view?.message.text}<StatusMessage {...view.message} />{/if}
 		{#if view?.feedbackMessage}<StatusMessage {...view.feedbackMessage} />{/if}
 		{#if view?.showIdentityForm}<Button type="button" onclick={() => account({ type: 'CREATE' })}
 				>{action('create', 'account')}</Button
@@ -155,7 +155,8 @@
 {#if shell}{@render shell(
 		controls,
 		children,
-		view?.connectionMessage
+		view?.connectionMessage,
+		view?.message
 	)}{:else}{@render controls()}{@render children()}{/if}
 
 <style>

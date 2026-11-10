@@ -1,3 +1,4 @@
+import { readRecoveryPhrase, restoreAccount } from './account-ui.js'
 import { readingControls } from './reader-ui.js'
 import { closeLibraryPopovers, openLibraryFilters } from './library-popovers.js'
 import { openAddLink } from './add-link.js'
@@ -95,16 +96,12 @@ test('synchronizes independent desired values in both directions between restore
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	const row = await supplied(page, 'organize-sync')
 	const id = await row.getAttribute('data-article-id')
-	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-	const dialog = page.getByRole('dialog')
-	const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	const phrase = await readRecoveryPhrase(page)
 	const independent = await browser.newContext()
 	try {
 		const restored = await independent.newPage()
 		await restored.goto(base)
-		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(restored, phrase)
 		const remote = restored.locator(`[data-article-id="${id}"]`)
 		await expect(remote).toBeVisible({ timeout: 30000 })
 		await row.getByLabel('Status', { exact: true }).selectOption('archive')
@@ -138,16 +135,10 @@ test('persists offline edits across complete browser restart and synchronizes on
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 		const row = await supplied(page, 'organize-restart')
 		const id = await row.getAttribute('data-article-id')
-		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const phrase = await page
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const phrase = await readRecoveryPhrase(page)
 		const restored = await independent.newPage()
 		await restored.goto(base)
-		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(restored, phrase)
 		const remote = restored.locator(`[data-article-id="${id}"]`)
 		await expect(remote).toBeVisible({ timeout: 30000 })
 		await authority.stop()
@@ -224,7 +215,7 @@ test('native status radios support keyboard navigation and mobile wrapping while
 }) => {
 	await page.setViewportSize({ width: 390, height: 844 })
 	await page.goto('/')
-	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
 	const inbox = await supplied(page, 'radio-inbox')
 	const archived = await supplied(page, 'radio-archive')
 	await archived.getByLabel('Status', { exact: true }).selectOption('archive')

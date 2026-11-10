@@ -1,3 +1,9 @@
+import {
+	openAccountSettings,
+	openAllArticles,
+	readRecoveryPhrase,
+	restoreAccount
+} from './account-ui.js'
 import { readingControls } from './reader-ui.js'
 import { openAddLink } from './add-link.js'
 import { test, expect, chromium } from '@playwright/test'
@@ -52,34 +58,26 @@ test('starts locally without signup, reloads and restores the same account into 
 	await page.reload()
 	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
 	await expect(page.getByText('Private library synced.', { exact: true })).toHaveCount(0)
-	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-	const dialog = page.getByRole('dialog')
-	await expect(dialog).toBeVisible()
-	const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	const phrase = await readRecoveryPhrase(page)
 	const second = await browser.newContext()
 	try {
 		const restored = await second.newPage()
 		await restored.goto('http://127.0.0.1:5180')
-		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(restored, phrase)
 		await expect(
 			restored.getByRole('region', { name: 'Saved articles', exact: true })
 		).toBeVisible()
-		await restored.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const recoveredPhrase = await restored
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await restored.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const recoveredPhrase = await readRecoveryPhrase(restored)
 		// Assert a boolean after closing the dialog so failures cannot print credentials.
 		expect(recoveredPhrase === phrase).toBe(true)
 		// Stop the real authority: the SDK transport can live in a SharedWorker.
 		await authority.stop()
 		await restored.reload()
+		await openAccountSettings(restored)
 		await expect(
 			restored.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
+		await openAllArticles(restored)
 		authority = await startAuthority()
 		await restored.reload()
 		await expect(
@@ -93,13 +91,14 @@ test('starts locally without signup, reloads and restores the same account into 
 
 test('invalid restoration preserves the current local library', async ({ page }) => {
 	await page.goto('/')
+	await openAccountSettings(page)
 	await page.getByLabel('Recovery phrase', { exact: true }).fill('not a valid recovery phrase')
 	await page.getByRole('button', { name: 'Restore account', exact: true }).click()
 	await expect(
 		page.getByText('That recovery phrase is invalid. Check it and try again.', { exact: true })
 	).toBeVisible()
-	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
 	await expect(page.getByLabel('Recovery phrase', { exact: true })).toHaveValue('')
+	await openAllArticles(page)
 })
 
 test('retains the account and library after closing every page and browser process with the authority offline', async () => {
@@ -115,14 +114,18 @@ test('retains the account and library after closing every page and browser proce
 		context = await chromium.launchPersistentContext(profile, { headless: true })
 		const reopened = await context.newPage()
 		await reopened.goto('http://127.0.0.1:5180')
+		await openAccountSettings(reopened)
 		await expect(
 			reopened.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
+		await openAllArticles(reopened)
 		authority = await startAuthority()
 		await reopened.reload()
+		await openAccountSettings(reopened)
 		await expect(
 			reopened.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
+		await openAllArticles(reopened)
 	} finally {
 		await context.close()
 		await rm(profile, { recursive: true, force: true })
@@ -147,16 +150,10 @@ test('saves new content offline, restarts the browser, and syncs to a restored p
 		const page = await context.newPage()
 		await page.goto('http://127.0.0.1:5180')
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
-		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const phrase = await page
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const phrase = await readRecoveryPhrase(page)
 		const restored = await independent.newPage()
 		await restored.goto('http://127.0.0.1:5180')
-		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(restored, phrase)
 		await expect(
 			restored.getByRole('region', { name: 'Saved articles', exact: true })
 		).toBeVisible()
@@ -171,9 +168,11 @@ test('saves new content offline, restarts the browser, and syncs to a restored p
 		context = await chromium.launchPersistentContext(profile, { headless: true })
 		const reopened = await context.newPage()
 		await reopened.goto('http://127.0.0.1:5180')
+		await openAccountSettings(reopened)
 		await expect(
 			reopened.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
+		await openAllArticles(reopened)
 		expect(
 			await reopened.evaluate(async (id) => {
 				const path = '/tests/storage-driver.ts'
@@ -408,16 +407,10 @@ test('UI Add Link saves automatically with the authority offline, survives a ful
 		await fixtureArticle(page, () => authority.stop())
 		await page.goto('http://127.0.0.1:5180')
 		await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
-		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const phrase = await page
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const phrase = await readRecoveryPhrase(page)
 		const restored = await independent.newPage()
 		await restored.goto('http://127.0.0.1:5180')
-		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(restored, phrase)
 		await expect(
 			restored.getByRole('region', { name: 'Saved articles', exact: true })
 		).toBeVisible()
@@ -530,25 +523,17 @@ test('first use opens a stable local library with the authority unavailable and 
 	try {
 		await page.goto('/')
 		await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
+		await openAccountSettings(page)
 		await expect(
 			page.getByRole('button', { name: 'Show recovery phrase', exact: true })
 		).toBeVisible()
+		await openAllArticles(page)
 		await expect(page.getByRole('button', { name: 'Create account', exact: true })).toHaveCount(0)
 		await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toHaveCount(0)
-		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const phrase = await page
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const phrase = await readRecoveryPhrase(page)
 		await page.reload()
 		await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
-		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const reopenedPhrase = await page
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const reopenedPhrase = await readRecoveryPhrase(page)
 		expect(phrase.length > 0 && phrase === reopenedPhrase).toBe(true)
 	} finally {
 		authority = await startAuthority()
@@ -846,27 +831,40 @@ test('Retry from a second tab reaches the worker holding the library lock', asyn
 	await second.close()
 })
 
-test('keeps account controls in the desktop drawer without replacing the library session', async ({
+test('moves account controls to their own page with shared sidebar links and retains the account', async ({
 	page
 }) => {
 	await page.goto('/')
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	const drawer = page.locator('aside')
-	await expect(drawer.getByRole('button', { name: 'Restore account', exact: true })).toBeVisible()
+	await expect(drawer.locator('input, textarea, form')).toHaveCount(0)
+	await expect(drawer.getByRole('link', { name: 'All articles', exact: true })).toHaveAttribute(
+		'aria-current',
+		'page'
+	)
+	const original = await readRecoveryPhrase(page)
+	await openAccountSettings(page)
 	await expect(
 		page.getByRole('main').getByRole('button', { name: 'Restore account', exact: true })
-	).toHaveCount(0)
-	await page.getByRole('button', { name: 'Close account', exact: true }).click()
-	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
-	await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
-	await page.getByRole('button', { name: 'Show account', exact: true }).click()
-	await expect(
-		drawer.getByRole('button', { name: 'Show recovery phrase', exact: true })
 	).toBeVisible()
-	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	await expect(drawer.getByRole('link', { name: 'account', exact: true })).toHaveAttribute(
+		'aria-current',
+		'page'
+	)
+	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toHaveCount(0)
+	await page.reload()
+	await expect(page).toHaveURL(/\/account$/)
+	const reopened = await readRecoveryPhrase(page)
+	expect(original.length > 0 && original === reopened).toBe(true)
+	await openAllArticles(page)
+	await expect(drawer.getByRole('link', { name: 'All articles', exact: true })).toHaveAttribute(
+		'aria-current',
+		'page'
+	)
+	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeVisible()
 })
 
-test('mobile drawer hides account controls until opened and restores keyboard focus on Escape', async ({
+test('mobile account navigation closes the drawer and restores keyboard focus on Escape', async ({
 	page
 }) => {
 	await page.setViewportSize({ width: 390, height: 844 })
@@ -877,11 +875,16 @@ test('mobile drawer hides account controls until opened and restores keyboard fo
 	await page.getByRole('button', { name: 'Show account', exact: true }).click()
 	await expect(drawer).toHaveAttribute('aria-hidden', 'false')
 	await expect(page.locator('main')).toHaveAttribute('inert', '')
-	await drawer.getByLabel('Recovery phrase', { exact: true }).focus()
+	await drawer.getByRole('link', { name: 'account', exact: true }).focus()
 	await page.keyboard.press('Escape')
 	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
 	await expect(page.getByRole('button', { name: 'Show account', exact: true })).toBeFocused()
 	await expect(page.locator('main')).not.toHaveAttribute('inert', '')
+	await openAccountSettings(page)
+	await expect(drawer).toHaveAttribute('aria-hidden', 'true')
+	await expect(page.getByLabel('Recovery phrase', { exact: true })).toBeVisible()
+	await expect(drawer.locator('input, textarea, form')).toHaveCount(0)
+	await openAllArticles(page)
 	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
 		true
 	)

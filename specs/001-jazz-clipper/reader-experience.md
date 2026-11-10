@@ -8,6 +8,8 @@ Pinned DUI provides InputRange, Select, RadioGroup/RadioItem, Button, Dialog, Po
 
 ## Headerless navigation and reader settings
 
+Account sign-in, restoration and recovery controls now live on `/account`. The sidebar uses DUI `NavigationLink`, following Finance's presentation, with the existing account noun and the user-requested “All articles” label linking to `/`. The user explicitly requested that label; the existing “Saved articles” heading and “All” filter do not name this navigation destination. Account and library ownership remain in the application layout, and the service worker serves the public shell for exact `/account` navigations so the page can reopen offline. Session status and connectivity remain in the sidebar footer.
+
 The app shell has no global top navigation bar. One persistent square DUI button opens/closes the left account drawer, whose brand row reserves the same button footprint. Library and article title grids reserve a navigation spacer that collapses when the account drawer opens. The shell remains bounded to `100dvh`; account settings, reader settings and the main content have independent scrolling.
 
 The reader's library/original links, progress, table of contents, theme, typography and distraction-free action live in a right-side navigation drawer rather than a sticky toolbar or settings dialog. One persistent square DUI button controls this drawer, with spacers in the settings heading and article heading. The settings drawer starts closed on desktop and mobile; on mobile, the article is inert while settings are open and Escape restores focus to the toggle. Headings scroll with their content.

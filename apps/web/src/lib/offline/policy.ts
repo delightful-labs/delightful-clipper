@@ -46,7 +46,7 @@ export function shellPolicy(
 		)
 	}
 }
-/** Known article navigations reuse only the public shell, never cached article responses. */
+/** Known app navigations reuse only the public shell, never cached private responses. */
 export function shellKey(policy: ShellPolicy, request: Request): string | undefined {
 	const url = new URL(request.url)
 	if (
@@ -61,7 +61,8 @@ export function shellKey(policy: ShellPolicy, request: Request): string | undefi
 		request.mode === 'navigate' &&
 		!url.search &&
 		url.pathname.startsWith(scopePath) &&
-		isArticlePath('/' + url.pathname.slice(scopePath.length))
+		(url.pathname.slice(scopePath.length) === 'account' ||
+			isArticlePath('/' + url.pathname.slice(scopePath.length)))
 	)
 		return policy.root
 	const original = url.href

@@ -1,3 +1,4 @@
+import { readRecoveryPhrase, restoreAccount } from '../account-ui.js'
 import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { openAddLink } from '../add-link.js'
 import { readingControls, closeReadingControls, visibleReadingParagraph } from '../reader-ui.js'
@@ -141,17 +142,11 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 				wasmBytes: wasmRequests[0]?.bytes
 			})
 		)
-		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const phrase = await page
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const phrase = await readRecoveryPhrase(page)
 		const restored = await independent.newPage()
 		await restored.goto('http://127.0.0.1:5190')
 		await ready(restored)
-		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(restored, phrase)
 		await expect(
 			restored.getByRole('region', { name: 'Saved articles', exact: true })
 		).toBeVisible()

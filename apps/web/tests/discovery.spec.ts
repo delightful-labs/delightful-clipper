@@ -1,3 +1,4 @@
+import { readRecoveryPhrase, restoreAccount } from './account-ui.js'
 import { readingControls } from './reader-ui.js'
 import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from './library-popovers.js'
 import { test, expect, chromium } from '@playwright/test'
@@ -180,10 +181,7 @@ test('real browser worker searches saved body and URL offline, scopes Trash, and
 })
 
 async function phrase(page: Page) {
-	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-	const dialog = page.getByRole('dialog')
-	const value = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	const value = await readRecoveryPhrase(page)
 	return value
 }
 async function addTag(page: Page, row: ReturnType<Page['locator']>, name: string) {
@@ -211,8 +209,7 @@ test('merges offline independent tag changes across restored clients and preserv
 	try {
 		const other = await otherContext.newPage()
 		await other.goto('http://127.0.0.1:5180')
-		await other.getByLabel('Recovery phrase', { exact: true }).fill(recovery)
-		await other.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(other, recovery)
 		const remote = other.locator(`[data-article-id="${item.id}"]`)
 		await expect(remote).toBeVisible()
 		await expect(remote.getByRole('button', { name: 'Remove favorite', exact: true })).toBeVisible()
@@ -323,8 +320,7 @@ test('reindexes a snapshot arriving from another restored client without restart
 	try {
 		const other = await otherContext.newPage()
 		await other.goto('http://127.0.0.1:5180')
-		await other.getByLabel('Recovery phrase', { exact: true }).fill(recovery)
-		await other.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(other, recovery)
 		await expect(other.getByText('Private library synced.', { exact: true })).toBeVisible()
 		const saved = await supplied(other, 'https://example.com/arriving')
 		await expect(page.locator(`[data-article-id="${saved.id}"]`)).toBeVisible()
