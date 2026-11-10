@@ -418,6 +418,60 @@ V6-6: Compile-time protocol checks reject incompatible image reports/child comma
 
 V6-7: OAuth feedback derives from its active state contract, uses existing localized strings and preserves busy/error/recovery behavior. Smaller empty-protocol/type cleanup passes strict tooling, web, worker and extension types.
 
+## Delightful Local First extraction boundaries
+
+The shared-library review uses latest merged DLF `main` at [`9d2b0f6ae10d6a19f4dfa3cf7d606edbe4554e50`](https://github.com/delightful-labs/delightful-local-first/commit/9d2b0f6ae10d6a19f4dfa3cf7d606edbe4554e50), verified on 2026-11-10, rather than the older default local checkout. Recheck newer merged changes before implementation. DLF already targets XState `6.0.0-beta.1` and owns session acquisition/readiness, restoration, transaction settlement and detached custody.
+
+The following placement decisions refine the shared-helper requirements above. Move reusable lifecycle mechanics through explicit DLF public contracts; Clipper continues to own its domain facts, mutation eligibility, operation selection, native schema and product feedback. Do not copy Clipper domain models or introduce a second owner for behavior DLF already provides.
+
+| Responsibility | Required placement | Consumer boundary |
+| --- | --- | --- |
+| Generic domain transaction bridge | DLF, beside its transaction workflow | Accept typed domain spawn/read/stage contracts. Clipper supplies domain charts and native transaction capabilities. Remove Clipper imports and concrete Jazz resource types from the generic composition. |
+| Owned-operation supervisor | DLF lifecycle primitive, where direct invocation alone is insufficient | Parent selects the child and interprets output; helper owns correlation, supported interruption forwarding and drain. Preserve concrete result/command types and existing native custody transfer. |
+| Account-store update and worker bridge | DLF Jazz integration | Share SDK read/transform/write, Web Lock lifetime, request acknowledgments, uncertain settlement and host closure. Inject app scope/configuration; keep app commands and data outside the transport. |
+| Session binding replacement and closure | Extend existing DLF session workflows | DLF owns native acquisition, binding generations, invalidation and session close. Clipper owns library/reader/capture drain and reports its actual completion before identity replacement or close proceeds. |
+| Ordered sign-out | DLF workflow with injected capabilities | Provider sign-out precedes native logout; share interruption/overdue/settlement handling. App integration supplies provider endpoint/configuration and product feedback. |
+| Correlated RPC lifecycle | DLF worker/Jazz boundary | Share correlation, protocol failure and transferred-resource cleanup needed by the identity host. Do not expand the library into an unrelated general RPC framework. |
+| One-shot browser worker job | Clipper-local shared helper initially | Image/extraction payloads and fallbacks remain local. A future DLF need requires a separate justified public contract; current DLF accepts platform image-processing capabilities. |
+| Capture, search, reader, images and organization policy | Clipper | Product-specific statecharts, schemas, eligibility, feedback and result interpretation remain app-owned. |
+| Provider callback cookies and auth completion HTTP workflow | Clipper auth integration for this delivery | DLF currently exposes no provider-server workflow that replaces this endpoint logic. Broader shared authentication requires an agreed contract; extracting ordered sign-out does not implicitly move the auth server. |
+
+### Reuse existing owners
+
+Continue composing DLF session acquisition/startup/readiness, recovery/restoration, transaction commit/rollback/local settlement, detached custody and `stopAfterShutdown`. Do not duplicate them under new helper names. Existing scoped form write/readiness workflows are reusable within their form contract, but must not be forced onto background operations simply to avoid introducing an appropriately narrow lifecycle primitive.
+
+The transaction bridge is the first extraction. DLF's generic transaction lifetime currently lives under workspace-creation terminology, while Clipper adds a controller that connects that lifetime to domain children. Introduce a domain-neutral composition/export alongside the existing API, retaining compatible workspace consumers. Preserve a single native transaction and original attempt/settlement; do not rename or break public workspace contracts incidentally.
+
+Sources: [DLF transaction lifecycle](https://github.com/delightful-labs/delightful-local-first/blob/9d2b0f6/src/lib/machines/workspaces/creation-transaction.ts), [transaction custody](https://github.com/delightful-labs/delightful-local-first/blob/9d2b0f6/src/lib/machines/workspaces/transaction-custody.ts), [session exports](https://github.com/delightful-labs/delightful-local-first/blob/9d2b0f6/src/lib/session.ts), [root attachment lifecycle](https://github.com/delightful-labs/delightful-local-first/blob/9d2b0f6/src/lib/machines/forms/lifecycle.ts), [form writer](https://github.com/delightful-labs/delightful-local-first/blob/9d2b0f6/src/lib/machines/forms/write.ts), [integration guidance](https://github.com/delightful-labs/delightful-local-first/blob/9d2b0f6/docs/next-app.md) and [Clipper bridge](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/storage/domain-transaction.ts).
+
+### Account runtime extraction and second consumer
+
+Finance's worker-runtime worktree also implements account-store ownership, operation/lock workflows and correlated host transport. Treat this as evidence of a second consumer requirement, not as already merged or release-qualified DLF behavior. Before extracting, pin the Finance implementation revision and compare its request bounds, host drain, lock lifetime, late replies and unknown-write semantics with Clipper's requirements.
+
+Reconcile those requirements into one DLF contract; do not promote Clipper's simpler adapter unchanged or copy Finance-specific storage selection/migration policy. Consumers retain their existing identity namespaces and persisted stores. No silent account-key migration or automatic replay is permitted. A generic helper must not erase either consumer's stronger settlement guarantees.
+
+### Compatibility and invocation binding gates
+
+DLF's reviewed merged package declares Jazz `2.0.0-alpha.59`, whereas Clipper consumes an adapted `delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz` with Jazz `2.0.0-alpha.60`. This extraction requires a compatible, qualified DLF artifact rather than a direct dependency substitution. Record DLF source, adapter baseline, package hash, dependency versions and supported exports. Preserve Clipper's approved native/presentation adaptations until their upstream replacements are qualified. No new dependency or unreviewed patch is implied by this specification.
+
+The latest DLF [invocation binding qualification](https://github.com/delightful-labs/delightful-local-first/blob/9d2b0f6/specs/003-verified-backup/xstate-v6-invoke-bindings.md) establishes that invocation input sees context before the owning state's entry patch on the installed v6 beta. Establish generation, binding and operation inputs in initial context or the incoming transition before entering the invoking state. Never rely on a same-state entry increment/capture to bind the child correctly. Preserve the corrected form-readiness and workspace-initialization behavior.
+
+### Delivery order and acceptance criteria
+
+Deliver transaction bridge and operation supervision first, then shared account-store/worker integration, then session binding and sign-out. Ship DLF contracts/qualification before updating Clipper's pinned artifact and imports. Keep repository-specific review, implementation-test and publishing authorization rules in force; this documentation change does not itself implement or publish DLF changes.
+
+DLF-1: The extracted generic transaction/supervision modules have no Clipper schema, article, reader, route, localization or concrete Jazz-resource imports. Existing workspace/form consumers retain their public behavior and one-transaction settlement guarantees.
+
+DLF-2: Qualify shared child lifecycles with independently modeled domain-free consumers and Clipper's real call sites. Verify cancellation, failed staging, local settlement, unknown outcomes and forced-stop custody without replay or duplicate ownership.
+
+DLF-3: Before adopting shared account runtime in another app, pin and review both consumer revisions. Prove request correlation/bounds, queued lock cancellation, issued-write retention, late reply/port cleanup, host closure and A → B → A stale-generation refusal against each consumer's actual adapter. Preserve existing storage namespaces and identities.
+
+DLF-4: Composed invocation tests assert the exact generation, binding and operation identity received by the child initially and on retry/replacement. Parent context alone is not sufficient evidence. Cover entry-patch versus invocation-input ordering using the installed unpatched beta.
+
+DLF-5: Package the compatible shared source, verify declared dependency/export contracts and record artifact provenance. Run DLF's applicable package-consumer and workflow qualification under its review rules, then Clipper's repository, worker, offline-authentication and packaged-extension gates against the actual artifact. Source-only or isolated helper tests do not qualify adoption.
+
+DLF-6: Architecture/spec diagrams and imports identify DLF's shared lifecycle owners and Clipper's domain owners consistently. Browser job processing and provider HTTP callback logic remain local as specified; no generic supervisor or RPC layer silently expands product or library scope.
+
 ## State that stays outside charts
 
 Simple drawer/input/footnote/focus presentation state, pure parsing/projection, stream buffers, native handles and RPC reply maps may remain ordinary code. Their enclosing resource lifetime must be owned and tested. Do not turn each calculation or database primitive into a state, and extend the existing account-store owner for its deadline gaps rather than replace its locking protocol. Preserve existing transaction and sync ownership.
@@ -432,7 +486,7 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 | Gate | Evidence required |
 | --- | --- |
-| Focused workflow tests | AUTH, HOST, BIND, EXT, REC, ROOT, SHARE and V6 acceptance cases; actual actor SUT and separately recorded native effects. |
+| Focused workflow tests | AUTH, HOST, BIND, EXT, REC, ROOT, SHARE, V6 and DLF acceptance cases; actual actor SUT and separately recorded native effects. |
 | Repository verification | `pnpm verify`: vendor integrity, format, lint, strict types, unit/native tests and production build. |
 | Worker/browser behavior | `pnpm test:worker` and applicable `pnpm test:e2e` cases: stale-scope refusal, reader detach and zero application SDK/WASM initialization on the UI thread. |
 | Offline authentication | `pnpm test:offline` including connected and existing-account profiles, expired credentials, complete browser-process restart with app/auth/Jazz unreachable, acknowledged edits surviving another restart and reconciliation after reconnect. |
@@ -441,4 +495,4 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 Run build/type generation and browser suites sequentially when they share generated output. Use isolated authorities/ports for concurrent development without stopping unidentified servers. No broad new performance claim is made; the UI-thread boundary and unchanged bounded publication behavior are explicit checks.
 
-The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four ownership workstreams, all six recovery/deadline areas and the ROOT, SHARE and V6 acceptance criteria, updated architecture views showing actual ownership and labeled production invocation boundaries, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
+The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four ownership workstreams, all six recovery/deadline areas and the ROOT, SHARE, V6 and DLF acceptance criteria, updated architecture views showing actual ownership and labeled production invocation boundaries, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
