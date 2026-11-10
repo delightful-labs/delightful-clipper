@@ -71,3 +71,36 @@ it('preserves native disclosures and static SVG through real extraction', async 
 	expect(result.candidate.html).toContain('stroke="red"')
 	expect(result.candidate.html).not.toMatch(/<image|spy\.example|url\(/)
 })
+it('retains a full Readability excerpt independently from the saved body', async () => {
+	const description = 'A short editorial description of the article.'
+	const result = await extract(
+		new TextEncoder().encode(
+			`<html><head><title>Example</title><meta name="description" content="${description}"></head><body><article><h1>Example</h1><p>${'The detailed body contains additional useful evidence. '.repeat(30)}</p></article></body></html>`
+		),
+		'text/html',
+		'https://example.com/article'
+	)
+	expect(result.candidate.excerpt).toBe(description)
+	expect(result.candidate.text).toContain('The detailed body')
+})
+
+it('retains full excerpts and requested metadata with an independently selected featured image', async () => {
+	const description = 'Full editorial description café 🦊. '.repeat(200).trim()
+	const result = await extract(
+		new TextEncoder().encode(
+			`<html lang="ar"><head><title>Metadata article</title><meta name="description" content="${description}"><meta name="author" content="Ada Example"><meta property="og:site_name" content="Example Journal"><meta property="article:published_time" content="2026-10-02T12:30:00Z"><meta name="twitter:image" content="/twitter.png"><meta property="og:image" content="/cover.png"></head><body><article dir="rtl"><h1>Metadata article</h1>${paragraph}</article></body></html>`
+		),
+		'text/html; charset=utf-8',
+		'https://example.com/article'
+	)
+	expect(result.candidate).toMatchObject({
+		excerpt: description,
+		author: 'Ada Example',
+		siteName: 'Example Journal',
+		publishedTime: '2026-10-02T12:30:00Z',
+		lang: 'ar',
+		dir: 'rtl',
+		featuredImageUrl: 'https://example.com/cover.png'
+	})
+	expect(result.candidate.html).not.toContain('/cover.png')
+})

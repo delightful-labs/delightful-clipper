@@ -1,4 +1,5 @@
 import type { ActorRef, Snapshot } from 'xstate'
+import type { ArticleMetadata } from '../capture/metadata.js'
 import type {
 	WorkspaceCreationAttempt,
 	WorkspaceCreationResult
@@ -21,7 +22,10 @@ export type StoredAsset = {
 	mediaType: string
 	payload: Uint8Array
 }
-export type TextSnapshot = {
+type StoredArticleMetadata = {
+	[K in keyof ArticleMetadata]?: Exclude<ArticleMetadata[K], undefined>
+}
+export type TextSnapshot = StoredArticleMetadata & {
 	id: string
 	libraryId: string
 	documentId: string
@@ -37,6 +41,7 @@ export type DocumentHeader = {
 	title: string
 	originalSavedAt: string
 }
+export type SnapshotPreview = Pick<TextSnapshot, 'id' | 'text' | 'excerpt'>
 export type StorageIntent = {
 	id: string
 	libraryId: string

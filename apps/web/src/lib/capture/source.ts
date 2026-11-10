@@ -3,6 +3,7 @@ import {
 	extractionEnvelopeSchema,
 	extractedContentSchema
 } from '../contracts/capture-response.js'
+import { articleMetadataSchema, type ArticleMetadata } from './metadata.js'
 import { usesHttpProtocol, hasCredentials } from '../validation/values.js'
 export function normalizedSource(value: string) {
 	if (value.length > 8192) throw new Error('invalidUrl')
@@ -26,7 +27,7 @@ export async function articleId(libraryId: string, finalUrl: string) {
 	const hex = Array.from(bytes.slice(0, 16), (byte) => byte.toString(16).padStart(2, '0')).join('')
 	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
-export type Candidate = {
+export type Candidate = ArticleMetadata & {
 	id: string
 	title: string
 	text: string
@@ -64,11 +65,14 @@ export function extractedCandidate(
 	if (provenance.length > 32768) throw new Error('sourceTooLarge')
 	return {
 		title: candidate.title,
+		...articleMetadataSchema.parse(candidate),
 		text: candidate.text,
 		html: candidate.html,
 		finalUrl,
 		submittedUrl,
 		provenance,
-		imagesMissing: Array.isArray(candidate.assetCandidates) && candidate.assetCandidates.length > 0
+		imagesMissing:
+			!!candidate.featuredImageUrl ||
+			(Array.isArray(candidate.assetCandidates) && candidate.assetCandidates.length > 0)
 	}
 }

@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { createActor } from 'xstate'
 import type { Article } from '../../contracts/articles.js'
-import type { DocumentHeader } from '../../contracts/storage.js'
+import type { DocumentHeader, SnapshotPreview } from '../../contracts/storage.js'
 import { createArticleCollectionMachine } from './article-collection.js'
 const article: Article = {
 	id: 'article',
@@ -83,6 +83,8 @@ it('joins independent updates, deduplicates content, preserves legacy documents 
 	expect(f.actor.getSnapshot().context).toEqual({
 		articles: [],
 		documents: [],
+		excerpts: [],
+		legacyPreviews: [],
 		organization: [],
 		tags: [],
 		callbacks: undefined
@@ -125,4 +127,48 @@ it('releases the first subscription if opening the second throws', () => {
 	).start()
 	expect(error).toHaveBeenCalledOnce()
 	expect(release).toHaveBeenCalledOnce()
+})
+
+it('owns preview subscriptions and projects parser excerpts or legacy saved text before publishing', async () => {
+	let previews: (rows: SnapshotPreview[]) => void = () => {}
+	const release = vi.fn(),
+		next = vi.fn(),
+		error = vi.fn()
+	const actor = createActor(
+		createArticleCollectionMachine({
+			isCurrent: () => true,
+			articles: (update) => {
+				update([article])
+				return () => {}
+			},
+			documents: (update) => {
+				update([document])
+				return () => {}
+			},
+			excerpts: (update) => {
+				previews = update
+				return release
+			}
+		}),
+		{ input: { next, error } }
+	).start()
+	expect(next).not.toHaveBeenCalled()
+	previews([{ id: document.snapshotId, text: 'Body fallback.', excerpt: 'Parser description.' }])
+	await vi.waitFor(() =>
+		expect(next).toHaveBeenLastCalledWith([
+			expect.objectContaining({ excerpt: 'Parser description.' })
+		])
+	)
+	previews([{ id: document.snapshotId, text: 'Saved title\n Legacy body   text.', excerpt: null }])
+	await vi.waitFor(() =>
+		expect(next).toHaveBeenLastCalledWith([
+			expect.objectContaining({ excerpt: 'Legacy body text.' })
+		])
+	)
+	actor.send({ type: 'STOP' })
+	expect(release).toHaveBeenCalledOnce()
+	const calls = next.mock.calls.length
+	previews([])
+	expect(next).toHaveBeenCalledTimes(calls)
+	expect(error).not.toHaveBeenCalled()
 })

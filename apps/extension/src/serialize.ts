@@ -4,9 +4,12 @@ export function serializePage() {
 	const clone = document.documentElement.cloneNode(true)
 	if (!(clone instanceof HTMLElement)) throw new Error('unsupportedMedia')
 	for (const element of clone.querySelectorAll(
-		'delightful-clipper-bar,delightful-clipper-space,script,style,iframe,frame,object,embed,form,input,textarea,select,button,template,meta,[hidden],[aria-hidden="true"]'
+		'delightful-clipper-bar,delightful-clipper-space,style,iframe,frame,object,embed,form,input,textarea,select,button,template,[hidden],[aria-hidden="true"]'
 	))
 		element.remove()
+	// Readability consumes JSON-LD as inert metadata in the worker. Executable scripts stay out.
+	for (const script of clone.querySelectorAll('script'))
+		if (script.getAttribute('type')?.toLowerCase() !== 'application/ld+json') script.remove()
 	for (const element of [clone, ...clone.querySelectorAll('*')])
 		for (const attribute of Array.from(element.attributes)) {
 			if (

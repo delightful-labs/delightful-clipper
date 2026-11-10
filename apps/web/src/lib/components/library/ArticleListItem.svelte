@@ -30,10 +30,11 @@
 
 <li {id} tabindex="-1" data-article-id={row.id}>
 	<div class="article-header">
-		<div id={`${id}-title`} class="article-title">
-			<Heading level="h3" size="xl">
+		<div class="article-title">
+			<Heading id={`${id}-title`} level="h3" size="xl">
 				{#if readable}<a href={articleHref(row.id)}>{row.title}</a>{:else}{row.title}{/if}
 			</Heading>
+			{#if row.excerpt}<p class="article-excerpt">{row.excerpt}</p>{/if}
 		</div>
 		<ArticleActionsPopover label={t('library.article_actions')} descriptionId={`${id}-title`}>
 			{#snippet children(dismiss)}
@@ -89,5 +90,14 @@
 	.article-title {
 		min-inline-size: 0;
 		overflow-wrap: anywhere;
+	}
+
+	.article-excerpt {
+		margin-block: var(--dui-spacing-xs) 0;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		overflow: hidden;
 	}
 </style>

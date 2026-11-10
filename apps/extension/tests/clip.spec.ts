@@ -1,9 +1,13 @@
 import { extensionId, extensionPublicKey } from '../../../tooling/extension-identity.js'
 /// <reference types="chrome" />
 import { test, expect, chromium } from '@playwright/test'
+import { readRecoveryPhrase, restoreAccount } from '../../web/tests/account-ui.js'
+import { openArticleActions } from '../../web/tests/article-actions.js'
 import { openLibraryFilters } from '../../web/tests/library-popovers.js'
 import { readingControls } from '../../web/tests/reader-ui.js'
 import type { BrowserContext, Page } from '@playwright/test'
+import { createJazz, remote, acceptLocalFirstAuth } from 'jazz-tools/backend'
+import { browserCoreSecret } from '../../web/tests/browser-core.js'
 import { startLocalJazzServer } from '../../web/tests/browser-core.js'
 import { createServer } from 'node:http'
 import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
@@ -13,6 +17,16 @@ import { app } from '../../web/src/lib/backend/jazz/schema.js'
 import permissions from '../../web/src/lib/backend/jazz/permissions.js'
 import { connectionSchema } from '../src/connection.js'
 let authority: Awaited<ReturnType<typeof startLocalJazzServer>>
+let audit: ReturnType<typeof createJazz>
+const metadata = {
+	excerpt: 'Full browser description café 🦊. '.repeat(200).trim(),
+	author: 'Ada Example',
+	siteName: 'Example Journal',
+	publishedTime: '2026-10-02T12:30:00Z',
+	lang: 'en',
+	dir: 'ltr',
+	featuredImageUrl: 'https://example.com/cover.png'
+}
 let directory: string
 const startAuthority = () =>
 	startLocalJazzServer({
@@ -26,16 +40,24 @@ const startAuthority = () =>
 const sourceServer = createServer((_request, response) => {
 	response.setHeader('Content-Type', 'text/html; charset=utf-8')
 	response.end(
-		`<html><head><title>Rendered browser article</title></head><body><article><h1>Rendered browser article</h1><p id="rendered"></p>${'<p>A useful paragraph about independent local reading and browser captures. Saving the rendered document preserves its visible words, formatting and source link for later reading. café 🦊.</p>'.repeat(14)}<a href="/related">Related article</a><form><input value="DO_NOT_CAPTURE_FORM_SECRET"></form><script>document.querySelector('#rendered').textContent = 'Only present after JavaScript rendering.';</script></article></body></html>`
+		`<html lang="en"><head><title>Rendered browser article</title><meta name="description" content="${metadata.excerpt}"><meta name="author" content="${metadata.author}"><meta property="og:site_name" content="${metadata.siteName}"><meta property="article:published_time" content="${metadata.publishedTime}">${_request.url?.includes('metadata=full') ? `<meta property="og:image" content="${metadata.featuredImageUrl}">` : ''}</head><body><article dir="ltr"><h1>Rendered browser article</h1><p id="rendered"></p>${'<p>A useful paragraph about independent local reading and browser captures. Saving the rendered document preserves its visible words, formatting and source link for later reading. café 🦊.</p>'.repeat(14)}<a href="/related">Related article</a><form><input value="DO_NOT_CAPTURE_FORM_SECRET"></form><script>document.querySelector('#rendered').textContent = 'Only present after JavaScript rendering.';</script></article></body></html>`
 	)
 })
 test.beforeAll(async () => {
 	directory = await mkdtemp(join(tmpdir(), 'clipper-extension-'))
 	authority = await startAuthority()
+	audit = createJazz({
+		app,
+		permissions,
+		store: remote({ url: authority.url, appId: authority.appId, secret: browserCoreSecret }),
+		authenticate: acceptLocalFirstAuth
+	})
+	await audit.ready()
 	await new Promise<void>((resolve) => sourceServer.listen(5230, '127.0.0.1', resolve))
 })
 test.afterAll(async () => {
 	sourceServer.closeAllConnections()
+	await audit?.close()
 	await authority?.stop()
 	await new Promise<void>((resolve) => sourceServer.close(() => resolve()))
 	if (directory) await rm(directory, { recursive: true, force: true })
@@ -184,6 +206,7 @@ async function recovery(context: BrowserContext, id: string) {
 	}
 }
 async function readRecovery(page: Page) {
+	if (new URL(page.url()).protocol !== 'chrome-extension:') return readRecoveryPhrase(page)
 	// Wait for a usable binding; an existing root has no new write receipt.
 	await expect(
 		page.getByRole('button', { name: 'Show recovery phrase', exact: true })
@@ -216,7 +239,7 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 	const { context, id } = await extension(join(directory, 'profile'))
 	try {
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/article')
+		await source.goto('http://127.0.0.1:5230/article?metadata=full')
 		await clip(context, id, source)
 		await expect(source.getByRole('status')).toHaveText(saved)
 		await expect(source.getByRole('link', { name: 'Open article', exact: true })).toHaveAttribute(
@@ -246,16 +269,18 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 		web.setDefaultTimeout(15000)
 		try {
 			const reader = await web.newPage()
+			await web.route('**/api/capture/asset', (route) =>
+				route.fulfill({ status: 503, json: { code: 'gatewayUnavailable' } })
+			)
 			let fetches = 0
 			reader.on('request', (request) => {
-				if (request.url().includes('/api/capture/')) fetches++
+				if (/\/api\/capture\/(resolve|extract)$/.test(request.url())) fetches++
 			})
 			await test.step(
 				'restore the extension account in the web replica',
 				async () => {
 					await reader.goto('/')
-					await reader.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-					await reader.getByRole('button', { name: 'Restore account', exact: true }).click()
+					await restoreAccount(reader, phrase)
 					await expect(
 						reader.getByRole('link', { name: 'Rendered browser article', exact: true })
 					).toBeVisible({ timeout: 15000 })
@@ -266,6 +291,13 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 			await expect(
 				reader.getByText('Only present after JavaScript rendering.', { exact: false })
 			).toBeVisible()
+			const documentId = new URL(reader.url()).pathname.split('/').pop()!
+			expect(await audit.db.one(app.snapshots.where({ id: documentId }))).toMatchObject(metadata)
+			expect(
+				await audit.db.one(
+					app.articleImages.where({ documentId, sourceUrl: metadata.featuredImageUrl })
+				)
+			).toMatchObject({ sourceUrl: metadata.featuredImageUrl })
 			await expect(reader.locator('body')).not.toContainText('DO_NOT_CAPTURE_FORM_SECRET')
 			await expect(reader.locator('body')).toContainText('café 🦊')
 			await expect(reader.getByRole('link', { name: 'Related article' })).toHaveAttribute(
@@ -293,7 +325,11 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 					await readingControls(reader)
 					await reader.getByRole('link', { name: 'Open library', exact: true }).click()
 					const row = reader.locator('[data-article-id]')
-					await row.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+					await (
+						await openArticleActions(row)
+					)
+						.getByRole('button', { name: 'Move to Trash', exact: true })
+						.click()
 					await expect(row).toHaveCount(0)
 					await clip(context, id, source)
 					await expect(source.getByRole('status')).toHaveText('Already saved.')
@@ -440,9 +476,8 @@ test('saves directly offline, restarts the browser, and syncs without gateway re
 			if (request.url().includes('/api/capture/')) gateway++
 		})
 		await reader.goto('/')
-		await reader.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+		await restoreAccount(reader, phrase)
 		phrase = ''
-		await reader.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await reader.getByRole('link', { name: 'Rendered browser article', exact: true }).click()
 		await expect(
 			reader.getByText('Only present after JavaScript rendering.', { exact: false })
@@ -521,12 +556,7 @@ test('restoring an account in options moves subsequent automatic clips to that l
 		const phrase =
 			await test.step('reveal the independent web account recovery phrase', async () => {
 				await reader.goto('/')
-				await reader.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-				const dialog = reader.getByRole('dialog')
-				await expect(dialog).toBeVisible()
-				const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-				await dialog.getByRole('button', { name: 'Close', exact: true }).click()
-				return phrase
+				return readRecoveryPhrase(reader)
 			})
 		await test.step('restore and confirm the new extension connection', async () => {
 			const options = await context.newPage()
@@ -610,12 +640,7 @@ test('a signed-out click opens sign-in, rejects invalid input, then saves to the
 			if (request.url().includes('/api/capture/')) gateway++
 		})
 		await reader.goto('/')
-		await expect(reader.getByRole('button', { name: 'Restore account', exact: true })).toBeVisible()
-		await reader.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const dialog = reader.getByRole('dialog')
-		await expect(dialog).toBeVisible()
-		const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-		await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+		const phrase = await readRecoveryPhrase(reader)
 		const source = await context.newPage()
 		await source.goto('http://127.0.0.1:5230/signin')
 		const opened = context.waitForEvent('page')

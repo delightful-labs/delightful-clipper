@@ -62,10 +62,13 @@ export function imageSources(html: string) {
 export async function prepareImages(
 	libraryId: string,
 	documentId: string,
-	html: string
+	html: string,
+	featuredImageUrl?: string | null
 ): Promise<ArticleImage[]> {
+	const sources = new Set(featuredImageUrl ? [imageUrlSchema.parse(featuredImageUrl)] : [])
+	for (const url of imageSources(html)) sources.add(url)
 	return Promise.all(
-		imageSources(html).map(async (sourceUrl) => ({
+		[...sources].slice(0, 250).map(async (sourceUrl) => ({
 			id: await articleId(documentId, sourceUrl),
 			libraryId,
 			documentId,

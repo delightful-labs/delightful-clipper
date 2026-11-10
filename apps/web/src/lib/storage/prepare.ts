@@ -1,4 +1,5 @@
 import { prepareImages } from '../images/schema.js'
+import { captureDetailsSchema } from '../capture/metadata.js'
 import type { PreparedSave, SaveRequest } from '../contracts/storage.js'
 export { TEXT_LIMIT, BYTE_LIMIT } from './policy.js'
 import { saveRequestSchema } from './policy.js'
@@ -16,19 +17,35 @@ export async function prepareSave(libraryId: string, request: SaveRequest): Prom
 	}
 	const { operationId, title, text, mediaType } = parsed.data
 	const input = parsed.data
+	const excerpt = input.excerpt ?? text
+	const details = captureDetailsSchema.parse(input)
+	const hasDetails = Object.values(details).some((value) => value !== undefined)
 	const payload = new Uint8Array(input.bytes)
 	const fingerprintSource = request.source ? { ...request.source } : null
 	const createdAt = new Date().toISOString()
 	const payloadHash = await hash(
 		encoder.encode(
 			// Preserve the legacy metadata key order in durable intent fingerprints.
-			JSON.stringify([title, text, await hash(payload), mediaType, fingerprintSource])
+			JSON.stringify([
+				title,
+				text,
+				await hash(payload),
+				mediaType,
+				fingerprintSource,
+				...(input.excerpt === undefined ? [] : [excerpt]),
+				...(hasDetails ? [details] : [])
+			])
 		)
 	)
 	return {
 		images:
 			mediaType === 'text/html'
-				? await prepareImages(libraryId, operationId, new TextDecoder().decode(payload))
+				? await prepareImages(
+						libraryId,
+						operationId,
+						new TextDecoder().decode(payload),
+						input.featuredImageUrl
+					)
 				: [],
 		...(input.articleId ? { articleId: input.articleId } : {}),
 		...(input.source
@@ -36,7 +53,20 @@ export async function prepareSave(libraryId: string, request: SaveRequest): Prom
 			: {}),
 		intent: { id: operationId, libraryId, payloadHash, createdAt },
 		asset: { id: operationId, libraryId, operationId, mediaType, payload },
-		snapshot: { id: operationId, libraryId, documentId: operationId, text, formatVersion: '1' },
+		snapshot: {
+			id: operationId,
+			libraryId,
+			documentId: operationId,
+			text,
+			excerpt,
+			author: details.author ?? null,
+			siteName: details.siteName ?? null,
+			publishedTime: details.publishedTime ?? null,
+			lang: details.lang ?? null,
+			dir: details.dir ?? null,
+			featuredImageUrl: details.featuredImageUrl ?? null,
+			formatVersion: '1'
+		},
 		document: {
 			id: operationId,
 			libraryId,
