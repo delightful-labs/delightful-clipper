@@ -1,4 +1,4 @@
-import { waitFor } from 'xstate'
+import { waitFor, SimulatedClock } from 'xstate'
 import { expect, it, vi } from 'vitest'
 import { createWorkerHostFixture as fixture } from './host-machine.test-support.js'
 
@@ -154,6 +154,95 @@ it('broker close failure refuses clean realm closure after SDK and account custo
 		expect(closeBroker).toHaveBeenCalledOnce()
 		expect(f.actor.getSnapshot().status).toBe('active')
 	} finally {
+		f.actor.stop()
+		f.owner.stop()
+	}
+})
+
+it('reports overdue SDK acquisition without losing the late session or acknowledging closure', async () => {
+	const acquisition = Promise.withResolvers<void>(),
+		clock = new SimulatedClock()
+	const f = fixture(acquisition.promise, undefined, undefined, {
+		clock,
+		closePolicy: { acquisitionMs: 5 }
+	})
+	try {
+		f.actor.start()
+		f.actor.send({ type: 'SHUTDOWN' })
+		await waitFor(f.actor, (s) => s.matches('settlingAcquisition'), { timeout: 1000 })
+		clock.increment(5)
+		expect(f.actor.getSnapshot().context.closeIssue).toEqual({
+			stage: 'acquisition',
+			reason: 'overdue'
+		})
+		expect(f.actor.getSnapshot().status).toBe('active')
+		expect(f.close).not.toHaveBeenCalled()
+		acquisition.resolve()
+		await waitFor(f.actor, (s) => s.status === 'done', { timeout: 1000 })
+		expect(f.close).toHaveBeenCalledOnce()
+	} finally {
+		acquisition.resolve()
+		f.actor.stop()
+		f.owner.stop()
+	}
+})
+it('retains the original SDK close through overdue feedback and consumes its late completion once', async () => {
+	const closing = Promise.withResolvers<void>(),
+		clock = new SimulatedClock()
+	const f = fixture(undefined, undefined, undefined, { clock, closePolicy: { sessionCloseMs: 5 } })
+	f.close.mockImplementation(() => closing.promise)
+	try {
+		f.actor.start()
+		f.actor.send({ type: 'SHUTDOWN' })
+		await waitFor(f.actor, (s) => s.matches('closingSession'), { timeout: 1000 })
+		clock.increment(5)
+		expect(f.actor.getSnapshot().context.closeIssue).toEqual({
+			stage: 'session',
+			reason: 'overdue'
+		})
+		expect(f.actor.getSnapshot().status).toBe('active')
+		f.actor.send({ type: 'SHUTDOWN' })
+		clock.increment(100)
+		expect(f.close).toHaveBeenCalledOnce()
+		closing.resolve()
+		await waitFor(f.actor, (s) => s.status === 'done', { timeout: 1000 })
+	} finally {
+		closing.resolve()
+		f.actor.stop()
+		f.owner.stop()
+	}
+})
+
+it('an already queued deadline cannot override actual SDK closure when native timer delivery is delayed', async () => {
+	const scheduled = new Map<number, () => void>()
+	let sequence = 0
+	const clock = {
+		setTimeout: (callback: () => void) => {
+			scheduled.set(++sequence, callback)
+			return sequence
+		},
+		clearTimeout: (id: number) => {
+			scheduled.delete(id)
+		}
+	}
+	const closing = Promise.withResolvers<void>()
+	const f = fixture(undefined, undefined, undefined, { clock, closePolicy: { sessionCloseMs: 5 } })
+	f.close.mockImplementation(() => closing.promise)
+	try {
+		f.actor.start()
+		f.actor.send({ type: 'SHUTDOWN' })
+		await waitFor(f.actor, (s) => s.matches('closingSession'), { timeout: 1000 })
+		const delayed = [...scheduled.values()]
+		expect(delayed.length).toBeGreaterThan(0)
+		closing.resolve()
+		await waitFor(f.actor, (s) => s.status === 'done', { timeout: 1000 })
+		// Model an already queued native callback delivered after cancellation.
+		for (const callback of delayed) callback()
+		expect(f.actor.getSnapshot().status).toBe('done')
+		expect(f.actor.getSnapshot().context.closeIssue).toBeUndefined()
+		expect(f.close).toHaveBeenCalledOnce()
+	} finally {
+		closing.resolve()
 		f.actor.stop()
 		f.owner.stop()
 	}

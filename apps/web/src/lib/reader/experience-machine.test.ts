@@ -453,3 +453,200 @@ it('does not issue fullscreen entry when native observation setup fails', async 
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
 })
+
+it('reports surface release only after the final position write and fullscreen exit settle', async () => {
+	const persisted = Promise.withResolvers<void>(),
+		exit = Promise.withResolvers<void>()
+	const f = fixture(() => persisted.promise)
+	const port = new MessageChannel(),
+		accepted = vi.fn(),
+		released = vi.fn()
+	const fullscreen = {
+		supported: () => true,
+		active: () => true,
+		enter: async () => {},
+		exit: vi.fn(() => exit.promise),
+		observe: () => () => {}
+	}
+	const surface = { viewport: { port: port.port2 }, fullscreen, lifecycle: { accepted, released } }
+	const commands: string[] = []
+	port.port1.onmessage = (event) => {
+		commands.push(event.data.type)
+		if (event.data.type === 'DETACH')
+			port.port1.postMessage({ type: 'VIEWPORT_CLOSED', position: position(40) })
+	}
+	try {
+		f.actor.send({ type: 'ATTACH_SURFACE', surface, documentId, sources: [] })
+		await vi.waitFor(() => expect(commands).toContain('VIEWPORT_OPEN'))
+		f.actor.send({ type: 'FOCUS' })
+		await vi.waitFor(() =>
+			expect(
+				f.actor.getSnapshot().matches({ active: { focus: { focused: { native: 'fullscreen' } } } })
+			).toBe(true)
+		)
+		f.actor.send({ type: 'SHUTDOWN' })
+		await vi.waitFor(() => expect(f.writes.some((write) => write.field === 'position')).toBe(true))
+		expect(accepted).toHaveBeenCalledOnce()
+		expect(released).not.toHaveBeenCalled()
+		persisted.resolve()
+		await vi.waitFor(() => expect(fullscreen.exit).toHaveBeenCalledOnce())
+		expect(released).not.toHaveBeenCalled()
+		exit.resolve()
+		await waitFor(f.actor, (s) => s.status === 'done', { timeout: 1000 })
+		expect(released).toHaveBeenCalledOnce()
+	} finally {
+		persisted.resolve()
+		exit.resolve()
+		f.actor.stop()
+		port.port1.close()
+		port.port2.close()
+	}
+})
+
+it.each(['DETACH', 'SHUTDOWN'] as const)(
+	'retires a pending replacement on %s without reopening it or dropping the original final write',
+	async (type) => {
+		const persisted = Promise.withResolvers<void>(),
+			detached = Promise.withResolvers<void>()
+		const f = fixture(() => persisted.promise),
+			a = new MessageChannel(),
+			b = new MessageChannel()
+		const releasedA = vi.fn(),
+			releasedB = vi.fn(),
+			openedB = vi.fn(),
+			commands: string[] = []
+		const fullscreen = {
+			supported: () => false,
+			active: () => false,
+			enter: async () => {},
+			exit: async () => {},
+			observe: () => () => {}
+		}
+		const surface = (port: MessagePort, released: () => void) => ({
+			viewport: { port },
+			fullscreen,
+			lifecycle: { accepted: vi.fn(), released }
+		})
+		a.port1.onmessage = (event) => {
+			commands.push(event.data.type)
+			if (event.data.type === 'DETACH')
+				void detached.promise.then(() =>
+					a.port1.postMessage({ type: 'VIEWPORT_CLOSED', position: position(45) })
+				)
+		}
+		b.port1.onmessage = openedB
+		try {
+			f.actor.send({
+				type: 'ATTACH_SURFACE',
+				surface: surface(a.port2, releasedA),
+				documentId,
+				sources: []
+			})
+			await vi.waitFor(() => expect(commands).toContain('VIEWPORT_OPEN'))
+			f.actor.send({
+				type: 'ATTACH_SURFACE',
+				surface: surface(b.port2, releasedB),
+				documentId: crypto.randomUUID(),
+				sources: []
+			})
+			await vi.waitFor(() => expect(commands).toContain('DETACH'))
+			f.actor.send({ type })
+			expect(f.actor.getSnapshot().status).toBe('active')
+			expect(releasedA).not.toHaveBeenCalled()
+			detached.resolve()
+			await vi.waitFor(() =>
+				expect(f.writes).toContainEqual({
+					field: 'position',
+					documentId,
+					value: expect.objectContaining({ offset: 45 })
+				})
+			)
+			expect(releasedA).not.toHaveBeenCalled()
+			expect(f.actor.getSnapshot().status).toBe('active')
+			persisted.resolve()
+			await vi.waitFor(() => expect(releasedA).toHaveBeenCalledOnce())
+			expect(releasedB).toHaveBeenCalledOnce()
+			f.actor.send({ type: 'SHUTDOWN' })
+			await waitFor(f.actor, (snapshot) => snapshot.status === 'done', { timeout: 1000 })
+			expect(releasedA).toHaveBeenCalledOnce()
+			expect(releasedB).toHaveBeenCalledOnce()
+			expect(openedB).not.toHaveBeenCalled()
+			expect(commands.filter((command) => command === 'DETACH')).toHaveLength(1)
+		} finally {
+			detached.resolve()
+			persisted.resolve()
+			f.actor.stop()
+			a.port1.close()
+			a.port2.close()
+			b.port1.close()
+			b.port2.close()
+		}
+	}
+)
+
+it('queues a replacement surface while the old viewport closes and releases each original lease after its own work', async () => {
+	const persisted = Promise.withResolvers<void>(),
+		detached = Promise.withResolvers<void>()
+	const f = fixture(() => persisted.promise),
+		a = new MessageChannel(),
+		b = new MessageChannel()
+	const releasedA = vi.fn(),
+		releasedB = vi.fn(),
+		nextId = crypto.randomUUID()
+	const fullscreen = {
+		supported: () => false,
+		active: () => false,
+		enter: async () => {},
+		exit: async () => {},
+		observe: () => () => {}
+	}
+	const make = (port: MessagePort, released: () => void) => ({
+		viewport: { port },
+		fullscreen,
+		lifecycle: { accepted: vi.fn(), released }
+	})
+	const first = make(a.port2, releasedA),
+		next = make(b.port2, releasedB),
+		opened = vi.fn()
+	a.port1.onmessage = (event) => {
+		if (event.data.type === 'VIEWPORT_OPEN') opened('A')
+		if (event.data.type === 'DETACH')
+			void detached.promise.then(() =>
+				a.port1.postMessage({ type: 'VIEWPORT_CLOSED', position: position(30) })
+			)
+	}
+	b.port1.onmessage = (event) => {
+		if (event.data.type === 'VIEWPORT_OPEN') opened('B')
+		if (event.data.type === 'DETACH')
+			b.port1.postMessage({ type: 'VIEWPORT_CLOSED', position: position(60) })
+	}
+	try {
+		f.actor.send({ type: 'ATTACH_SURFACE', surface: first, documentId, sources: [] })
+		await vi.waitFor(() => expect(opened).toHaveBeenCalledWith('A'))
+		f.actor.send({ type: 'ATTACH_SURFACE', surface: next, documentId: nextId, sources: [] })
+		expect(releasedA).not.toHaveBeenCalled()
+		expect(releasedB).not.toHaveBeenCalled()
+		detached.resolve()
+		await vi.waitFor(() => expect(opened).toHaveBeenCalledWith('B'))
+		await vi.waitFor(() =>
+			expect(
+				f.writes.some((write) => write.field === 'position' && write.documentId === documentId)
+			).toBe(true)
+		)
+		expect(releasedA).not.toHaveBeenCalled()
+		persisted.resolve()
+		await vi.waitFor(() => expect(releasedA).toHaveBeenCalledOnce())
+		expect(releasedB).not.toHaveBeenCalled()
+		f.actor.send({ type: 'SHUTDOWN' })
+		await waitFor(f.actor, (s) => s.status === 'done', { timeout: 1000 })
+		expect(releasedB).toHaveBeenCalledOnce()
+	} finally {
+		detached.resolve()
+		persisted.resolve()
+		f.actor.stop()
+		a.port1.close()
+		a.port2.close()
+		b.port1.close()
+		b.port2.close()
+	}
+})

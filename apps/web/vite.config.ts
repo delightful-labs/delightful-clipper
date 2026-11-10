@@ -42,7 +42,12 @@ export default defineConfig(({ command, mode }) => {
 				'delightful-local-first/session/workflow',
 				'delightful-local-first/restoration/workflow',
 				'delightful-local-first/recovery/workflow',
-				'delightful-local-first/workspace/creation/workflow'
+				'delightful-local-first/workspace/creation/workflow',
+				'delightful-local-first/transactions/workflow',
+				'delightful-local-first/lifecycle/operation/workflow',
+				'delightful-local-first/worker/request/workflow',
+				'delightful-local-first/worker/channel/workflow',
+				'delightful-local-first/worker/effect-drain/workflow'
 			]
 		},
 		ssr: { external: ['jazz-tools', 'jazz-napi', '@vercel/functions', '@vercel/sandbox', 'ws'] },

@@ -8,6 +8,7 @@ export type FullscreenSurface = {
 	observe: (changed: () => void) => () => void
 }
 export type ReaderSurface = {
+	lifecycle?: { accepted: () => void; released: () => void }
 	fullscreen: FullscreenSurface
 	viewport: { native: ViewportElements } | { port: MessagePort }
 }

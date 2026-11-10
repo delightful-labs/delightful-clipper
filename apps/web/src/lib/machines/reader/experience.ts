@@ -62,6 +62,7 @@ type Context = Input & {
 	pendingAttachment: Attachment | undefined
 	progress: Record<string, number>
 	display: FullscreenSurface | undefined
+	retiringSurfaces: ReaderSurface[]
 	sync: Record<string, 'pending' | 'accepted' | 'rejected'>
 }
 // Keep attachment admission synchronous so native fullscreen retains user activation.
@@ -90,6 +91,27 @@ const fullscreenObservation = createCallbackLogic<ReaderExperienceEvent, Fullscr
 	}
 )
 
+function retirePendingAttachment(context: Context) {
+	return {
+		pendingAttachment: undefined,
+		retiringSurfaces: context.pendingAttachment
+			? [...context.retiringSurfaces, context.pendingAttachment.surface]
+			: context.retiringSurfaces
+	}
+}
+function retireAttachments(context: Context) {
+	return {
+		attachment: undefined,
+		pendingAttachment: undefined,
+		retiringSurfaces: [
+			...new Set([
+				...context.retiringSurfaces,
+				...(context.attachment ? [context.attachment.surface] : []),
+				...(context.pendingAttachment ? [context.pendingAttachment.surface] : [])
+			])
+		]
+	}
+}
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Reading resource unavailable')
 	return value
@@ -216,6 +238,7 @@ const model = setup({
 export const readerExperienceMachine = model.createMachine({
 	id: 'reader-experience',
 	initial: 'admitting',
+	on: { ATTACH_SURFACE: ({ event }, enq) => enq(() => event.surface.lifecycle?.released()) },
 	context: ({ input }) => ({
 		...input,
 		rows: [],
@@ -227,6 +250,7 @@ export const readerExperienceMachine = model.createMachine({
 		pendingAttachment: undefined,
 		progress: {},
 		display: undefined,
+		retiringSurfaces: [],
 		sync: {}
 	}),
 	states: {
@@ -247,11 +271,34 @@ export const readerExperienceMachine = model.createMachine({
 				input: ({ self }) => ({ reportTo: self }),
 				onError: { target: '#reader-experience.active.synchronization.failed' }
 			},
-			always: (args) => {
+			always: (args, enq) => {
+				const released = args.context.retiringSurfaces.filter(
+					(surface) =>
+						surface !== args.context.attachment?.surface &&
+						surface !== args.context.pendingAttachment?.surface &&
+						surface.fullscreen !== args.context.display
+				)
+				if (
+					released.length &&
+					matchesState({ active: { focus: 'normal' } }, args.value) &&
+					!args.guards.queued(args) &&
+					!matchesState({ active: { writer: 'writing' } }, args.value)
+				) {
+					for (const surface of released) enq(() => surface.lifecycle?.released())
+					return {
+						context: {
+							retiringSurfaces: args.context.retiringSurfaces.filter(
+								(surface) => !released.includes(surface)
+							)
+						}
+					}
+				}
 				if (
 					!(
 						matchesState({ active: { control: 'closing' } }, args.value) &&
 						!args.guards.queued(args) &&
+						!args.context.pendingAttachment &&
+						args.context.retiringSurfaces.length === 0 &&
 						!matchesState({ active: { writer: 'writing' } }, args.value) &&
 						matchesState({ active: { focus: 'normal' } }, args.value) &&
 						matchesState({ active: { viewport: 'detached' } }, args.value)
@@ -465,8 +512,40 @@ export const readerExperienceMachine = model.createMachine({
 				},
 				viewport: {
 					initial: 'detached',
+					on: {
+						ATTACH_SURFACE: (args, enq) => {
+							const { context, event } = args
+							if (
+								context.attachment?.surface === event.surface ||
+								context.pendingAttachment?.surface === event.surface
+							)
+								return
+							if (
+								!args.guards.current(args) ||
+								!matchesState({ active: { control: 'accepting' } }, args.value) ||
+								matchesState({ active: { viewport: 'failed' } }, args.value)
+							) {
+								enq(() => event.surface.lifecycle?.released())
+								return
+							}
+							enq(() => event.surface.lifecycle?.accepted())
+							enq.raise({ type: 'SHOW_CONTROLS' })
+							return {
+								target: '.identifying',
+								reenter: true,
+								context: {
+									...retireAttachments(context),
+									pendingAttachment: { surface: event.surface, documentId: event.documentId }
+								}
+							}
+						}
+					},
 					states: {
 						detached: {
+							always: (args) =>
+								args.context.pendingAttachment && args.guards.accepting(args)
+									? { target: 'identifying' }
+									: undefined,
 							on: {
 								ATTACH: (args) => {
 									if (
@@ -487,15 +566,18 @@ export const readerExperienceMachine = model.createMachine({
 										}
 									}
 								},
-								ATTACH_SURFACE: (args) => {
+								ATTACH_SURFACE: (args, enq) => {
 									if (
 										!(
 											matchesState({ active: { control: 'accepting' } }, args.value) &&
 											args.guards.current(args)
 										)
-									)
+									) {
+										enq(() => args.event.surface.lifecycle?.released())
 										return
+									}
 									const { event } = args
+									enq(() => event.surface.lifecycle?.accepted())
 									return {
 										target: 'identifying',
 										context: {
@@ -522,8 +604,26 @@ export const readerExperienceMachine = model.createMachine({
 										pendingAttachment: undefined
 									}
 								}),
-								DETACH: { target: 'detached', context: { pendingAttachment: undefined } },
-								SHUTDOWN: { target: 'detached', context: { pendingAttachment: undefined } }
+								DETACH: ({ context }) => ({
+									target: 'detached',
+									context: {
+										pendingAttachment: undefined,
+										retiringSurfaces: [
+											...context.retiringSurfaces,
+											required(context.pendingAttachment).surface
+										]
+									}
+								}),
+								SHUTDOWN: ({ context }) => ({
+									target: 'detached',
+									context: {
+										pendingAttachment: undefined,
+										retiringSurfaces: [
+											...context.retiringSurfaces,
+											required(context.pendingAttachment).surface
+										]
+									}
+								})
 							}
 						},
 						waiting: {
@@ -532,11 +632,29 @@ export const readerExperienceMachine = model.createMachine({
 								return { target: 'owning' }
 							},
 							on: {
-								DETACH: () => {
-									return { target: 'detached', context: { attachment: undefined } }
+								DETACH: ({ context }) => {
+									return {
+										target: 'detached',
+										context: {
+											attachment: undefined,
+											retiringSurfaces: [
+												...context.retiringSurfaces,
+												required(context.attachment).surface
+											]
+										}
+									}
 								},
-								SHUTDOWN: () => {
-									return { target: 'detached', context: { attachment: undefined } }
+								SHUTDOWN: ({ context }) => {
+									return {
+										target: 'detached',
+										context: {
+											attachment: undefined,
+											retiringSurfaces: [
+												...context.retiringSurfaces,
+												required(context.attachment).surface
+											]
+										}
+									}
 								}
 							}
 						},
@@ -577,15 +695,55 @@ export const readerExperienceMachine = model.createMachine({
 													progress,
 													queue: replaceDesired(context.queue, change),
 													drafts: replaceDesired(context.drafts, change),
-													attachment: undefined
+													attachment: undefined,
+													retiringSurfaces: [
+														...context.retiringSurfaces,
+														required(context.attachment).surface
+													]
 												}
 											})(args)
 										}
 									}
-									return { target: 'detached', context: { attachment: undefined } }
+									return {
+										target: 'detached',
+										context: {
+											attachment: undefined,
+											retiringSurfaces: [
+												...args.context.retiringSurfaces,
+												required(args.context.attachment).surface
+											]
+										}
+									}
 								}
 							},
 							on: {
+								ATTACH_SURFACE: (args, enq) => {
+									const { context, event } = args
+									if (
+										context.attachment?.surface === event.surface ||
+										context.pendingAttachment?.surface === event.surface
+									)
+										return {}
+									if (
+										!args.guards.current(args) ||
+										!matchesState({ active: { control: 'accepting' } }, args.value)
+									) {
+										enq(() => event.surface.lifecycle?.released())
+										return {}
+									}
+									enq(() => event.surface.lifecycle?.accepted())
+									enq.raise({ type: 'SHOW_CONTROLS' })
+									enq.sendTo('viewport', { type: 'DETACH' })
+									return {
+										target: '.closing',
+										context: {
+											pendingAttachment: { surface: event.surface, documentId: event.documentId },
+											retiringSurfaces: context.pendingAttachment
+												? [...context.retiringSurfaces, context.pendingAttachment.surface]
+												: context.retiringSurfaces
+										}
+									}
+								},
 								REFLOW: (args, enq) => {
 									enq.sendTo('viewport', { type: 'REFLOW' })
 								},
@@ -650,17 +808,28 @@ export const readerExperienceMachine = model.createMachine({
 										}
 									}
 								},
-								closing: { on: { DETACH: {}, SHUTDOWN: {} } }
+								closing: {
+									on: {
+										DETACH: ({ context }) => ({ context: retirePendingAttachment(context) }),
+										SHUTDOWN: ({ context }) => ({ context: retirePendingAttachment(context) })
+									}
+								}
 							}
 						},
 						failed: {
 							meta: { name: t('reader.data_unavailable'), variant: 'error', priority: 4 },
 							on: {
-								DETACH: () => {
-									return { target: 'detached', context: { attachment: undefined } }
+								DETACH: ({ context }) => {
+									return {
+										target: 'detached',
+										context: retireAttachments(context)
+									}
 								},
-								SHUTDOWN: () => {
-									return { target: 'detached', context: { attachment: undefined } }
+								SHUTDOWN: ({ context }) => {
+									return {
+										target: 'detached',
+										context: retireAttachments(context)
+									}
 								}
 							}
 						}

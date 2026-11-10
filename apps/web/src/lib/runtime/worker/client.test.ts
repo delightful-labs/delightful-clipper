@@ -1,4 +1,5 @@
 import { accountStorageKey } from './storage-channel.js'
+import { SimulatedClock } from 'xstate'
 import { afterEach, expect, it, vi } from 'vitest'
 import { openApplicationClient } from './client.js'
 import type { WorkerReply } from './client.js'
@@ -173,6 +174,34 @@ it('accepts a genuine late close acknowledgement after a shutdown failure withou
 	const worker = NativeWorker.latest!
 	client.close()
 	worker.emit({ type: 'FAILED' })
+	expect(worker.terminate).not.toHaveBeenCalled()
+	worker.emit({ type: 'CLOSED' })
+	expect(worker.terminate).toHaveBeenCalledOnce()
+})
+
+it('reports a silent Worker close as overdue, keeps native custody and accepts its late CLOSED', () => {
+	vi.stubGlobal('Worker', NativeWorker)
+	vi.stubGlobal(
+		'window',
+		Object.assign(new EventTarget(), { location: { href: 'https://example.invalid/' } })
+	)
+	vi.stubGlobal('navigator', { onLine: true })
+	const clock = new SimulatedClock(),
+		failed = vi.fn()
+	const client = openApplicationClient({
+		appId: crypto.randomUUID(),
+		serverUrl: 'https://example.invalid/jazz',
+		publish: vi.fn(),
+		recovery: vi.fn(),
+		failed,
+		clock,
+		closeTimeoutMs: 5
+	})
+	const worker = NativeWorker.latest
+	if (!worker) throw new Error('Missing native Worker')
+	client.close()
+	clock.increment(5)
+	expect(failed).toHaveBeenCalledExactlyOnceWith({ stage: 'realm', reason: 'overdue' })
 	expect(worker.terminate).not.toHaveBeenCalled()
 	worker.emit({ type: 'CLOSED' })
 	expect(worker.terminate).toHaveBeenCalledOnce()

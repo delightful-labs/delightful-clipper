@@ -1,3 +1,6 @@
+import { REALM_CLOSE_POLICY } from './close-policy.js'
+import type { WorkerCloseIssue } from './close-policy.js'
+import type { SimulatedClock } from 'xstate'
 import type { EventPayload } from '../../machines/events.js'
 import { types, createActor, createCallbackLogic, setup } from 'xstate'
 
@@ -15,7 +18,8 @@ export type WorkerReply =
 	| { type: 'AUTH_RETURNED' }
 	| { type: 'RECEIVED'; requestId: string; scope: string }
 	| RuntimeView
-	| { type: 'CLOSED' | 'FAILED' }
+	| { type: 'CLOSED' }
+	| { type: 'FAILED'; issue?: WorkerCloseIssue }
 	| { type: 'STORAGE_NAMESPACE'; key: string }
 	| { type: 'RECOVERY'; scope: string; view: RecoveryPhraseView; available: boolean }
 export type Input = {
@@ -24,14 +28,17 @@ export type Input = {
 	serverUrl: string
 	publish: (view: RuntimeView) => void
 	recovery: (view: RecoveryPhraseView, available: boolean, scope: string) => void
-	failed: () => void
+	failed: (issue?: WorkerCloseIssue) => void
+	closeTimeoutMs?: number
+	clock?: Pick<SimulatedClock, 'setTimeout' | 'clearTimeout'>
 }
 type Event =
 	| { type: 'SEND'; message: RuntimeCommand; transfers?: Transferable[] }
 	| { type: 'RECEIVED'; requestId: string }
 	| { type: 'VIEW'; view: RuntimeView }
 	| { type: 'UI_DETACHED' }
-	| { type: 'SHUTDOWN' | 'CLOSED' | 'FAILED' }
+	| { type: 'SHUTDOWN' | 'CLOSED' }
+	| { type: 'FAILED'; issue?: WorkerCloseIssue }
 const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }) => {
 	const native = input.createWorker?.()
 	const worker =
@@ -87,7 +94,7 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 				sendBack({ type: 'CLOSED' })
 				break
 			case 'FAILED':
-				sendBack({ type: 'FAILED' })
+				sendBack({ type: 'FAILED', ...(data.issue ? { issue: data.issue } : {}) })
 		}
 	}
 	worker.onerror = () => sendBack({ type: 'FAILED' })
@@ -194,16 +201,21 @@ const clientMachine = setup({
 					return { target: 'draining' }
 				},
 				FAILED: (args, enq) => {
-					enq(() => args.context.failed())
+					enq(() => args.context.failed(args.event.issue))
 					return { target: 'failed' }
 				}
 			}
 		},
 		draining: {
+			timeout: ({ context }) => context.closeTimeoutMs ?? REALM_CLOSE_POLICY.clientMs,
+			onTimeout: ({ context }, enq) => {
+				enq(() => context.failed({ stage: 'realm', reason: 'overdue' }))
+				return { target: 'failed' }
+			},
 			on: {
 				CLOSED: { target: 'closed' },
 				FAILED: (args, enq) => {
-					enq(() => args.context.failed())
+					enq(() => args.context.failed(args.event.issue))
 					return { target: 'failed' }
 				}
 			}
@@ -233,7 +245,10 @@ export type LibraryClient = {
 	attach: (elements: ViewportElements, documentId: string) => () => void
 }
 export function openApplicationClient(input: Input) {
-	const actor = createActor(clientMachine, { input }).start()
+	const actor = createActor(clientMachine, {
+		input,
+		...(input.clock ? { clock: input.clock } : {})
+	}).start()
 	const post = (message: RuntimeCommand, transfers?: Transferable[]) => {
 		if (actor.getSnapshot().status === 'active')
 			actor.send({ type: 'SEND', message, ...(transfers ? { transfers } : {}) })

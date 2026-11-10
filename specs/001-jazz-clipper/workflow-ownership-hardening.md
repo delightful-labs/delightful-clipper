@@ -1,6 +1,6 @@
 # Workflow ownership hardening specification
 
-**Status:** Partially implemented: A and B are complete for Clipper. C–G remain open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
+**Status:** Partially implemented: A, B and C are complete for Clipper. D–G remain open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
 
 Move the remaining authentication and runtime lifecycle decisions into their owning charts. A reader must be able to identify admission, replacement, operation order, completion, failure and cancellation from the statecharts and their typed protocols. Preserve established product and persistence semantics while making resource ownership explicit and adding recoverable outcomes for stalled operations.
 
@@ -233,6 +233,13 @@ REC-3: Fault-inject dropped and late storage WRITE replies. Prove no second tran
 DLF-3: Before adopting shared account runtime in another app, pin and review both consumer revisions. Prove request correlation/bounds, queued lock cancellation, issued-write retention, late reply/port cleanup, host closure and A → B → A stale-generation refusal against each consumer's actual adapter. Preserve existing storage namespaces and identities.
 
 ## C Account binding and realm lifecycle
+
+Implementation checkpoint: opaque native observations and chart-owned candidate
+adoption/reuse/retirement, scoped host attachments, acknowledged Window surface
+cleanup and retained overdue realm closure are implemented. See
+[the ownership protocol and qualification](../../docs/reviews/account-binding-lifecycle.md).
+HOST/BIND and the host/acquisition/session-close portion of REC-6 are covered;
+D retains sign-out recovery and E retains its search/viewport failure requirements.
 
 **Files and owners:** DLF session acquisition/startup/readiness contracts; Clipper `backend/jazz/account.ts`, `machines/runtime/application-readiness.ts`, `runtime/worker/host-machine.ts`, `application.worker.ts`, `client.ts`, `views.ts`, recovery owner and tag attachment.
 

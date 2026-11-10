@@ -11,7 +11,8 @@ const command = z.discriminatedUnion('type', [
 		attachmentId: z.string().uuid(),
 		position: positionSchema.optional()
 	}),
-	z.object({ type: z.enum(['DETACH', 'REFLOW', 'DISPOSE']) }),
+	z.object({ type: z.enum(['DETACH', 'REFLOW']) }),
+	z.object({ type: z.literal('DISPOSE'), id: z.string().uuid().optional() }),
 	z.object({ type: z.enum(['FULLSCREEN_ENTER', 'FULLSCREEN_EXIT']), id: z.string().uuid() })
 ])
 /** UI resource boundary: the viewport actor reads layout and applies scrolling.
@@ -20,6 +21,7 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 	const surface = nativeReaderSurface(elements)
 	let viewport: ActorRefFrom<typeof viewportMachine> | undefined
 	let released = false
+	let disposeRequest: { id?: string | undefined } | undefined
 	const detach = () => {
 		released = true
 		if (viewport?.getSnapshot().status === 'active') viewport.send({ type: 'DETACH' })
@@ -33,11 +35,16 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 			active: surface.fullscreen.active()
 		})
 	const releaseFullscreen = surface.fullscreen.observe(() => fullscreen())
-	const dispose = () => {
+	let disposed = false
+	const dispose = (id?: string) => {
+		if (disposed) return
+		disposed = true
 		releaseFullscreen()
 		port.onmessage = null
+		if (id) port.postMessage({ type: 'DISPOSED', id })
 		port.close()
 	}
+
 	port.onmessage = ({ data }: MessageEvent<unknown>) => {
 		const decoded = command.safeParse(data)
 		if (!decoded.success) return
@@ -59,11 +66,13 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 				})
 				viewport = actor
 				actor.subscribe({
-					complete: () =>
+					complete: () => {
 						port.postMessage({
 							type: 'VIEWPORT_CLOSED',
 							position: actor.getSnapshot().output?.position
-						}),
+						})
+						if (disposeRequest) dispose(disposeRequest.id)
+					},
 					error: () =>
 						port.postMessage({
 							type: 'VIEWPORT_FAILED',
@@ -92,7 +101,9 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 				)
 				break
 			case 'DISPOSE':
-				dispose()
+				disposeRequest = message
+				if (viewport?.getSnapshot().status === 'active') detach()
+				else dispose(message.id)
 		}
 	}
 	port.start()

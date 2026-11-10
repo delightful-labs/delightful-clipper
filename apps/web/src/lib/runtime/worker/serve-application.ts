@@ -1,17 +1,12 @@
 import { imageUrlSchema } from '../../images/schema.js'
 import { bindWorkerConnectivity } from '../../offline/connectivity.js'
 /// <reference lib="webworker" />
-import { createActor, type AnyActorRef } from 'xstate'
+import { createActor } from 'xstate'
 
 import { z } from 'zod'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { accountInput } from '../../backend/jazz/account.js'
 import { JAZZ_RUNTIME_VERSION } from '../../offline/runtime-version.js'
-import {
-	selectRecoveryBinding,
-	selectLibraryActor
-} from '../../machines/runtime/application-readiness.js'
-import { remoteReaderSurface } from './reader-surface.js'
 import { projectRuntime } from './views.js'
 import { commandSchema } from './protocol.js'
 import { recoveryView } from './recovery-owner.js'
@@ -43,12 +38,8 @@ export function serveApplicationWorker(options: {
 		brokerControl: z.instanceof(MessagePort),
 		brokerScope: hostScopeSchema
 	})
-	let observedRecovery: object | undefined
 	let host: WorkerHost | undefined
 	let sentReader = ''
-	let observedLibrary: object | undefined
-	const surfaces = new Set<ReturnType<typeof remoteReaderSurface>>()
-	const subscriptions = new Map<AnyActorRef, { unsubscribe: () => void }>()
 
 	self.onmessage = ({ data }: MessageEvent<unknown>) => {
 		if (host) {
@@ -61,14 +52,15 @@ export function serveApplicationWorker(options: {
 						message.scope !== host.getSnapshot().context.scope ||
 						!host.getSnapshot().matches({ running: 'accepting' })
 					) {
+						message.port.postMessage({ type: 'DISPOSE', id: crypto.randomUUID() })
 						message.port.close()
 						return
 					}
-					const surface = remoteReaderSurface(message.port, message.fullscreen)
 					const event = {
 						type: 'ATTACH_BOUND',
 						scope: message.scope,
-						surface,
+						port: message.port,
+						fullscreen: message.fullscreen,
 						documentId: message.documentId,
 						sources: [
 							...new Set(
@@ -83,11 +75,6 @@ export function serveApplicationWorker(options: {
 							)
 						]
 					} satisfies Parameters<WorkerHost['send']>[0]
-					if (!host.getSnapshot().can(event)) {
-						surface.dispose()
-						return
-					}
-					surfaces.add(surface)
 					host.send(event)
 				} else {
 					host.send(message)
@@ -149,16 +136,8 @@ export function serveApplicationWorker(options: {
 		const attachment = options.attach?.(actor)
 		const publish = () => {
 			attachment?.publish()
-			if (actor.getSnapshot().matches('failed')) {
-				self.postMessage({ type: 'FAILED' })
-				return
-			}
-			const application = actor.getSnapshot().children.application
-			const snapshot = application?.getSnapshot()
-			const binding = selectRecoveryBinding(snapshot)
-			if (binding?.capability !== observedRecovery) {
-				observedRecovery = binding?.capability
-				actor.send({ type: 'BIND_RECOVERY', binding })
+			if (actor.getSnapshot().matches('failed') || actor.getSnapshot().context.closeIssue) {
+				self.postMessage({ type: 'FAILED', issue: actor.getSnapshot().context.closeIssue })
 				return
 			}
 			const recovery = actor.getSnapshot().context.recovery
@@ -168,46 +147,6 @@ export function serveApplicationWorker(options: {
 				available: !!recovery,
 				view: recoveryView(recovery)
 			})
-			const library = selectLibraryActor(snapshot)
-			// UI admission closes before the invoked library finishes draining its readers.
-			const ownedLibrary = snapshot?.children.library
-			if (library !== observedLibrary) {
-				observedLibrary = library
-				actor.send({ type: 'BIND_LIBRARY', library, scope: crypto.randomUUID() })
-				return
-			}
-			const watched: AnyActorRef[] = [
-				actor.getSnapshot().children.oauth,
-				application,
-				ownedLibrary,
-				actor.getSnapshot().context.tagForm,
-				recovery,
-				recovery?.getSnapshot().children.phrase,
-				...Object.values(ownedLibrary?.getSnapshot().children ?? {})
-			].filter((value) => value !== undefined)
-			for (const [reference, subscription] of subscriptions) {
-				if (!watched.includes(reference)) {
-					subscription.unsubscribe()
-					subscriptions.delete(reference)
-				}
-			}
-			for (const reference of watched) {
-				if (!subscriptions.has(reference))
-					subscriptions.set(reference, reference.subscribe(publish))
-			}
-			const readerContext = ownedLibrary
-				?.getSnapshot()
-				.children.readerExperience?.getSnapshot().context
-			for (const surface of surfaces) {
-				if (
-					readerContext?.attachment?.surface !== surface &&
-					readerContext?.pendingAttachment?.surface !== surface &&
-					readerContext?.display !== surface.fullscreen
-				) {
-					surface.dispose()
-					surfaces.delete(surface)
-				}
-			}
 			const projection = projectRuntime(actor.getSnapshot())
 			const revision = projection.library
 				? projection.library.scope + ':' + projection.library.readerRevision
@@ -219,8 +158,6 @@ export function serveApplicationWorker(options: {
 		actor.subscribe({
 			next: publish,
 			complete: () => {
-				for (const subscription of subscriptions.values()) subscription.unsubscribe()
-				subscriptions.clear()
 				attachment?.close()
 				const url = actor.getSnapshot().context.redirect
 				self.postMessage(url ? { type: 'NAVIGATE', url } : { type: 'CLOSED' })

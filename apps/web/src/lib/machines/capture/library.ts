@@ -681,6 +681,10 @@ export const libraryMachine = setup({
 						enq.sendTo('readerExperience', event.event)
 						return {}
 					}
+					if (event.event.type === 'ATTACH_SURFACE')
+						enq(() => {
+							if (event.event.type === 'ATTACH_SURFACE') event.event.surface.lifecycle?.released()
+						})
 				},
 
 				QUERY: (args, enq) => {
