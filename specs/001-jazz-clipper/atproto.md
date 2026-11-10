@@ -80,6 +80,24 @@ backend restart durability, refresh/revocation, another-device returning sign-in
 or public repository permissions. The eight synthetic-provider offline cases
 above remain separate evidence.
 
+### Live-identity offline follow-up — 2026-11-10
+
+The real-provider profile subsequently passed two complete offline browser-process
+restarts with network/DNS blocked and HTTP cache cleared. Both reopened the same
+account and readable marked article. A favorite added offline survived the second
+restart and reached a fresh local replica after reconnect; opening the article
+from that replica's library rendered the saved text. Extraction was synthetic,
+while authentication and Jazz persistence/sync used production. The fresh replica
+reused only this app's session in memory; this was not another-device OAuth login.
+
+A separate production reader gap remains: direct URL navigation in a fresh replica
+twice reported the article unavailable while online, whereas opening from the
+library worked. Corrected local cold-reader cases pass without application changes,
+so neither the cause nor a fix is established. No speculative wait/retry change
+was retained or deployed. [PR #32](https://github.com/delightful-labs/delightful-clipper/pull/32)
+contains the bounded live evidence and added test coverage. The marked article
+remains in the private library; the native test profile stays local for continuation.
+
 ## Accepted publication behavior — not implemented
 
 - Jazz is the source authority. Initial publication is explicit and previewed;
@@ -122,8 +140,9 @@ retain proposals beyond their explicitly approved subsets.
 
 | Work | Status / next evidence |
 | --- | --- |
+| Production reader gap | Investigate the reproducible direct-reader URL failure in a fresh local replica. Library-link reading works; the corrected local cold-reader case does not reproduce it. No fix deployed. |
 | Browser CI | Resolve the general web-test failure in run `42802719477`, then obtain Linux extension evidence; local macOS passes are a separate result. |
-| Hosted identity check | Real-provider round trip and three same-account reloads passed on production. Next qualify browser-process restart with the live identity, returning-device access, deployed persistence/refresh and revoke/expire behavior. |
+| Hosted identity check | Real-provider round trip and three same-account reloads passed on production. Two live-identity offline process restarts and remote propagation now pass. Returning-device provider access, deployed persistence/refresh and revoke/expire behavior remain open. |
 | Shared DLF adoption | Extract only evidenced reusable provider/server/lifecycle boundaries, review interfaces, then qualify Finance independently with its existing data/backup obligations. No cross-app session/token transfer. |
 | Local annotations | Finish independently identified highlights, article notes, attached notes and anchors; existing draft/revision groundwork is not the completed model or editor. Review native text/history/anchor facilities before custom machinery. |
 | Public vocabulary | Select the real controlled companion namespace; resolve exact payload/projector, public keys/discovery, anchoring/version rules, and oversized retained/imported content. Example `com.example.*` names are not selected production NSIDs. |
