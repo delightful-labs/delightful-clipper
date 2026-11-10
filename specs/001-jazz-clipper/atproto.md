@@ -49,14 +49,39 @@ provider identities are synthetic; this is not a hosted live-provider consent te
 See [native auth qualification](../../docs/reviews/atproto-native-alpha60.md) and
 [extension investigation](../../docs/reviews/extension-startup-2026-11-09.md).
 CI for `152d679` passed tooling/types/build, but [the browser job](https://github.com/delightful-labs/delightful-clipper/actions/runs/42802719477)
-failed at `pnpm test:e2e`, before its extension step. This run supplies no Linux
-extension qualification; resolving the browser CI failure remains open.
+failed at `pnpm test:e2e`, before its extension step. A later PR #32 run reached
+the extension suite and exposed the known Linux failure recorded below.
 
 The original Jazz-only Window-teardown reproducer remains evidence of an upstream
 boundary, not a repair to Jazz itself. Linux extension CI, further hosted lifecycle
 qualification, cross-app Finance adoption, and all published Jazz
 pending-write/account-switch caveats remain separate qualification gates. Do not
 claim complete integration/release readiness from these local passes.
+
+### Known issue: Linux extension recovery sign-in — 2026-11-10
+
+[Linux CI run 42845035130, browser job 129930124826](https://github.com/delightful-labs/delightful-clipper/actions/runs/42845035130/job/129930124826)
+on PR #32 commit `77cf813` passed tooling/types/build, web browser tests, schema
+migrations, dedicated-worker tests and the full offline restart suite. The packaged
+extension suite passed nine cases and failed three:
+
+- Signed-out toolbar capture: after submitting a valid recovery phrase, the sign-in
+  popup did not close within the existing 15-second wait.
+- Stale connection for another account: setup did not obtain a confirmed
+  `clipper.connection` within the existing five-second assertion.
+- Repeated settings teardown/capture: setup failed at the same confirmation step.
+  Both setup failures showed “Updating your account…”, no alerts and no Chrome
+  local-storage keys.
+
+All 12 packaged extension cases pass locally on macOS/Chromium. The Linux cause
+remains unresolved: the evidence does not locate the stall in restoration,
+connection confirmation or shutdown settlement. This is Jazz recovery-phrase
+sign-in through the extension's trusted page; direct AT Protocol provider sign-in
+in the extension remains deferred. Diagnostic follow-up is not an established fix.
+
+Linux extension qualification and complete release readiness remain blocked by
+this issue. Passing web/native offline evidence remains valid within its tested
+scope. Further investigation is deferred pending a separate scope discussion.
 
 ### Hosted live-provider check — passed 2026-11-10
 
@@ -141,7 +166,7 @@ retain proposals beyond their explicitly approved subsets.
 | Work | Status / next evidence |
 | --- | --- |
 | Production reader gap | Investigate the reproducible direct-reader URL failure in a fresh local replica. Library-link reading works; the corrected local cold-reader case does not reproduce it. No fix deployed. |
-| Browser CI | Resolve the general web-test failure in run `42802719477`, then obtain Linux extension evidence; local macOS passes are a separate result. |
+| Linux extension CI | Known recovery sign-in failure: run `42845035130` passes web/schema/worker/offline checks but fails three of 12 extension cases. Cause and repair remain unresolved; local macOS passes are separate evidence. See the known issue above. |
 | Hosted identity check | Real-provider round trip and three same-account reloads passed on production. Two live-identity offline process restarts and remote propagation now pass. Returning-device provider access, deployed persistence/refresh and revoke/expire behavior remain open. |
 | Shared DLF adoption | Extract only evidenced reusable provider/server/lifecycle boundaries, review interfaces, then qualify Finance independently with its existing data/backup obligations. No cross-app session/token transfer. |
 | Local annotations | Finish independently identified highlights, article notes, attached notes and anchors; existing draft/revision groundwork is not the completed model or editor. Review native text/history/anchor facilities before custom machinery. |
