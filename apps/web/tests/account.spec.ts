@@ -908,34 +908,29 @@ test('Add link modal focuses its URL field and dismisses without saving', async 
 	expect(saved).toEqual([null])
 })
 
-test('global Add link action saves from the reader without replacing or leaving it', async ({
+test('Add link is available only on the landing page, including after reader reload and return', async ({
 	page
 }) => {
-	await page.route('**/api/capture/resolve', (route) =>
-		route.fulfill({ status: 503, json: { code: 'gatewayUnavailable' } })
-	)
 	await page.goto('/')
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	await expect(page.getByRole('button', { name: 'Add link', exact: true })).toBeVisible()
 	await page.evaluate(async () => {
 		const path = '/tests/article-driver.ts'
 		return (await import(/* @vite-ignore */ path)).supplied('https://example.com/modal-reader')
 	})
-	await page.getByRole('link', { name: 'Supplied clip', exact: true }).click()
-	await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
-	const dialog = await openAddLink(page)
-	const url = 'https://example.com/added-from-reader'
-	await dialog.getByLabel('Article URL', { exact: true }).fill(url)
-	await dialog.getByRole('button', { name: 'Add link', exact: true }).click()
-	await expect(dialog).not.toBeVisible()
-	await expect
-		.poll(() =>
-			page.evaluate(async (url) => {
-				const path = '/tests/article-driver.ts'
-				return (await import(/* @vite-ignore */ path)).inspect([url])
-			}, url)
-		)
-		.not.toEqual([null])
-	await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
+	for (const width of [1440, 390]) {
+		await page.setViewportSize({ width, height: 900 })
+		await page.getByRole('link', { name: 'Supplied clip', exact: true }).click()
+		await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
+		await expect(page.getByRole('button', { name: 'Add link', exact: true })).toHaveCount(0)
+		await page.reload()
+		await expect(page.getByRole('article')).toContainText('Content supplied by a browser clip.')
+		await expect(page.getByRole('button', { name: 'Add link', exact: true })).toHaveCount(0)
+		await page.goBack()
+		await expect(page.getByRole('region', { name: 'Saved articles' })).toBeVisible()
+		const dialog = await openAddLink(page)
+		await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	}
 })
 
 test('sidebar shows browser connectivity and follows offline and online events', async ({

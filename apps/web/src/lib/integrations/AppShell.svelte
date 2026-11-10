@@ -123,7 +123,7 @@
 		{/if}
 		<main class="content" inert={modal && !readerFocused}>
 			<div class="page-content">{@render children()}</div>
-			{#if library.actor && !readerFocused}
+			{#if library.actor && !readerFocused && page.url.pathname === '/'}
 				<div class="capture-control">
 					{#key library.actor}<AddLink actor={library.actor} />{/key}
 				</div>
