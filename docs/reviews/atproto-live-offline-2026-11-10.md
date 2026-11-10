@@ -1,5 +1,10 @@
 # Live AT Protocol offline qualification — 2026-11-10
 
+This preserves the original live-run checkpoint before the reader repair. The
+subsequent diagnosis, approved implementation and qualification are recorded in
+[the direct-reader follow-up](reader-direct-open-2026-11-10.md). The production
+deployment described here predates that implementation.
+
 Production merge `168cd0b`, deployment `dpl_5qUpzSiG7Y8APNfgrW1rSQgQ9XD9`,
 on `https://clipper.delightfullabs.com`. This continues the native auth review;
 it records passing offline behavior and an unresolved direct-reader failure.

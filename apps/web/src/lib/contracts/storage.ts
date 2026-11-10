@@ -93,6 +93,11 @@ export type ReadInput = {
 }
 export type ReadCapabilities = {
 	isCurrent: () => boolean
+	/** Local replicas emit their current native link state, then changes, until released.
+	 * Thin/server query facades do not own this connection and omit the capability. */
+	observeConnection?:
+		| ((next: (state: import('jazz-tools').LinkStatus['state']) => void) => () => void)
+		| undefined
 	document: (id: string, signal: AbortSignal) => Promise<DocumentHeader | null>
 	snapshot: (id: string, signal: AbortSignal) => Promise<TextSnapshot | null>
 	asset: (id: string, signal: AbortSignal) => Promise<StoredAsset | null>

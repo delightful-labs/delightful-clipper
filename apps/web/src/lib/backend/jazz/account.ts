@@ -1,6 +1,7 @@
 import { JAZZ_RUNTIME_VERSION } from '../../offline/runtime-version.js'
 import { createLibraryCapability } from './library.js'
 import { createLibraryRecords } from './records.js'
+import { readConnection } from './read-connection.js'
 import { ReadTier } from 'jazz-tools'
 import wasmUrl from '#jazz-wasm-binary?url'
 import type { JazzSession, JazzClientConfig } from 'jazz-tools/client'
@@ -53,14 +54,19 @@ function bindHost(
 			accountId: account.id,
 			signedIn: !['urn:jazz:local-first', 'urn:jazz:anonymous'].includes(account.identity.issuer),
 			library: libraryFactory(
-				createLibraryRecords(db, account.id, () => {
-					try {
-						check()
-						return true
-					} catch {
-						return false
-					}
-				}),
+				createLibraryRecords(
+					db,
+					account.id,
+					() => {
+						try {
+							check()
+							return true
+						} catch {
+							return false
+						}
+					},
+					readConnection(db)
+				),
 				account.id,
 				requestCapture,
 				cacheNamespace
@@ -184,10 +190,15 @@ export function currentLibraryRecords() {
 	if (!session || snapshot?.status !== 'ready' || !snapshot.account || !snapshot.client)
 		throw new Error('Library scope unavailable')
 	const { account, client } = snapshot
-	return createLibraryRecords(client.db, account.id, () => {
-		const now = session.getSnapshot()
-		return now.status === 'ready' && now.account === account && now.client === client
-	})
+	return createLibraryRecords(
+		client.db,
+		account.id,
+		() => {
+			const now = session.getSnapshot()
+			return now.status === 'ready' && now.account === account && now.client === client
+		},
+		readConnection(client.db)
+	)
 }
 
 /** Guests send their native proof; backend users send their same-origin cookie. */

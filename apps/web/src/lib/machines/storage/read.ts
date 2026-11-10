@@ -1,5 +1,6 @@
 import type { EventPayload } from '../events.js'
 import { types, setup, createAsyncLogic } from 'xstate'
+import { createLocalReadMachine } from './local-read.js'
 
 import type {
 	ArticleSource,
@@ -59,18 +60,9 @@ function available(context: Context): ReadResult {
 	}
 }
 const actors = {
-	document: createAsyncLogic({
-		run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
-			required(input.capability).document(input.id, signal)
-	}),
-	snapshot: createAsyncLogic({
-		run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
-			required(input.capability).snapshot(required(input.document).snapshotId, signal)
-	}),
-	asset: createAsyncLogic({
-		run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
-			required(input.capability).asset(required(input.document).assetId, signal)
-	}),
+	document: createLocalReadMachine<DocumentHeader>(),
+	snapshot: createLocalReadMachine<TextSnapshot>(),
+	asset: createLocalReadMachine<StoredAsset>(),
 	source: createAsyncLogic({
 		run: ({ input, signal }: { input: Context; signal: AbortSignal }) =>
 			required(input.capability).source(input.id, signal)
@@ -114,6 +106,31 @@ const model = setup({
 	actions: {}
 })
 const input = ({ context }: { context: Context }) => context
+function documentInput({ context }: { context: Context }) {
+	const capability = required(context.capability)
+	return {
+		isCurrent: capability.isCurrent,
+		observeConnection: capability.observeConnection,
+		read: (signal: AbortSignal) => capability.document(context.id, signal)
+	}
+}
+function snapshotInput({ context }: { context: Context }) {
+	const capability = required(context.capability)
+	return {
+		isCurrent: capability.isCurrent,
+		observeConnection: capability.observeConnection,
+		read: (signal: AbortSignal) =>
+			capability.snapshot(required(context.document).snapshotId, signal)
+	}
+}
+function assetInput({ context }: { context: Context }) {
+	const capability = required(context.capability)
+	return {
+		isCurrent: capability.isCurrent,
+		observeConnection: capability.observeConnection,
+		read: (signal: AbortSignal) => capability.asset(required(context.document).assetId, signal)
+	}
+}
 /** Own every read, including optional metadata. Only the consumer retains emitted content. */
 export const readRecordMachine = model.createMachine({
 	id: 'read-record',
@@ -133,19 +150,20 @@ export const readRecordMachine = model.createMachine({
 			invoke: {
 				id: 'document',
 				src: 'document',
-				input,
+				input: documentInput,
 				onDone: (args) => {
 					const { event } = args
+					const row = event.output.row
 					if (args.guards.scopeLost(args)) {
 						return { target: 'unavailable' }
 					}
-					if (args.guards.missingDocument(args, { document: event.output })) {
+					if (args.guards.missingDocument(args, { document: row })) {
 						return { target: 'missing' }
 					}
-					if (args.guards.invalidDocument(args, { document: event.output })) {
+					if (args.guards.invalidDocument(args, { document: row })) {
 						return { target: 'corrupt' }
 					}
-					return { target: 'resources', context: { document: event.output ?? undefined } }
+					return { target: 'resources', context: { document: row ?? undefined } }
 				},
 				onError: { target: 'unavailable' }
 			}
@@ -163,19 +181,20 @@ export const readRecordMachine = model.createMachine({
 							invoke: {
 								id: 'snapshot',
 								src: 'snapshot',
-								input,
+								input: snapshotInput,
 								onDone: (args) => {
 									const { event } = args
+									const row = event.output.row
 									if (args.guards.scopeLost(args)) {
 										return { target: '#read-record.unavailable' }
 									}
-									if (args.guards.missingSnapshot(args, { snapshot: event.output })) {
+									if (args.guards.missingSnapshot(args, { snapshot: row })) {
 										return { target: '#read-record.unavailable' }
 									}
-									if (args.guards.invalidSnapshot(args, { snapshot: event.output })) {
+									if (args.guards.invalidSnapshot(args, { snapshot: row })) {
 										return { target: '#read-record.corrupt' }
 									}
-									return { target: 'ready', context: { snapshot: event.output ?? undefined } }
+									return { target: 'ready', context: { snapshot: row ?? undefined } }
 								},
 								onError: { target: '#read-record.unavailable' }
 							}
@@ -190,12 +209,12 @@ export const readRecordMachine = model.createMachine({
 							invoke: {
 								id: 'asset',
 								src: 'asset',
-								input,
+								input: assetInput,
 								onDone: (args) => {
 									if (args.guards.scopeLost(args)) {
 										return { target: '#read-record.unavailable' }
 									}
-									return { target: 'ready', context: { asset: args.event.output ?? undefined } }
+									return { target: 'ready', context: { asset: args.event.output.row ?? undefined } }
 								},
 								onError: (args) => {
 									if (args.guards.scopeLost(args)) {
