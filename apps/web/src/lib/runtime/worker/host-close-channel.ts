@@ -1,12 +1,14 @@
 import { z } from 'zod'
 
-const HOST_CLOSE_VERSION = 1
-const scopeSchema = z.string().uuid()
-const identitySchema = z.object({ scope: scopeSchema, requestId: z.string().uuid() })
-const envelope = identitySchema.extend({ version: z.literal(HOST_CLOSE_VERSION) })
-const closeRequest = envelope.extend({ type: z.literal('CLOSE_HOST') }).strict()
-const closeReceipt = envelope.extend({ type: z.literal('HOST_CLOSED') }).strict()
-export type HostCloseIdentity = z.infer<typeof identitySchema>
+export const WORKER_HOST_PROTOCOL_VERSION = 1
+export const hostScopeSchema = z.string().uuid()
+export const hostIdentitySchema = z.object({ scope: hostScopeSchema, requestId: z.string().uuid() })
+export const hostEnvelopeSchema = hostIdentitySchema.extend({
+	version: z.literal(WORKER_HOST_PROTOCOL_VERSION)
+})
+const closeRequest = hostEnvelopeSchema.extend({ type: z.literal('CLOSE_HOST') }).strict()
+const closeReceipt = hostEnvelopeSchema.extend({ type: z.literal('HOST_CLOSED') }).strict()
+export type HostCloseIdentity = z.infer<typeof hostIdentitySchema>
 export type HostControlReport =
 	| { type: 'HOST_CLOSED'; receipt: HostCloseIdentity }
 	| { type: 'CLOSE_FAILED'; scope: string }
@@ -15,7 +17,7 @@ export type HostControlReport =
  * closeHost is the synchronous data-host disposer; it must leave this independent
  * control port alive. Only its successful return permits a close receipt. */
 export function serveHostClose(port: MessagePort, scope: string, closeHost: () => void) {
-	scopeSchema.parse(scope)
+	hostScopeSchema.parse(scope)
 	let disposed = false
 	const receive = (event: MessageEvent<unknown>) => {
 		for (const resource of event.ports) resource.close()
@@ -43,7 +45,7 @@ export function serveHostClose(port: MessagePort, scope: string, closeHost: () =
 /** Worker native capabilities only: the shared chart selects posting, deadlines
  * and receipt admission. Transport errors do not remove the late-receipt listener. */
 export function workerHostControl(port: MessagePort, scope: string) {
-	scopeSchema.parse(scope)
+	hostScopeSchema.parse(scope)
 	return {
 		listen(report: (event: HostControlReport) => void) {
 			let disposed = false
@@ -73,10 +75,14 @@ export function workerHostControl(port: MessagePort, scope: string) {
 			}
 		},
 		post(identity: HostCloseIdentity) {
-			const decoded = identitySchema.safeParse(identity)
+			const decoded = hostIdentitySchema.safeParse(identity)
 			if (!decoded.success || decoded.data.scope !== scope)
 				throw new Error('Invalid host close identity')
-			port.postMessage({ ...decoded.data, version: HOST_CLOSE_VERSION, type: 'CLOSE_HOST' })
+			port.postMessage({
+				...decoded.data,
+				version: WORKER_HOST_PROTOCOL_VERSION,
+				type: 'CLOSE_HOST'
+			})
 		}
 	}
 }

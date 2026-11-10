@@ -22,5 +22,9 @@
 	{
 		"file": "delightful-local-first-workflow-hardening-alpha60.tgz",
 		"sha256": "aaf16fe628393537aed32ba487d141d8cb7bc47b3000eff35556ff04a8b11fb7"
+	},
+	{
+		"file": "delightful-local-first-worker-transport-1571ba2-alpha60.tgz",
+		"sha256": "1ffa8d8490915da61fb7dc9a600733eed00dcce33cdc772ca0a12d1bbf0d95b1"
 	}
 ]

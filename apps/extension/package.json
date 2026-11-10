@@ -9,7 +9,7 @@
 	},
 	"dependencies": {
 		"@mozilla/readability": "0.6.0",
-		"delightful-local-first": "file:../../vendor/delightful-local-first-workflow-hardening-alpha60.tgz",
+		"delightful-local-first": "file:../../vendor/delightful-local-first-worker-transport-1571ba2-alpha60.tgz",
 		"delightful-ui": "file:../../vendor/delightful-ui-7a7f61b-xstate-v6.tgz",
 		"dompurify": "3.4.17",
 		"i18next": "26.7.1",

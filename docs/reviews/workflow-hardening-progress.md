@@ -276,6 +276,58 @@ Next, integrate the account owner and detached native lock custody before cuttin
 storage/broker traffic over to the scoped channel. SHARE-3, REC-3 and DLF-3 remain
 open until that composed adapter and unknown-write recovery qualification passes.
 
+## B scoped storage transport and compatible artifact
+
+`scoped-storage-channel.ts` composes the shared request/channel owners with the
+native control adapter. It creates one Worker transport root at startup; SDK
+reads/writes send requests to that root. Strict bounded schemas derive from shared
+host scope/identity/version schemas and canonical account-value schemas. Window
+executes only the selected synchronous storage primitive at its fixed existing key;
+exact FIFO scope/sequence validation precedes effects. Worker validation happens
+before sequence allocation. Native reply-post failure disposes the data host and
+cannot throw a private error into the event loop or replay the write.
+
+Eleven new native tests cover correlated/out-of-order replies, bounds before
+sequence allocation, stale scope/sequence, native failures, dropped WRITE replies,
+late/wrong closure receipts, malformed transfer cleanup, post/port failure and
+forced disposal without false closure. The dropped-reply test compares the exact
+issued scope/request ID/sequence, observes one genuine native write, keeps closure
+observation unresolved past its deadline, then accepts only the matching late
+receipt. The scoped facade exposes that real host receipt for the upcoming account
+owner; the legacy account owner is not cut over to it.
+
+The compatible B artifact is pinned to DLF `1571ba2` (following `b0059fe` and
+`5bda676`). Its native post contract requires unavailable/not-issued on post refusal:
+validate before admission, close a broken FIFO scope, and preserve healthy posted
+peer rejection. The public package fixture rejects a contradictory native receipt.
+DLF library/package/public-consumer checks and the channel campaign pass that
+contract refinement.
+
+Both app manifests and the lockfile now pin
+`delightful-local-first-worker-transport-1571ba2-alpha60.tgz`, SHA-256
+`1ffa8d8490915da61fb7dc9a600733eed00dcce33cdc772ca0a12d1bbf0d95b1`.
+The deterministic builder supports an explicit worker-transport profile and records
+ten source modules/hashes in `vendor/worker-transport-provenance.json`.
+Rebuilding produces identical bytes. All 258 baseline files except package metadata
+remain byte-identical; 20 lifecycle JS/declaration files and public exports are
+added. The A archive and provenance remain available. Existing native Jazz alpha.60
+adapters/patches are unchanged; app/DLF imports resolve the same installed SDK.
+
+Qualification passes full `pnpm verify`, including vendor/format/lint/types, all 691
+unit/native tests in 109 files and the production Netlify build. All seven worker
+browser cases, 12 packaged-extension cases and eight production-offline cases pass.
+The final shared-schema/issued-identity refinements pass strict TypeScript, all
+native/unit tests and the worker browser suite. These browser results qualify the
+compatible artifact with existing production routing, not the pending account-owner
+cutover. See [scoped account transport](scoped-account-transport.md) for the ownership
+graph and precise integration boundary.
+
+Next, integrate the account owner's uncertain-write retention and detached native
+lease custody, then adopt both scoped storage and broker channels with root shutdown
+waiting for actual settlement. No storage namespaces/identities are migrated, and
+no acknowledgement loss permits replay or early lock release. SHARE-3, REC-3 and
+DLF-3 remain open until those actual consumer compositions pass.
+
 ## Remaining implementation
 
 Continue with B's shared account transport, then the dependency-ordered
