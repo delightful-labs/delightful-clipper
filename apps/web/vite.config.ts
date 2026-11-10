@@ -23,12 +23,14 @@ export default defineConfig(({ command, mode }) => {
 		process.env.CLIPPER_EPHEMERAL_JAZZ = 'true'
 	return {
 		envPrefix: ['VITE_', 'PUBLIC_'],
-		// The search worker starts after account readiness. Prebundle its dependency
-		// so a cold optimizer cannot trigger a late full-page reload.
+		// Search and extraction workers start after account readiness. Prebundle
+		// their lazy dependencies so a cold optimizer cannot reload an active job.
 		optimizeDeps: {
 			exclude: ['delightful-ui', 'jazz-wasm', 'microlighter'],
 			include: [
 				'minisearch',
+				'@mozilla/readability',
+				'@mozilla/readability/JSDOMParser.js',
 				'jazz-tools',
 				'jazz-tools/client',
 				'jazz-tools/local-first',
