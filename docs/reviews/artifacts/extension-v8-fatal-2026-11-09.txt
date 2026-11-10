@@ -53,3 +53,21 @@ Installed Chrome 157, headless
 8   Google Chrome Framework             0x00000001311a4a08 ChromeMain + 208698984
 9   Google Chrome Framework             0x000000012c0110e0 ChromeMain + 123159872
 10  Google Chrome Framework             0x0000000125981554 ChromeMain + 15616436
+
+SDK-only standalone reproducer, no restoration or subscription, Node 24
+# Fatal error
+# Invoke in DisallowJavascriptExecutionScope
+#
+#
+#
+#FailureMessage Object: 0x174e1b9880   Google Chrome for Testing Framework 0x000000011ba65888 ChromeMain + 63800676
+1   Google Chrome for Testing Framework 0x00000001219ee6e8 ChromeMain + 163976132
+2   Google Chrome for Testing Framework 0x00000001216c5040 ChromeMain + 160660764
+3   Google Chrome for Testing Framework 0x00000001181107ac ChromeMain + 3683464
+4   Google Chrome for Testing Framework 0x000000011810f6cc ChromeMain + 3679144
+5   Google Chrome for Testing Framework 0x000000011810e62c ChromeMain + 3674888
+6   Google Chrome for Testing Framework 0x000000011805e864 ChromeMain + 2954560
+7   Google Chrome for Testing Framework 0x00000001235792e4 ChromeMain + 192856000
+8   Google Chrome for Testing Framework 0x0000000123db2748 ChromeMain + 201479204
+9   Google Chrome for Testing Framework 0x000000011ebdb0a0 ChromeMain + 115662204
+10  Google Chrome for Testing Framework 0x0000000117ea5aa4 ChromeMain + 1148800

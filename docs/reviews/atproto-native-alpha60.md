@@ -142,3 +142,11 @@ installed Chrome 157 comparisons. The exact trigger remains unresolved. Tested
 inspection/window-lifetime changes did not establish a reliable workaround. All
 temporary source edits are removed; no dependency patch or product change is
 proposed on the basis of a timeout alone. The extension remains unqualified.
+
+The further investigation now retains a standalone SDK-only reproducer. It
+reproduces the V8 fatal error on abrupt teardown of connected local-first sessions,
+even without restoration or live queries. Awaiting native close/disconnect,
+device-only sessions and thin-client controls each had zero failures in their
+24-case campaigns. See the detailed matrix in the startup investigation. This
+narrows the ownership boundary without qualifying a product workaround; no
+application, dependency or default test behavior changed.

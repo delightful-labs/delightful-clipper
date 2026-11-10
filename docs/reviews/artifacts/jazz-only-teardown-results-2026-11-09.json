@@ -1,0 +1,58 @@
+{
+	"environment": {
+		"node": "24.22.2",
+		"jazz": "2.0.0-alpha.60",
+		"chromium": "156.0.8078.4",
+		"platform": "macOS arm64"
+	},
+	"campaigns": {
+		"abrupt_connected": {
+			"count": 24,
+			"mode": "abrupt",
+			"failures": 4,
+			"native_fatal_errors": 4
+		},
+		"unsubscribe_only": {
+			"count": 24,
+			"mode": "unsubscribe",
+			"failures": 6,
+			"native_fatal_errors": 6
+		},
+		"await_session_close": {
+			"count": 24,
+			"mode": "session",
+			"failures": 0,
+			"native_fatal_errors": 0
+		},
+		"device_only": {
+			"count": 24,
+			"mode": "abrupt",
+			"failures": 0,
+			"native_fatal_errors": 0
+		},
+		"no_restoration": {
+			"count": 24,
+			"mode": "abrupt",
+			"failures": 5,
+			"native_fatal_errors": 5
+		},
+		"no_restoration_or_query": {
+			"count": 24,
+			"mode": "abrupt",
+			"failures": 6,
+			"native_fatal_errors": 6
+		},
+		"thin_no_restoration_or_query": {
+			"count": 24,
+			"mode": "abrupt",
+			"failures": 0,
+			"native_fatal_errors": 0
+		},
+		"disconnect_no_restoration_or_query": {
+			"count": 24,
+			"mode": "disconnect",
+			"failures": 0,
+			"native_fatal_errors": 0
+		}
+	}
+}

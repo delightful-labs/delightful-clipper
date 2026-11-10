@@ -1,7 +1,12 @@
 # macOS extension startup investigation — November 9
 
 The missing toolbar bar is an observed symptom, not an established XState startup
-race. Investigation on PR #20 (`b33a22d`) captured a native Chromium/V8 fatal error:
+race. Investigation on PR #20 (`b33a22d`) captured a native Chromium/V8 fatal error.
+The [further isolation](#further-isolation-connected-local-first-teardown) now
+reproduces it with only Jazz and narrows the boundary to page destruction with a
+still-connected local-first runtime. No product fix has been applied.
+
+Captured diagnostic:
 
 ```text
 # Fatal error
@@ -63,7 +68,7 @@ these results alone.
 [V8's execution source](https://github.com/v8/v8/blob/main/src/execution/execution.cc)
 uses this fatal diagnostic when entering JavaScript while execution is forbidden.
 This is an engine invariant failure, not an ordinary rejected promise that an
-application chart can recover from. The triggering subsystem remains unproven.
+application chart can recover from. The exact native call site remains unproven.
 
 [Playwright's extension guidance](https://playwright.dev/docs/chrome-extensions)
 describes retained worker handles across MV3 suspension/restart. Its
@@ -76,7 +81,7 @@ returns after invoking the toolbar action model. That acknowledgment is not an
 application capture/drain acknowledgment. The investigation preserves the real
 native toolbar gesture and checks resulting application behavior.
 
-## Conclusion and next boundary
+## Initial investigation boundary
 
 There is direct evidence of a native browser-engine failure in the extension
 qualification runs. The missing bar can follow loss of the background execution
@@ -85,15 +90,82 @@ startup deadline, replaying a gesture, or replacing Jazz account ownership.
 The unchanged-main control, headed failure and Chrome 157 failure rule out an
 AT Protocol-only or headless-only explanation for this investigation.
 
-The exact trigger is still unresolved. The minimal native-toolbar extension did
-not reproduce it, and the stack has unsymbolized JavaScript/Wasm addresses. Do not
-assign the trigger to Jazz, Playwright network inspection or a particular state
-transition without a smaller reproducer. The useful next step is to reduce the
-real settings/restoration/teardown and worker lifecycle while preserving this
-exact fatal diagnostic, then test that reproducer with browser/Jazz maintainers.
-No upstream report has been posted, and no dependency patch, product change or
-permanent test workaround was added.
+The initial minimal toolbar extension did not reproduce the crash. Further work
+below now retains a Jazz-only reproducer and controlled cleanup comparisons. The
+exact native repair is still unproven; no upstream report, dependency patch,
+product change or permanent test workaround has been added.
 
 The latest Linux CI failure for `b33a22d` is separate: image browser tests failed
 before the extension step ran. It supplies no Linux extension result for this
 commit and must not be represented as the macOS V8 crash.
+
+## Further isolation: connected local-first teardown
+
+The failure is now reproduced without Clipper application code, schema, auth
+integration, DLF or XState. The retained
+[standalone diagnostic](../../apps/web/tooling/repro-extension-teardown/README.md)
+uses only a one-table owner-scoped Jazz backend, the installed SDK, a minimal
+extension toolbar listener and disposable profiles. Its frontend runs native Jazz
+account operations and acknowledges its write before closing the page. It performs
+one toolbar gesture per case and never replays a write.
+
+The final standalone campaigns ran under the pinned Node `24.22.2`, with Jazz
+`2.0.0-alpha.60` and bundled Chromium `156.0.8078.4` on macOS arm64. Results are
+counts of missing toolbar effects; every failed case below also emitted the exact
+native V8 fatal diagnostic. [Structured results](artifacts/jazz-only-teardown-results-2026-11-09.json)
+retain the campaign counts.
+
+| Variant                                                              | Cases | Missing toolbar effects | Native fatal errors |
+| -------------------------------------------------------------------- | ----: | ----------------------: | ------------------: |
+| Connected local-first; abrupt page close                             |    24 |                       4 |                   4 |
+| Unsubscribe query, then close page                                   |    24 |                       6 |                   6 |
+| Await native `session.close()`, then close page                      |    24 |                       0 |                   0 |
+| Device-only (`serverUrl: null`); abrupt close                        |    24 |                       0 |                   0 |
+| Connected local-first, no restoration; abrupt close                  |    24 |                       5 |                   5 |
+| Connected local-first, no restoration or live query; abrupt close    |    24 |                       6 |                   6 |
+| Connected thin client, no restoration or live query; abrupt close    |    24 |                       0 |                   0 |
+| Connected local-first, no restoration/query; await `db.disconnect()` |    24 |                       0 |                   0 |
+
+The reduced crash therefore does not require account restoration, a live query,
+AT Protocol, or Clipper's statecharts. The current evidence isolates the boundary
+to destroying a page with a still-connected local-first/Wasm runtime. Native
+session shutdown or native disconnection before page destruction prevented the
+crash in these bounded controls. This does not prove a specific Rust/C++ call
+site, universal browser behavior or a permanent product workaround. Thin mode is
+only a diagnostic control and does not satisfy Clipper's offline requirements.
+
+Earlier controls on the real app also distinguished the actual settings owner
+from an unrelated open tab: keeping the settings page alive passed eight cases;
+closing it failed on case three after two passes. With identical temporary
+instrumentation, the ordinary close failed immediately, while awaiting application
+drain passed eight cases, and application drain plus native session close passed
+eight cases. Those hooks and all modified application/test source are removed.
+The standalone diagnostic is the only retained executable addition.
+
+### Ownership implications
+
+`Account.svelte` currently starts a Window-owned application actor and registers
+its cleanup as a Svelte component teardown callback. The retained startup registry
+owns the native session beyond an attachment. Component detach and native session
+closure are separate lifetimes; stopping subscriptions alone is not an SDK close
+acknowledgment. The web worker host already models application drain, acquisition
+settlement and native session close explicitly.
+
+The SDK's installed `session/state.js` closes a session by detaching it, waiting for
+pending operations and calling the old client's `shutdown()`. `Db.disconnect()`
+awaits its connection's native disconnect. These are real lifecycle operations,
+not interchangeable with dropping an actor reference or letting a Window disappear.
+The experiments call them while the page is still alive; browsers cannot generally
+be assumed to await arbitrary application promises after a user closes a page.
+
+The recommended implementation direction is to reuse the worker-owned account
+runtime for extension settings, preserving native draining/close acknowledgment
+and keeping domain work outside the disposable UI Window. This is a recommendation,
+not an implemented architecture change or a claim that it has been qualified.
+The standalone reproducer is also suitable evidence for a Jazz/browser lifecycle
+report; no upstream issue or message has been posted.
+
+Existing repository patches remain applied to installed Jazz. The reproducer adds
+no patch and does not establish the result of an unpatched-distribution comparison.
+Native frontend connection lifetime is the isolated boundary; the exact upstream
+repair still needs a qualified implementation or maintainer analysis.
