@@ -163,3 +163,18 @@ including offline browser restart and account restoration. See the
 storage compatibility evidence and limits. This does not establish an upstream
 native teardown repair or Linux extension qualification. Hosted live-provider
 consent remains unverified.
+
+## Hosted live-provider follow-up — 2026-11-10
+
+The production OAuth round trip now passes on merge `168cd0b`, deployment
+`dpl_5qUpzSiG7Y8APNfgrW1rSQgQ9XD9`. After explicitly approved production auth
+configuration, the user signed in at the real Bluesky provider in an isolated
+visible Chromium context. Clipper returned an authenticated session, and three
+reloads retained the same remembered Jazz account and visible library. This
+supersedes the earlier unverified-consent caveat for this particular round trip.
+
+The check used existing Playwright because Chrome MCP could not connect. The
+browser was closed after verification; no credentials or authentication state
+were saved as artifacts. Live-identity full-process/offline restart, refresh,
+revocation, backend restart and returning-device checks remain distinct from
+this result. See [the current spec](../../specs/001-jazz-clipper/atproto.md#hosted-live-provider-check--passed-2026-11-10).

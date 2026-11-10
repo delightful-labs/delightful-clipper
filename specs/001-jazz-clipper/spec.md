@@ -1,5 +1,7 @@
 # Feature Specification: Jazz Clipper and Reader
 
+**AT Protocol status (2026-11-10):** [Merged implementation, accepted publication decisions and remaining work](atproto.md). This checkpoint supersedes historical JWT/Neon, alpha.59 and Netlify-only AT Protocol notes below; it does not mark annotation/publication requirements implemented.
+
 **Baseline**: `main` — subsequent implementation uses feature branches and PRs
 **Created**: 2026-11-02
 **Updated**: 2026-11-05
@@ -12,7 +14,7 @@
 
 The user confirmed that AT Protocol integration for notes and highlights was part of the original planning intent and was omitted from the recorded specification. Treat it as a data-architecture requirement now: notes and highlights must be independently addressable entities with their own stable identities and explicit links to their associated article. Article containment and revision history must not substitute for those entities. Notes attached to highlights retain an explicit highlight relationship as well.
 
-The user clarified that Delightful Local First owns the broader shared AT Protocol scope across apps, beginning with identity. Clipper owns its note/highlight entities and article relationships and must avoid decisions that make later AT Protocol interoperability difficult. Keep domain IDs independent of account-provider IDs and leave external identity/address mapping to the shared integration boundary. Publication versus source-of-truth behavior, Lexicons and transport are not decisions required for this phase; do not introduce a Clipper-specific AT identity or publishing implementation. Existing private-library behavior remains intact. See [data-model.md](data-model.md#at-protocol-identity-boundary) for the identity boundary and current implementation gap.
+The user clarified that Delightful Local First owns the broader shared AT Protocol scope across apps, beginning with identity. Clipper owns its note/highlight entities and article relationships and must avoid decisions that make later AT Protocol interoperability difficult. Keep domain IDs independent of account-provider IDs and leave external identity/address mapping to the shared integration boundary. The accepted Jazz source authority, Margin-plus-companion vocabulary and ongoing publication rules are recorded in [the current AT Protocol checkpoint](atproto.md). Remaining publication shapes and execution mechanics need review before implementation; do not introduce a separate Clipper identity system. Existing private-library behavior remains intact. See [data-model.md](data-model.md#at-protocol-identity-boundary) for the identity boundary and current implementation gap.
 
 Clipper helps a person collect web articles, PDFs, and EPUBs; read and annotate them in one library; and access saved material offline. The first release prioritizes web clipping and reading, saved article images, cross-browser extension clipping/highlighting, same-account synchronized notes/highlights, and mobile PWA share intake. PDF/EPUB and RSS are valuable product features but are outside this initial MVP. Future directions are recorded below to inform current data and interface choices without expanding MVP scope.
 
@@ -237,7 +239,7 @@ The following are intentionally not MVP requirements. They should inform data mo
 - **FR-013**: Stateful workflows MUST expose meaningful loading, success, partial-success, retry, cancellation, and failure outcomes as applicable.
 - **FR-014**: Suitable CPU-intensive parsing and image processing MUST run outside the UI thread.
 - **FR-015**: The system MUST use Delightful Local First for identity and recovery rather than creating a separate account recovery system.
-- **FR-016**: The app MUST be deployable to Netlify.
+- **FR-016**: The current deployment MUST use the adopted Vercel/Jazz alpha.60 backend integration. The earlier Netlify target is historical; a second hosting implementation is not an AT Protocol prerequisite.
 - **FR-017**: The system MUST not require migration of legacy Clipper data; no user data exists to preserve.
 - **FR-018**: Clipping an already-saved article MUST preserve its current reading status, progress, annotations, and saved snapshot. The user MUST receive an Already saved message with an Open action. Re-clipping MUST NOT move the article back to Inbox or replace its content. An explicit Refresh action is deferred beyond MVP.
 - **FR-019**: **Deferred — content refresh and revision retention.** Future refresh will save changed content as a new revision under the same document and open it after local text persistence, retaining revisions/assets referenced by annotations and leaving readable content intact on failure.
