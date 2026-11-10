@@ -132,3 +132,14 @@ the source-message/navigation case waiting for its toolbar bar. The run used
 startup/bar symptom without establishing its cause. No assertion was removed or
 weakened. The macOS packaged-extension qualification caveat and live-provider
 consent check remain open; the XState update does not resolve or waive them.
+
+
+## macOS extension investigation follow-up
+
+The [startup investigation](extension-startup-2026-11-09.md) reproduces the missing
+bar on unchanged main and captures a native Chromium/V8
+`Invoke in DisallowJavascriptExecutionScope` fatal error in headless, headed and
+installed Chrome 157 comparisons. The exact trigger remains unresolved. Tested
+inspection/window-lifetime changes did not establish a reliable workaround. All
+temporary source edits are removed; no dependency patch or product change is
+proposed on the basis of a timeout alone. The extension remains unqualified.
