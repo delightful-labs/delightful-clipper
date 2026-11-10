@@ -1,4 +1,5 @@
 import { readingControls } from './reader-ui.js'
+import { openAddLink } from './add-link.js'
 import type { ArticleImage } from '../src/lib/images/schema.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
@@ -8,6 +9,59 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { app } from '../src/lib/backend/jazz/schema.js'
 import permissions from '../src/lib/backend/jazz/permissions.js'
+type ImageEvidence = {
+	machine: string
+	status: string
+	states: string[]
+	error: string | undefined
+}
+const evidence = new WeakMap<Page, ImageEvidence[]>()
+test.beforeEach(({ page }) => {
+	const states: ImageEvidence[] = []
+	evidence.set(page, states)
+	page.on('console', (message) => {
+		const text = message.text()
+		if (!text.includes('clipper:machines')) return
+		try {
+			const value = JSON.parse(text.slice(text.indexOf('{')))
+			if (
+				![
+					'image-queue',
+					'image-failure-domain',
+					'image-publication-domain',
+					'domain-transaction',
+					'workspace-creation-transaction'
+				].includes(value.machine) ||
+				typeof value.status !== 'string' ||
+				!Array.isArray(value.states) ||
+				!value.states.every((state: unknown) => typeof state === 'string')
+			)
+				return
+			states.push({
+				machine: value.machine,
+				status: value.status,
+				states: value.states,
+				error: typeof value.error?.message === 'string' ? value.error.message : undefined
+			})
+			if (states.length > 100) states.shift()
+		} catch {
+			/* Ignore unrelated console output; never retain payloads or credentials. */
+		}
+	})
+})
+test.afterEach(async ({ page }, info) => {
+	if (info.status === info.expectedStatus) return
+	console.info(
+		'Image workflow state evidence',
+		JSON.stringify({
+			retryVisible: await page
+				.getByRole('button', { name: 'Retry', exact: true })
+				.isVisible()
+				.catch(() => false),
+			states: evidence.get(page)
+		})
+	)
+})
 let authority: Awaited<ReturnType<typeof startLocalJazzServer>>, directory: string
 const options = () => ({
 	appId: '2db98ae3-fcf1-41e8-b7d3-9818496bde60',
@@ -50,10 +104,63 @@ async function png(page: Page, width = 3000, height = 1000, mediaType = 'image/p
 async function seed(page: Page, urls: string[]) {
 	await page.goto('/')
 	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
-	return page.evaluate(async (urls) => {
-		const path = '/tests/images-driver.ts'
-		return (await import(/* @vite-ignore */ path)).seedImages(urls)
-	}, urls)
+	const previous = new Set(
+		await page
+			.locator('[data-article-id]')
+			.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-article-id')))
+	)
+	const url = 'https://example.com/images-' + crypto.randomUUID()
+	const html = `<p>Saved text stays readable while images load.</p>${urls.map((url, index) => `<figure><img data-clipper-image="${encodeURIComponent(url)}" alt="Saved image ${index + 1}" src="https://images.example/never-load-from-reader.png"><figcaption>Figure ${index + 1}</figcaption></figure>`).join('')}<p>Article ending.</p>`
+	const extract = async (route: import('@playwright/test').Route) => {
+		const body: { operationId: string; url: string } = route.request().postDataJSON()
+		const base = { operationId: body.operationId, finalUrl: body.url }
+		await route.fulfill({
+			json: route.request().url().endsWith('/resolve')
+				? base
+				: {
+						...base,
+						provenance: {
+							submittedUrl: body.url,
+							redirects: [],
+							resolvedAt: new Date().toISOString()
+						},
+						candidate: {
+							title: 'Offline image fixture',
+							text: 'Saved text stays readable while images load. Article ending.',
+							html,
+							assetCandidates: [],
+							partialEvidence: [],
+							parserVersion: 'fixture',
+							normalizationVersion: '1'
+						}
+					}
+		})
+	}
+	await page.route('**/api/capture/{resolve,extract}', extract)
+	try {
+		await openAddLink(page)
+		await page.getByLabel('Article URL', { exact: true }).fill(url)
+		await page
+			.getByRole('dialog', { name: 'Add link', exact: true })
+			.getByRole('button', { name: 'Add link', exact: true })
+			.click()
+		const newIds = async () =>
+			(
+				await page
+					.locator('[data-article-id]')
+					.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-article-id')))
+			).filter((id) => !!id && !previous.has(id))
+		await expect.poll(newIds).toHaveLength(1)
+		const id = (await newIds())[0]!
+		await expect(
+			page
+				.locator(`[data-article-id="${id}"]`)
+				.getByRole('link', { name: 'Offline image fixture', exact: true })
+		).toBeVisible()
+		return id
+	} finally {
+		await page.unroute('**/api/capture/{resolve,extract}', extract)
+	}
 }
 async function rows(page: Page): Promise<ArticleImage[]> {
 	return page.evaluate(async () => {
