@@ -42,6 +42,30 @@ Re-read these paths against the implementation branch before coding. Later fixes
 7. Preserve local, remote and unknown write outcomes. Never replay an uncertain mutation as part of replacement or retry.
 8. Domain work stays in workers. Window adapters retain only DOM and genuinely Window-only native effects. No credentials or native SDK handles enter render DTOs or diagnostics.
 
+## Actor invocation and external boundaries
+
+Audit the implemented workflows. An actor without an incoming ownership edge is not automatically defective: a real external event or public integration API can start a root. Do not attach every root to the main application machine merely to make the diagram connected.
+
+| Implemented actor boundary | Legitimate invocation trigger | Ownership requirement |
+| --- | --- | --- |
+| Service-worker cache and read actors | Browser install, activate and intercepted fetch events | Event handler starts the actor, attaches completion/error handling and retains the browser event lifetime through settlement. |
+| Capture and auth HTTP actors | Incoming HTTP request | Request adapter owns response/error delivery, cancellation and resource cleanup. |
+| Extension launch and message actors | Toolbar click, popup/component mount or validated browser message | Native entry point starts a root; its adapter owns result delivery, shutdown and cleanup. Related ongoing work remains supervised by the owning extension chart. |
+| Window application client | Application component mount | UI resource boundary owns the port/worker attachment and respects the host's drain/close acknowledgment. |
+| Window reader viewport | Admitted `VIEWPORT_OPEN` for a live DOM lease | Native surface boundary owns layout resources; worker reader lifecycle supervises it through the explicit message/acknowledgment protocol. |
+| Account-store update actor | SDK account-storage update API | Public API starts the operation actor and consumes its result; the actor owns lock acquisition, update settlement and release. |
+| Dedicated article, search and image worker roots | Worker initialization, module load or validated processing request | Worker entry point owns root startup; the creating resource owner supervises worker messages, errors and cleanup across the realm boundary. |
+
+A machine must invoke or explicitly spawn a workflow when it selects that work and depends on its result or must manage its lifetime. Do not hide such child creation in an invoked I/O leaf or introduce an independent root that escapes parent cancellation/drain. Cross-realm roots cannot become ordinary child actors by drawing a solid arrow: retain an explicit supervising resource owner and typed completion/error/shutdown protocol instead.
+
+Architectural diagrams must distinguish three relationships: solid edges for actual actor ownership, labeled external triggers for root creation, and dotted edges for API/message/subscription coordination. Label every implemented root with its concrete invocation boundary. A missing label is a documentation gap; a missing invocation or lifecycle owner in an implemented flow is an implementation finding.
+
+ROOT-1: Trace every implemented root to a production entry point. Record its trigger, owner, result/error recipient, cancellation behavior and resource-release acknowledgment. Tests prove its actual boundary invokes it and observes settlement.
+
+ROOT-2: For each workflow selected by a parent machine, verify direct invocation/spawning or an explicit cross-realm supervision protocol. Parent shutdown/replacement must stop admission and retain issued work through settlement; no hidden root may outlive its owner without deliberate custody transfer.
+
+ROOT-3: Update the architecture views so no implemented actor appears as an unexplained disconnected box. Independent roots remain independent and clearly labeled; do not manufacture actor-parent links for visual completeness.
+
 ## Server OAuth request workflow
 
 ### Ownership and data flow
@@ -252,9 +276,9 @@ REC-8: Preserve the existing bounded extraction, authorization, image, capture a
 
 ## State that stays outside charts
 
-Simple drawer/input/footnote/focus presentation state, pure parsing/projection, stream buffers, native handles and RPC reply maps may remain ordinary code. Their enclosing resource lifetime must be owned and tested. Do not turn each calculation or database primitive into a state, and extend the existing account-store owner for its deadline gaps rather than replace its locking protocol. Preserve existing transaction, sync and draft mutation ownership.
+Simple drawer/input/footnote/focus presentation state, pure parsing/projection, stream buffers, native handles and RPC reply maps may remain ordinary code. Their enclosing resource lifetime must be owned and tested. Do not turn each calculation or database primitive into a state, and extend the existing account-store owner for its deadline gaps rather than replace its locking protocol. Preserve existing transaction and sync ownership.
 
-Note creation/revision/import and draft APIs remain deferred capabilities with no production note UI caller established by this audit. This refactor neither wires them up nor deletes them. Architecture documentation must keep them separate from active independently invoked roots.
+Incomplete notes and drafts are excluded from this implemented-workflow audit and its acceptance findings.
 
 ## Validation and delivery gates
 
@@ -264,7 +288,7 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 | Gate | Evidence required |
 | --- | --- |
-| Focused workflow tests | AUTH, HOST, BIND, EXT and REC acceptance cases; actual actor SUT and separately recorded native effects. |
+| Focused workflow tests | AUTH, HOST, BIND, EXT, REC and ROOT acceptance cases; actual actor SUT and separately recorded native effects. |
 | Repository verification | `pnpm verify`: vendor integrity, format, lint, strict types, unit/native tests and production build. |
 | Worker/browser behavior | `pnpm test:worker` and applicable `pnpm test:e2e` cases: stale-scope refusal, reader detach and zero application SDK/WASM initialization on the UI thread. |
 | Offline authentication | `pnpm test:offline` including connected and existing-account profiles, expired credentials, complete browser-process restart with app/auth/Jazz unreachable, acknowledged edits surviving another restart and reconciliation after reconnect. |
@@ -273,4 +297,4 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 Run build/type generation and browser suites sequentially when they share generated output. Use isolated authorities/ports for concurrent development without stopping unidentified servers. No broad new performance claim is made; the UI-thread boundary and unchanged bounded publication behavior are explicit checks.
 
-The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four ownership workstreams and all six recovery/deadline areas' acceptance criteria, updated architecture views showing active roots and deferred capabilities, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
+The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four ownership workstreams, all six recovery/deadline areas and the ROOT acceptance criteria, updated architecture views showing actual ownership and labeled production invocation boundaries, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
