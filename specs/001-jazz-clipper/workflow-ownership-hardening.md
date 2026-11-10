@@ -15,7 +15,7 @@ Follow [XState memory](../../docs/memory/xstate.md), [worker runtime boundaries]
 | 3 | Native account binding replacement | Existing application-readiness lifecycle, with a binding child if needed | Native observations are facts; the chart chooses reuse, replacement and release. |
 | 4 | Extension extraction worker | Child invoked by the existing clip chart | Result, error, cancellation and native cleanup share one owner. |
 
-The recovery and deadline work below extends these four refactors to OAuth requests, account storage, reader transport, search, sign-out and realm closure. It is required scope, not optional follow-up.
+The recovery and deadline work below extends these four refactors to OAuth requests, account storage, reader transport, search, sign-out and realm closure. It is required scope, not optional follow-up. Shared lifecycle extraction and the smaller redundancy cleanups below are also required scope, with domain selection preserved in parent charts.
 
 Workstreams 2 and 3 must be designed together before either is implemented. Workstream 3 may change an adapter contract, but must not introduce a competing account authority. No dependency installation, schema migration, new catalog wording, note editor or AT publication feature is needed.
 
@@ -274,6 +274,74 @@ REC-7: Expire authorization/completion HTTP waits during header and body reads. 
 
 REC-8: Preserve the existing bounded extraction, authorization, image, capture and parser behavior. Test post-timeout cleanup and account/shutdown races rather than asserting timer configuration text.
 
+## Shared workflow helpers
+
+Consolidate repeated lifecycle mechanics into typed child machines while leaving domain decisions in their owning charts. This review covers committed PR #20 code at `1e6cf9281b9d80577adc3299982e621ed4b7e279`; recheck call sites against the implementation branch before extraction. Uncommitted runtime work is not the baseline for these findings.
+
+Implement the operation supervisor first. Design RPC lifecycle reuse alongside the account-storage deadline work, and worker-job reuse alongside extension extraction ownership. The helpers must satisfy the recovery, custody and external-boundary requirements above; introducing a helper does not reset ownership or timeout semantics.
+
+### Owned operation supervisor
+
+Ten child-supervision blocks repeat across six machine files: save-record intent/publication; save-article ensure/attachment/content-save; organization writing; image success/failure writes; reader writing; and sample-data staging. They repeat spawning a capability-provided child, subscribing to completion/error, retaining its reference, forwarding shutdown where supported and releasing the reference after settlement. Individual cancellation/drain policies differ and must remain explicit.
+
+Sources: [save record](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/storage/save.ts), [save article](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/storage/save-article.ts), [organization](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/storage/organize.ts), [image queue](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/images/queue-machine.ts), [reader](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/reader/experience.ts) and [sample data](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/samples/machine.ts).
+
+The parent invokes a supervisor with the selected typed spawn capability and immutable operation input. The supervisor owns that child through completion/error and returns its typed result or explicit failure facts. For supported commands, shutdown/cancellation forwards once and enters draining; policies that require waiting without cancellation remain distinct. The supervisor does not complete merely because shutdown was requested.
+
+```mermaid
+flowchart LR
+    Start[Start selected child] --> Await[Await owned result]
+    Await -->|Shutdown or cancel under selected policy| Drain[Forward command if supported and retain custody]
+    Await -->|Completion or error| Return[Return original settlement or failure facts]
+    Drain -->|Completion or error| Return
+    Return --> Release[Release settled child reference]
+```
+
+This is a lifecycle outline. Native transaction acquisition, commit, rollback, local persistence and unknown-write custody remain with DLF and the existing domain transaction bridge. The helper does not create another transaction or retry it. Preserve actual v6 output/effect ordering when implementing final-state cleanup.
+
+Keep domain interpretation in parents: a blocked article attachment may select rereading; organization and reader outcomes select their own feedback, queue progression and receipt watches. Do not normalize every non-success to failure or erase unresolved settlement, original operation identity or remote receipts. Keep scope admission and late-result consumption guards at the appropriate parent/shared transaction boundaries.
+
+Use concrete typed child protocols and preserve source injection. No `AnyActorRef`, mode-dependent side effects or manually created root hidden in an I/O leaf. If direct typed invocation removes a repeated block without a supervisor, prefer that simpler composition; retain a supervisor where dynamic capability spawning and drain ownership require it.
+
+### Correlated RPC request lifecycle
+
+[Account-storage](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/runtime/worker/storage-channel.ts) and [broker-host](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/runtime/worker/broker-channel.ts) clients duplicate request identity allocation, pending reply correlation, posting failure, port failure/closure and promise settlement.
+
+Provide a shared typed request lifecycle under a channel owner: admit request, register identity before posting, await matching reply, classify response/transport/deadline outcome and settle once. The channel owner routes replies to concurrent requests and closes all observers/resources consistently. Native pending maps and promise resolvers may remain in the adapter; admission and lifecycle decisions must not be hidden there. A promise API is a legitimate entry boundary, not permission to hide nested roots in a storage leaf.
+
+Inject protocol-specific schemas, selected transport operation and resource-release behavior. Keep account namespace, Web Lock ownership, SDK transform, broker generation/origin admission and transfer rules in their current owners/adapters. Broker `OPENED` replies transfer ports: orphaned or late transferred ports must be closed. Account WRITE expiry can mean an unknown executed write: do not treat loss of the observer as cancellation of the effect or release its lock before safe settlement. Do not combine either channel's credentials or replies with rendered views.
+
+### One shot browser worker job
+
+[Image processing supervision](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/images/queue-machine.ts) and [extension extraction](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/extension/src/worker.ts) repeat worker creation, request posting, message/error handling, cancellation and termination.
+
+Introduce a typed, parent-invoked browser worker job that owns one selected operation through native cleanup. Input supplies the worker resource factory, selected payload/transfer contract and reply decoder; output preserves a validated result or distinguishable failure/cancellation facts. Native handles remain in the adapter. Posting success is not job completion.
+
+The parent owns domain fallback and the deadline policy. Preserve image processing's 20-second limit and extension extraction's 15-second link-only fallback without adding competing timers. Parent expiry cancels the child and waits for the applicable resource cleanup before acknowledging settlement. Fail construction, post, malformed reply, worker error and `messageerror` explicitly; ignore late/duplicate events and terminate each acquired worker once.
+
+Do not use this one-shot abstraction for long-lived search/article workers. Do not merge Node parser termination with browser termination: the Node parser waits for real worker exit, whereas browser `Worker.terminate()` has no equivalent asynchronous exit acknowledgment. Preserve these different contracts instead of concealing them behind a generic success flag.
+
+### Smaller reuse without another machine
+
+- In `capture/decode-response.ts`, gzip, Brotli and deflate duplicate the same decode invocation and result/error handling. Select the supported format in explicit routing, then invoke one decoding state with validated format input. Preserve identity-body and unsupported-encoding behavior and current size/error mapping.
+- In `storage/organize.ts`, tag/property history reads duplicate completion handling. Share typed transition/calculation helpers or configuration where useful; keep selection of the history operation explicit in the chart.
+- Extract receipt collection and repeated result construction as pure typed functions where semantics match. These functions must not select the parent's next operation or discard settlement distinctions.
+- Reuse the existing transaction-domain model, domain transaction bridge, identity logic and sync-owner machine. Do not add another generic transaction or receipt owner to wrap behavior already shared.
+
+### Acceptance criteria
+
+SHARE-1: Replace the repeated operation-supervision blocks using the shared owner or simpler direct invocation with equivalent typing. Independently test completion, error, shutdown-before/after-start, supported cancellation and forced parent stop. Prove one child per admitted operation, no premature drain acknowledgment and custody transfer where required.
+
+SHARE-2: Preserve each parent's distinct branch selection and domain result: article reread/duplicate handling, sequential intent/publication, image failure recording, reader queue progression, sample gating and local-versus-remote receipt handling. Do not unify these outcomes simply because their child plumbing matches.
+
+SHARE-3: Exercise concurrent RPC requests, out-of-order replies, duplicate/unknown IDs, post failure, malformed messages, port failure, deadline expiry and close. Prove exactly one observer settlement, no request replay, correct uncertain-write handling and closure of orphaned transferred ports.
+
+SHARE-4: Run both image and extension worker jobs through the shared child with real browser workers, plus injected construction/post/result/error/abort races. Prove cleanup before terminal acknowledgment, unchanged parent deadlines/fallbacks and no worker or listener leaks.
+
+SHARE-5: Preserve decode behavior for identity/gzip/Brotli/deflate, unsupported encoding and failed/oversized decoding. Preserve tag/property history selection. Verify behavior rather than machine-source text or line-count reduction.
+
+SHARE-6: Review the resulting parent charts and helpers together. Domain decisions remain visible, v6 schemas retain concrete input/output/command types, source injection works, and no helper duplicates DLF settlement ownership or moves domain work onto the UI thread.
+
 ## State that stays outside charts
 
 Simple drawer/input/footnote/focus presentation state, pure parsing/projection, stream buffers, native handles and RPC reply maps may remain ordinary code. Their enclosing resource lifetime must be owned and tested. Do not turn each calculation or database primitive into a state, and extend the existing account-store owner for its deadline gaps rather than replace its locking protocol. Preserve existing transaction and sync ownership.
@@ -288,7 +356,7 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 | Gate | Evidence required |
 | --- | --- |
-| Focused workflow tests | AUTH, HOST, BIND, EXT, REC and ROOT acceptance cases; actual actor SUT and separately recorded native effects. |
+| Focused workflow tests | AUTH, HOST, BIND, EXT, REC, ROOT and SHARE acceptance cases; actual actor SUT and separately recorded native effects. |
 | Repository verification | `pnpm verify`: vendor integrity, format, lint, strict types, unit/native tests and production build. |
 | Worker/browser behavior | `pnpm test:worker` and applicable `pnpm test:e2e` cases: stale-scope refusal, reader detach and zero application SDK/WASM initialization on the UI thread. |
 | Offline authentication | `pnpm test:offline` including connected and existing-account profiles, expired credentials, complete browser-process restart with app/auth/Jazz unreachable, acknowledged edits surviving another restart and reconciliation after reconnect. |
@@ -297,4 +365,4 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 Run build/type generation and browser suites sequentially when they share generated output. Use isolated authorities/ports for concurrent development without stopping unidentified servers. No broad new performance claim is made; the UI-thread boundary and unchanged bounded publication behavior are explicit checks.
 
-The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four ownership workstreams, all six recovery/deadline areas and the ROOT acceptance criteria, updated architecture views showing actual ownership and labeled production invocation boundaries, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
+The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four ownership workstreams, all six recovery/deadline areas and the ROOT and SHARE acceptance criteria, updated architecture views showing actual ownership and labeled production invocation boundaries, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
