@@ -1,3 +1,4 @@
+import { articleMetadataSchema } from '../../capture/metadata.js'
 import type { EventPayload } from '../events.js'
 import { types, setup, createAsyncLogic } from 'xstate'
 import { isPendingArticle } from '../../capture/article-policy.js'
@@ -317,6 +318,7 @@ export function createArticleQueueMachine(cap: QueueCapability) {
 								destination: event.output.finalUrl,
 								content: {
 									title: event.output.title,
+									...articleMetadataSchema.parse(event.output),
 									text: event.output.text,
 									html: event.output.html,
 									finalUrl: event.output.finalUrl,

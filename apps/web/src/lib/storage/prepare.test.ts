@@ -31,3 +31,56 @@ it('rejects oversized text and bytes before any persistence', async () => {
 		prepareSave(libraryId, { ...request(), text: 'é'.repeat(TEXT_LIMIT) })
 	).rejects.toThrow()
 })
+
+it('keeps the full metadata in snapshots and fingerprints it independently of body content', async () => {
+	const input = {
+		...request(),
+		excerpt: 'Unshortened description café 🦊. '.repeat(200),
+		author: 'Ada Example',
+		siteName: 'Example Journal',
+		publishedTime: '2026-10-02T12:30:00+02:00',
+		lang: 'ar',
+		dir: 'rtl',
+		featuredImageUrl: 'https://example.com/cover.png'
+	}
+	const saved = await prepareSave(libraryId, input)
+	for (const [key, value] of Object.entries(input))
+		if (
+			[
+				'excerpt',
+				'author',
+				'siteName',
+				'publishedTime',
+				'lang',
+				'dir',
+				'featuredImageUrl'
+			].includes(key)
+		)
+			expect(saved.snapshot).toHaveProperty(key, value)
+	for (const field of ['excerpt', 'author', 'siteName', 'publishedTime', 'lang', 'dir']) {
+		expect(
+			(await prepareSave(libraryId, { ...input, [field]: 'changed' })).intent.payloadHash
+		).not.toBe(saved.intent.payloadHash)
+	}
+})
+
+it('queues the featured image even when absent from the body and deduplicates matching inline images', async () => {
+	const featuredImageUrl = 'https://example.com/cover.png'
+	for (const html of [
+		'<p>No inline image</p>',
+		`<img data-clipper-image="${encodeURIComponent(featuredImageUrl)}">`
+	]) {
+		const saved = await prepareSave(libraryId, {
+			...request(),
+			mediaType: 'text/html',
+			bytes: new TextEncoder().encode(html),
+			featuredImageUrl
+		})
+		expect(saved.images).toHaveLength(1)
+		expect(saved.images?.[0]).toMatchObject({
+			sourceUrl: featuredImageUrl,
+			status: 'pending',
+			assetId: null
+		})
+	}
+})

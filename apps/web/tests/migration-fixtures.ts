@@ -7,6 +7,10 @@ import { app as images } from './fixtures/schema-history/preimages-schema.test-s
 import { app as notes } from './fixtures/schema-history/prenotes-schema.test-support.js'
 import { app as entities } from './fixtures/schema-history/prenote-entities-schema.test-support.js'
 import { app } from '../src/lib/backend/jazz/schema.js'
+import { app as beforeMetadata } from './fixtures/schema-history/premetadata-schema.test-support.js'
+import metadataMigration from '../src/lib/backend/jazz/migrations/20261110T161543-article-metadata-5e70efdb5795-8a4e11c993e0.js'
+import { app as beforeExcerpts } from './fixtures/schema-history/preexcerpt-schema.test-support.js'
+import excerptMigration from '../src/lib/backend/jazz/migrations/20261110T152256-article-excerpts-7c74c142a5dc-5e70efdb5795.js'
 import { app as beforeAuth } from './fixtures/schema-history/preauth-schema.test-support.js'
 import authMigration from '../src/lib/backend/jazz/migrations/20261109T125137-better-auth-native-bb82b0448a9f-7c74c142a5dc.js'
 import urlMigration from './fixtures/schema-history/migrations/20261103T231346-url-first-articles-9251313c0afe-80988faa7219.js'
@@ -27,7 +31,9 @@ const steps = [
 	{ to: notes, migration: imageMigration },
 	{ to: entities, migration: noteMigration },
 	{ to: beforeAuth, migration: entityMigration },
-	{ to: app, migration: authMigration }
+	{ to: beforeExcerpts, migration: authMigration },
+	{ to: beforeMetadata, migration: excerptMigration },
+	{ to: app, migration: metadataMigration }
 ]
 export const browserMigrations = await appMigrations(legacyApp, ...steps)
 export const fixtureSchemas = [legacyApp, ...steps.map((step) => step.to)]
@@ -42,8 +48,10 @@ export function fixtureDeployment(input: DeployOptions) {
 	if (!edge) throw new Error('Unknown browser migration fixture')
 	return {
 		...input,
-		schemas: fixtureSchemas.slice(index, index + (input.schema === app ? 3 : 2)),
-		...(input.schema === app ? { migrations: [authMigration] } : {}),
+		schemas: fixtureSchemas.slice(index, input.schema === app ? undefined : index + 2),
+		...(input.schema === app
+			? { migrations: steps.slice(index + 1).map((step) => step.migration) }
+			: {}),
 		migration: { ...input.migration, fromHash: edge.fromHash, toHash: edge.toHash }
 	}
 }

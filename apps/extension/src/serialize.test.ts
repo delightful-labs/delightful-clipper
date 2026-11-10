@@ -72,3 +72,26 @@ it('keeps image/structured markup inert without requiring a browser DOM in the e
 	expect(content.text).toContain('Structured detail.')
 	expect(content.finalUrl).toBe('https://example.com/article')
 })
+
+it('retains full descriptions and article metadata through the real browser serialization path', () => {
+	page(`<article dir="rtl"><h1>Browser capture</h1>${paragraphs}</article>`)
+	const description = 'Full description café 🦊. '.repeat(200).trim()
+	document.documentElement.lang = 'ar'
+	document.head.insertAdjacentHTML(
+		'beforeend',
+		`<meta name="description" content="${description}"><meta property="og:site_name" content="Example Journal"><meta property="og:image" content="cover.png"><meta name="twitter:image" content="other.png"><script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Browser capture","author":{"@type":"Person","name":"Ada Example"},"datePublished":"2026-10-02T12:30:00Z"}</script>`
+	)
+	const serialized = serializePage()
+	expect(serialized.html).toContain('application/ld+json')
+	const content = extractRenderedSource(serialized)
+	expect(content).toMatchObject({
+		excerpt: description,
+		author: 'Ada Example',
+		siteName: 'Example Journal',
+		publishedTime: '2026-10-02T12:30:00Z',
+		lang: 'ar',
+		dir: 'rtl',
+		featuredImageUrl: 'https://example.com/base/cover.png'
+	})
+	expect(content.html).not.toContain('application/ld+json')
+})

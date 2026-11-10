@@ -1,6 +1,7 @@
 import { readableText } from '../../reader/text.js'
 import { articlePolicy, articlePurifier } from '../../reader/policy.js'
 import { Readability } from '@mozilla/readability'
+import { featuredImageUrl } from '../../capture/metadata.js'
 import { CaptureError } from './errors.js'
 import { sourceUrl } from './destination.js'
 export async function extract(body: Uint8Array, mediaType: string, url: string) {
@@ -68,8 +69,21 @@ export async function extract(body: Uint8Array, mediaType: string, url: string) 
 			} catch {
 				/* Evidence is optional; never changes identity. */
 			}
+		const featuredImage = featuredImageUrl(
+			document.getElementsByTagName('meta'),
+			document.baseURI || url
+		)
 		const article = /^text\/plain/i.test(mediaType)
-			? { title: new URL(url).hostname, byline: null, content: document.body.innerHTML }
+			? {
+					title: new URL(url).hostname,
+					byline: null,
+					siteName: null,
+					publishedTime: null,
+					lang: null,
+					dir: null,
+					excerpt: null,
+					content: document.body.innerHTML
+				}
 			: new Readability(document, { maxElemsToParse: 50000, keepClasses: true }).parse()
 		if (!article?.content) throw new CaptureError('parseFailed', 422)
 		const result = new JSDOM(article.content, { url, virtualConsole })
@@ -140,7 +154,13 @@ export async function extract(body: Uint8Array, mediaType: string, url: string) 
 				canonicalCandidate,
 				candidate: {
 					title: article.title || new URL(url).hostname,
-					author: article.byline ?? undefined,
+					excerpt: article.excerpt ?? normalizedText,
+					author: article.byline ?? null,
+					siteName: article.siteName ?? null,
+					publishedTime: article.publishedTime ?? null,
+					lang: article.lang ?? null,
+					dir: article.dir ?? null,
+					featuredImageUrl: featuredImage,
 					html,
 					text: normalizedText,
 					headings: Array.from(root.querySelectorAll('h1,h2,h3,h4,h5,h6'), (heading) => ({

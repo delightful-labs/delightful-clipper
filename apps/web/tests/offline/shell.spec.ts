@@ -3,6 +3,7 @@ import { readRecoveryPhrase, restoreAccount } from '../account-ui.js'
 import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { openAddLink } from '../add-link.js'
 import { readingControls, closeReadingControls, visibleReadingParagraph } from '../reader-ui.js'
+import { app } from '../../src/lib/backend/jazz/schema.js'
 import { test, expect, chromium } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
@@ -14,6 +15,16 @@ import { staticShellServer } from './server.js'
 const buildA = fileURLToPath(new URL('../../.offline-test-builds/a/', import.meta.url))
 const buildB = fileURLToPath(new URL('../../.offline-test-builds/b/', import.meta.url))
 const prefix = 'delightful-clipper-shell-v1-'
+const fullExcerpt = 'Exact offline shell text café 🦊. '.repeat(200)
+const savedMetadata = {
+	excerpt: fullExcerpt,
+	author: 'Ada Example',
+	siteName: 'Example Journal',
+	publishedTime: '2026-10-02T12:30:00+02:00',
+	lang: 'ar',
+	dir: 'rtl',
+	featuredImageUrl: 'https://example.com/offline-cover.png'
+}
 const ui = staticShellServer(buildA)
 let authority: Awaited<ReturnType<typeof startJazzAuthority>>,
 	dataDir: string,
@@ -85,6 +96,7 @@ async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 						},
 						candidate: {
 							title: 'Completely offline article',
+							...savedMetadata,
 							text:
 								'Exact offline shell text café 🦊 ' +
 								readingParagraphs.replace(/<[^>]*>/g, ' ') +
@@ -337,6 +349,9 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.getByRole('region', { name: 'Saved articles' })
 			.locator('[data-article-id]')
 		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
+		await expect(offlineRow.locator('.article-excerpt')).toContainText(
+			'Exact offline shell text café 🦊'
+		)
 		await (
 			await openArticleActions(offlineRow)
 		)
@@ -417,6 +432,24 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.getByRole('link', { name: 'Completely offline article', exact: true })
 			.click({ timeout: 30000 })
 		await expect(restored.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		const documentId = readerPath!.split('/').pop()!
+		await expect
+			.poll(() => authority.backend.db.one(app.snapshots.where({ id: documentId })))
+			.toMatchObject(savedMetadata)
+		await expect
+			.poll(() =>
+				authority.backend.db.one(
+					app.articleImages.where({ documentId, sourceUrl: savedMetadata.featuredImageUrl })
+				)
+			)
+			.toMatchObject({ status: 'ready' })
+		const cover = await authority.backend.db.one(
+			app.articleImages.where({ documentId, sourceUrl: savedMetadata.featuredImageUrl })
+		)
+		expect(
+			(await authority.backend.db.one(app.assets.where({ id: cover!.assetId! })))?.payload
+				.byteLength
+		).toBeGreaterThan(0)
 		await restored.getByRole('article').locator('summary').click()
 		await expect(restored.getByRole('article').locator('svg')).toBeVisible()
 		await expect(restored.getByRole('article').locator('path')).toHaveAttribute('stroke', 'red')

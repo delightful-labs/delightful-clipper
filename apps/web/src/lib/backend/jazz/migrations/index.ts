@@ -8,6 +8,1116 @@ import type { ClientMigrations } from 'jazz-tools'
 export const migrations: ClientMigrations = {
   "schemas": [
     {
+      "hash": "5e70efdb57957c5bac914ac5d66c8c39f51c8b3b602b547a2a2d293ac2581a44",
+      "schema": {
+        "tables": {
+          "better_auth_user": {
+            "columns": [
+              {
+                "name": "name",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "email",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "emailVerified",
+                "column_type": {
+                  "type": "Boolean"
+                },
+                "nullable": false
+              },
+              {
+                "name": "image",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "atprotoDid",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "atprotoHandle",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              }
+            ],
+            "relations": {}
+          },
+          "better_auth_session": {
+            "columns": [
+              {
+                "name": "expiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "token",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "ipAddress",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "userAgent",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "userId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "better_auth_user"
+              }
+            ],
+            "relations": {
+              "userIdRelation": {
+                "kind": "forward",
+                "table": "better_auth_user",
+                "column": "userId"
+              }
+            }
+          },
+          "better_auth_account": {
+            "columns": [
+              {
+                "name": "accountId",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "providerId",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "userId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "better_auth_user"
+              },
+              {
+                "name": "accessToken",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "refreshToken",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "idToken",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "accessTokenExpiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": true
+              },
+              {
+                "name": "refreshTokenExpiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": true
+              },
+              {
+                "name": "scope",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "password",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "userIdRelation": {
+                "kind": "forward",
+                "table": "better_auth_user",
+                "column": "userId"
+              }
+            }
+          },
+          "better_auth_verification": {
+            "columns": [
+              {
+                "name": "identifier",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "value",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "expiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {}
+          },
+          "better_auth_atprotoSession": {
+            "columns": [
+              {
+                "name": "did",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "sessionData",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "userId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "better_auth_user"
+              },
+              {
+                "name": "handle",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "pdsUrl",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "userIdRelation": {
+                "kind": "forward",
+                "table": "better_auth_user",
+                "column": "userId"
+              }
+            }
+          },
+          "better_auth_atprotoState": {
+            "columns": [
+              {
+                "name": "stateKey",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "stateData",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "expiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {}
+          },
+          "notes": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "articleId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "articles"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "article": {
+                "kind": "forward",
+                "table": "articles",
+                "column": "articleId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "noteRevisions": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "noteId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "notes"
+              },
+              {
+                "name": "text",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "editedAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "note": {
+                "kind": "forward",
+                "table": "notes",
+                "column": "noteId"
+              }
+            }
+          },
+          "articleNoteRevisions": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "articleId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false
+              },
+              {
+                "name": "articleParentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "articles"
+              },
+              {
+                "name": "documentParentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "text",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "editedAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "articleParent": {
+                "kind": "forward",
+                "table": "articles",
+                "column": "articleParentId"
+              },
+              "documentParent": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentParentId"
+              }
+            }
+          },
+          "articleImages": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "documents"
+              },
+              {
+                "name": "sourceUrl",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "status",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "assetId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "assets"
+              },
+              {
+                "name": "retryable",
+                "column_type": {
+                  "type": "Boolean"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              },
+              "asset": {
+                "kind": "forward",
+                "table": "assets",
+                "column": "assetId"
+              }
+            }
+          },
+          "readerOperations": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "field",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "value",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "tagOperations": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "articleId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "articles"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "key",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "name",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "assigned",
+                "column_type": {
+                  "type": "Boolean"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "article": {
+                "kind": "forward",
+                "table": "articles",
+                "column": "articleId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "organizationOperations": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "articleId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "articles"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "field",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "value",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "article": {
+                "kind": "forward",
+                "table": "articles",
+                "column": "articleId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "articles": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "url",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "originalSavedAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "contentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "operationId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true
+              },
+              {
+                "name": "failure",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "content": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "contentId"
+              }
+            }
+          },
+          "articleSources": {
+            "columns": [
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "documents"
+              },
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "finalUrl",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "submittedUrl",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "provenance",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "libraries": {
+            "columns": [
+              {
+                "name": "ownerId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false
+              },
+              {
+                "name": "bootstrapVersion",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {}
+          },
+          "storageOperations": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "payloadHash",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              }
+            }
+          },
+          "assets": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "operationId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "storageOperations"
+              },
+              {
+                "name": "mediaType",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "payload",
+                "column_type": {
+                  "type": "Bytea"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "operation": {
+                "kind": "forward",
+                "table": "storageOperations",
+                "column": "operationId"
+              }
+            }
+          },
+          "snapshots": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "storageOperations"
+              },
+              {
+                "name": "text",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "excerpt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "formatVersion",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "operation": {
+                "kind": "forward",
+                "table": "storageOperations",
+                "column": "documentId"
+              }
+            }
+          },
+          "documents": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "operationId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "storageOperations"
+              },
+              {
+                "name": "snapshotId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "snapshots"
+              },
+              {
+                "name": "assetId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "assets"
+              },
+              {
+                "name": "title",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "originalSavedAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "operation": {
+                "kind": "forward",
+                "table": "storageOperations",
+                "column": "operationId"
+              },
+              "snapshot": {
+                "kind": "forward",
+                "table": "snapshots",
+                "column": "snapshotId"
+              },
+              "asset": {
+                "kind": "forward",
+                "table": "assets",
+                "column": "assetId"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "hash": "7c74c142a5dcb20346a3372e978441eca027f10549aa92624b06a342df805915",
       "schema": {
         "tables": {
@@ -1111,6 +2221,1158 @@ export const migrations: ClientMigrations = {
       }
     },
     {
+      "hash": "8a4e11c993e0af4476cff6d9c88fc3b1643505772bdb66a399eb2b12551b84f9",
+      "schema": {
+        "tables": {
+          "better_auth_user": {
+            "columns": [
+              {
+                "name": "name",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "email",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "emailVerified",
+                "column_type": {
+                  "type": "Boolean"
+                },
+                "nullable": false
+              },
+              {
+                "name": "image",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "atprotoDid",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "atprotoHandle",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              }
+            ],
+            "relations": {}
+          },
+          "better_auth_session": {
+            "columns": [
+              {
+                "name": "expiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "token",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "ipAddress",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "userAgent",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "userId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "better_auth_user"
+              }
+            ],
+            "relations": {
+              "userIdRelation": {
+                "kind": "forward",
+                "table": "better_auth_user",
+                "column": "userId"
+              }
+            }
+          },
+          "better_auth_account": {
+            "columns": [
+              {
+                "name": "accountId",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "providerId",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "userId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "better_auth_user"
+              },
+              {
+                "name": "accessToken",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "refreshToken",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "idToken",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "accessTokenExpiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": true
+              },
+              {
+                "name": "refreshTokenExpiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": true
+              },
+              {
+                "name": "scope",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "password",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "userIdRelation": {
+                "kind": "forward",
+                "table": "better_auth_user",
+                "column": "userId"
+              }
+            }
+          },
+          "better_auth_verification": {
+            "columns": [
+              {
+                "name": "identifier",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "value",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "expiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {}
+          },
+          "better_auth_atprotoSession": {
+            "columns": [
+              {
+                "name": "did",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "sessionData",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "userId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "better_auth_user"
+              },
+              {
+                "name": "handle",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "pdsUrl",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "updatedAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "userIdRelation": {
+                "kind": "forward",
+                "table": "better_auth_user",
+                "column": "userId"
+              }
+            }
+          },
+          "better_auth_atprotoState": {
+            "columns": [
+              {
+                "name": "stateKey",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "stateData",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "expiresAt",
+                "column_type": {
+                  "type": "Timestamp"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {}
+          },
+          "notes": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "articleId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "articles"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "article": {
+                "kind": "forward",
+                "table": "articles",
+                "column": "articleId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "noteRevisions": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "noteId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "notes"
+              },
+              {
+                "name": "text",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "editedAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "note": {
+                "kind": "forward",
+                "table": "notes",
+                "column": "noteId"
+              }
+            }
+          },
+          "articleNoteRevisions": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "articleId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false
+              },
+              {
+                "name": "articleParentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "articles"
+              },
+              {
+                "name": "documentParentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "text",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "editedAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "articleParent": {
+                "kind": "forward",
+                "table": "articles",
+                "column": "articleParentId"
+              },
+              "documentParent": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentParentId"
+              }
+            }
+          },
+          "articleImages": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "documents"
+              },
+              {
+                "name": "sourceUrl",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "status",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "assetId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "assets"
+              },
+              {
+                "name": "retryable",
+                "column_type": {
+                  "type": "Boolean"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              },
+              "asset": {
+                "kind": "forward",
+                "table": "assets",
+                "column": "assetId"
+              }
+            }
+          },
+          "readerOperations": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "field",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "value",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "tagOperations": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "articleId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "articles"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "key",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "name",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "assigned",
+                "column_type": {
+                  "type": "Boolean"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "article": {
+                "kind": "forward",
+                "table": "articles",
+                "column": "articleId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "organizationOperations": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "articleId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "articles"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "field",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "value",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "parents",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "article": {
+                "kind": "forward",
+                "table": "articles",
+                "column": "articleId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "articles": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "url",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "originalSavedAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "contentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true,
+                "references": "documents"
+              },
+              {
+                "name": "operationId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": true
+              },
+              {
+                "name": "failure",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "content": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "contentId"
+              }
+            }
+          },
+          "articleSources": {
+            "columns": [
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "documents"
+              },
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "finalUrl",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "submittedUrl",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "provenance",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "document": {
+                "kind": "forward",
+                "table": "documents",
+                "column": "documentId"
+              }
+            }
+          },
+          "libraries": {
+            "columns": [
+              {
+                "name": "ownerId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false
+              },
+              {
+                "name": "bootstrapVersion",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {}
+          },
+          "storageOperations": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "payloadHash",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "createdAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              }
+            }
+          },
+          "assets": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "operationId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "storageOperations"
+              },
+              {
+                "name": "mediaType",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "payload",
+                "column_type": {
+                  "type": "Bytea"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "operation": {
+                "kind": "forward",
+                "table": "storageOperations",
+                "column": "operationId"
+              }
+            }
+          },
+          "snapshots": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "documentId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "storageOperations"
+              },
+              {
+                "name": "text",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "excerpt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "author",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "siteName",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "publishedTime",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "lang",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "dir",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "featuredImageUrl",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": true
+              },
+              {
+                "name": "formatVersion",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "operation": {
+                "kind": "forward",
+                "table": "storageOperations",
+                "column": "documentId"
+              }
+            }
+          },
+          "documents": {
+            "columns": [
+              {
+                "name": "libraryId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "libraries"
+              },
+              {
+                "name": "operationId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "storageOperations"
+              },
+              {
+                "name": "snapshotId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "snapshots"
+              },
+              {
+                "name": "assetId",
+                "column_type": {
+                  "type": "Uuid"
+                },
+                "nullable": false,
+                "references": "assets"
+              },
+              {
+                "name": "title",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              },
+              {
+                "name": "originalSavedAt",
+                "column_type": {
+                  "type": "Text"
+                },
+                "nullable": false
+              }
+            ],
+            "relations": {
+              "library": {
+                "kind": "forward",
+                "table": "libraries",
+                "column": "libraryId"
+              },
+              "operation": {
+                "kind": "forward",
+                "table": "storageOperations",
+                "column": "operationId"
+              },
+              "snapshot": {
+                "kind": "forward",
+                "table": "snapshots",
+                "column": "snapshotId"
+              },
+              "asset": {
+                "kind": "forward",
+                "table": "assets",
+                "column": "assetId"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "hash": "bb82b0448a9f079cb8821b90310304d7cf5bf09444892585f590e9d8efd84bd9",
       "schema": {
         "tables": {
@@ -1910,6 +4172,98 @@ export const migrations: ClientMigrations = {
           "table": "better_auth_verification",
           "added": true,
           "operations": []
+        }
+      ]
+    },
+    {
+      "fromHash": "7c74c142a5dcb20346a3372e978441eca027f10549aa92624b06a342df805915",
+      "toHash": "5e70efdb57957c5bac914ac5d66c8c39f51c8b3b602b547a2a2d293ac2581a44",
+      "forward": [
+        {
+          "table": "snapshots",
+          "operations": [
+            {
+              "type": "introduce",
+              "column": "excerpt",
+              "column_type": {
+                "type": "Text"
+              },
+              "value": {
+                "type": "Null"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fromHash": "5e70efdb57957c5bac914ac5d66c8c39f51c8b3b602b547a2a2d293ac2581a44",
+      "toHash": "8a4e11c993e0af4476cff6d9c88fc3b1643505772bdb66a399eb2b12551b84f9",
+      "forward": [
+        {
+          "table": "snapshots",
+          "operations": [
+            {
+              "type": "introduce",
+              "column": "author",
+              "column_type": {
+                "type": "Text"
+              },
+              "value": {
+                "type": "Null"
+              }
+            },
+            {
+              "type": "introduce",
+              "column": "siteName",
+              "column_type": {
+                "type": "Text"
+              },
+              "value": {
+                "type": "Null"
+              }
+            },
+            {
+              "type": "introduce",
+              "column": "publishedTime",
+              "column_type": {
+                "type": "Text"
+              },
+              "value": {
+                "type": "Null"
+              }
+            },
+            {
+              "type": "introduce",
+              "column": "lang",
+              "column_type": {
+                "type": "Text"
+              },
+              "value": {
+                "type": "Null"
+              }
+            },
+            {
+              "type": "introduce",
+              "column": "dir",
+              "column_type": {
+                "type": "Text"
+              },
+              "value": {
+                "type": "Null"
+              }
+            },
+            {
+              "type": "introduce",
+              "column": "featuredImageUrl",
+              "column_type": {
+                "type": "Text"
+              },
+              "value": {
+                "type": "Null"
+              }
+            }
+          ]
         }
       ]
     }

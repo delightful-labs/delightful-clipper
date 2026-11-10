@@ -1,9 +1,10 @@
 import type { Snapshot } from 'xstate'
+import type { ArticleMetadata } from '../capture/metadata.js'
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { SaveRequest, SaveResult, SyncReceipt, DocumentHeader } from './storage.js'
 export type { Article } from '../capture/article-schema.js'
 import type { Article } from '../capture/article-schema.js'
-export type ArticleContent = {
+export type ArticleContent = ArticleMetadata & {
 	title: string
 	text: string
 	html: string
@@ -39,6 +40,7 @@ export type ArticleSaveCapability = {
 	content: ContentOperation
 }
 export type LibraryArticle = {
+	excerpt?: string
 	readingProgress?: number | undefined
 	trashed?: boolean
 	tags?: import('../capture/tags.js').Tag[]

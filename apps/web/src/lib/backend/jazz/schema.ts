@@ -133,6 +133,13 @@ export const app = s.defineApp(
 				libraryId: s.uuid(),
 				documentId: s.uuid(),
 				text: s.string(),
+				excerpt: s.string().optional(),
+				author: s.string().optional(),
+				siteName: s.string().optional(),
+				publishedTime: s.string().optional(),
+				lang: s.string().optional(),
+				dir: s.string().optional(),
+				featuredImageUrl: s.string().optional(),
 				formatVersion: s.string()
 			},
 			{
