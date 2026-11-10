@@ -1,6 +1,8 @@
 # Margin synchronization technical proposal
 
-Prepared 2026-11-07 for one combined review. **Approval update:** the user approved the [companion fields and grouped synchronization approach](../../specs/001-jazz-clipper/design-decisions.md#accepted-companion-fields-and-grouped-synchronization--2026-11-07). Other candidate private shapes and exact processes below remain proposals. The [product checkpoint](../atproto-research.md#accepted-publication-behavior) and [accepted decisions](../../specs/001-jazz-clipper/design-decisions.md#accepted-ongoing-publication-synchronization--2026-11-07) govern the outcome. This document authorizes no implementation, tests, dependencies, migration or deployment. Jazz upgrade and backend hosting are now being handled by another agent. Start from the standard Jazz lifecycle; the detailed executor/storage mechanics below are retained proposals, not the upgrade plan.
+**Current checkpoint (2026-11-10):** Jazz alpha.60/Vercel and native identity integration are merged. [Implementation status and open publication work](../../specs/001-jazz-clipper/atproto.md) supersede the upgrade-wait instructions below. The approved publication subset remains accepted; other mechanics remain proposals, with no publication implementation yet.
+
+Prepared 2026-11-07 for one combined review. **Approval update:** the user approved the [companion fields and grouped synchronization approach](../../specs/001-jazz-clipper/design-decisions.md#accepted-companion-fields-and-grouped-synchronization--2026-11-07). Other candidate private shapes and exact processes below remain proposals. The [product checkpoint](../atproto-research.md#accepted-publication-behavior) and [accepted decisions](../../specs/001-jazz-clipper/design-decisions.md#accepted-ongoing-publication-synchronization--2026-11-07) govern the outcome. This document authorizes no implementation, tests, dependencies, migration or deployment. Jazz alpha.60 and the Vercel backend are now adopted; native auth is merged in PR #20. Start from the standard Jazz lifecycle; the detailed executor/storage mechanics below are retained proposals, not the upgrade plan.
 
 ## Recommended approach
 
@@ -185,7 +187,7 @@ These are proposed transitions, not newly implemented guarantees. In particular,
 
 ## 7. Qualification and delivery recommendation
 
-After the combined design is accepted and the Jazz release is adopted:
+The Jazz release is adopted and the companion/grouping subset is approved. After the remaining combined design choices are reviewed:
 
 1. Qualify a disposable PDS client's conditional atomic group creation/update/deletion, coherent repository-head inspection, canonical CID calculation, unknown-field round trip, commit conflicts and missing/stale companion classification. No real notes or production grants are needed.
 2. Implement and review Clipper's required domain entities/constraints and exact public projector. Qualify plaintext/facets, Unicode bounds, source/reader divergence and retained ambiguous content.

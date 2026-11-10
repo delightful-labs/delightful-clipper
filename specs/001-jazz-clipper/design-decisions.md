@@ -1,5 +1,7 @@
 # MVP design decisions and acceptance details
 
+**AT Protocol status (2026-11-10):** [Merged implementation, accepted publication decisions and remaining work](atproto.md). This checkpoint supersedes historical JWT/Neon, alpha.59 and Netlify-only AT Protocol notes below; it does not mark annotation/publication requirements implemented.
+
 **Updated**: 2026-11-05. Accepted interaction decisions and remaining product design. Implemented evidence is tracked in [tasks.md](tasks.md); unbuilt controls below remain requirements, not completion claims. The product spec governs any conflict.
 
 ## Reader, navigation and accessibility
@@ -102,7 +104,7 @@ Connectivity retry uses capped exponential backoff with jitter, at most five aut
 
 Supported desktop extension runtimes are Chrome and Firefox; Android Chrome uses supported installed-PWA sharing with Add Link fallback; iOS Safari uses Add Link until incoming share support is demonstrated. Minimum release versions are recorded after real-device qualification, not guessed here. First-time identity/library setup and recovery must preserve DLF's provenance rules; no unsupported promise of offline first-ever provisioning is made.
 
-One repository, Readability baseline, i18next runtime instances, Jazz alpha.59, DLF granular boundaries and worker ownership are selected in plan.md. Extension restoration uses DLF in trusted extension UI, not automatic web-origin SSO. Missing creation, request-auth proof acquisition, packaged extension persistence, public-only fetch transport and cold-restart evidence remain explicit implementation gates. Failure of a gate requires revising the plan or a scoped product decision, not adding a fallback account system or silently weakening offline/private behavior.
+One repository, Readability baseline, i18next runtime instances, Jazz alpha.60, DLF granular boundaries and worker ownership are selected in plan.md. Extension restoration uses DLF in trusted extension UI, not automatic web-origin SSO. Missing creation, request-auth proof acquisition, packaged extension persistence, public-only fetch transport and cold-restart evidence remain explicit implementation gates. Failure of a gate requires revising the plan or a scoped product decision, not adding a fallback account system or silently weakening offline/private behavior.
 
 Storage simplification accepted for PR #5: use native Jazz text/byte columns and atomic publication instead of custom gzip/manifests/parts/checksums. Keep domain input bounds, operation fingerprints, private parent policies and separate local/remote receipts. Do not introduce another storage protocol without a demonstrated SDK limitation.
 

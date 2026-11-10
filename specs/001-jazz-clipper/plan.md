@@ -1,5 +1,7 @@
 # Technical Plan: Jazz Clipper and Reader
 
+**AT Protocol status (2026-11-10):** [Merged implementation, accepted publication decisions and remaining work](atproto.md). This checkpoint supersedes historical JWT/Neon, alpha.59 and Netlify-only AT Protocol notes below; it does not mark annotation/publication requirements implemented.
+
 **Baseline**: `main` (implementation through feature branches/PRs) · **Updated**: 2026-11-05 · **Spec**: [spec.md](spec.md)
 **Status**: Foundation, URL-first capture, saved reader/offline shell and Chromium direct extension clipping are implemented. PR #13 is merged and user-verified. Basic organization is merged in PR #14 and DUI radio/list refinements in PR #15 (`72b6fc9`). The merged PR #16 search/article-tags/Trash batch is described in [search-tags-trash.md](search-tags-trash.md), including approved action/noun composition and silent search preparation; see [library-organization.md](library-organization.md) for the state/resource model and the handoff for qualification. Reader experience is merged in PR #17 (`89ad4e7`); the bounded image batch follows [offline-images.md](offline-images.md), reusing native byte assets and the existing authenticated public-source gateway. Full runtime/release qualification remains open; see [tasks.md](tasks.md) and [implementation-handoff.md](implementation-handoff.md) for delivered evidence and the next-thread entry point.
 
@@ -7,7 +9,7 @@
 
 The product specification is complete; [design-decisions.md](design-decisions.md) records launch interaction defaults and [specification-review.md](specification-review.md) distinguishes specification completion from runtime qualification. The engineering gates apply before dependent workflows are enabled or released; they do not prevent the bounded foundation implementation that produces their evidence. See the [completed investigation](investigation-results.md).
 
-Replace the legacy Svelte 3/Webnative prototype with a Svelte 5/SvelteKit application and Firefox/Chrome desktop extension sharing typed Clipper domain contracts. Use Delightful Local First (DLF) for session/recovery and Jazz for private, account-scoped durable records and native immutable byte assets. Store one immutable readable snapshot per successful clip. Extract browser captures locally where feasible and fetch/parse public Add Link sources through a first-party Netlify boundary. Use XState workflows, worker-based search/image processing, conservative W3C-compatible exact anchoring, and a cached PWA shell.
+Replace the legacy Svelte 3/Webnative prototype with a Svelte 5/SvelteKit application and Firefox/Chrome desktop extension sharing typed Clipper domain contracts. Use Delightful Local First (DLF) for session/recovery and Jazz for private, account-scoped durable records and native immutable byte assets. Store one immutable readable snapshot per successful clip. Extract browser captures locally where feasible and fetch/parse public Add Link sources through a first-party backend boundary. Use XState workflows, worker-based search/image processing, conservative W3C-compatible exact anchoring, and a cached PWA shell.
 
 Preserve the approved reduced MVP: no content refresh/revision migration, highlight resizing, bulk operations/broad Undo, device preference overrides, typography presets, image viewer, or reading-time estimation. Named selector/normalization versions do not imply a version-history feature.
 
@@ -16,15 +18,15 @@ Preserve the approved reduced MVP: no content refresh/revision migration, highli
 | Area | Decision and evidence |
 | --- | --- |
 | Language/runtime | Strict TypeScript 6.0.3; Node 24.22.2 and pnpm 10.22.0 pinned. DLF/DUI accept Node `^22.17.0 || >=24.0.0`. |
-| UI | Svelte 5.57.2 baseline shared with DLF/DUI. SvelteKit 3.0.1/Vite 8.3.4 pinned and qualified with the Netlify adapter. No `next` dependencies. |
+| UI | Svelte 5.57.2 baseline shared with DLF/DUI. SvelteKit 3.0.1/Vite 8.3.4 pinned; current hosting uses the Vercel adapter. No `next` dependencies. |
 | Workflow | XState 5.33.2; typed owners and leaf SDK/I/O actors. Read the DLF XState memory as integration guidance. |
-| Persistence | Jazz `2.0.0-alpha.59` pinned to sibling integration baseline, behind Clipper repository capabilities. DLF granular exports, not its empty root barrel. |
+| Persistence | Jazz `2.0.0-alpha.60` on the adopted backend baseline, behind Clipper repository capabilities. DLF granular exports, not its empty root barrel. |
 | Shared UI | DUI `0.0.25` archive from commit `20ef7be` (DUI PR #15) is pinned, including radio controls and configurable TagInput comparison; consume shared controls/theme, including the shell-wide floating Add link button and modal URL form. Do not implement the deferred image viewer. |
 | Extraction | Readability 0.6.0 baseline with inert DOM parsing and pre-extraction collection of referenced footnotes; packaged browser-serialized capture worker implemented and tested in Chromium. First-party Node parsing handles raw fetched HTML. Defuddle is a measured alternative, not a simultaneous second pipeline at launch. |
 | Localization | i18next 26.7.1 investigated baseline, instance per application runtime with bundled English resources; reactive Svelte adapter; descriptors from workers/machines. No translation-management interface. |
 | Search | MiniSearch 7.2.0 pinned and implemented inside a dedicated worker, derived per-account index persisted locally and rebuildable from saved records. No server search. |
 | Images | Worker decode/resize/re-encode with locally durable native Jazz byte values; initial policy max 2048 px long edge, quality 0.82 WebP candidate, 2 MiB output target, 20 MiB direct-extension input/40 MP decode ceiling; gateway image responses are capped at 4 MiB for buffered hosting limits. These are provisional technical limits, not validated quality claims. PNG fallback for lossless diagrams/alpha; unavailable images remain explicit rather than silently omitted. |
-| Hosting | Netlify adapter with private app rendered client-side, first-party fetch endpoints on Node functions. Verify Kit 3 Vite-based adapter configuration; legacy config is not the target. |
+| Hosting | Vercel adapter with private app rendered client-side, first-party Node endpoints and Jazz-owned persistent backend storage. Native auth uses the same Jazz store; no Neon requirement. |
 | Validation | Current source/build, native policy and web/offline/Chromium extension suites pass; basic organization runtime is `741844e`, with evidence in the handoff. Broader browser/device and full product acceptance remain open. |
 | Performance | Spec SC-001 capture target <30s excluding slow sources; bounded extraction/input limits, initial text before assets, no heavy full-text indexing on UI thread. No library-size throughput SLA is invented. |
 
@@ -48,7 +50,7 @@ Preserve these approved boundaries; this historical setup is not a task to resta
 Keep extension and app in this repository so domain schemas, source identity and normalization cannot drift. The implemented structure is:
 
 ```text
-apps/web/                         SvelteKit app, domain/backend contracts, actors, reader and Netlify gateway
+apps/web/                         SvelteKit app, domain/backend contracts, actors, reader and first-party gateway
 apps/extension/                   MV3 background, offscreen runtime, extraction worker, source bar and trusted Options
 apps/extension/.test-build/       isolated fixture package; generated and ignored
 apps/extension/dist/              unpacked development package; generated and ignored
@@ -70,7 +72,7 @@ Trusted offscreen runtime: DLF/application/library -> serial clip/save actor -> 
   packaged extraction worker; account replacement drains issued work
 Trusted Options: DLF recovery/restoration; notify runtime of the selected account
 Service worker: public shell/worker/WASM cache; incoming mobile sharing remains unbuilt
-Netlify gateway: authenticated, bounded public-source fetch and inert extraction
+First-party gateway: authenticated, bounded public-source fetch and inert extraction
 Search child → native snapshot reader + dedicated index/cache worker
 Library-owned reader experience: preferences/positions subscription + debounced native writes/receipt ownership + viewport states
 Library-owned image queue: native declarations/receipts + serial gateway acquisition/worker processing + attached-reader image children

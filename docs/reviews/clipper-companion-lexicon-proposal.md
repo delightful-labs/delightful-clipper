@@ -1,5 +1,7 @@
 # Clipper companion Lexicon proposal
 
+**Current checkpoint (2026-11-10):** Jazz alpha.60/Vercel and native identity integration are merged. [Implementation status and open publication work](../../specs/001-jazz-clipper/atproto.md) supersede the upgrade-wait instructions below. The approved publication subset remains accepted; other mechanics remain proposals, with no publication implementation yet.
+
 Prepared 2026-11-07 alongside [the sync proposal](margin-sync-technical-proposal.md). **Review update:** the user subsequently approved the candidate fields and grouped synchronization approach, including group-wide conflict pause and verification of stale observations. See the [accepted scope](../../specs/001-jazz-clipper/design-decisions.md#accepted-companion-fields-and-grouped-synchronization--2026-11-07). “Candidate” and “recommend” below preserve the reviewed proposal wording; they do not mean the approved subset remains undecided. Namespace, key/discovery conventions and other explicitly deferred mechanics still require review. No Lexicon has been published, DNS changed, package installed or application code implemented.
 
 ## Purpose

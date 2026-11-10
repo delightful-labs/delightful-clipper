@@ -1,5 +1,7 @@
 # Article notes — implementation started
 
+**AT Protocol status (2026-11-10):** [Merged implementation, accepted publication decisions and remaining work](atproto.md). This checkpoint supersedes historical JWT/Neon, alpha.59 and Netlify-only AT Protocol notes below; it does not mark annotation/publication requirements implemented.
+
 ## Current AT Protocol proof — November 9, 2026
 
 PR #20 incorporates the current alpha.60/Vercel main branch. Better Auth and the
