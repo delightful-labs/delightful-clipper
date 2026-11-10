@@ -76,7 +76,6 @@ returns after invoking the toolbar action model. That acknowledgment is not an
 application capture/drain acknowledgment. The investigation preserves the real
 native toolbar gesture and checks resulting application behavior.
 
-
 ## Conclusion and next boundary
 
 There is direct evidence of a native browser-engine failure in the extension

@@ -133,7 +133,6 @@ startup/bar symptom without establishing its cause. No assertion was removed or
 weakened. The macOS packaged-extension qualification caveat and live-provider
 consent check remain open; the XState update does not resolve or waive them.
 
-
 ## macOS extension investigation follow-up
 
 The [startup investigation](extension-startup-2026-11-09.md) reproduces the missing
