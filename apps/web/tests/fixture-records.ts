@@ -1,6 +1,7 @@
 import { createJazzClient } from 'jazz-tools/client'
 import { browserAccountStore, fixtureServerUrl } from './browser-account-store.js'
 import { createLibraryRecords } from '../src/lib/backend/jazz/records.js'
+import { readConnection } from '../src/lib/backend/jazz/read-connection.js'
 import wasmUrl from '#jazz-wasm-binary?url'
 import { JAZZ_RUNTIME_VERSION } from '../src/lib/offline/runtime-version.js'
 /** Test fixture access only. The production UI never imports this Window client. */
@@ -17,7 +18,12 @@ await session.getSnapshot().client?.db.upgradeToLocalFirst(() => import('jazz-to
 export function currentLibraryRecords() {
 	const { account, client } = session.getSnapshot()
 	if (!account || !client) throw new Error('Fixture account unavailable')
-	return createLibraryRecords(client.db, account.id, () => session.getSnapshot().client === client)
+	return createLibraryRecords(
+		client.db,
+		account.id,
+		() => session.getSnapshot().client === client,
+		readConnection(client.db)
+	)
 }
 export function requestCapture(
 	operation: 'resolve' | 'extract' | 'asset',

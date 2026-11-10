@@ -18,7 +18,10 @@ export async function save(operationId: string) {
 }
 export async function read(id: string) {
 	const result = await readRecord(currentLibraryRecords().readCapabilities, id)
-	if (result.kind !== 'available') return null
+	if (result.kind !== 'available') {
+		console.warn('Storage fixture read outcome', result.kind)
+		return null
+	}
 	return {
 		text: result.text,
 		byteLength: result.asset.kind === 'available' ? result.asset.bytes.byteLength : null,

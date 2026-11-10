@@ -60,3 +60,21 @@ multi-foreground-writer refusal remains a separately reproduced SDK issue;
 cross-client mutable-row writes must not be called fully qualified from a green
 single-writer fixture. No upstream issue was published and no dependency patch
 was added or changed.
+
+## Subsequent Linux account failure
+
+Run `42843116790` passed tooling/types/build but failed earlier in the account
+suite, before reaching images. Its first failure was the independent restored
+profile returning null after an offline save and a full browser-process restart;
+the original profile's local reopen assertions had passed. Later account cases
+failed after Playwright replaced the failed worker and its shared fixture core.
+The same complete web sequence passed all 55 cases locally.
+
+The browser fixture's `createLibraryRecords` call still omitted the native
+connection observer that production now supplies. It now uses the identical
+`readConnection` adapter; query-only/server fixtures continue to omit it. Missing
+test reads report only their outcome kind, retaining evidence for another Linux
+failure without exposing content or account identifiers. Four fresh repetitions
+of the offline-save/independent-profile case pass locally with this wiring. The
+new Linux run must establish the outcome; this does not qualify the separate
+Jazz multi-writer issue.
