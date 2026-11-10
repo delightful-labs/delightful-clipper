@@ -112,14 +112,14 @@ receipt identity. No production correction was required.
 
 All ten supervision sites now invoke the qualified shared owner:
 
-| Clipper file | Invocations | Interruption policy |
-| --- | --- | --- |
-| `machines/storage/save.ts` | Intent and publication | Forward `SHUTDOWN` once and await settlement. |
+| Clipper file                       | Invocations                     | Interruption policy                                                               |
+| ---------------------------------- | ------------------------------- | --------------------------------------------------------------------------------- |
+| `machines/storage/save.ts`         | Intent and publication          | Forward `SHUTDOWN` once and await settlement.                                     |
 | `machines/storage/save-article.ts` | Ensure, attach and content save | Forward only supported `SHUTDOWN`; keep duplicate/reread/content decisions local. |
-| `machines/storage/organize.ts` | Organization write | Forward `SHUTDOWN`; retain history and scope decisions. |
-| `images/queue-machine.ts` | Ready and failure writes | `DRAIN`, with no child cancellation; retain retry/uncertainty/receipt policy. |
-| `machines/reader/experience.ts` | Reader write | `DRAIN`; retain accepted queued edits and local/remote receipt handling. |
-| `samples/machine.ts` | Seed write | Forward `SHUTDOWN`; retain the seeded/skipped/unknown/closed decision. |
+| `machines/storage/organize.ts`     | Organization write              | Forward `SHUTDOWN`; retain history and scope decisions.                           |
+| `images/queue-machine.ts`          | Ready and failure writes        | `DRAIN`, with no child cancellation; retain retry/uncertainty/receipt policy.     |
+| `machines/reader/experience.ts`    | Reader write                    | `DRAIN`; retain accepted queued edits and local/remote receipt handling.          |
+| `samples/machine.ts`               | Seed write                      | Forward `SHUTDOWN`; retain the seeded/skipped/unknown/closed decision.            |
 
 Parent-side actor refs, subscriptions and manufactured completion/error events
 are removed at those sites. Named invocation outcomes now provide correlation;
@@ -180,19 +180,67 @@ to later change sets; these results do not close B–G or their failure/deadline
 findings. Earlier generic DLF tests supplement, rather than replace, the actual
 consumer results above.
 
+## B started: scoped request owner
+
+The prerequisite comparison pins clean Finance worker-runtime source
+`1125c5f1dc3d99c484988b6c4053e5d25526a45a` and Clipper
+`71cdd08008cc0f79bbe1f94d67d94ad401f8fbb5`. Finance already has request bounds,
+scope/request/sequence correlation and an independent late host-close receipt;
+Clipper's raw data-port protocol cannot safely release an uncertain write's lock
+on timeout. Finance account-selection/inventory/legacy cleanup policy stays local.
+
+DLF's first B unit is `contracts/worker-request.ts` and
+`machines/lifecycle/worker-request.ts`, exported through `worker/request/contracts`
+and `worker/request/workflow`. The chart posts one selected native operation,
+accepts matching replies during posting or waiting, bounds both phases, separates
+definite not-issued evidence from unknown effects, and clears the request payload
+and post capability at completion. It owns no channel, account key, lock, retry,
+identity selection or host-closure receipt. No consumer/pinned archive uses it yet.
+
+The user approved testing this unit with “Continue” after implementation review.
+DLF commit `c4a4992f24514b2938aa92eed31313785206bdf0` contains the qualified request
+machine, public contracts/exports, tests, packaged consumer fixture and guide:
+
+- 33 request tests pass, including replies during posting, native posting failures,
+  not-issued/unknown classifications, exact correlation, stale scopes, timer bounds,
+  both deadline-race orders, duplicate/late reports, output identity, immutable
+  snapshots, payload clearing and forced stop without a fabricated receipt.
+- An independent external request ledger runs 300 generated campaigns with up to
+  16 commands, seed 20261112, against the real actor and virtual clock. It achieves
+  full contract-model event/state/transition coverage; this is bounded sampled
+  evidence, not exhaustive native scheduling qualification.
+- 312 lifecycle/workspace/scoped-form-binding tests in 13 files pass. Strict test
+  TypeScript, `check:library` (zero Svelte errors/warnings), packaging with strict
+  publint, formatting, lint and whitespace checks pass.
+- `check:consumer` passes all existing declarations/fixtures/builds and the new
+  public request parent invocation across A → B → A scopes. It checks exact
+  payload delivery, response typing, stale-scope rejection and output identity.
+
+No request-machine behavioral fixes were needed. The public consumer fixture uses
+one immutable context record for the beta's context compatibility rules. Clipper's
+qualified A archive remains pinned to DLF `9b3f094`; no request/channel adoption or
+new browser/native qualification is claimed by these library tests.
+
+DLF's `docs/worker-request.md` specifies the closure handshake before adoption:
+retain an uncertain write's lock; close the old Window data handlers over an
+independent scoped control capability; release custody only after the actual
+matching host-close receipt; keep late receipt handling after close timeout.
+The channel owner, concurrent routing, native adapter changes and account-owner
+integration remain subsequent work. SHARE-3, REC-3 and DLF-3 remain open.
+
 ## Remaining implementation
 
 Continue with B's shared account transport, then the dependency-ordered
-implementation map. Pin/review both consumers before extracting their RPC,
-lock and issued-write settlement contracts.
+implementation map. The consumer comparison is pinned above; preserve it when extracting concurrent
+routing, lock and issued-write settlement contracts.
 The full specification and its runtime/offline/extension acceptance criteria
 remain authoritative.
 
 The user authorized committing this qualified work. DLF source and tests are
 committed as `9b3f094` on `feat/domain-transaction-workflow`. The compatible archive
 records that exact source revision alongside its source hashes. Clipper's
-qualified bridge integration is committed as `5e16cec`; the caller migration is
-the next feature-branch commit.
+qualified bridge integration is committed as `5e16cec`, and all ten caller
+migrations are committed as `71cdd08`. DLF records the adoption in `561699d`.
 Neither branch has been published. DLF's AGENTS.md retains its implementation
 review and test gates for subsequent library changes. No unidentified server was
 stopped or unrelated source worktree modified.
