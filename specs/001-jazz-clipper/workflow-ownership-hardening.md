@@ -342,6 +342,82 @@ SHARE-5: Preserve decode behavior for identity/gzip/Brotli/deflate, unsupported 
 
 SHARE-6: Review the resulting parent charts and helpers together. Domain decisions remain visible, v6 schemas retain concrete input/output/command types, source injection works, and no helper duplicates DLF settlement ownership or moves domain work onto the UI thread.
 
+## XState v6 conformance and cleanup
+
+Apply these requirements to implemented workflows alongside the ownership, deadline and shared-helper changes. The review baseline is committed `1e6cf9281b9d80577adc3299982e621ed4b7e279`, excluding ongoing worktree edits. Recheck findings against the implementation branch before changing newer code.
+
+The mechanism reference is the installed `xstate@6.0.0-beta.1` documentation: `docs/agents.md`, `actions.md`, `guards.md`, `internal-events.md`, `state-input.md`, `typestates.md`, `invoke.md` and `setup-and-provide.md`. Use the installed package rather than generic v5 examples. Returned context patches, function transitions and ordinary `if`/`return` routing are valid v6 patterns. Final-state entry context patches are also valid; do not remove them merely because they resemble older code.
+
+### Native resources and calculation purity
+
+In [article worker call routing](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/capture/article-worker-call.ts), move `AbortController` construction from transition calculation and root context into an owned native resource actor. Return only the necessary lifecycle facts/capability through the explicit resource protocol. Route selection remains pure; cancellation is a selected command to the resource owner.
+
+Repeated selection, `.can()` evaluation and pure transition exploration must not allocate or release resources, perform native observations, send messages, mutate external stores or invoke asynchronous operations. Keep required synchronous transaction mutation inside queued effects, and retain the existing network drain after requesting abort. Stopping the observer is not evidence that the operation settled.
+
+### Public and private events
+
+Move self-only coordination to `schemas.internalEvents`, including library `CAPTURE_UPDATED`, reader `REFRESH_SYNC`, shell-registration `ATTEMPT_SETTLED`/`TIMED_OUT` and transaction-domain `STAGED` where its producer remains the same actor. Check every producer before changing the schema. Child, worker, callback and subscription reports remain deliverable through `schemas.events`; making them internal would reject their actual sender.
+
+Use native enqueued self-delivery with the intended sender identity. Domain staging must still acknowledge only after the queued mutation actually executes successfully. Do not mechanically replace post-effect self-send with an earlier `enq.raise`, or permit a thrown mutation to be followed by successful `STAGED` delivery. Keep any state needed to await this acknowledgment.
+
+Sources: [library](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/capture/library.ts), [reader](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/reader/experience.ts), [registration](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/offline/registration.ts) and [domain model](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/storage/domain-model.ts).
+
+### State input and guaranteed context
+
+Use state `schemas.context` refinements for facts guaranteed by an active state and state input for validated payloads with that state's lifetime. Apply this to prepared save data, selected image jobs, reader writes and sign-in confirmation account IDs. Replace avoidable non-null assertions and generic `required()` checks with checked state-entry contracts.
+
+Do not move receipts, operation identities or custody facts into short-lived state input if they must survive cancellation/drain. Keep runtime validation at untrusted boundaries; `types<T>()` improves inference but does not validate runtime values. Continue using canonical Zod DTO schemas where validation is required.
+
+Sources: [save](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/storage/save.ts), [image queue](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/images/queue-machine.ts), [reader](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/reader/experience.ts) and [sign-in](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/extension/src/signin-machine.ts).
+
+### Observed facts instead of child internals
+
+Replace host and extension-runtime coordination decisions that inspect live child snapshots/capabilities with scoped facts reported by owned observers where those decisions belong to the receiving chart. Include account/binding identity, generation, library readiness and reader attachment identity as needed. Do not duplicate the child's statechart in the parent or move native transaction admission/commit checks out of their existing owner.
+
+This is a repository ownership and replay requirement, not a blanket XState prohibition on `getSnapshot()`. Snapshot reads remain appropriate for UI projection, diagnostics and legitimate boundary adapters. Synchronous guards must remain free of side effects, and observations used for coordinated state changes should arrive through explicit events.
+
+Sources: [host](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/runtime/worker/host-machine.ts) and [extension runtime](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/extension/src/runtime-machine.ts).
+
+### Readable calculations and event contracts
+
+Remove migration scaffolding in library, application-readiness and sync-owner handlers: nested immediately invoked functions, redundant `pendingContext`/`patch`/`contextBefore` variables, repeated context reconstruction and repeated large event unions. Extract small named, concretely typed calculation functions returning immutable patches and define each machine's event union once.
+
+Preserve sequential dependencies: a later calculation that intentionally consumes an earlier patch must receive the resulting context. Do not flatten into independent calculations that all observe old context. Keep target literals and domain branch selection visible in parent charts and preserve source injection; helper extraction must not conceal outcome selection.
+
+Register descriptive predicates for image, reader and library conditions that combine scope, lifecycle, operation ownership and eligibility. Compose shallow checks using v6 JavaScript boolean operators. Keep ordinary validation and projection as functions; do not create a state per calculation.
+
+Sources: [library](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/capture/library.ts), [application readiness](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/runtime/application-readiness.ts), [sync owner](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/storage/sync-owner.ts), [image queue](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/images/queue-machine.ts) and [reader](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/reader/experience.ts).
+
+### Narrow protocols and rejected deliveries
+
+Replace the `AnyActorRef` report-recipient annotation in [image view](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/images/view-machine.ts) with the actual `ImageViewReport` protocol. Keep helper input/output and command types concrete; avoid broad casts that hide incompatible children.
+
+Add sanitized development/test rejected-event observation for lifecycle messages. XState v6 may report a missing target as a dead letter rather than error the sending actor. Test that required shutdown, completion and attachment acknowledgments have live recipients; explicitly document benign late deliveries instead of failing on every dead letter indiscriminately. Never log raw rejected payloads, credentials, recovery phrases or sensitive snapshots.
+
+Remove placeholder `UNUSED` event declarations where a genuinely empty protocol is supported by installed v6 inference. Remove redundant annotations and literal assertions only where contextual inference retains the exact checked contract. Preserve legitimate literal tuples and explicit protocol return checks.
+
+### State owned OAuth feedback
+
+Move [OAuth feedback](https://github.com/delightful-labs/delightful-clipper/blob/1e6cf92/apps/web/src/lib/machines/runtime/atproto.ts) out of selector reconstruction from `failed`/`busy` flags into state metadata or another explicit state-owned ready-to-render contract. The selector projects active feedback. Reuse existing localized wording and preserve severity; new strings still require the established localization approval.
+
+This follows Clipper's stricter feedback convention, not an XState library restriction. The shared operation/RPC/worker helper changes and decode/history/receipt simplifications are specified above and satisfy the remaining duplication findings; do not add a second generic abstraction layer here.
+
+### Acceptance criteria
+
+V6-1: Repeated selection/probing and pure transition evaluation issue no native effects or resource allocations. The actual actor allocates its admitted resource once, forwards cancellation and retains ownership through settlement.
+
+V6-2: External delivery of self-only coordination is rejected, while actual callback/worker/child reports still arrive. A failed staging mutation emits no successful acknowledgment or receipt; successful staging is acknowledged only after mutation. Test effect order and sender identity against the installed runtime.
+
+V6-3: Strict types enforce state-entry payloads and guaranteed context without new broad casts or non-null assertions replacing missing contracts. Runtime-invalid boundary DTOs remain rejected. Cancellation/drain retains original receipts, identities and custody facts.
+
+V6-4: Account replacement and stale-result schedules use explicit observed facts and cannot act on a replacement binding. Existing transaction scope checks and parent/child ownership continue to pass their behavioral tests.
+
+V6-5: Calculation cleanup preserves mutation order, context sequencing, branch selection and feedback in existing behavioral campaigns. Named predicates and concrete event contracts remain reviewable; no test merely asserts source formatting or helper names.
+
+V6-6: Compile-time protocol checks reject incompatible image reports/child commands. Runtime rejected-delivery tests identify missing required recipients and preserve documented harmless late-event handling, with sensitive payloads excluded from diagnostics.
+
+V6-7: OAuth feedback derives from its active state contract, uses existing localized strings and preserves busy/error/recovery behavior. Smaller empty-protocol/type cleanup passes strict tooling, web, worker and extension types.
+
 ## State that stays outside charts
 
 Simple drawer/input/footnote/focus presentation state, pure parsing/projection, stream buffers, native handles and RPC reply maps may remain ordinary code. Their enclosing resource lifetime must be owned and tested. Do not turn each calculation or database primitive into a state, and extend the existing account-store owner for its deadline gaps rather than replace its locking protocol. Preserve existing transaction and sync ownership.
@@ -356,7 +432,7 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 | Gate | Evidence required |
 | --- | --- |
-| Focused workflow tests | AUTH, HOST, BIND, EXT, REC, ROOT and SHARE acceptance cases; actual actor SUT and separately recorded native effects. |
+| Focused workflow tests | AUTH, HOST, BIND, EXT, REC, ROOT, SHARE and V6 acceptance cases; actual actor SUT and separately recorded native effects. |
 | Repository verification | `pnpm verify`: vendor integrity, format, lint, strict types, unit/native tests and production build. |
 | Worker/browser behavior | `pnpm test:worker` and applicable `pnpm test:e2e` cases: stale-scope refusal, reader detach and zero application SDK/WASM initialization on the UI thread. |
 | Offline authentication | `pnpm test:offline` including connected and existing-account profiles, expired credentials, complete browser-process restart with app/auth/Jazz unreachable, acknowledged edits surviving another restart and reconciliation after reconnect. |
@@ -365,4 +441,4 @@ Prefer installed `@xstate/test` generated campaigns with an independent behavior
 
 Run build/type generation and browser suites sequentially when they share generated output. Use isolated authorities/ports for concurrent development without stopping unidentified servers. No broad new performance claim is made; the UI-thread boundary and unchanged bounded publication behavior are explicit checks.
 
-The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four ownership workstreams, all six recovery/deadline areas and the ROOT and SHARE acceptance criteria, updated architecture views showing actual ownership and labeled production invocation boundaries, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
+The implementation PR must report exact commits, checks, skipped cases and unresolved qualification gaps. Completion requires all four ownership workstreams, all six recovery/deadline areas and the ROOT, SHARE and V6 acceptance criteria, updated architecture views showing actual ownership and labeled production invocation boundaries, and no undocumented workflow decisions remaining in the four targeted adapters. A failed external qualification may be reported as a blocker; it must not be replaced by a claim that unit tests establish release readiness.
