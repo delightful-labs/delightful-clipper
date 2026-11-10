@@ -1,3 +1,4 @@
+import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import type { EventPayload } from '../events.js'
 import { types, setup, createAsyncLogic, matchesState } from 'xstate'
 
@@ -16,18 +17,6 @@ type Context = {
 	operationId: string
 	receipts: SyncReceipt[]
 	result: SaveResult | undefined
-	ownedIntent:
-		| import('xstate').ActorInstance<
-				import('xstate').Snapshot<StageResult>,
-				{ type: 'SHUTDOWN' | 'CANCEL' }
-		  >
-		| undefined
-	ownedPublish:
-		| import('xstate').ActorInstance<
-				import('xstate').Snapshot<StageResult>,
-				{ type: 'SHUTDOWN' | 'CANCEL' }
-		  >
-		| undefined
 }
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Missing storage resource')
@@ -37,22 +26,27 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 	const actors = {
 		prepare: createAsyncLogic({
 			run: ({ input }: { input: SaveRequest }) => capability.prepare(input)
-		})
+		}),
+		stage: createOwnedOperation<
+			Parameters<SaveCapabilities['intent']>[1],
+			StageResult,
+			{ type: 'SHUTDOWN' }
+		>()
 	}
 	const model = setup({
 		schemas: {
 			context: types<Context>(),
 			events: {
-				INTENT_DONE: types<{ actorId: string; output: StageResult }>(),
-				INTENT_ERROR: types<{ actorId: string; error: unknown }>(),
-				PUBLISH_DONE: types<{ actorId: string; output: StageResult }>(),
-				PUBLISH_ERROR: types<{ actorId: string; error: unknown }>(),
 				SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>()
 			},
 			input: types<SaveRequest>(),
 			output: types<SaveResult>(),
 			tags: types<string>(),
-			children: { prepare: types<import('xstate').ActorRefFrom<(typeof actors)['prepare']>>() }
+			children: {
+				prepare: types<import('xstate').ActorRefFrom<(typeof actors)['prepare']>>(),
+				intent: types<import('xstate').ActorRefFrom<typeof actors.stage>>(),
+				publish: types<import('xstate').ActorRefFrom<typeof actors.stage>>()
+			}
 		},
 		actors,
 		guards: {
@@ -70,9 +64,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 			prepared: undefined,
 			operationId: input.operationId,
 			receipts: [],
-			result: undefined,
-			ownedIntent: undefined,
-			ownedPublish: undefined
+			result: undefined
 		}),
 		output: ({ context }) => required(context.result),
 		states: {
@@ -127,60 +119,28 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 								}
 							},
 							intent: {
-								initial: 'active',
-								states: {
-									active: {
-										on: {
-											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedIntent, { type: 'SHUTDOWN' })
-												return { target: 'stopping' }
-											}
-										}
-									},
-									stopping: {}
-								},
-								entry: (args, enq) => {
-									const ref = capability.intent(
-										enq.spawn,
-										(({ context }: { context: Context }) => ({
+								invoke: {
+									id: 'intent',
+									src: 'stage',
+									input: ({ context }) => ({
+										operationId: context.operationId,
+										spawn: capability.intent,
+										input: {
 											attempt: {
 												operationId: context.operationId,
 												workspaceId: context.operationId,
 												membershipId: context.operationId,
 												draft: required(context.prepared)
 											}
-										}))(args)
-									)
-									enq.subscribeTo(ref, {
-										done: (
-											output
-										):
-											| ({ type: 'INTENT_DONE' } & { actorId: string; output: StageResult })
-											| ({ type: 'INTENT_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'INTENT_DONE',
-											actorId: ref.id,
-											output
-										}),
-										error: (
-											error
-										):
-											| ({ type: 'INTENT_DONE' } & { actorId: string; output: StageResult })
-											| ({ type: 'INTENT_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'INTENT_ERROR',
-											actorId: ref.id,
-											error
-										})
-									})
-									return { context: { ownedIntent: ref } }
-								},
-								exit: ({ context }, enq) => {
-									enq.stop(context.ownedIntent)
-									return { context: { ownedIntent: undefined } }
-								},
-								on: {
-									INTENT_DONE: (args) => {
-										const { context, event } = args
-										if (!event.output || event.output.settlement.kind === 'unresolved') {
+										}
+									}),
+									onDone: (args) => {
+										const operation = args.event.output
+										if (operation.kind === 'failed') return { target: '#save-record.unknown' }
+										const output = operation.output
+
+										const { context } = args
+										if (!output || output.settlement.kind === 'unresolved') {
 											return { target: '#save-record.unknown' }
 										}
 										if (args.guards.stopping(args)) {
@@ -189,83 +149,56 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 										if (args.guards.scopeLost()) {
 											return { target: '#save-record.scopeChanged' }
 										}
-										if (event.output?.outcome === 'succeeded') {
+										if (output?.outcome === 'succeeded') {
 											return {
 												target: 'publish',
 												context: {
 													receipts:
-														event.output?.settlement.kind === 'locallyPersisted'
-															? [...context.receipts, event.output.settlement.workspace]
+														output?.settlement.kind === 'locallyPersisted'
+															? [...context.receipts, output.settlement.workspace]
 															: context.receipts
 												}
 											}
 										}
-										if (event.output?.outcome === 'blocked') {
+										if (output?.outcome === 'blocked') {
 											return { target: '#save-record.blocked' }
 										}
-										if (event.output?.outcome === 'closed') {
+										if (output?.outcome === 'closed') {
 											return { target: '#save-record.interrupted' }
 										}
 										return { target: '#save-record.failed' }
 									},
-									INTENT_ERROR: { target: '#save-record.unknown' }
+									onError: { target: '#save-record.unknown' }
+								},
+								on: {
+									SHUTDOWN: (_, enq) => {
+										enq.sendTo('intent', { type: 'INTERRUPT', command: { type: 'SHUTDOWN' } })
+									}
 								}
 							},
 							publish: {
-								initial: 'active',
-								states: {
-									active: {
-										on: {
-											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedPublish, { type: 'SHUTDOWN' })
-												return { target: 'stopping' }
-											}
-										}
-									},
-									stopping: {}
-								},
-								entry: (args, enq) => {
-									const ref = capability.publish(
-										enq.spawn,
-										(({ context }: { context: Context }) => ({
+								invoke: {
+									id: 'publish',
+									src: 'stage',
+									input: ({ context }) => ({
+										operationId: context.operationId,
+										spawn: capability.publish,
+										input: {
 											attempt: {
 												operationId: context.operationId,
 												workspaceId: context.operationId,
 												membershipId: context.operationId,
 												draft: required(context.prepared)
 											}
-										}))(args)
-									)
-									enq.subscribeTo(ref, {
-										done: (
-											output
-										):
-											| ({ type: 'PUBLISH_DONE' } & { actorId: string; output: StageResult })
-											| ({ type: 'PUBLISH_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'PUBLISH_DONE',
-											actorId: ref.id,
-											output
-										}),
-										error: (
-											error
-										):
-											| ({ type: 'PUBLISH_DONE' } & { actorId: string; output: StageResult })
-											| ({ type: 'PUBLISH_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'PUBLISH_ERROR',
-											actorId: ref.id,
-											error
-										})
-									})
-									return { context: { ownedPublish: ref } }
-								},
-								exit: ({ context }, enq) => {
-									enq.stop(context.ownedPublish)
-									return { context: { ownedPublish: undefined } }
-								},
-								on: {
-									PUBLISH_DONE: (args) => {
-										const { context, event } = args
-										if (!event.output || event.output.settlement.kind === 'unresolved') {
+										}
+									}),
+									onDone: (args) => {
+										const operation = args.event.output
+										if (operation.kind === 'failed') return { target: '#save-record.unknown' }
+										const output = operation.output
+
+										const { context } = args
+										if (!output || output.settlement.kind === 'unresolved') {
 											return { target: '#save-record.unknown' }
 										}
 										if (args.guards.stopping(args)) {
@@ -274,26 +207,31 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 										if (args.guards.scopeLost()) {
 											return { target: '#save-record.scopeChanged' }
 										}
-										if (event.output?.outcome === 'succeeded') {
+										if (output?.outcome === 'succeeded') {
 											return {
 												target: '#save-record.saved',
 												context: {
 													receipts:
-														event.output?.settlement.kind === 'locallyPersisted'
-															? [...context.receipts, event.output.settlement.workspace]
+														output?.settlement.kind === 'locallyPersisted'
+															? [...context.receipts, output.settlement.workspace]
 															: context.receipts
 												}
 											}
 										}
-										if (event.output?.outcome === 'blocked') {
+										if (output?.outcome === 'blocked') {
 											return { target: '#save-record.blocked' }
 										}
-										if (event.output?.outcome === 'closed') {
+										if (output?.outcome === 'closed') {
 											return { target: '#save-record.interrupted' }
 										}
 										return { target: '#save-record.failed' }
 									},
-									PUBLISH_ERROR: { target: '#save-record.unknown' }
+									onError: { target: '#save-record.unknown' }
+								},
+								on: {
+									SHUTDOWN: (_, enq) => {
+										enq.sendTo('publish', { type: 'INTERRUPT', command: { type: 'SHUTDOWN' } })
+									}
 								}
 							}
 						}

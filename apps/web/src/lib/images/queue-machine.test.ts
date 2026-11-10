@@ -5,6 +5,7 @@ import { imageQueueMachine } from './queue-machine.js'
 import type { ImageCapability, ImageSpawner } from '../contracts/images.js'
 import type { ImageWrite, ArticleImage } from './schema.js'
 import type { SyncReceipt } from '../contracts/storage.js'
+import type { WorkspaceCreationAttempt } from 'delightful-local-first/workspace/creation/contracts'
 const image: ArticleImage = {
 	id: crypto.randomUUID(),
 	libraryId: crypto.randomUUID(),
@@ -45,10 +46,14 @@ function fixture(
 	let current = true
 	const writes: ImageWrite[] = [],
 		dispose = vi.fn()
+	const received: WorkspaceCreationAttempt<ImageWrite>[] = []
 	const stage = createWorkspaceCreationTransaction<ImageWrite, object, null, SyncReceipt, object>({
 		retainDetached: vi.fn(),
 		open: () => ({}),
-		readLocal: async () => null,
+		readLocal: async (_resource, attempt) => {
+			received.push(attempt)
+			return null
+		},
 		assess: () => ({ outcome: 'eligible' }),
 		stage: (_resource, attempt) => {
 			writes.push(attempt.draft)
@@ -83,8 +88,39 @@ function fixture(
 		spawnFailure: spawnWrite
 	}
 	const actor = createActor(imageQueueMachine, { input: { capability: cap } }).start()
-	return { actor, writes, request, dispose, expire: () => (current = false) }
+	return { actor, writes, received, request, dispose, expire: () => (current = false) }
 }
+it.each(['ready', 'failed'] as const)(
+	'preserves selected image identity and %s payload in the actual native child',
+	async (kind) => {
+		const { actor, received } = fixture(
+			kind === 'failed'
+				? vi.fn(async () => {
+						throw new Error('unsupportedMedia')
+					})
+				: undefined
+		)
+		const result = { bytes: new Uint8Array([1]), mediaType: 'image/png', width: 1, height: 1 }
+		if (kind === 'ready') {
+			await waitFor(actor, (snapshot) =>
+				snapshot.matches({ running: { queue: { processing: 'waiting' } } })
+			)
+			TestWorker.workers[0]!.onmessage?.({ data: { kind: 'ready', result } })
+		}
+		await waitFor(actor, (snapshot) => snapshot.context.rows[0]?.status === kind)
+		expect(received).toHaveLength(1)
+		expect(received[0]).toMatchObject({
+			operationId: image.id,
+			workspaceId: image.id,
+			membershipId: image.id,
+			draft: { kind }
+		})
+		expect(received[0]!.draft.image).toBe(image)
+		if (received[0]!.draft.kind === 'ready') expect(received[0]!.draft.result).toEqual(result)
+		actor.send({ type: 'SHUTDOWN' })
+		await toPromise(actor)
+	}
+)
 it('owns worker creation/posting, continues independently of reader detachment, and drains an issued write', async () => {
 	const gate = Promise.withResolvers<void>(),
 		{ actor, writes, dispose } = fixture(undefined, () => gate.promise)

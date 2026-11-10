@@ -1,3 +1,4 @@
+import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import { identityLogic } from '../identity.js'
 import type { EventPayload } from '../events.js'
 import {
@@ -9,7 +10,7 @@ import {
 	type SnapshotFrom
 } from 'xstate'
 
-import type { ReaderCapability, ReaderStageRef, ReaderStageResult } from '../../contracts/reader.js'
+import type { ReaderCapability, ReaderStageResult } from '../../contracts/reader.js'
 import type { ReaderChange, ReaderOperation, ReadingPosition } from '../../reader/schema.js'
 import {
 	canQueueReaderChange,
@@ -51,15 +52,10 @@ export type ReaderExperienceEvent =
 				| 'FULLSCREEN_OBSERVED'
 	  }
 	| SyncReport
-type ReaderLifecycle =
-	| { type: 'READER_WRITE_DONE'; actorId: string; output: ReaderStageResult }
-	| { type: 'READER_WRITE_ERROR'; actorId: string; error: unknown }
-type Event = ReaderExperienceEvent | ReaderLifecycle
 type Context = Input & {
 	rows: ReaderOperation[]
 	queue: ReaderChange[]
 	drafts: ReaderChange[]
-	write: ReaderStageRef | undefined
 	operationId: string
 	issued: ReaderChange | undefined
 	attachment: OwnedAttachment | undefined
@@ -112,6 +108,8 @@ function remainingDrafts(drafts: ReaderChange[], rows: ReaderOperation[]) {
 			) !== JSON.stringify(change.value)
 	)
 }
+type ReaderWriteInput = { change: ReaderChange; operationId: string; observed: ReaderOperation[] }
+const writeOperation = createOwnedOperation<ReaderWriteInput, ReaderStageResult>()
 const model = setup({
 	schemas: {
 		meta: types<{
@@ -123,8 +121,6 @@ const model = setup({
 		context: types<Context>(),
 		events: {
 			ATTACHMENT_IDENTIFIED: types<{ id: string }>(),
-			READER_WRITE_DONE: types<{ actorId: string; output: ReaderStageResult }>(),
-			READER_WRITE_ERROR: types<{ actorId: string; error: unknown }>(),
 			SYNC: types<EventPayload<ReaderExperienceEvent, 'SYNC'>>(),
 			MEASURE: types<EventPayload<ReaderExperienceEvent, 'MEASURE'>>(),
 			VIEWPORT_FAILED: types<EventPayload<ReaderExperienceEvent, 'VIEWPORT_FAILED'>>(),
@@ -152,7 +148,8 @@ const model = setup({
 			receipts: types<import('xstate').ActorRefFrom<typeof syncOwnerMachine>>(),
 			fullscreenEntry: types<import('xstate').ActorRefFrom<typeof fullscreenEntry>>(),
 			fullscreenExit: types<import('xstate').ActorRefFrom<typeof fullscreenExit>>(),
-			fullscreenObservation: types<import('xstate').ActorRefFrom<typeof fullscreenObservation>>()
+			fullscreenObservation: types<import('xstate').ActorRefFrom<typeof fullscreenObservation>>(),
+			writeOperation: types<import('xstate').ActorRefFrom<typeof writeOperation>>()
 		}
 	},
 	actors: {
@@ -163,7 +160,8 @@ const model = setup({
 		receipts: syncOwnerMachine,
 		fullscreenEntry,
 		fullscreenExit,
-		fullscreenObservation
+		fullscreenObservation,
+		writeOperation
 	},
 	guards: {
 		fullscreenSupported: ({ context }: { context: Context }) =>
@@ -181,9 +179,7 @@ const model = setup({
 			matchesState({ active: { data: { observing: 'ready' } } }, value),
 		validChange: ({ context, event }: { context: Context; event: ReaderExperienceEvent }) =>
 			event.type === 'CHANGE' && canQueueReaderChange(context.queue, event.change),
-		queued: ({ context }: { context: Context }) => context.queue.length > 0,
-		ownCompletion: ({ context, event }: { context: Context; event: Event }) =>
-			'actorId' in event && event.actorId === context.write?.id
+		queued: ({ context }: { context: Context }) => context.queue.length > 0
 	},
 	actions: {
 		updateRows: ({ context, event }: { context: Context; event: ReaderExperienceEvent }) =>
@@ -225,7 +221,6 @@ export const readerExperienceMachine = model.createMachine({
 		rows: [],
 		queue: [],
 		drafts: [],
-		write: undefined,
 		operationId: '',
 		issued: undefined,
 		attachment: undefined,
@@ -741,65 +736,59 @@ export const readerExperienceMachine = model.createMachine({
 							invoke: {
 								id: 'identity',
 								src: 'identity',
-								onDone: ({ event }) => ({
+								onDone: ({ context, event }) => ({
 									target: 'writing',
-									context: { operationId: event.output }
+									context: {
+										operationId: event.output,
+										issued: required(context.queue[0]),
+										queue: context.queue.slice(1)
+									}
 								})
 							}
 						},
 						writing: {
-							exit: (args, enq) => {
-								enq.stop(required(args.context.write))
-							},
-							entry: (args, enq) => {
-								return {
-									context: (({ context, spawn }) => {
-										const issued = required(context.queue[0]),
-											operationId = context.operationId
+							invoke: {
+								id: 'writeOperation',
+								src: 'writeOperation',
+								input: ({ context }) => ({
+									operationId: context.operationId,
+									input: {
+										change: required(context.issued),
+										operationId: context.operationId,
+										observed: context.rows
+									},
+									spawn: (spawn, input) =>
+										required(context.capability).spawnWrite(
+											spawn,
+											input.change,
+											input.operationId,
+											input.observed
+										)
+								}),
+								onDone: (args, enq) => {
+									const operation = args.event.output
+									if (operation.kind === 'failed')
+										return { target: 'uncertain', context: { queue: [], drafts: [] } }
+									const output = operation.output
+									if (!output || output.settlement.kind === 'unresolved')
+										return { target: 'uncertain', context: { queue: [], drafts: [] } }
+									if (output.settlement.kind === 'locallyPersisted') {
+										enq.sendTo('receipts', {
+											type: 'WATCH',
+											id: args.context.operationId,
+											receipts: [output.settlement.workspace]
+										})
 										return {
-											issued,
-											operationId,
-											queue: context.queue.slice(1),
-											write: (() => {
-												const ref = required(context.capability).spawnWrite(
-													spawn,
-													issued,
-													operationId,
-													context.rows
-												)
-												enq.subscribeTo(ref, {
-													done: (
-														output
-													):
-														| {
-																type: 'READER_WRITE_DONE'
-																actorId: string
-																output: ReaderStageResult
-														  }
-														| { type: 'READER_WRITE_ERROR'; actorId: string; error: unknown } => ({
-														type: 'READER_WRITE_DONE',
-														actorId: ref.id,
-														output
-													}),
-													error: (
-														error
-													):
-														| {
-																type: 'READER_WRITE_DONE'
-																actorId: string
-																output: ReaderStageResult
-														  }
-														| { type: 'READER_WRITE_ERROR'; actorId: string; error: unknown } => ({
-														type: 'READER_WRITE_ERROR',
-														actorId: ref.id,
-														error
-													})
-												})
-												return ref
-											})()
+											target: 'routing',
+											context: {
+												...args.actions.dropIssuedDraft(args).context,
+												sync: { ...args.context.sync, [args.context.operationId]: 'pending' }
+											}
 										}
-									})({ ...args, spawn: enq.spawn })
-								}
+									}
+									return { target: 'failed', context: args.actions.dropIssuedDraft(args).context }
+								},
+								onError: { target: 'uncertain', context: { queue: [], drafts: [] } }
 							},
 							on: {
 								CHANGE: (args) => {
@@ -814,58 +803,8 @@ export const readerExperienceMachine = model.createMachine({
 										return
 									return { context: args.actions.enqueue(args).context }
 								},
-								SHUTDOWN: {},
-								READER_WRITE_DONE: (args, enq) => {
-									const { event } = args
-									if (
-										args.guards.ownCompletion(args) &&
-										(!event.output || event.output.settlement.kind === 'unresolved')
-									) {
-										return {
-											target: 'uncertain',
-											context: { queue: [], drafts: [], write: undefined }
-										}
-									}
-									if (
-										args.guards.ownCompletion(args) &&
-										event.output?.settlement.kind === 'locallyPersisted'
-									) {
-										let context = args.context
-										let patch = {}
-										patch = { ...patch, ...args.actions.dropIssuedDraft(args).context }
-										context = { ...args.context, ...patch }
-										enq.sendTo('receipts', {
-											type: 'WATCH',
-											id: context.operationId,
-											receipts:
-												event.output?.settlement.kind === 'locallyPersisted'
-													? [event.output.settlement.workspace]
-													: []
-										})
-										patch = {
-											...patch,
-											sync: {
-												...context.sync,
-												[context.operationId]: 'pending'
-											},
-											write: undefined
-										}
-										context = { ...args.context, ...patch }
-										return { target: 'routing', context: patch }
-									}
-									if (args.guards.ownCompletion(args)) {
-										return {
-											target: 'failed',
-											context: { ...args.actions.dropIssuedDraft(args).context, write: undefined }
-										}
-									}
-								},
-								READER_WRITE_ERROR: (args) => {
-									if (!args.guards.ownCompletion(args)) return
-									return {
-										target: 'uncertain',
-										context: { queue: [], drafts: [], write: undefined }
-									}
+								SHUTDOWN: (_, enq) => {
+									enq.sendTo('writeOperation', { type: 'DRAIN' })
 								}
 							}
 						},
@@ -893,7 +832,6 @@ export const readerExperienceMachine = model.createMachine({
 						queue: [],
 						drafts: [],
 						attachment: undefined,
-						write: undefined,
 						capability: undefined,
 						issued: undefined,
 						progress: {},

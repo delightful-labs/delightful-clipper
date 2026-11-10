@@ -30,6 +30,8 @@ if (process.argv.includes('--installed')) {
 		'delightful-local-first/diagnostics/logger',
 		'delightful-local-first/transactions/workflow',
 		'delightful-local-first/transactions/contracts',
+		'delightful-local-first/lifecycle/operation/contracts',
+		'delightful-local-first/lifecycle/operation/workflow',
 		'delightful-local-first/backend/jazz/startup',
 		'delightful-local-first/session/workflow',
 		'delightful-local-first/backend/jazz/session',

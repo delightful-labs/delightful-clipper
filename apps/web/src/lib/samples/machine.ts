@@ -1,3 +1,4 @@
+import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import type { EventPayload } from '../machines/events.js'
 import { types, setup, createAsyncLogic, matchesState, type Snapshot } from 'xstate'
 
@@ -34,26 +35,20 @@ export function createFakeDataMachine(cap: {
 		authority: createAsyncLogic({ run: () => cap.authority() }),
 		prepare: createAsyncLogic({
 			run: async () => (await import('./plan.js')).prepareFakeData(cap.libraryId)
-		})
+		}),
+		stage: createOwnedOperation<
+			Parameters<typeof cap.stage>[1],
+			WorkspaceCreationResult<FakeDataPlan, number>,
+			{ type: 'SHUTDOWN' }
+		>()
 	}
 	const model = setup({
 		schemas: {
 			context: types<{
 				plan: FakeDataPlan
 				outcome: FakeDataOutcome
-				ownedStage:
-					| import('xstate').ActorInstance<
-							import('xstate').Snapshot<WorkspaceCreationResult<FakeDataPlan, number>>,
-							{ type: 'SHUTDOWN' | 'CANCEL' }
-					  >
-					| undefined
 			}>(),
 			events: {
-				STAGE_DONE: types<{
-					actorId: string
-					output: WorkspaceCreationResult<FakeDataPlan, number>
-				}>(),
-				STAGE_ERROR: types<{ actorId: string; error: unknown }>(),
 				SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>()
 			},
 			input: types<undefined>(),
@@ -62,7 +57,8 @@ export function createFakeDataMachine(cap: {
 			children: {
 				local: types<import('xstate').ActorRefFrom<(typeof actors)['local']>>(),
 				authority: types<import('xstate').ActorRefFrom<(typeof actors)['authority']>>(),
-				prepare: types<import('xstate').ActorRefFrom<(typeof actors)['prepare']>>()
+				prepare: types<import('xstate').ActorRefFrom<(typeof actors)['prepare']>>(),
+				stage: types<import('xstate').ActorRefFrom<typeof actors.stage>>()
 			}
 		},
 		actors,
@@ -81,7 +77,7 @@ export function createFakeDataMachine(cap: {
 	return model.createMachine({
 		id: 'library-fake-data',
 		initial: 'checking',
-		context: { plan: [], outcome: 'skipped', ownedStage: undefined },
+		context: { plan: [], outcome: 'skipped' },
 		output: ({ context }) => context.outcome,
 		states: {
 			checking: {
@@ -138,76 +134,49 @@ export function createFakeDataMachine(cap: {
 				states: {
 					active: {
 						on: {
-							SHUTDOWN: (args, enq) => {
-								enq.sendTo(args.context.ownedStage, { type: 'SHUTDOWN' })
+							SHUTDOWN: (_, enq) => {
+								enq.sendTo('stage', { type: 'INTERRUPT', command: { type: 'SHUTDOWN' } })
 								return { target: 'stopping' }
 							}
 						}
 					},
 					stopping: { on: { SHUTDOWN: {} } }
 				},
-				entry: (args, enq) => {
-					const ref = cap.stage(
-						enq.spawn,
-						(({ context }: { context: { plan: FakeDataPlan; outcome: FakeDataOutcome } }) => ({
+				invoke: {
+					id: 'stage',
+					src: 'stage',
+					input: ({ context }) => ({
+						operationId: cap.libraryId,
+						spawn: cap.stage,
+						input: {
 							attempt: {
 								operationId: cap.libraryId,
 								workspaceId: cap.libraryId,
 								membershipId: cap.libraryId,
 								draft: context.plan
 							}
-						}))(args)
-					)
-					enq.subscribeTo(ref, {
-						done: (
-							output
-						):
-							| ({ type: 'STAGE_DONE' } & {
-									actorId: string
-									output: WorkspaceCreationResult<FakeDataPlan, number>
-							  })
-							| ({ type: 'STAGE_ERROR' } & { actorId: string; error: unknown }) => ({
-							type: 'STAGE_DONE',
-							actorId: ref.id,
-							output
-						}),
-						error: (
-							error
-						):
-							| ({ type: 'STAGE_DONE' } & {
-									actorId: string
-									output: WorkspaceCreationResult<FakeDataPlan, number>
-							  })
-							| ({ type: 'STAGE_ERROR' } & { actorId: string; error: unknown }) => ({
-							type: 'STAGE_ERROR',
-							actorId: ref.id,
-							error
-						})
-					})
-					return { context: { ownedStage: ref } }
-				},
-				exit: ({ context }, enq) => {
-					enq.stop(context.ownedStage)
-					return { context: { ownedStage: undefined } }
-				},
-				on: {
-					STAGE_DONE: (args) => {
-						const { event } = args
+						}
+					}),
+					onDone: (args) => {
+						const operation = args.event.output
+						if (operation.kind === 'failed') return { target: 'unknown' }
+						const output = operation.output
+
 						if (matchesState({ writing: 'stopping' }, args.value)) {
 							return { target: 'closed' }
 						}
-						if (event.output?.outcome === 'succeeded') {
+						if (output?.outcome === 'succeeded') {
 							return { target: 'seeded' }
 						}
-						if (event.output?.outcome === 'blocked') {
+						if (output?.outcome === 'blocked') {
 							return { target: 'skipped' }
 						}
-						if (event.output?.settlement.kind === 'unresolved') {
+						if (output?.settlement.kind === 'unresolved') {
 							return { target: 'unknown' }
 						}
 						return { target: 'failed' }
 					},
-					STAGE_ERROR: { target: 'unknown' }
+					onError: { target: 'unknown' }
 				}
 			},
 			seeded: terminal('seeded'),

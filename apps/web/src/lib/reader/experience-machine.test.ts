@@ -28,11 +28,15 @@ function fixture(local = async () => {}, global = async () => {}) {
 	let current = true
 	const writes: ReaderChange[] = [],
 		dispose = vi.fn()
-	const stage = createWorkspaceCreationTransaction<ReaderChange, object, null, SyncReceipt, object>(
-		{
+	const received: { change: ReaderChange; operationId: string; observed: ReaderOperation[] }[] = []
+	const stage = (observed: ReaderOperation[]) =>
+		createWorkspaceCreationTransaction<ReaderChange, object, null, SyncReceipt, object>({
 			retainDetached: vi.fn(),
 			open: () => ({}),
-			readLocal: async () => null,
+			readLocal: async (_resource, attempt) => {
+				received.push({ change: attempt.draft, operationId: attempt.operationId, observed })
+				return null
+			},
 			assess: () => ({ outcome: 'eligible' }),
 			stage: (_resource, attempt) => {
 				writes.push(attempt.draft)
@@ -41,28 +45,65 @@ function fixture(local = async () => {}, global = async () => {}) {
 			commit: () => ({}),
 			persistLocal: local,
 			rollback: () => true
-		}
-	)
+		})
 	const capability: ReaderCapability = {
 		isCurrent: () => current,
 		subscribe: (next) => {
 			next([])
 			return dispose
 		},
-		spawnWrite: (spawn, draft, operationId) =>
-			spawn(stage, {
+		spawnWrite: (spawn, draft, operationId, observed) =>
+			spawn(stage(observed), {
 				input: {
 					attempt: { operationId, workspaceId: operationId, membershipId: operationId, draft }
 				}
 			})
 	}
 	const actor = createActor(readerExperienceMachine, { input: { capability } }).start()
-	return { actor, writes, dispose, expire: () => (current = false) }
+	return { actor, writes, received, dispose, expire: () => (current = false) }
 }
 afterEach(() => {
 	closeViewportDOMs()
 	vi.useRealTimers()
 	vi.unstubAllGlobals()
+})
+it('passes exact issued changes and per-write observed rows to native children while draining queued edits', async () => {
+	const entered = Promise.withResolvers<void>()
+	const release = Promise.withResolvers<void>()
+	const { actor, received } = fixture(async () => {
+		entered.resolve()
+		await release.promise
+	})
+	const row = (value: string) =>
+		readerOperationSchema.parse({
+			id: crypto.randomUUID(),
+			libraryId,
+			documentId: null,
+			field: 'size',
+			value,
+			parents: '[]'
+		})
+	const firstRows = [row('20')],
+		nextRows = [row('22')]
+	const first: ReaderChange = { field: 'theme', documentId: null, value: 'dark' }
+	const next: ReaderChange = { field: 'size', documentId: null, value: 28 }
+	actor.send({ type: 'ROWS', rows: firstRows })
+	actor.send({ type: 'CHANGE', change: first })
+	await entered.promise
+	actor.send({ type: 'CHANGE', change: next })
+	actor.send({ type: 'ROWS', rows: nextRows })
+	actor.send({ type: 'SHUTDOWN' })
+	actor.send({ type: 'SHUTDOWN' })
+	expect(received).toHaveLength(1)
+	expect(received[0]!.change).toBe(first)
+	expect(received[0]!.observed).toBe(firstRows)
+	release.resolve()
+	await toPromise(actor)
+	expect(received).toHaveLength(2)
+	expect(received[1]!.change).toBe(next)
+	expect(received[1]!.observed).toBe(nextRows)
+	expect(new Set(received.map((input) => input.operationId)).size).toBe(2)
+	for (const input of received) expect(input.operationId).toMatch(/^[0-9a-f-]{36}$/)
 })
 it('saves independent desired fields and rejects invalid commands while retaining native-authoritative projection', async () => {
 	const { actor, writes } = fixture()

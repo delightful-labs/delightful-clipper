@@ -98,6 +98,66 @@ it('reports actual receipt rejection through the sync machine without invoking a
 	expect(global).toHaveBeenCalledTimes(1)
 })
 
+it('retains issued native intent custody when the save parent is forcibly stopped', async () => {
+	const entered = Promise.withResolvers<void>()
+	const commitGate = Promise.withResolvers<object>()
+	const retainDetached =
+		vi.fn<
+			import('delightful-local-first/transactions/contracts').DomainTransactionLifecycle<
+				object,
+				object
+			>['retainDetached']
+		>()
+	const receipt: SyncReceipt = { global: vi.fn(async () => {}) }
+	const commit = vi.fn(() => {
+		entered.resolve()
+		return commitGate.promise
+	})
+	const stage = createWorkspaceCreationTransaction<PreparedSave, object, null, SyncReceipt, object>(
+		{
+			retainDetached,
+			open: () => ({}),
+			readLocal: () => null,
+			assess: () => ({ outcome: 'eligible' }),
+			stage: () => receipt,
+			commit,
+			persistLocal: async () => {},
+			rollback: () => true
+		}
+	)
+	const input = {
+		operationId: crypto.randomUUID(),
+		title: 'Title',
+		text: 'Text',
+		bytes: new Uint8Array([1]),
+		mediaType: 'text/plain'
+	}
+	const prepared = await prepareSave(crypto.randomUUID(), input)
+	const publish = vi.fn(() => {
+		throw new Error('Publication must not start after forced stop')
+	})
+	const actor = createActor(
+		createSaveRecordMachine({
+			isCurrent: () => true,
+			prepare: async () => prepared,
+			intent: (spawn, input) => spawn(stage, { input }),
+			publish
+		}),
+		{ input }
+	).start()
+	await entered.promise
+	actor.stop()
+	expect(retainDetached).toHaveBeenCalledOnce()
+	const custody = retainDetached.mock.calls[0]![0]
+	const write = { id: 'original native write' }
+	commitGate.resolve(write)
+	expect(await custody.commit).toBe(write)
+	expect(commit).toHaveBeenCalledOnce()
+	expect(publish).not.toHaveBeenCalled()
+	expect(receipt.global).not.toHaveBeenCalled()
+	expect(actor.getSnapshot().status).toBe('stopped')
+})
+
 it.each(['before', 'resolve', 'reject'] as const)(
 	'keeps content-save scope enforcement in its owner during %s preparation',
 	async (mode) => {

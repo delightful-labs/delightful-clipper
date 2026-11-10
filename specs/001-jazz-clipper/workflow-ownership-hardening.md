@@ -141,6 +141,12 @@ Incomplete notes and drafts are excluded from this implemented-workflow audit an
 
 ## A Shared persistence composition
 
+Implementation: the generic transaction bridge and owned-operation supervisor
+are committed in DLF as `9b3f094`; all ten Clipper caller sites use the compatible
+alpha.60 artifact. See the [implementation and qualification record](../../docs/reviews/workflow-hardening-progress.md#a-consumer-migration-and-qualification)
+for the current ownership diagram, source provenance and consumer evidence.
+The review findings below retain their original source baseline.
+
 **Files and owners:** DLF `machines/workspaces/creation-transaction.ts`, transaction custody and new domain-neutral lifecycle exports; Clipper `machines/storage/domain-transaction.ts`, `domain-model.ts`, `save.ts`, `save-article.ts`, `organize.ts`, image queue, reader experience and sample-data machine.
 
 **Prerequisites:** Agree typed spawn/result/interruption contracts and the compatible package path. Retain existing workspace/form APIs.

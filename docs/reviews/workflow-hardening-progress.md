@@ -30,7 +30,7 @@ domain-free tests and public package-consumer fixture are now implemented.
 Clipper's 358-line local bridge is replaced by a 34-line typed adapter preserving
 its native resource, write and receipt defaults.
 
-The web and extension pin the same alpha.60 archive. It adds the two shared
+The initial bridge cutover used the same alpha.60 archive in web and extension. It added the two shared
 modules and public exports; the existing pnpm recovery-view patch applies
 separately during installation. A byte-level comparison verifies all baseline
 module files are unchanged. The reproducible
@@ -73,7 +73,7 @@ refused dependency assets symlinked from another worktree; a private dependency
 tree now replaces those temporary setup links. Unit/native tests run without
 deployment flags; synthetic Vercel flags apply only to the production build.
 
-## Qualified operation supervisor; consumer migration pending
+## Qualified operation supervisor
 
 DLF now has `contracts/owned-operation.ts` and
 `machines/lifecycle/owned-operation.ts`, with `lifecycle/operation/contracts` and
@@ -86,7 +86,7 @@ policy. No retry, transaction or remote-acceptance policy moves into this owner.
 
 `DRAIN` waits without commanding the child. `INTERRUPT` forwards one supported
 typed command and waits. The first request wins. Save/organization/sample callers
-will forward shutdown; image and reader writes will retain their wait-only
+forward shutdown; image and reader writes retain their wait-only
 policy. Child reports remain private to the controller. DLF's
 `docs/owned-operation.md` records the architecture, all ten caller mappings and
 the required qualification campaign.
@@ -108,24 +108,91 @@ checks pass. The full DLF `check:consumer` passes, including public protocol typ
 and A → B → A parent invocations that verify exact child input/generation and
 receipt identity. No production correction was required.
 
-No Clipper source or pinned archive uses the new supervisor yet. Clipper's earlier
-browser/native/offline results apply to the shared transaction bridge. DLF tests
-with controlled leaves do not replace the actual consumer qualification gates.
+## A consumer migration and qualification
+
+All ten supervision sites now invoke the qualified shared owner:
+
+| Clipper file | Invocations | Interruption policy |
+| --- | --- | --- |
+| `machines/storage/save.ts` | Intent and publication | Forward `SHUTDOWN` once and await settlement. |
+| `machines/storage/save-article.ts` | Ensure, attach and content save | Forward only supported `SHUTDOWN`; keep duplicate/reread/content decisions local. |
+| `machines/storage/organize.ts` | Organization write | Forward `SHUTDOWN`; retain history and scope decisions. |
+| `images/queue-machine.ts` | Ready and failure writes | `DRAIN`, with no child cancellation; retain retry/uncertainty/receipt policy. |
+| `machines/reader/experience.ts` | Reader write | `DRAIN`; retain accepted queued edits and local/remote receipt handling. |
+| `samples/machine.ts` | Seed write | Forward `SHUTDOWN`; retain the seeded/skipped/unknown/closed decision. |
+
+Parent-side actor refs, subscriptions and manufactured completion/error events
+are removed at those sites. Named invocation outcomes now provide correlation;
+the supervisor owns child/subscription cleanup. Unexpected invocation failures
+follow each parent's existing unknown/uncertain policy. No new strings,
+dependencies or native transaction owners were introduced.
+
+Reader identity completion now selects the issued change and removes it from
+the pending queue before entering the invoking state. Tests check the exact
+change, unique operation ID and observed rows received by each native child while
+queued edits and repeated shutdown are processed. Content supervision correlates
+with the content request's operation ID while the article parent retains its
+own article-result identity.
+
+Each arrow below represents a separate operation invocation, not one global actor.
+
+```mermaid
+flowchart TD
+    SaveRecord[Save record] -->|Intent / publication| Owner[DLF operation owner]
+    SaveArticle[Save article] -->|Ensure / attach / content| Owner
+    Organization[Organization] -->|Write| Owner
+    Images[Image queue] -->|Ready / failure write| Owner
+    Reader[Reader experience] -->|Write| Owner
+    Samples[Sample seeding] -->|Seed write| Owner
+    Owner --> Controller[Private operation controller]
+    Controller -->|Content child| SaveRecord
+    Controller -->|Record / article / organization / image stage| Bridge[DLF domain transaction bridge]
+    Controller -->|Reader / sample stage| Native[DLF atomic transaction owner]
+    Bridge --> Domain[Clipper eligibility and mutation chart]
+    Bridge --> Native
+    Native --> Custody[Existing native receipt and detached custody adapter]
+```
+
+Both consumers now pin
+`vendor/delightful-local-first-workflow-hardening-alpha60.tgz`, built from DLF
+source `9b3f094`. Its reproducible SHA-256 is
+`aaf16fe628393537aed32ba487d141d8cb7bc47b3000eff35556ff04a8b11fb7`;
+`vendor/workflow-hardening-provenance.json` records all four source module hashes.
+Archive comparison confirms eight added JS/declaration files and public exports;
+all baseline module bytes remain identical. The existing recovery-view patch is
+applied separately during installation. Offline installation, frozen-lockfile
+validation and both installed supervisor modules were checked.
+
+The migrated graph passes:
+
+- **673 unit/native tests in 107 files**, including ten new tests for actual
+  child input, sequential receipt propagation and forced save-parent custody.
+- **Six worker browser tests**, **12 packaged-extension tests**, and **eight
+  production offline tests**, including linked/existing/expired credentials,
+  complete browser restarts, persisted offline edits and reconciliation.
+- Web/extension type checks with zero Svelte errors/warnings, formatting, lint,
+  vendor integrity/import checks, Vercel preview build and both production
+  Netlify offline fixture builds. Clipper uses managed Node `24.22.2`.
+
+This completes A's extraction and ten caller migrations. SHARE-1/2 and the A
+evidence for DLF-1/2/4/5/6 are satisfied. Cross-cutting criteria remain applicable
+to later change sets; these results do not close B–G or their failure/deadline
+findings. Earlier generic DLF tests supplement, rather than replace, the actual
+consumer results above.
 
 ## Remaining implementation
 
-Migrate the ten supervision blocks, rebuild the compatible artifact, and qualify
-the actual consumer graph. Reader input
-preparation must move before invocation so the actual child receives the exact
-issued change, rows and operation ID under v6 ordering. The remainder follows the
-dependency-ordered implementation map. SHARE-1/2 and DLF-1/2/4/5 remain open.
+Continue with B's shared account transport, then the dependency-ordered
+implementation map. Pin/review both consumers before extracting their RPC,
+lock and issued-write settlement contracts.
 The full specification and its runtime/offline/extension acceptance criteria
 remain authoritative.
 
 The user authorized committing this qualified work. DLF source and tests are
 committed as `9b3f094` on `feat/domain-transaction-workflow`. The compatible archive
 records that exact source revision alongside its source hashes. Clipper's
-qualified bridge integration is being committed before caller migration.
+qualified bridge integration is committed as `5e16cec`; the caller migration is
+the next feature-branch commit.
 Neither branch has been published. DLF's AGENTS.md retains its implementation
 review and test gates for subsequent library changes. No unidentified server was
 stopped or unrelated source worktree modified.

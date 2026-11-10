@@ -18,5 +18,9 @@
 	{
 		"file": "delightful-local-first-domain-transaction-alpha60.tgz",
 		"sha256": "388faab60b1c2848b16e03f29d4038f30c5ff75874f58c4f08da73c01e22569b"
+	},
+	{
+		"file": "delightful-local-first-workflow-hardening-alpha60.tgz",
+		"sha256": "aaf16fe628393537aed32ba487d141d8cb7bc47b3000eff35556ff04a8b11fb7"
 	}
 ]
