@@ -1,12 +1,15 @@
 # AT Protocol: consolidated research and decisions
 
-Consolidated 2026-11-07 on `research/atproto-jwt-proof`. This is the entry point for the AT Protocol research. It replaces the overlapping offline/hosting/Jazz investigation reports and publication-question checkpoints from the separate experiment worktrees. The November 9 update is replacing the historical JWT/Postgres proof with the alpha.60 backend and Jazz Better Auth adapter; see [deployment notes](atproto-proof-deployment.md). Integration qualification remains open.
+Consolidated 2026-11-07; implementation status updated 2026-11-10 after PR #20 merged.
+The [current specification checkpoint](../specs/001-jazz-clipper/atproto.md) separates delivered identity behavior, accepted publication requirements and remaining work.
+
+Historical consolidation on `research/atproto-jwt-proof`. This is the entry point for the AT Protocol research. It replaces the overlapping offline/hosting/Jazz investigation reports and publication-question checkpoints from the separate experiment worktrees. Merged PR #20 replaces the historical JWT/Postgres proof with the alpha.60 backend and Jazz Better Auth adapter; see [deployment notes](atproto-proof-deployment.md). Integration qualification remains open.
 
 ## Current direction
 
 Use Jazz for application data and sync. AT Protocol identity is optional, and public publication is independently optional. People start in a usable local library without signup. DLF owns reusable identity/lifecycle integration; Clipper owns its entities, annotation relationships and publication policy; DUI owns generic controls. Private backup is independent of public AT records.
 
-The user accepts that Jazz needs an application backend. Another agent owns the Jazz upgrade and backend selection. Lean into Jazz’s standard backend authentication, session lifecycle and local-first client; do not begin by replacing the session or porting our patch. Research only until the upgrade is ready. No prototypes, new dependencies, deployments or migrations are authorized by these notes.
+Jazz alpha.60 and the Vercel backend are adopted, and PR #20 implements native Jazz-backed authentication. Continue using Jazz’s standard account/session lifecycle rather than restoring the old JWT coordinator. Publication remains design/research work until its open choices and implementation are approved; the existing backend does not itself supply a qualified publication scheduler.
 
 Keep these detailed documents:
 
@@ -90,7 +93,9 @@ That result used commit `11bcbf6367e62eca399d13da1fda939b2ae6ef36` plus the manu
 
 The early remote Jazz Cloud probe failed with a migration-graph 404 while a matching local-core SDK check passed. This predates the released integration and must not be presented as current Cloud incompatibility. No paid service was provisioned as part of that investigation.
 
-On the upgraded app, repeat full browser-process restart with app/auth/Jazz unreachable, identical library/content and acknowledged edits surviving another restart, expired credentials, fresh-profile existing-account sign-in, reconnect and explicit sign-out. Preserve local/remote/unknown outcomes separately. [Qualification checklist](reviews/atproto-offline-restart.md)
+The merged alpha.60 integration has since passed all eight production offline cases, using real Jazz/Better Auth persistence and synthetic provider identities; extension restart and 24 settings-teardown cycles also pass. Hosted live-provider consent remains unverified. See [the current evidence and limits](../specs/001-jazz-clipper/atproto.md#verification-and-limits).
+
+The continuing qualification contract is full browser-process restart with app/auth/Jazz unreachable, identical library/content and acknowledged edits surviving another restart, expired credentials, fresh-profile existing-account sign-in, reconnect and explicit sign-out. Preserve local/remote/unknown outcomes separately. [Qualification checklist](reviews/atproto-offline-restart.md)
 
 Alpha.60’s full known-issue list includes pending-write loss in a waiting-tab reload, rapid guest signup staying thin, expired/revoked sessions with pending work, and wiping during offline account switching. Other disclosures concern recoverable signup/signout errors, silent socket delays, JWT-key rotation, large-transaction stalls, machine-client socket limits and a platform-specific upload cap. Treat these as concrete qualification cases, not reasons to build a parallel storage platform or claims that our integration has fixed them. Upgrade wire/storage changes also require preserving pending old-client work; no migration is authorized here. [Release and upgrade details](https://github.com/garden-co/jazz/releases/tag/v2.0.0-alpha.60)
 
@@ -108,4 +113,4 @@ The November 9 native implementation supersedes the JWT proof code while retaini
 
 The redundant offline and machine-audit worktrees, their uncommitted source/tests/reports and the target’s pre-consolidation state were checksum-archived locally before cleanup. A verified Git bundle preserves the AT-related branch refs and commit history. The archive excludes reinstallable `node_modules` and Git worktree pointer files; it retains other files, including ignored local artifacts. Recovery metadata stays in that private local archive, not in the repository. No remote branches or deployments are changed by cleanup.
 
-Resume after the Jazz update: inspect what actually landed, lean on its standard facilities, review only the remaining app-specific decisions and then qualify local-first behavior before continuing publication implementation. Do not restore obsolete linked SDKs, patched bundles, Render recipes or experimental server fixtures merely to reproduce our earlier architecture.
+Resume from the [current remaining-work list](../specs/001-jazz-clipper/atproto.md#work-remaining), using the merged native integration. Review the remaining publication choices before implementation. Do not restore obsolete linked SDKs, patched bundles, Render recipes or experimental server fixtures merely to reproduce our earlier architecture.

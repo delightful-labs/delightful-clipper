@@ -1,0 +1,115 @@
+# AT Protocol implementation and remaining work
+
+Updated 2026-11-10 against merged [PR #20](https://github.com/delightful-labs/delightful-clipper/pull/20),
+merge `168cd0b` including fix `152d679`. This is the current Clipper checkpoint;
+older JWT/Neon/source-build experiments are historical. Product decisions below
+are accepted requirements, not claims that publication has been implemented.
+Shared identity/lifecycle belongs to DLF; Clipper owns annotations and publication.
+
+## Implemented identity integration
+
+| Area | Merged behavior |
+| --- | --- |
+| Platform | Jazz `2.0.0-alpha.60`, XState `6.0.0-beta.1`, existing Vercel app/backend. |
+| First use | A usable local library without signup. Optional AT Protocol sign-in is available in account settings. |
+| Provider | Better Auth `1.7.18` with `@kingironman2011/better-auth-bsky` `0.3.2`. The previously approved compatibility patch adapts its older account lookup to Better Auth's account-key API. It is not an AT Protocol protocol change. |
+| Durable auth | Jazz's native Better Auth adapter stores users, sessions, OAuth state and provider sessions in the existing backend store. Six generated auth tables deny all client CRUD; native migration preserves the pre-auth library. No Neon, Postgres driver, SQL migration or browser JWT/JWKS bridge. Old disposable Neon records are neither imported nor deleted. |
+| Account lifecycle | Jazz owns automatic guest linking, existing-user selection and remembered-account persistence. No parallel Clipper identity registry, manual connect/sign-in coordinator or custom selection record. This does not implement local-work transfer/merging. |
+| OAuth ownership | The worker owns provider requests and attempt-bound completion. An old cookie alone is not a new callback receipt. Application drain, acquisition settlement and actual native session close precede navigation. |
+| Sign-out | Drain the library, clear the app's Better Auth cookie, then perform native Jazz logout. A provider failure does not authorize proceeding as if sign-out succeeded. No global cross-app logout claim. |
+| Extension | Settings and recovery sign-in use workers and the existing trusted-page Chrome confirmation adapter. Popup close waits for native session closure. They preserve Jazz's existing extension selection key and Web Lock; web storage remains unchanged. The hidden offscreen capture owner is retained. Direct AT Protocol provider sign-in in the extension remains deferred. |
+
+Implementation: [auth server](../../apps/web/src/lib/server/auth/server.ts),
+[Jazz backend](../../apps/web/src/lib/server/jazz.ts),
+[provider chart](../../apps/web/src/lib/machines/runtime/atproto.ts),
+[worker host](../../apps/web/src/lib/runtime/worker/host-machine.ts),
+[extension account worker](../../apps/extension/src/account-worker.ts).
+Configuration and native migration instructions are in [deployment notes](../../docs/atproto-proof-deployment.md).
+The app still uses the existing DLF startup/readiness/restoration adapters; this
+consumer implementation does not establish a reusable, independently adopted DLF
+AT Protocol provider/server package or Finance integration.
+
+## Verification and limits
+
+Recorded local evidence for `152d679`: 663 unit/native tests in 106 files, six
+worker-browser cases and 12 packaged macOS/Chromium extension cases pass, with
+strict types, lint, formatting and vendor integrity. Extension coverage includes
+restoration, account switching, cancellation, offline full-browser restart and
+reconnect, plus 24 repeated settings-close/real-toolbar cycles with unchanged
+connection and zero Window WASM calls. SDK/worker selection round trips cover
+existing keys with and without trailing slashes.
+
+The shared worker refactor also passed eight production offline cases: linked,
+fresh-profile existing and expired-credential accounts reopen the same cached
+library with app/auth/Jazz unreachable, retain acknowledged edits through another
+full process restart and reconcile after reconnect. Native callback tests use the
+installed plugin and actual Jazz adapter, including SQLite backend reopen. Browser
+provider identities are synthetic; this is not a hosted live-provider consent test.
+
+See [native auth qualification](../../docs/reviews/atproto-native-alpha60.md) and
+[extension investigation](../../docs/reviews/extension-startup-2026-11-09.md).
+CI for `152d679` passed tooling/types/build, but [the browser job](https://github.com/delightful-labs/delightful-clipper/actions/runs/42802719477)
+failed at `pnpm test:e2e`, before its extension step. This run supplies no Linux
+extension qualification; resolving the browser CI failure remains open.
+
+The original Jazz-only Window-teardown reproducer remains evidence of an upstream
+boundary, not a repair to Jazz itself. Linux extension CI, real provider consent on
+the merged hosted deployment, cross-app Finance adoption, and all published Jazz
+pending-write/account-switch caveats remain separate qualification gates. Do not
+claim complete integration/release readiness from these local passes.
+
+## Accepted publication behavior — not implemented
+
+- Jazz is the source authority. Initial publication is explicit and previewed;
+  unpublished items stay unpublished. Later source updates synchronize after
+  relevant Jazz server acceptance, without a separate confirmation per update.
+  Offline publication intent follows the latest saved item before issuance;
+  each issued request retains its exact source version and destination.
+- Use the shared `at.margin.note` quotation/commentary representation alongside
+  separately addressable Clipper highlight/note companions. Companions require
+  `subject` (Margin URI/CID) and public `article` URI, with optional reciprocal
+  `note`/`highlight` links. No private Jazz IDs, drafts or organizational tags.
+  Using the shared subset does not require adopting all of Margin's vocabulary.
+- A deleted attached note leaves the public bare highlight at its existing
+  address. A new note on an already-public bare highlight updates that annotation.
+- Trash requests public deletion; restoring a previously published item republishes
+  at its original public address unless a conflict/deletion pause blocks it.
+  Explicit unpublish preserves local content and stops later synchronization
+  until explicit publication. Permanent deletion also retains public-removal duties.
+- External content changes pause the group. The user may choose the reviewed
+  Clipper version, explicitly import the reviewed public version, or leave it
+  paused. External deletion preserves local content and requires explicit
+  recreation. Later edits/reconnect/restart do not bypass either pause.
+- Preserve valid foreign non-content metadata without importing it into private
+  organization. Common/companion changes use the approved conditional grouped
+  synchronization approach; companion conflicts pause the whole outgoing group.
+  Retain unknown outcomes and reconcile before retry; no cross-service atomicity
+  or downstream-erasure guarantee.
+- Note bounds: both 3,000 graphemes and 10,000 UTF-8 bytes. New quotations: both
+  1,500 graphemes and 5,000 bytes. Public prefix and suffix: each both 150 graphemes
+  and 500 bytes, included in the preview. No silent truncation or migration of
+  existing/imported content is authorized.
+
+[Accepted decisions](design-decisions.md#accepted-margin-public-representation--2026-11-07)
+and [companion approval](design-decisions.md#accepted-companion-fields-and-grouped-synchronization--2026-11-07)
+are authoritative. [Technical synchronization](../../docs/reviews/margin-sync-technical-proposal.md)
+and [companion schemas](../../docs/reviews/clipper-companion-lexicon-proposal.md)
+retain proposals beyond their explicitly approved subsets.
+
+## Work remaining
+
+| Work | Status / next evidence |
+| --- | --- |
+| Browser CI | Resolve the general web-test failure in run `42802719477`, then obtain Linux extension evidence; local macOS passes are a separate result. |
+| Hosted identity check | Verify actual provider consent, callback, same-origin configuration and retained library on the merged deployment; qualify deployed persistence/refresh and revoke/expire behavior. |
+| Shared DLF adoption | Extract only evidenced reusable provider/server/lifecycle boundaries, review interfaces, then qualify Finance independently with its existing data/backup obligations. No cross-app session/token transfer. |
+| Local annotations | Finish independently identified highlights, article notes, attached notes and anchors; existing draft/revision groundwork is not the completed model or editor. Review native text/history/anchor facilities before custom machinery. |
+| Public vocabulary | Select the real controlled companion namespace; resolve exact payload/projector, public keys/discovery, anchoring/version rules, and oversized retained/imported content. Example `com.example.*` names are not selected production NSIDs. |
+| Public authorization | Qualify least-required collection/operation permissions and progressive consent with the existing OAuth integration. Sign-in does not implement publication or prove write permission. |
+| Synchronization design | Review private intent/binding/attempt shapes, server-acceptance evidence, backend writer lifetime/scheduling on Vercel, multi-instance ownership, conflict resolution and companion cleanup. A backend alone is not an always-running scheduler. |
+| Publication implementation | Implement reviewed entities/projector, durable public mapping/attempts, conditional group writes/deletes, reconciliation, conflict/deletion pauses and user controls. No PDS publication code or live Lexicon currently exists. |
+| Publication qualification | Disposable PDS conditional-write and lost-response cases, unknown-field preservation, complete offline restart/reconnect, deletion/Trash/restore conflicts, and real Margin/second-reader interoperability. No production grants/content needed for initial proof. |
+| Deferred scope | Local-work transfer and real merge, broader recovery/unlinking/provider-loss design, extension AT Protocol provider login, private/encrypted PDS storage, restricted audiences and automatic inbound synchronization. |
+
+Recording this checkpoint selects no new data shapes, namespace, executor process,
+copy, dependency or deployment. Ask the user before resolving the open design choices.
