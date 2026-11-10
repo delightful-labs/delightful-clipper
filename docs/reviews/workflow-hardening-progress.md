@@ -1,6 +1,6 @@
 # Workflow hardening PR checkpoint
 
-This checkpoint completes change sets A–E for Clipper. F–G remain separate
+This checkpoint completes change sets A–F for Clipper. G remains separate
 work. Finance adoption retains its separate actual-adapter qualification gate. The
 [implementation specification](../../specs/001-jazz-clipper/workflow-ownership-hardening.md)
 remains authoritative; this PR does not complete the whole specification.
@@ -173,6 +173,29 @@ contract-model state/event/transition coverage. Native browser cases hold actual
 Window receipts through expiry and replacement, then require actual lease cleanup
 before reopening the replacement account.
 
+## F shared browser worker jobs
+
+Extension extraction and web image processing now invoke a shared typed,
+Clipper-local browser job child. Its native adapter owns construction, posting,
+reply decoding, abort listeners and exactly-once termination. Canonical reply
+schemas bound the protocol. The old extraction promise wrapper and image
+queue's Worker handle/post callback are removed.
+
+Parents retain their 15-second extraction and 20-second image deadlines and
+fallback/write policies. Expiry cancels the child and awaits cleanup. Monotonic
+elapsed facts reject exact-deadline results before delayed timers run. Shutdown
+prevents new save/write admission; issued transactions retain their existing
+owners. Failed cleanup remains blocked without a false terminal acknowledgement.
+Browser termination is a synchronous native-call contract; the Node parser still
+waits for its actual native exit receipt.
+
+See [browser worker job ownership](browser-worker-jobs.md) for connected invocation
+and state diagrams. Four independent resource-ledger campaigns run 120 schedules
+each, up to 12 commands, seed `20261119`, with full contract-model coverage.
+Native browser cases run both real production Workers and inject actual
+uncloneable-post failures and cancellation. Parent regressions cover failure
+mapping, exact deadlines, stale results, shutdown and cleanup refusal.
+
 ## Checkpoint qualification
 
 The A/B DLF source at `1571ba2` passed 356 selected lifecycle/workspace/scoped-form
@@ -193,10 +216,10 @@ Final Clipper checkpoint checks passed:
 
 - `pnpm verify`: installed vendor integrity/import checks, repository formatting
   and lint, strict types, web/extension Svelte checks with zero errors/warnings,
-  **852 unit/native tests in 126 files**, and the production Netlify build.
-- `pnpm test:worker`: **26 browser cases**, including A → B → A restoration with an attached reader,
+  **885 unit/native tests in 128 files**, and the production Netlify build.
+- `pnpm test:worker`: **32 browser cases**, including A → B → A restoration with an attached reader,
   account custody with dropped WRITE acknowledgement and delayed closure, plus real
-  SharedWorker port ownership and late-port disposal. PR34's attached-reader
+  SharedWorker port ownership and late-port disposal. Both real image/extraction jobs, native post failure/cancellation and PR34's attached-reader
   shutdown and forced root stop without clean closure are also covered.
 - `pnpm test:extension`: **12 packaged-extension cases**, including restoration,
   offline saves, browser restart and repeated settings teardown.
@@ -205,14 +228,20 @@ Final Clipper checkpoint checks passed:
   edits, reconnection, cold reader reopening with both servers stopped and shell
   update failure/recovery. Both production Netlify fixtures built successfully.
 
-- Prior PR34 rebase checkpoint: `pnpm test:schema` passed **eight Chromium/Firefox schema-upgrade cases**. E introduces no schema change.
+- Prior PR34 rebase checkpoint: `pnpm test:schema` passed **eight Chromium/Firefox schema-upgrade cases**. E/F introduce no schema change.
 
 This checkpoint incorporates merged PR34 at `e0856c6`, against the final production
 account-storage/broker integration and the frozen archive above, using Clipper's
 managed Node `24.22.2`. Main's proof-renewal, session-lifecycle and cold-reader connection fixes are preserved.
 Browser fixtures use its account settings page and article action popovers. Extension
 qualification ran on macOS; main's documented temporary Linux exclusions remain. They do not
-establish Finance adoption or completion of F–G.
+establish Finance adoption or completion of G.
+
+An initial F extension probe hit three sign-in/settings failures before extraction.
+All three passed on an unchanged focused rerun and then in the final full
+12-case run. No timeout or assertion was relaxed; the transient cause was not
+established. The existing toolbar/source-message regression assertions pass on
+the rebuilt current branch.
 
 The [PR34 integration and XState review](pr34-workflow-integration.md) records the
 rebase and the targeted completion/outcome corrections. Native observer completion
@@ -237,7 +266,7 @@ unchanged. This run uses `CLIPPER_TEST_WEB_URL=http://127.0.0.1:5482`,
 the actual assigned port. Earlier attempts were blocked before test execution by
 occupied default ports; no unidentified process was stopped. Cold Worker startup
 now prebundles the adopted DLF lifecycle exports, preventing an initial dependency
-optimizer reload. All 26 Worker cases passed with source frozen. No assertions or
+optimizer reload. All 32 Worker cases passed with source frozen. No assertions or
 product behavior were weakened.
 
 ## Follow-up boundary
@@ -253,7 +282,8 @@ product behavior were weakened.
   stalled headers/bodies, abort delivery, delayed timers and late results.
 - E is complete: REC-4/5 cover scoped reader acknowledgement/cleanup, final-position
   uncertainty, bounded search waits and original-read custody through account shutdown.
-- F–G: implement browser jobs and remaining v6 cleanup in specification dependency order.
+- F is complete: EXT-1–3, SHARE-4 and REC-8 cover shared browser jobs, native cleanup and unchanged deadline/fallback contracts.
+- G: finish the remaining v6 and calculation cleanup.
 
 The legacy account-store/storage fixtures and SDK compatibility worker remain for
 existing compatibility coverage; production application storage uses the scoped

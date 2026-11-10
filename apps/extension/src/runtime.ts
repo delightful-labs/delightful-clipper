@@ -15,7 +15,7 @@ import {
 	runtimeMessageSchema
 } from './protocol.js'
 import { createAuthorizationMachine, selectAccountAccess } from './authorization-machine.js'
-import { extractSource } from './worker.js'
+import { extractionJob } from './worker.js'
 async function command(message: unknown) {
 	if (!acceptedAcknowledgmentSchema.safeParse(await chrome.runtime.sendMessage(message)).success)
 		throw new Error('invalidResponse')
@@ -49,7 +49,7 @@ const runtime = createActor(
 				accountId: bound.libraryId,
 				current: bound.isCurrent,
 				read: (id) => chrome.runtime.sendMessage({ type: 'CAPTURE', id }),
-				extract: extractSource,
+				extraction: extractionJob,
 				issue: (capture, accountId) => command({ type: 'ISSUE', id: capture.id, accountId }),
 				remove: (id) => command({ type: 'REMOVE', id })
 			}

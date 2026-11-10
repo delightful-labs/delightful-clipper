@@ -38,6 +38,11 @@ export const imageWorkerResultSchema = z.object({
 	kind: z.literal('ready'),
 	result: processedImageSchema
 })
+export const imageWorkerReplySchema = z.discriminatedUnion('kind', [
+	imageWorkerResultSchema,
+	z.object({ kind: z.literal('failed') })
+])
+export type ImageWorkerReply = z.infer<typeof imageWorkerReplySchema>
 export type ProcessedImage = z.infer<typeof processedImageSchema>
 export type ImageWrite = { image: ArticleImage } & (
 	| { kind: 'ready'; result: ProcessedImage }

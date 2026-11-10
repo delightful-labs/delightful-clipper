@@ -101,7 +101,12 @@ export default defineConfig(({ command, mode }) => {
 			host: process.env.CLIPPER_TEST === 'true' ? '127.0.0.1' : '0.0.0.0',
 			port: 5173,
 			strictPort: true,
-			...(process.env.CLIPPER_TEST === 'true' ? { fs: { allow: ['.'] } } : {})
+			...(process.env.CLIPPER_TEST === 'true'
+				? {
+						// The native job fixture invokes the actual extension producer/Worker.
+						fs: { allow: ['.', '../extension/src'] }
+					}
+				: {})
 		},
 		preview: { host: '127.0.0.1', port: 4173, strictPort: true }
 	}

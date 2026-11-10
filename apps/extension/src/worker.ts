@@ -1,28 +1,16 @@
-import type { Source } from './protocol.js'
-export function extractSource(source: Source, signal: AbortSignal): Promise<unknown> {
-	return new Promise((resolve, reject) => {
-		const worker = new Worker(new URL('./extract-worker.ts', import.meta.url), { type: 'module' })
-		const close = () => {
-			signal.removeEventListener('abort', abort)
-			worker.terminate()
-		}
-		const abort = () => {
-			close()
-			reject(new DOMException('Aborted', 'AbortError'))
-		}
-		worker.onmessage = (event) => {
-			close()
-			resolve(event.data.content)
-		}
-		worker.onerror = () => {
-			close()
-			reject(new Error('captureFailed'))
-		}
-		signal.addEventListener('abort', abort, { once: true })
-		if (signal.aborted) {
-			abort()
-			return
-		}
-		worker.postMessage(source)
-	})
+import {
+	createBrowserWorkerJob,
+	type BrowserWorkerJobInput
+} from '../../web/src/lib/machines/browser-worker-job.js'
+import { extractionReplySchema, type Source, type ExtractionReply } from './protocol.js'
+
+export const EXTRACTION_TIMEOUT_MS = 15_000
+export const extractionJobMachine = createBrowserWorkerJob<Source, ExtractionReply>()
+/** Inert selected request; construction belongs to the invoked job. */
+export function extractionJob(source: Source): BrowserWorkerJobInput<Source, ExtractionReply> {
+	return {
+		open: () => new Worker(new URL('./extract-worker.ts', import.meta.url), { type: 'module' }),
+		message: source,
+		decode: (value) => extractionReplySchema.parse(value)
+	}
 }

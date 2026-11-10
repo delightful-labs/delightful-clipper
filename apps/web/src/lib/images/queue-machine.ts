@@ -1,3 +1,10 @@
+import {
+	imageJobMachine,
+	imageJob,
+	IMAGE_PROCESS_TIMEOUT_MS,
+	hasImageResult
+} from './processing-job.js'
+import { monotonicNow, withinResourceDeadline } from '../contracts/resource-waits.js'
 import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import type { EventPayload } from '../machines/events.js'
 import { types, createCallbackLogic, setup, createAsyncLogic, matchesState } from 'xstate'
@@ -9,26 +16,26 @@ import type { ImageCapability, ImageStageResult } from '../contracts/images.js'
 import type { ReaderExperienceEvent } from '../machines/reader/experience.js'
 import { imageViewMachine } from './view-machine.js'
 import type { ImageView, ImageViewReport } from './view-machine.js'
-import { canAcquireImage, imageWorkerResultSchema, imageSources } from './schema.js'
+import { canAcquireImage, imageSources } from './schema.js'
 import type { ArticleImage, ProcessedImage, ReadyImageWrite, FailedImageWrite } from './schema.js'
 import { syncOwnerMachine } from '../machines/storage/sync-owner.js'
 import type { SyncReport } from '../contracts/storage.js'
-type Input = { capability: ImageCapability | undefined }
+type Input = {
+	capability: ImageCapability | undefined
+	processTimeoutMs?: number
+	now?: () => number
+}
 type Event =
 	| ReaderExperienceEvent
 	| ImageViewReport
 	| SyncReport
 	| { type: 'IMAGE_ROWS'; rows: ArticleImage[] }
 	| { type: 'CONNECTIVITY'; online: boolean }
-	| { type: 'WORKER_RESULT'; value: unknown }
-	| { type: 'WORKER_OPENED'; worker: Worker }
-	| { type: 'POSTED' }
 	| { type: 'OBSERVATION_FAILED' }
 	| { type: 'RETRY'; id: string }
 	| { type: 'IMAGE_ERROR'; id: string; url: string }
 	| { type: 'WAKE' }
 type Context = Input & {
-	worker: Worker | undefined
 	observationFailed: boolean
 	issue: unknown
 	quotaDelayMs: number
@@ -74,21 +81,8 @@ const fetchImage = createAsyncLogic<{ bytes: Uint8Array; mediaType: string }, Co
 	run: ({ input, signal }) =>
 		input.capability!.request(input.selected!.sourceUrl, input.selected!.id, signal)
 })
-const process = createCallbackLogic<Event>(({ sendBack }) => {
-	const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
-	worker.onmessage = (event) => sendBack({ type: 'WORKER_RESULT', value: event.data })
-	worker.onerror = () => sendBack({ type: 'WORKER_RESULT', value: undefined })
-	sendBack({ type: 'WORKER_OPENED', worker })
-	return () => {
-		worker.onmessage = null
-		worker.onerror = null
-		worker.terminate()
-	}
-})
-const post = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
-	input.worker!.postMessage(input.fetched)
-	sendBack({ type: 'POSTED' })
-})
+const process = imageJobMachine
+
 function nextImage(context: Context) {
 	const eligible = context.rows.filter(
 		(row) =>
@@ -123,9 +117,6 @@ const model = setup({
 			IMAGE_VIEW: types<EventPayload<Event, 'IMAGE_VIEW'>>(),
 			IMAGE_ROWS: types<EventPayload<Event, 'IMAGE_ROWS'>>(),
 			CONNECTIVITY: types<EventPayload<Event, 'CONNECTIVITY'>>(),
-			WORKER_RESULT: types<EventPayload<Event, 'WORKER_RESULT'>>(),
-			WORKER_OPENED: types<EventPayload<Event, 'WORKER_OPENED'>>(),
-			POSTED: types<EventPayload<Event, 'POSTED'>>(),
 			RETRY: types<EventPayload<Event, 'RETRY'>>(),
 			IMAGE_ERROR: types<EventPayload<Event, 'IMAGE_ERROR'>>(),
 			WAKE: types<EventPayload<Event, 'WAKE'>>()
@@ -138,7 +129,6 @@ const model = setup({
 			fetchImage: types<import('xstate').ActorRefFrom<typeof fetchImage>>(),
 			reconcile: types<import('xstate').ActorRefFrom<typeof reconcile>>(),
 			process: types<import('xstate').ActorRefFrom<typeof process>>(),
-			post: types<import('xstate').ActorRefFrom<typeof post>>(),
 			receipts: types<import('xstate').ActorRefFrom<typeof syncOwnerMachine>>(),
 			view: types<import('xstate').ActorRefFrom<typeof imageViewMachine>>(),
 			readyWrite: types<import('xstate').ActorRefFrom<typeof readyWrite>>(),
@@ -151,13 +141,13 @@ const model = setup({
 		fetchImage,
 		reconcile,
 		process,
-		post,
 		receipts: syncOwnerMachine,
 		view: imageViewMachine,
 		readyWrite,
 		failureWrite
 	},
 	delays: {
+		processingDeadline: ({ context }) => context.processTimeoutMs ?? IMAGE_PROCESS_TIMEOUT_MS,
 		retryDelay: ({ context }) =>
 			Math.min(
 				300000,
@@ -184,8 +174,10 @@ const model = setup({
 		eligible: ({ context }: { context: Context }) => !!nextImage(context),
 		closing: ({ value }: { value: import('xstate').StateValue }) =>
 			matchesState({ running: { control: 'closing' } }, value),
-		workerSucceeded: ({ event }: { event: Event }) =>
-			event.type === 'WORKER_RESULT' && imageWorkerResultSchema.safeParse(event.value).success
+		processingOverdue: ({ value }) =>
+			matchesState({ running: { queue: { processing: 'overdue' } } }, value),
+		processingTimely: ({ context }, result: { elapsedMs: number }) =>
+			withinResourceDeadline(result.elapsedMs, context.processTimeoutMs ?? IMAGE_PROCESS_TIMEOUT_MS)
 	},
 	actions: {
 		selectNext: ({ context }: { context: Context }) => ({
@@ -239,7 +231,6 @@ export const imageQueueMachine = model.createMachine({
 	initial: 'admitting',
 	context: ({ input }) => ({
 		...input,
-		worker: undefined,
 		observationFailed: false,
 		issue: undefined,
 		quotaDelayMs: 0,
@@ -284,6 +275,7 @@ export const imageQueueMachine = model.createMachine({
 				if (
 					!(
 						args.guards.closing(args) &&
+						!matchesState({ running: { queue: 'processing' } }, args.value) &&
 						!(({ value }: { value: import('xstate').StateValue }) =>
 							matchesState({ running: { queue: 'savingReady' } }, value))(args) &&
 						!(({ value }: { value: import('xstate').StateValue }) =>
@@ -585,59 +577,61 @@ export const imageQueueMachine = model.createMachine({
 							}
 						},
 						processing: {
-							initial: 'creating',
+							initial: 'waiting',
 							states: {
-								creating: {
-									on: {
-										WORKER_OPENED: (args) => {
-											return { target: 'posting', context: { worker: args.event.worker } }
-										}
+								waiting: {
+									timeout: 'processingDeadline',
+									onTimeout: (_args, enq) => {
+										enq.sendTo('process', { type: 'CANCEL' })
+										return { target: 'overdue' }
 									}
 								},
-								posting: {
-									invoke: {
-										id: 'post',
-										src: 'post',
-										input: ({ context }: { context: Context }) => context,
-										onError: () => {
-											return {
-												target: '#image-queue.running.queue.savingFailure',
-												context: { retryable: false }
-											}
-										}
-									},
-									on: {
-										POSTED: () => {
-											return { target: 'waiting', context: { fetched: undefined } }
-										}
-									}
+								overdue: {},
+								stopping: { on: { SHUTDOWN: {} } },
+								blocked: {}
+							},
+							on: {
+								SHUTDOWN: (_args, enq) => {
+									enq.sendTo('process', { type: 'CANCEL' })
+									return { target: '.stopping' }
 								},
-								waiting: {}
+								OBSERVATION_FAILED: (_args, enq) => {
+									enq.sendTo('process', { type: 'CANCEL' })
+									return { target: '.stopping', context: { observationFailed: true } }
+								}
 							},
 							invoke: {
 								id: 'process',
 								src: 'process',
-								onError: () => {
-									return { target: 'savingFailure', context: { retryable: false } }
-								}
-							},
-							on: {
-								WORKER_RESULT: (args) => {
-									if (!args.guards.current(args)) {
+								input: ({ context }) => ({
+									...imageJob(context.fetched!),
+									now: context.now ?? monotonicNow
+								}),
+								onSnapshot: ({ event }) =>
+									event.snapshot.matches('blocked') ? { target: '.blocked' } : undefined,
+								onError: { target: '.blocked' },
+								onDone: (args) => {
+									if (args.guards.closing(args) || !args.guards.current(args))
 										return { target: 'idle', context: { fetched: undefined, result: undefined } }
-									}
-									if (args.guards.workerSucceeded(args)) {
+									if (args.context.observationFailed)
+										return {
+											target: 'unavailable',
+											context: { fetched: undefined, result: undefined }
+										}
+									const result = args.event.output
+									if (
+										hasImageResult(result) &&
+										!args.guards.processingOverdue(args) &&
+										args.guards.processingTimely(args, result)
+									)
 										return {
 											target: 'savingReady',
-											context: { result: imageWorkerResultSchema.parse(args.event.value).result }
+											context: { result: result.reply.result, fetched: undefined }
 										}
+									return {
+										target: 'savingFailure',
+										context: { retryable: false, fetched: undefined }
 									}
-									return { target: 'savingFailure', context: { retryable: false } }
-								}
-							},
-							after: {
-								20000: () => {
-									return { target: 'savingFailure', context: { retryable: false } }
 								}
 							}
 						},

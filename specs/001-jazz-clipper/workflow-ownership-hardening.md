@@ -1,11 +1,11 @@
 # Workflow ownership hardening specification
 
-**Status:** Partially implemented: A–E are complete for Clipper. F–G remain open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
+**Status:** Partially implemented: A–F are complete for Clipper. G remains open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
 
 The workflow branch incorporates merged PR34 at `e0856c6`. Its
 [integration and XState review](../../docs/reviews/pr34-workflow-integration.md)
 records preserved sign-in evidence, explicit shutdown receipts and terminal read
-outcomes. These corrections do not complete E–G.
+outcomes. Those integration corrections were followed by E/F; G remains open.
 
 Move the remaining authentication and runtime lifecycle decisions into their owning charts. A reader must be able to identify admission, replacement, operation order, completion, failure and cancellation from the statecharts and their typed protocols. Preserve established product and persistence semantics while making resource ownership explicit and adding recoverable outcomes for stalled operations.
 
@@ -451,10 +451,10 @@ Invoke an extraction child directly from the clip chart's existing extraction st
 ```mermaid
 flowchart LR
     Admit[Admit extraction] -->|Not cancelled| Waiting[Own worker and await result]
-    Admit -->|Already cancelled| Cancelled[Cancelled]
-    Waiting -->|Valid result| Success[Succeeded]
-    Waiting -->|Worker error or malformed reply| Failed[Failed]
-    Waiting -->|Cancel or shutdown| Cancelled
+    Admit -->|Already cancelled| Cleanup[Remove listeners and terminate acquired Worker]
+    Waiting -->|Validated reply, failure, cancel or shutdown| Cleanup
+    Cleanup -->|Cleanup returned| Settled[Selected typed outcome]
+    Cleanup -->|Cleanup threw| Blocked[Retain ownership; no terminal acknowledgement]
 ```
 
 The waiting state's resource adapter owns worker creation, postMessage, native callbacks, abort listeners and termination. Native resource cleanup occurs before terminal acknowledgment. Failure to construct a worker must not imply a resource was acquired.
@@ -469,13 +469,22 @@ The waiting state's resource adapter owns worker creation, postMessage, native c
 
 EXT-1: Meaningful generated schedules cover result/error/abort ordering, pre-abort, duplicate replies, malformed replies, construction failure, post failure and parent shutdown.
 
-EXT-2: The oracle proves at most one outcome, one termination per acquired worker, no post after pre-abort, and no save after failed/cancelled extraction.
+EXT-2: The oracle proves at most one outcome, one termination per acquired worker, no post after pre-abort, no unchecked extracted content after failure, and no save admission after independent cancellation/shutdown. Extraction failure or deadline expiry retains the explicitly required URL-only fallback after cleanup; cancellation does not undo an already-issued save.
 
 EXT-3: The rebuilt packaged extension passes the complete existing capture suite. Reproduce and resolve or separately explain PR #20's toolbar/source-message regression; do not weaken assertions or call the refactor release-qualified while it remains open.
 
 SHARE-4: Run both image and extension worker jobs through the shared child with real browser workers, plus injected construction/post/result/error/abort races. Prove cleanup before terminal acknowledgment, unchanged parent deadlines/fallbacks and no worker or listener leaks.
 
 REC-8: Preserve the existing bounded extraction, authorization, image, capture and parser behavior. Test post-timeout cleanup and account/shutdown races rather than asserting timer configuration text.
+
+Implementation checkpoint: both consumers invoke the typed Clipper-local job child.
+Native resource handles stay in its adapter; cleanup precedes terminal output,
+and failed cleanup blocks parent settlement. Parent-owned 15/20-second deadlines
+include exact-boundary monotonic checks, without a competing child timer. The
+extraction promise wrapper is removed. EXT-1–3, SHARE-4 and REC-8 are covered by
+generated resource-ledger campaigns, parent regressions, both real native
+Workers and the unchanged packaged-extension/offline suites. See
+[browser worker job ownership](../../docs/reviews/browser-worker-jobs.md).
 
 ## G V6 contracts and calculation cleanup
 

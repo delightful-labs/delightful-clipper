@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { createActor, toPromise, waitFor } from 'xstate'
+import { createActor, toPromise, waitFor, SimulatedClock } from 'xstate'
 import { createWorkspaceCreationTransaction } from 'delightful-local-first/workspace/creation/workflow'
 import { imageQueueMachine } from './queue-machine.js'
 import type { ImageCapability, ImageSpawner } from '../contracts/images.js'
@@ -19,6 +19,7 @@ class TestWorker {
 	static workers: TestWorker[] = []
 	onmessage: ((event: { data: unknown }) => void) | null = null
 	onerror: (() => void) | null = null
+	onmessageerror: (() => void) | null = null
 	terminate = vi.fn()
 	postMessage = vi.fn()
 	constructor() {
@@ -41,7 +42,8 @@ function fixture(
 		mediaType: 'image/png'
 	})),
 	local = async () => {},
-	hasIntent = async () => false
+	hasIntent = async () => false,
+	options: { clock?: SimulatedClock; now?: () => number } = {}
 ) {
 	let current = true
 	const writes: ImageWrite[] = [],
@@ -87,7 +89,13 @@ function fixture(
 		spawnReady: spawnWrite,
 		spawnFailure: spawnWrite
 	}
-	const actor = createActor(imageQueueMachine, { input: { capability: cap } }).start()
+	const actor = createActor(imageQueueMachine, {
+		input: {
+			capability: cap,
+			now: options.now ?? (() => options.clock?.now() ?? performance.now())
+		},
+		...(options.clock ? { clock: options.clock } : {})
+	}).start()
 	return { actor, writes, received, request, dispose, expire: () => (current = false) }
 }
 it.each(['ready', 'failed'] as const)(
@@ -255,6 +263,102 @@ it('releases a worker if posting its input fails after acquisition', async () =>
 	expect(writes[0]).toMatchObject({ kind: 'failed', retryable: false })
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
+})
+
+it.each(['worker', 'message', 'reply'] as const)(
+	'settles native %s processing failure before writing image failure',
+	async (failure) => {
+		const f = fixture()
+		await waitFor(f.actor, (s) => s.matches({ running: { queue: { processing: 'waiting' } } }))
+		const worker = TestWorker.workers[0]!
+		if (failure === 'worker') worker.onerror?.()
+		if (failure === 'message') worker.onmessageerror?.()
+		if (failure === 'reply') worker.onmessage?.({ data: { kind: 'ready', result: {} } })
+		await waitFor(f.actor, (s) => s.context.rows[0]?.status === 'failed')
+		expect(worker.terminate).toHaveBeenCalledOnce()
+		expect(f.writes).toEqual([{ image, kind: 'failed', retryable: false }])
+		f.actor.send({ type: 'SHUTDOWN' })
+		await toPromise(f.actor)
+	}
+)
+
+it.each(['timer', 'late-result'] as const)(
+	'retains the 20-second processing limit with %s and cleanup before failure writes',
+	async (mode) => {
+		const clock = new SimulatedClock()
+		let time = 0
+		const f = fixture(undefined, undefined, undefined, { clock, now: () => time })
+		await waitFor(f.actor, (s) => s.matches({ running: { queue: { processing: 'waiting' } } }))
+		const worker = TestWorker.workers[0]!
+		if (mode === 'timer') clock.increment(20000)
+		else {
+			time = 20000
+			worker.onmessage?.({
+				data: {
+					kind: 'ready',
+					result: { bytes: new Uint8Array([1]), mediaType: 'image/png', width: 1, height: 1 }
+				}
+			})
+		}
+		await waitFor(f.actor, (s) => s.context.rows[0]?.status === 'failed')
+		expect(worker.terminate).toHaveBeenCalledOnce()
+		expect(f.writes).toEqual([{ image, kind: 'failed', retryable: false }])
+		f.actor.send({ type: 'SHUTDOWN' })
+		await toPromise(f.actor)
+	}
+)
+
+it('does not acknowledge image shutdown or write through failed native cleanup', async () => {
+	const f = fixture()
+	await waitFor(f.actor, (s) => s.matches({ running: { queue: { processing: 'waiting' } } }))
+	const worker = TestWorker.workers[0]!
+	worker.terminate.mockImplementation(() => {
+		throw new Error('Cleanup unavailable')
+	})
+	worker.onmessage?.({ data: { kind: 'failed' } })
+	f.actor.send({ type: 'SHUTDOWN' })
+	expect(f.actor.getSnapshot().status).toBe('active')
+	expect(f.writes).toEqual([])
+	f.actor.stop()
+	expect(worker.terminate).toHaveBeenCalledOnce()
+})
+it.each(['SHUTDOWN', 'OBSERVATION_FAILED'] as const)(
+	'releases a waiting image job on %s and refuses late replies without writing',
+	async (type) => {
+		const f = fixture()
+		await waitFor(f.actor, (s) => s.matches({ running: { queue: { processing: 'waiting' } } }))
+		const worker = TestWorker.workers[0]!,
+			late = worker.onmessage
+		f.actor.send({ type })
+		if (type === 'SHUTDOWN') await toPromise(f.actor)
+		else await waitFor(f.actor, (s) => s.matches({ running: { queue: 'unavailable' } }))
+		late?.({ data: { kind: 'failed' } })
+		expect(worker.terminate).toHaveBeenCalledOnce()
+		expect(worker.onmessage).toBeNull()
+		expect(worker.onerror).toBeNull()
+		expect(worker.onmessageerror).toBeNull()
+		expect(f.writes).toEqual([])
+		if (type !== 'SHUTDOWN') {
+			f.actor.send({ type: 'SHUTDOWN' })
+			await toPromise(f.actor)
+		}
+	}
+)
+it('preserves image failure mapping when native worker construction fails', async () => {
+	vi.stubGlobal(
+		'Worker',
+		class {
+			constructor() {
+				throw new Error('Worker unavailable')
+			}
+		}
+	)
+	const f = fixture()
+	await waitFor(f.actor, (s) => s.context.rows[0]?.status === 'failed')
+	expect(f.writes).toEqual([{ image, kind: 'failed', retryable: false }])
+	expect(TestWorker.workers).toEqual([])
+	f.actor.send({ type: 'SHUTDOWN' })
+	await toPromise(f.actor)
 })
 it('resumes an interrupted pending image automatically when connectivity returns', async () => {
 	const request = vi.fn<ImageCapability['request']>(async () => ({

@@ -41,6 +41,11 @@ export const contentSchema = extractedContentSchema.extend({
 	finalUrl: sourceUrlSchema,
 	provenance: z.string().max(32768)
 })
+export const extractionReplySchema = z.union([
+	z.strictObject({ content: contentSchema }),
+	z.strictObject({ error: z.literal('captureFailed') })
+])
+export type ExtractionReply = z.infer<typeof extractionReplySchema>
 export const captureKey = (id: string) => `clipper.capture.${id}`
 export function trustedSender(sender: chrome.runtime.MessageSender, id: string, page: string) {
 	if (sender.id !== id || !sender.url || (sender.frameId ?? 0) !== 0) return false
