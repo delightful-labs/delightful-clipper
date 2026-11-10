@@ -13,12 +13,16 @@
 		appId,
 		serverUrl,
 		children,
-		shell
+		shell,
+		createWorker,
+		atprotoEnabled = true
 	}: {
 		appId: string
 		serverUrl: string
 		children: Snippet
 		gatewayEnabled: boolean
+		createWorker?: import('../runtime/worker/client.js').Input['createWorker']
+		atprotoEnabled?: boolean
 		shell?: Snippet<[Snippet, Snippet, WorkflowMessage | undefined]>
 	} = $props()
 	let view = $state<RuntimeView['account']>()
@@ -43,6 +47,7 @@
 		client = openApplicationClient({
 			appId,
 			serverUrl,
+			...(createWorker ? { createWorker } : {}),
 			publish: (next) => {
 				accountScope = next.scope
 				view = next.account
@@ -87,7 +92,7 @@
 {#snippet controls()}
 	<section class="account-controls" aria-label={t('app.title')}>
 		{#if oauth?.message}<StatusMessage {...oauth.message} />{/if}
-		{#if view?.canRestore && !view.canLogout}
+		{#if atprotoEnabled && view?.canRestore && !view.canLogout}
 			<form
 				onsubmit={(event) => {
 					event.preventDefault()

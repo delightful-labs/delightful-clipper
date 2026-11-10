@@ -150,3 +150,16 @@ device-only sessions and thin-client controls each had zero failures in their
 24-case campaigns. See the detailed matrix in the startup investigation. This
 narrows the ownership boundary without qualifying a product workaround; no
 application, dependency or default test behavior changed.
+
+## Extension worker and storage follow-up (2026-11-10)
+
+The settings/sign-in migration supersedes the open macOS qualification caveat
+above for the tested packaged-extension flows. Both disposable pages now own no
+Window Jazz runtime. Their workers reuse the existing drain/native-close host
+and the extension's SDK account-storage key; web storage is unchanged. All 11
+original extension cases and a 24-cycle settings-close/toolbar campaign pass,
+including offline browser restart and account restoration. See the
+[startup investigation](extension-startup-2026-11-09.md) for the exact scope,
+storage compatibility evidence and limits. This does not establish an upstream
+native teardown repair or Linux extension qualification. Hosted live-provider
+consent remains unverified.

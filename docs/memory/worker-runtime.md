@@ -12,7 +12,7 @@ Unexpectedly stopped transaction owners transfer their native acquisition, pendi
 
 The web layout mounts `Application.svelte`, whose native port client opens `application.worker.ts`. That worker owns the existing DLF account acquisition/readiness/restoration, root bootstrap, domain library, save/organization transactions, recovery workflow, tag validation, data subscriptions and projections. Capture network/database calls execute there; search, article coordination and image processing retain their nested workers. The main thread renders DUI components, forwards intent, and owns DOM, focus, selection, layout, scrolling and fullscreen effects.
 
-The web UI no longer opens a Jazz session or constructs the application/library actors. Browser test fixtures which require direct SDK access explicitly import `tests/fixture-records.ts`; that Window client is test-only and is not imported by the production UI. The extension's existing account/settings integration still uses `Account.svelte`; web cutover is not a claim that every extension UI workflow has migrated.
+The web UI no longer opens a Jazz session or constructs the application/library actors. Browser test fixtures which require direct SDK access explicitly import `tests/fixture-records.ts`; that Window client is test-only and is not imported by the production UI. Extension settings and sign-in also use dedicated workers through the same host, with the extension's existing library capability. Chrome connection confirmation stays behind a Window-only native adapter; its sign-in chart runs in the worker. The hidden offscreen capture runtime retains its existing ownership, so this is not a claim that every extension workflow has migrated.
 
 ## Native compatibility adapters
 
@@ -65,3 +65,15 @@ All six dedicated-worker browser cases also pass on alpha.60: existing identity/
 Alpha.60 release checks (2026-11-07): `pnpm verify` passes with 677 unit/native tests and one platform skip across 98 files. All 54 main web cases and eight Chromium/Firefox historical-schema cases pass; the affected 21 account cases and six worker cases were repeated after the recovery readiness correction. Five production offline cases and two sample-data cases pass. Eleven packaged Chromium cases pass, including offline restart and private restored reading. A live Vercel build passes resolve/extract (200), reader reload and zero UI-thread WASM loads; the packaged extension separately restores a synthetic web account, saves via the real toolbar and syncs to a reader that survives reload. No production latency comparison was performed.
 
 Recovery presentation follows the ready library invocation lifetime and is withdrawn during drain. Extension UI bindings retain immutable XState snapshots with `$state.raw`. Chrome can resolve offscreen creation before its ESM message listener is installed: the launch chart retries only read-only authorization transport errors for a bounded startup window. Explicit account refusals and issued article writes do not use that retry path.
+
+Extension settings/sign-in follow-up (2026-11-10): preserve Jazz alpha.60's
+existing extension account key and Web Lock name,
+`jazz-account-selection-v1:<registry>:clipper`. Use Jazz's public
+`accountRegistryUrl` and its endpoint scope; keep Jazz's selection representation
+and transforms. The web worker's existing v2 endpoint key is unchanged. Native
+SDK/worker round-trip tests cover saved-account reuse in both directions. Moving
+the extension UI onto the web worker's v2 key strands its offscreen account owner
+on another selection and must not be repeated. Explicit popup close waits for
+the shared host's native session-close acknowledgment. See the dated
+[startup investigation](../reviews/extension-startup-2026-11-09.md) for bounded
+macOS teardown evidence and remaining platform limits.

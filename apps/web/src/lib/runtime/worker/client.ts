@@ -2,7 +2,7 @@ import type { EventPayload } from '../../machines/events.js'
 import { types, createActor, createCallbackLogic, setup } from 'xstate'
 
 import { serveBrokerHost } from './broker-channel.js'
-import { serveAccountStorage, ACCOUNT_STORAGE_PREFIX } from './storage-channel.js'
+import { serveAccountStorage, isAccountStorageKey } from './storage-channel.js'
 import { serveReaderSurface } from '../../reader/surface-host.js'
 import type { RuntimeCommand, LibraryIntent } from './protocol.js'
 import type { RuntimeView, LibraryRender } from './views.js'
@@ -17,7 +17,8 @@ export type WorkerReply =
 	| { type: 'CLOSED' | 'FAILED' }
 	| { type: 'STORAGE_NAMESPACE'; key: string }
 	| { type: 'RECOVERY'; scope: string; view: RecoveryPhraseView; available: boolean }
-type Input = {
+export type Input = {
+	createWorker?: () => { worker: Worker; release: () => void }
 	appId: string
 	serverUrl: string
 	publish: (view: RuntimeView) => void
@@ -31,9 +32,10 @@ type Event =
 	| { type: 'UI_DETACHED' }
 	| { type: 'SHUTDOWN' | 'CLOSED' | 'FAILED' }
 const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }) => {
-	const worker = new Worker(new URL('./application.worker.ts', import.meta.url), {
-		type: 'module'
-	})
+	const native = input.createWorker?.()
+	const worker =
+		native?.worker ??
+		new Worker(new URL('./application.worker.ts', import.meta.url), { type: 'module' })
 	const storage = new MessageChannel(),
 		broker = new MessageChannel()
 	const releaseBroker = serveBrokerHost(broker.port1)
@@ -45,7 +47,7 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 	worker.onmessage = ({ data }: MessageEvent<WorkerReply>) => {
 		switch (data.type) {
 			case 'STORAGE_NAMESPACE':
-				if (!releaseStorage && data.key.startsWith(ACCOUNT_STORAGE_PREFIX))
+				if (!releaseStorage && isAccountStorageKey(data.key))
 					releaseStorage = serveAccountStorage(storage.port1, localStorage, data.key)
 				break
 			case 'RECEIVED':
@@ -103,6 +105,7 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 		worker.onerror = null
 		worker.onmessageerror = null
 		worker.terminate()
+		native?.release()
 		releaseStorage?.()
 		storage.port1.close()
 		releaseBroker()

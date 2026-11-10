@@ -158,10 +158,10 @@ not interchangeable with dropping an actor reference or letting a Window disappe
 The experiments call them while the page is still alive; browsers cannot generally
 be assumed to await arbitrary application promises after a user closes a page.
 
-The recommended implementation direction is to reuse the worker-owned account
-runtime for extension settings, preserving native draining/close acknowledgment
-and keeping domain work outside the disposable UI Window. This is a recommendation,
-not an implemented architecture change or a claim that it has been qualified.
+The investigation recommended reusing the worker-owned account runtime for
+extension settings, preserving native draining/close acknowledgment and keeping
+domain work outside the disposable UI Window. The implementation and bounded
+qualification are recorded in the 2026-11-10 follow-up below.
 The standalone reproducer is also suitable evidence for a Jazz/browser lifecycle
 report; no upstream issue or message has been posted.
 
@@ -169,3 +169,48 @@ Existing repository patches remain applied to installed Jazz. The reproducer add
 no patch and does not establish the result of an unpatched-distribution comparison.
 Native frontend connection lifetime is the isolated boundary; the exact upstream
 repair still needs a qualified implementation or maintainer analysis.
+
+## Worker migration and preserved SDK storage (2026-11-10)
+
+Settings and sign-in use dedicated workers sharing the web worker host and its
+application-drain/native-session-close handshake. Connection confirmation remains
+in the existing worker-side sign-in chart, with Chrome messaging as a Window-only
+adapter so trusted-page sender checks stay intact. The popup closes after native
+session closure. Confirmation admission stops when the host begins draining.
+The hidden offscreen capture runtime retains its existing ownership; this is not
+a claim that every extension workflow has moved out of Window.
+
+The first migration attempt exposed a separate account-selection mismatch: the
+shared web worker uses `jazz-account-selection-v2:<endpoint>:clipper`, whereas
+alpha.60's default browser store uses
+`jazz-account-selection-v1:<registry>:clipper`. Settings restored into the former,
+while the offscreen runtime read the latter. Both contain Jazz's native selection
+representation; the mismatch was the storage key.
+
+With explicit user approval, extension workers now use the existing SDK key and
+Web Lock name. The registry URL comes from Jazz's public `accountRegistryUrl`;
+the endpoint scope follows the pinned SDK's browser scope. Jazz still owns stored
+selection serialization and transformations. Existing extension selections are
+read in place, without copying, rewriting or migrating them. Web storage keeps
+its existing key. Native compatibility tests create a selection through Jazz's
+default browser store, reopen it through the worker store, then reopen a worker
+selection through the default store, covering endpoints with and without a
+trailing slash.
+
+Qualification: all 12 packaged-extension cases pass, including the original 11
+and the new campaign described below. Coverage includes original
+gesture continuation after restoration, account switching, cancellation, private
+reading, full browser restart while offline, and reconnect without gateway
+refetch. A new 24-cycle settings-teardown campaign also passes: each cycle opens
+a fresh settings worker, waits for usable recovery controls, asserts zero Window
+WASM calls, closes the settings page abruptly, captures a distinct article using
+the real toolbar, and verifies the confirmed connection is unchanged. Chromium
+lifecycle diagnostics for this campaign contain no V8 fatal error. This is bounded
+macOS/Chromium evidence, not a repair or universal safety claim about Jazz's native
+Window teardown. The retained Jazz-only reproducer remains useful upstream.
+
+The extracted shared worker host separately passes six browser-worker cases and
+all eight production offline cases, including linked, existing and expired
+credentials with full browser restarts. Native/unit coverage now contains 663
+tests in 106 files. No dependency or patch changed. Hosted live-provider consent
+and Linux extension qualification remain separate checks.

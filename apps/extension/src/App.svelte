@@ -1,20 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte'
-	import { createActor } from 'xstate'
-	import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
-	import { createSignInMachine, connectionObservation } from './signin-machine.js'
-	import { confirmConnection } from './connect.js'
-	import Account from '../../web/src/lib/integrations/Account.svelte'
+	import Application from '../../web/src/lib/integrations/Application.svelte'
+	import { accountWorker } from './account-client.js'
 	import { t } from '../../web/src/lib/localization/index.js'
 	import Settings from './Settings.svelte'
-	import { extensionLibrary } from './library.js'
-	const connection = createActor(
-		createSignInMachine({ connect: confirmConnection, connected: () => {} })
-	)
-	onMount(() => {
-		connection.start()
-		return () => stopAfterShutdown(connection)
-	})
+	const createWorker = () =>
+		accountWorker(new Worker(new URL('./settings.worker.ts', import.meta.url), { type: 'module' }))
 	const appId = __CLIPPER_APP_ID__
 	const serverUrl = __CLIPPER_SERVER__
 </script>
@@ -22,14 +12,8 @@
 <svelte:head><title>{t('app.title')}</title></svelte:head>
 <main>
 	<h1>{t('app.title')}</h1>
-	<Account
-		{appId}
-		{serverUrl}
-		gatewayEnabled={false}
-		libraryFactory={extensionLibrary}
-		onSnapshot={(snapshot) =>
-			connection.send({ type: 'OBSERVED', observation: connectionObservation(snapshot) })}
-		><Settings /></Account
+	<Application {appId} {serverUrl} gatewayEnabled={false} atprotoEnabled={false} {createWorker}
+		><Settings /></Application
 	>
 </main>
 
