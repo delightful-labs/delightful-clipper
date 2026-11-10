@@ -266,7 +266,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									signedOut: {},
 									waiting: {},
 									unavailable: {},
-									retrying: {},
+									retrying: { id: 'application-active-flow-running-retrying' },
 									reobserving: {},
 									creating: {
 										states: {
@@ -824,6 +824,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 									},
 
 									retrying: {
+										id: 'application-active-flow-running-retrying',
 										entry: (args, enq) => {
 											let context = args.context
 											let patch = {}
@@ -1151,8 +1152,7 @@ export function createApplicationReadinessMachine<Session extends object>(
 												meta: accountStatus('rootFailed', t('account.status.rootFailed')),
 												on: {
 													RETRY: {
-														target: '#application-active-flow-running-library',
-														reenter: true
+														target: '#application-active-flow-running-retrying'
 													},
 													LOGOUT: {
 														target: '#application-active-flow-running-loggingOut'

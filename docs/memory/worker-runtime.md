@@ -6,6 +6,36 @@ The reference is [Comlink](https://github.com/GoogleChromeLabs/comlink) and [Sur
 
 ## Production ownership
 
+Long-lived broker admission (2026-11-10): Chrome can report `account.status.rootFailed`
+when a new tab joins a still-open Jazz broker after its original local-first proof
+expires. The existing tab can remain readable. Retrying the same read against the
+rejected connection repeats the error; this is not evidence of exhausted storage
+or a lost library. The alpha.60 patch retains the joining tab's current proof on
+that peer and passes only its token to native subscriber admission. Its audience
+and claimed account must match the runtime owner's original scope; native
+signature and expiry verification remain enforced. Do not extend token lifetimes,
+bypass native admission, change namespaces or clear IndexedDB to fix this.
+
+Root-bootstrap Retry now uses the existing session-readiness retry owner before
+opening the library again. A native same-account retry drains local persistence
+and leases without requiring the failed connection to reach remote sync; ordinary
+account switching and sign-out retain their previous synchronization behavior.
+Retry/Reload feedback is rendered in the main content, including on the library
+page, so recovery is reachable without finding the account settings page. Existing
+catalog copy is reused. The regression suite advances only the disposable broker
+and joining worker clocks, exercises real native verification and retains a local
+offline edit through retry; it does not change the OS clock or user storage.
+
+Qualification: all 677 unit/native tests, 11 worker browser cases (including five
+expiry/signature/audience/account cases), type checks, lint, formatting and vendor
+verification pass. Both production offline fixture builds pass. Seven offline
+cases passed together, including linked/existing/expired-provider identities and
+full stopped-server browser restarts with reconnect. The remaining service-worker
+update case timed out at its five-second cache-removal poll and passed in isolation
+in 2.8 seconds with the same builds; retain this timing flake in the review notes.
+Chrome MCP confirmed the original tab reloads its same two readable articles with
+no startup error or console errors; no account or storage reset was performed.
+
 The alpha.60 migration adds a local-first preparation state before library bootstrap. A thin client is not evidence that local storage is ready. The worker invokes the SDK upgrade, refreshes its observation after settlement, and drains an in-flight upgrade before acknowledging shutdown. An upgrade failure leaves the library unavailable instead of opening it against the thin client.
 
 Unexpectedly stopped transaction owners transfer their native acquisition, pending call, and commit receipts into private worker-realm custody. These receipts are never projected into UI messages, automatically replayed, or assumed safe to roll back. Retained custody blocks the worker host's clean-close acknowledgment; ordinary graceful shutdown still drains through the existing transaction owners.

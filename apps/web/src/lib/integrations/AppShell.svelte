@@ -23,12 +23,14 @@
 		account,
 		children,
 		connectionMessage,
-		accountMessage
+		accountMessage,
+		runtimeFeedback
 	}: {
 		account: Snippet
 		children: Snippet
 		connectionMessage: WorkflowMessage | undefined
 		accountMessage: WorkflowMessage | undefined
+		runtimeFeedback: Snippet
 	} = $props()
 	setAccountSettings({
 		get controls() {
@@ -149,7 +151,10 @@
 			</Drawer>
 		{/if}
 		<main class="content" inert={modal && !readerFocused}>
-			<div class="page-content">{@render children()}</div>
+			<div class="page-content">
+				{@render runtimeFeedback()}
+				{@render children()}
+			</div>
 			{#if library.actor && !readerFocused && page.url.pathname === '/'}
 				<div class="capture-control">
 					{#key library.actor}<AddLink actor={library.actor} />{/key}

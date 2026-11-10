@@ -23,8 +23,10 @@
 {#if !admitted}<div><h1>{t('app.title')}</h1></div>{/if}
 {#if admitted}
 	<Account appId={PUBLIC_JAZZ_APP_ID} {serverUrl} gatewayEnabled={CAPTURE_GATEWAY_ENABLED}>
-		{#snippet shell(account, content, connectionMessage, accountMessage)}
-			<AppShell {account} {connectionMessage} {accountMessage}>{@render content()}</AppShell>
+		{#snippet shell(account, content, connectionMessage, accountMessage, runtimeFeedback)}
+			<AppShell {account} {connectionMessage} {accountMessage} {runtimeFeedback}
+				>{@render content()}</AppShell
+			>
 		{/snippet}
 		{@render children()}
 	</Account>

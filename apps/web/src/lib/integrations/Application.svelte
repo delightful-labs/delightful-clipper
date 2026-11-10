@@ -23,7 +23,9 @@
 		gatewayEnabled: boolean
 		createWorker?: import('../runtime/worker/client.js').Input['createWorker']
 		atprotoEnabled?: boolean
-		shell?: Snippet<[Snippet, Snippet, WorkflowMessage | undefined, WorkflowMessage | undefined]>
+		shell?: Snippet<
+			[Snippet, Snippet, WorkflowMessage | undefined, WorkflowMessage | undefined, Snippet]
+		>
 	} = $props()
 	let view = $state<RuntimeView['account']>()
 	let library = $state<LibraryClient>()
@@ -89,6 +91,22 @@
 	}
 </script>
 
+{#snippet retryControls()}
+	{#if failed || view?.requiresReload}<Button type="button" onclick={() => window.location.reload()}
+			>{action('reload', 'page')}</Button
+		>{/if}
+	{#if view?.canRetry}<Button type="button" onclick={() => account({ type: 'RETRY' })}
+			>{t('actions.retry')}</Button
+		>{/if}
+{/snippet}
+{#snippet runtimeFeedback()}
+	{#if failed || view?.requiresReload || view?.canRetry}
+		<div class="runtime-feedback">
+			{#if view?.message.text}<StatusMessage {...view.message} />{/if}
+			{@render retryControls()}
+		</div>
+	{/if}
+{/snippet}
 {#snippet controls()}
 	<section class="account-controls" aria-label={t('app.title')}>
 		{#if oauth?.message}<StatusMessage {...oauth.message} />{/if}
@@ -140,13 +158,7 @@
 				onRetry={() => recover('RETRY')}
 				onHide={() => recover('HIDE')}
 			/>{/if}
-		{#if failed || view?.requiresReload}<Button
-				type="button"
-				onclick={() => window.location.reload()}>{action('reload', 'page')}</Button
-			>{/if}
-		{#if view?.canRetry}<Button type="button" onclick={() => account({ type: 'RETRY' })}
-				>{t('actions.retry')}</Button
-			>{/if}
+		{#if !shell}{@render retryControls()}{/if}
 		{#if view?.canLogout}<Button type="button" onclick={() => account({ type: 'LOGOUT' })}
 				>{t('actions.sign_out')}</Button
 			>{/if}
@@ -156,10 +168,18 @@
 		controls,
 		children,
 		view?.connectionMessage,
-		view?.message
+		view?.message,
+		runtimeFeedback
 	)}{:else}{@render controls()}{@render children()}{/if}
 
 <style>
+	.runtime-feedback {
+		display: grid;
+		gap: var(--dui-spacing-sm);
+		padding: var(--dui-spacing-md);
+		padding-inline-start: calc(var(--app-control-size, 44px) + var(--dui-spacing-md, 1rem));
+	}
+
 	.account-controls {
 		display: grid;
 		gap: var(--dui-space-sm);
