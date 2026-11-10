@@ -2,7 +2,8 @@ import type { EventPayload } from '../../machines/events.js'
 import { types, createActor, createCallbackLogic, setup } from 'xstate'
 
 import { serveBrokerHost } from './broker-channel.js'
-import { serveAccountStorage, isAccountStorageKey } from './storage-channel.js'
+import { isAccountStorageKey } from './storage-channel.js'
+import { createScopedStorageHost } from './scoped-storage-channel.js'
 import { serveReaderSurface } from '../../reader/surface-host.js'
 import type { RuntimeCommand, LibraryIntent } from './protocol.js'
 import type { RuntimeView, LibraryRender } from './views.js'
@@ -37,18 +38,22 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 		native?.worker ??
 		new Worker(new URL('./application.worker.ts', import.meta.url), { type: 'module' })
 	const storage = new MessageChannel(),
+		storageControl = new MessageChannel(),
 		broker = new MessageChannel()
+	const storageScope = crypto.randomUUID()
 	const releaseBroker = serveBrokerHost(broker.port1)
 	const connectivity = () => worker.postMessage({ type: 'CONNECTIVITY', online: navigator.onLine })
 	window.addEventListener('online', connectivity)
 	window.addEventListener('offline', connectivity)
-	let releaseStorage: (() => void) | undefined
+	const storageHost = createScopedStorageHost(storage.port1, storageControl.port1, storageScope, {
+		getItem: (key) => localStorage.getItem(key),
+		setItem: (key, value) => localStorage.setItem(key, value)
+	})
 	let recoveryAttached = true
 	worker.onmessage = ({ data }: MessageEvent<WorkerReply>) => {
 		switch (data.type) {
 			case 'STORAGE_NAMESPACE':
-				if (!releaseStorage && isAccountStorageKey(data.key))
-					releaseStorage = serveAccountStorage(storage.port1, localStorage, data.key)
+				if (isAccountStorageKey(data.key)) storageHost.bind(data.key)
 				break
 			case 'RECEIVED':
 				sendBack({ type: 'RECEIVED', requestId: data.requestId })
@@ -94,9 +99,11 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 			appId: input.appId,
 			serverUrl: input.serverUrl,
 			storage: storage.port2,
+			storageControl: storageControl.port2,
+			storageScope,
 			broker: broker.port2
 		},
-		[storage.port2, broker.port2]
+		[storage.port2, storageControl.port2, broker.port2]
 	)
 	return () => {
 		window.removeEventListener('online', connectivity)
@@ -104,11 +111,12 @@ const resource = createCallbackLogic<Event, Input>(({ input, receive, sendBack }
 		worker.onmessage = null
 		worker.onerror = null
 		worker.onmessageerror = null
+		storageHost.dispose()
+		storage.port1.close()
+		storageControl.port1.close()
+		releaseBroker()
 		worker.terminate()
 		native?.release()
-		releaseStorage?.()
-		storage.port1.close()
-		releaseBroker()
 	}
 })
 /** UI-native transport lifetime only. It never retries commands or terminates a
@@ -194,6 +202,7 @@ const clientMachine = setup({
 				enq.sendTo('resource', { type: 'UI_DETACHED' })
 			},
 			on: {
+				CLOSED: { target: 'closed' },
 				SHUTDOWN: (args, enq) => {
 					enq.sendTo('resource', { type: 'SHUTDOWN' })
 					return { target: 'draining' }

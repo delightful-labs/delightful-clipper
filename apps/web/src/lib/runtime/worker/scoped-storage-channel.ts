@@ -46,9 +46,8 @@ type Response = { value: string | null }
 
 /** Synchronous Window primitives bound to one existing key. Scope/sequence are
  * native capability validation; account selection and transforms stay in Worker. */
-export function serveScopedAccountStorage(
+function serveStorageData(
 	dataPort: MessagePort,
-	controlPort: MessagePort,
 	scope: string,
 	storage: Pick<Storage, 'getItem' | 'setItem'>,
 	key: string
@@ -111,11 +110,48 @@ export function serveScopedAccountStorage(
 		dataPort.removeEventListener('message', receive)
 		dataPort.close()
 	}
-	const disposeControl = serveHostClose(controlPort, scope, disposeData)
-	return () => {
-		disposeData()
-		disposeControl()
+	return disposeData
+}
+
+/** The independent close lease exists before Worker chooses the fixed key.
+ * Revoking it prevents a late namespace message from recreating a data host. */
+export function createScopedStorageHost(
+	dataPort: MessagePort,
+	controlPort: MessagePort,
+	scope: string,
+	storage: Pick<Storage, 'getItem' | 'setItem'>
+) {
+	hostScopeSchema.parse(scope)
+	let released = false
+	let disposeData: (() => void) | undefined
+	const releaseData = () => {
+		released = true
+		disposeData?.()
+		dataPort.close()
 	}
+	const disposeControl = serveHostClose(controlPort, scope, releaseData)
+	return {
+		bind(key: string) {
+			if (released || disposeData) return false
+			disposeData = serveStorageData(dataPort, scope, storage, key)
+			return true
+		},
+		dispose: () => {
+			releaseData()
+			disposeControl()
+		}
+	}
+}
+export function serveScopedAccountStorage(
+	dataPort: MessagePort,
+	controlPort: MessagePort,
+	scope: string,
+	storage: Pick<Storage, 'getItem' | 'setItem'>,
+	key: string
+) {
+	const host = createScopedStorageHost(dataPort, controlPort, scope, storage)
+	host.bind(key)
+	return host.dispose
 }
 
 type Failed = Exclude<WorkerChannelResult<Response>, { kind: 'succeeded' }>
@@ -263,10 +299,12 @@ export function createScopedAccountStorage(
 		host: {
 			identity: closeIdentity,
 			closed: closed.promise,
-			requestClose: () => actor.send({ type: 'CLOSE' })
+			requestClose: () => {
+				if (actor.getSnapshot().status === 'active') actor.send({ type: 'CLOSE' })
+			}
 		},
 		close: () => {
-			actor.send({ type: 'CLOSE' })
+			if (actor.getSnapshot().status === 'active') actor.send({ type: 'CLOSE' })
 			return closed.promise
 		},
 		/** Disruptive realm teardown only. Rejection is not a host-close receipt. */

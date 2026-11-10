@@ -3,7 +3,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { SimulatedClock } from 'xstate'
 import type { WorkerRequestIdentity } from 'delightful-local-first/worker/request/contracts'
 import { serveHostClose } from './host-close-channel.js'
-import { createScopedAccountStorage, serveScopedAccountStorage } from './scoped-storage-channel.js'
+import {
+	createScopedAccountStorage,
+	createScopedStorageHost,
+	serveScopedAccountStorage
+} from './scoped-storage-channel.js'
 
 const releases = new Set<() => void>()
 afterEach(() => {
@@ -293,4 +297,24 @@ it('forced disposal fails observers and rejects closure observation without manu
 	await writing
 	await closure
 	expect(f.onBlocked).not.toHaveBeenCalled()
+})
+
+it('closes before namespace binding and never recreates a data host for a late namespace', async () => {
+	const data = new MessageChannel(),
+		control = new MessageChannel(),
+		scope = crypto.randomUUID()
+	const native = { getItem: vi.fn(() => 'late value'), setItem: vi.fn() }
+	const host = createScopedStorageHost(data.port1, control.port1, scope, native)
+	const storage = createScopedAccountStorage(data.port2, control.port2, scope, {
+		onOverdue: vi.fn(),
+		onBlocked: vi.fn()
+	})
+	releases.add(() => {
+		storage.dispose()
+		host.dispose()
+	})
+	expect(await storage.close()).toEqual(storage.host.identity)
+	expect(host.bind('must-not-open')).toBe(false)
+	expect(native.getItem).not.toHaveBeenCalled()
+	expect(native.setItem).not.toHaveBeenCalled()
 })

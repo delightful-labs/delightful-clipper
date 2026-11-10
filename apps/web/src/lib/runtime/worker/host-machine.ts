@@ -4,6 +4,7 @@ import { types, createCallbackLogic, setup, createAsyncLogic, type ActorRefFrom 
 import { hasDetachedTransactions } from '../../backend/jazz/transaction.js'
 
 import type { Session } from '../../backend/jazz/account.js'
+import type { WorkerHostClosed } from 'delightful-local-first/worker/channel/contracts'
 import type { SessionOwnerReply } from 'delightful-local-first/session/contracts'
 import type { AccountInput, RecoveryBinding } from '../../contracts/account.js'
 import { createApplicationReadinessMachine } from '../../machines/runtime/application-readiness.js'
@@ -25,6 +26,7 @@ type Input = AccountInput<Session> & {
 	scope: string
 	callbackAttempt?: string | null | undefined
 	authReturned?: () => void
+	closeAccountStore?: () => Promise<WorkerHostClosed>
 }
 type LibraryRef = ActorRefFrom<typeof libraryMachine>
 type Context = {
@@ -71,7 +73,10 @@ const actors = {
 	application,
 	owner,
 	tagForm: tagFormMachine,
-	close: createAsyncLogic({ run: ({ input }: { input: Session }) => input.close() })
+	close: createAsyncLogic({ run: ({ input }: { input: Session }) => input.close() }),
+	closeAccountStore: createAsyncLogic<WorkerHostClosed, () => Promise<WorkerHostClosed>>({
+		run: ({ input }) => input()
+	})
 }
 
 /** Realm owner. Application detach drains domain work first; then wait for a
@@ -107,11 +112,14 @@ export const workerHostMachine = setup({
 			application: types<import('xstate').ActorRefFrom<(typeof actors)['application']>>(),
 			owner: types<import('xstate').ActorRefFrom<(typeof actors)['owner']>>(),
 			tagForm: types<import('xstate').ActorRefFrom<(typeof actors)['tagForm']>>(),
+			closeAccountStore: types<import('xstate').ActorRefFrom<typeof actors.closeAccountStore>>(),
 			close: types<import('xstate').ActorRefFrom<(typeof actors)['close']>>()
 		}
 	},
 	actors,
 	guards: {
+		hasAccountStore: ({ context }: { context: Context }) =>
+			context.input.closeAccountStore !== undefined,
 		custodyClear: () => !hasDetachedTransactions(),
 		suppliedRecovery: ({ event }: { event: Event }) =>
 			event.type === 'BIND_RECOVERY' && !!event.binding,
@@ -379,7 +387,7 @@ export const workerHostMachine = setup({
 				},
 				OWNER_EMPTY: (args) => {
 					if (args.guards.custodyClear()) {
-						return { target: 'closed' }
+						return { target: args.guards.hasAccountStore(args) ? 'closingAccountStore' : 'closed' }
 					}
 					return { target: 'failed' }
 				}
@@ -393,10 +401,22 @@ export const workerHostMachine = setup({
 					if (!context.session) throw new Error('Worker session unavailable')
 					return context.session
 				},
+				onDone: (args) => ({
+					target: args.guards.hasAccountStore(args) ? 'closingAccountStore' : 'closed'
+				}),
+				onError: { target: 'failed' }
+			}
+		},
+		closingAccountStore: {
+			invoke: {
+				id: 'closeAccountStore',
+				src: 'closeAccountStore',
+				input: ({ context }) => required(context.input.closeAccountStore),
 				onDone: { target: 'closed' },
 				onError: { target: 'failed' }
 			}
 		},
+
 		closed: {
 			type: 'final',
 			entry: (args, enq) => {

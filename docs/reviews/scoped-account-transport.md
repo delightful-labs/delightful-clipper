@@ -1,95 +1,128 @@
 # Scoped account transport implementation
 
-The user authorized continued implementation and testing while away. This unit
-prepares the scoped storage transport; production account/broker routing still uses
-the existing owners until unknown-write lock custody is integrated atomically.
+Production application account storage now uses the scoped DLF channel and a
+Worker account-store owner. Broker migration remains follow-up work.
 
 ## Ownership and invocation
 
-`createScopedAccountStorage` creates one shared DLF channel at the Worker startup
-boundary. SDK reads and writes send REQUEST commands to that existing root; they
-do not start actors. The channel invokes its private controller, which spawns the
-bounded request population and invokes native data/control listeners. Request
-actors invoke one native post leaf each. All reply/deadline/close decisions remain
-in those DLF charts. No generic lifecycle chart is copied into Clipper.
+Solid edges describe actor ownership. Dotted edges describe API, native message or
+receipt coordination. The SDK boundary and detached-custody boundary label root
+creation explicitly; keeper roots deliberately survive forced account-owner stop.
 
 ```mermaid
 flowchart TD
-    SDK[Worker SDK read/write boundary] -->|REQUEST| Channel[DLF scoped channel]
+    Boot[Worker INITIALIZE boundary] -. creates root .-> Account[Account-store owner]
+    Boot -. creates root .-> Channel[DLF scoped channel]
+    SDK[SDK account.update API] -. START with operation ID .-> Account
+    Account -->|spawn at most eight| Update[Account update machine]
+    Update -->|invoke| Lock[Native Web Lock adapter]
+    Update -->|invoke read / one write| IO[Selected storage operation]
+    Update -->|invoke after uncertain write| Drain[DLF original-effect drain]
+    IO -. REQUEST .-> Channel
     Channel -->|invoke| Controller[Private channel controller]
-    Controller -->|spawn up to eight| Request[DLF request owner]
-    Request -->|invoke once| Post[Native data post]
-    Controller -->|invoke| Data[Validated data listener]
+    Controller -->|spawn at most eight| Request[DLF request owner]
+    Controller -->|invoke| Data[Native data listener]
     Controller -->|invoke| Control[Independent control listener]
-    Post --> Window[Window storage primitives / fixed existing key]
-    Window --> Data
-    Controller -->|one CLOSE_HOST post| HostClose[Window native data-host disposer]
-    HostClose -->|HOST_CLOSED after disposal| Control
-    Channel -->|real scoped receipt| Account[Account owner retains/releases lock]
-    Account -. next integration unit .-> Drain[DLF original-effect drain]
+    Request -->|invoke once| Post[Native data post]
+    Post -. scoped READ / WRITE .-> Window[Window synchronous storage host]
+    Window -. reply .-> Data
+    Controller -. CLOSE_HOST .-> Close[Window data-host disposer]
+    Close -. exact HOST_CLOSED after disposal .-> Control
+    Control -. original host-close receipt .-> Drain
+    Lock -. stop / error transfers native capabilities .-> Recipient[Worker-realm custody boundary]
+    Recipient -. creates finite root .-> Keeper[Account write-custody machine]
+    Keeper -->|invoke| DetachedDrain[DLF original-effect drain]
+    Keeper -->|invoke and await actual release| Release[Native lock release]
+    Control -. original host-close receipt .-> DetachedDrain
+    Recipient -. retained keeper count .-> Account
+    Host[Application host machine] -->|invoke SDK close then account close| Shutdown[Shutdown operation]
+    Shutdown -. SHUTDOWN .-> Account
+    Account -. close after updates and keepers settle .-> Channel
+    Account -. actual scoped closure proof .-> Shutdown
 ```
 
-The diagram's account-owner connection is the required upcoming integration, not
-a claim that the legacy account owner already implements it. This transport must
-not be passed to the legacy `createWorkerAccountStore` owner: its write-error path
-releases the lock before an uncertain host effect is proven quiescent.
+The SDK promise facade starts one account root at Worker initialization. It only
+allocates operation identity and settles native observers; admission, transform,
+write, failure, drain and shutdown decisions live in charts. The channel root is
+also created once, never from an individual read/write leaf. Detached keeper roots
+start only on native custody handoff, with result/error observation attached.
+They cannot be children of the stopped account owner because their lifetime must
+continue. A keeper retains the original operation/scope and native receipts;
+it cannot read another account, transform data or issue another write.
 
-## Native boundaries
+## Account update and shutdown
 
-`serveScopedAccountStorage` binds native primitives to exactly the supplied existing
-key. It validates strict bounded wire DTOs, immutable scope and exact FIFO sequence
-before any storage effect. Worker payload validation precedes channel admission,
-so a refused oversized write consumes no wire sequence. Native post refusal closes
-the channel; a posted peer rejection can preserve sequence continuity. Request IDs,
-scope and sequences never select another storage namespace.
+```mermaid
+stateDiagram-v2
+    [*] --> Acquiring
+    Acquiring --> Reading: native lock granted
+    Reading --> Transforming: original value
+    Transforming --> Writing: original SDK transform
+    Writing --> Releasing: acknowledged
+    Writing --> Draining: unknown / timeout / shutdown
+    Acquiring --> Releasing: failure / cancel queued acquisition
+    Reading --> Releasing: failure / shutdown
+    Transforming --> Releasing: failure
+    Writing --> Releasing: proven not issued
+    Draining --> Releasing: original effect or exact host-close proof
+    Draining --> Draining: overdue / no proof
+    Releasing --> Releasing: overdue / missing native release receipt
+    Releasing --> [*]: actual native release
+```
 
-Window executes only synchronous `getItem`/`setItem` and reply posting. Post failure
-disposes its data host without manufacturing a receipt or replaying a primitive.
-The independent `serveHostClose` handler disposes the old data host before emitting
-a validated receipt. Native disposed flags, FIFO counters and listener teardown are
-transport resource facts; they do not select account identity or SDK transforms.
+Unknown output settles the SDK observer once and retains custody. Late proof
+permits release but never changes that failed result or replays the transform.
+A known write acknowledgement stays acknowledged if release becomes overdue.
+Before-write failures remain not-issued. Success requires the native lock request
+promise to settle after release, rather than merely calling a release function.
+The owner rejects new updates after shutdown and waits for both update children
+and detached keepers before requesting exact channel/host closure. The application
+host awaits SDK closure and this account-store closure before emitting `CLOSED`.
 
-The Worker validates bounded replies, closes all unexpected transferred ports and
-reports decoded facts to DLF. It does not maintain another request map or timer.
-The channel correlates scope/request ID/sequence and settles each observer once.
-The storage facade exposes `host.identity`, `host.closed` and `host.requestClose`
-for the account owner's proof/custody composition. Failed writes preserve bounded
-effect-outcome and request-identity metadata; errors contain no rejected value or
-raw native diagnostic. A forced `dispose()` rejects closure observation and fails
-pending observers conservatively; it is disruptive teardown, not clean closure.
+Deadlines are named, injectable chart policies: the account owner defaults to
+10 seconds per lock/read/write/release wait; the scoped channel retains its
+10-second request/close policy. These bound local native/IPC feedback, not remote
+synchronization. They report overdue and retain issued-effect custody. No timeout
+claims rejection, safe replay, successful shutdown or native release.
 
-## Qualification boundary
+## Native state outside charts
 
-Eleven native scoped-storage tests pass: concurrency, out-of-order/stale replies,
-fixed key, validation before sequence allocation, FIFO admission, native failure,
-dropped WRITE acknowledgement, delayed/wrong close receipts, malformed transfer
-cleanup, post failures, port failure and forced disposal without a false receipt.
-The lost-acknowledgement case observes an actual completed primitive, unknown
-output retaining its original scope/sequence, continued custody observation past
-the close deadline, and exactly one write after late closure. It does not assert
-the legacy account owner retains its Web Lock.
+The Window host validates strict bounded wire schemas, immutable scope and exact
+FIFO sequence before synchronous `getItem`/`setItem` at the selected existing key.
+Its close-control listener exists before key binding; close-before-binding prevents
+later resurrection. Data handlers are disposed before a host-close receipt.
+Post failure disposes the data host without replaying the primitive.
 
-The compatible archive includes the qualified DLF transaction/supervisor and the
-request/channel/effect-drain modules. All 258 baseline files remain byte-identical;
-only public exports and the new modules are added. The A archive is preserved.
-The B artifact is pinned to DLF `1571ba2`, with reproducible hashes in
-`vendor/worker-transport-provenance.json`. Both application manifests use that
-artifact; native Jazz alpha.60 adapters and the existing recovery/view patch remain.
+Native disposed flags, sequence counters, MessagePorts, promise resolvers,
+subscription collections and Web Lock release gates remain adapter resources.
+The native write ledger records only original receipts, outcomes and custody
+handoff. It registers before issuing the write, revokes late orphaned I/O and
+permits only one handoff. Immutable machine context holds workflow facts.
+Native bookkeeping does not choose a storage namespace, SDK transform, retry or
+account transition. All domain and Jazz work remains in the Worker.
 
-Next, the account owner must retain the original issued-write receipt and native
-lease through uncertainty, notify the SDK observer without stopping custody,
-cancel queued locks safely, wait for actual native release, and hand native
-receipts to a longer-lived keeper on forced actor stop. Root shutdown must await
-that custody before acknowledging realm closure. Only then cut over production
-storage/broker wiring and qualify dropped/late replies with the actual SDK owner,
-extension, offline restart and account bindings. SHARE-3, REC-3 and DLF-3 stay open.
+Forced `dispose()` fails pending observers and rejects clean closure. It does not
+stop detached keepers or treat actor termination as proof. Window hard teardown
+disposes its native data hosts before terminating the Worker. An unobservable
+receipt or failed keeper remains blocked; no synthetic completion clears custody.
 
-The compatible artifact passes full `pnpm verify` (vendor, format, lint, web and
-extension checks, 691 unit/native tests and production Netlify build), all seven
-worker browser cases, 12 packaged-extension cases and eight production-offline
-cases. Final canonical-schema and complete issued-identity assertions additionally
-pass strict TypeScript, all native/unit tests and the worker browser suite. The
-extension/offline results qualify unchanged production routing with this artifact;
-they do not claim the new account owner has been integrated. Existing app and DLF
-Jazz imports resolve the same installed native SDK module. The reproducible archive
-hash is `1ffa8d8490915da61fb7dc9a600733eed00dcce33cdc772ca0a12d1bbf0d95b1`.
+## Qualification and remaining work
+
+Native tests cover actual Web Lock serialization, queued cancellation, capacity,
+read/transform failures, not-issued writes, dropped acknowledgement, late proof,
+release failure/timeout, forced stop, child failure, revoked late I/O and reentrant
+stop during posting. Chromium tests combine the real account facade, Workers,
+MessageChannels, localStorage and Web Locks: a dropped WRITE reply retains the
+lock past timeout and a competing operation stays blocked until matching closure
+proof. Wrong close IDs cannot release it. The forced-owner-stop variant proves
+custody survives independently without claiming clean owner closure.
+
+See the [checkpoint record](workflow-hardening-progress.md#checkpoint-qualification)
+for final regression counts and archive provenance. Both consumers use DLF source
+`1571ba2`; all native alpha.60 module bytes and existing patches are preserved.
+Web v2 and extension v1 keys/locks remain unchanged.
+
+Broker routing is unchanged. Its scoped-channel migration, transferred-port cases,
+Finance adoption and the rest of change sets C–G remain open. The legacy account
+owner remains for compatibility fixtures and must not be supplied the new scoped
+transport: its old write-error release path does not implement this custody contract.

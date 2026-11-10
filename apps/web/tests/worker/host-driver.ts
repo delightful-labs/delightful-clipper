@@ -1,3 +1,4 @@
+import { serveScopedAccountStorage } from '../../src/lib/runtime/worker/scoped-storage-channel.js'
 import { serveBrokerHost } from '../../src/lib/runtime/worker/broker-channel.js'
 import {
 	serveAccountStorage,
@@ -55,8 +56,16 @@ export async function qualifyApplicationHost(shutdownImmediately = false) {
 		{ type: 'module' }
 	)
 	const storage = new MessageChannel(),
+		storageControl = new MessageChannel(),
 		broker = new MessageChannel()
-	const stopStorage = serveAccountStorage(storage.port1, localStorage, key)
+	const storageScope = crypto.randomUUID()
+	const stopStorage = serveScopedAccountStorage(
+		storage.port1,
+		storageControl.port1,
+		storageScope,
+		localStorage,
+		key
+	)
 	const stopBroker = serveBrokerHost(broker.port1)
 	try {
 		return await new Promise((resolve, reject) => {
@@ -76,9 +85,11 @@ export async function qualifyApplicationHost(shutdownImmediately = false) {
 					appId: PUBLIC_JAZZ_APP_ID,
 					serverUrl: PUBLIC_JAZZ_SERVER_URL,
 					storage: storage.port2,
+					storageControl: storageControl.port2,
+					storageScope,
 					broker: broker.port2
 				},
-				[storage.port2, broker.port2]
+				[storage.port2, storageControl.port2, broker.port2]
 			)
 			if (shutdownImmediately) worker.postMessage({ type: 'SHUTDOWN' })
 		})
@@ -101,8 +112,16 @@ export async function qualifyScopedCommands() {
 		{ type: 'module' }
 	)
 	const storage = new MessageChannel(),
+		storageControl = new MessageChannel(),
 		broker = new MessageChannel()
-	const stopStorage = serveAccountStorage(storage.port1, localStorage, key),
+	const storageScope = crypto.randomUUID()
+	const stopStorage = serveScopedAccountStorage(
+			storage.port1,
+			storageControl.port1,
+			storageScope,
+			localStorage,
+			key
+		),
 		stopBroker = serveBrokerHost(broker.port1)
 	try {
 		return await new Promise((resolve, reject) => {
@@ -146,9 +165,11 @@ export async function qualifyScopedCommands() {
 					appId: PUBLIC_JAZZ_APP_ID,
 					serverUrl: PUBLIC_JAZZ_SERVER_URL,
 					storage: storage.port2,
+					storageControl: storageControl.port2,
+					storageScope,
 					broker: broker.port2
 				},
-				[storage.port2, broker.port2]
+				[storage.port2, storageControl.port2, broker.port2]
 			)
 		})
 	} finally {

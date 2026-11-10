@@ -3,10 +3,14 @@ import { createActor } from 'xstate'
 import { vi } from 'vitest'
 import { createSessionAcquisitionMachine } from 'delightful-local-first/session/workflow'
 import type { Session } from '../../backend/jazz/account.js'
+import type { WorkerHostClosed } from 'delightful-local-first/worker/channel/contracts'
 import type { AccountInput } from '../../contracts/account.js'
 import { workerHostMachine } from './host-machine.js'
 
-export function createWorkerHostFixture(acquisition?: Promise<void>) {
+export function createWorkerHostFixture(
+	acquisition?: Promise<void>,
+	closeAccountStore?: () => Promise<WorkerHostClosed>
+) {
 	bindWorkerConnectivity(true)
 	const unused = vi.fn(async () => {})
 	const close = vi.fn(async () => {})
@@ -65,6 +69,8 @@ export function createWorkerHostFixture(acquisition?: Promise<void>) {
 	return {
 		close,
 		owner,
-		actor: createActor(workerHostMachine, { input: { ...input, scope: 'test-scope' } })
+		actor: createActor(workerHostMachine, {
+			input: { ...input, scope: 'test-scope', ...(closeAccountStore ? { closeAccountStore } : {}) }
+		})
 	}
 }

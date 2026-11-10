@@ -97,7 +97,8 @@ it('binds the alpha.60 namespace before serving the worker account read', async 
 	})
 	const worker = NativeWorker.latest
 	if (!worker) throw new Error('Worker fixture unavailable')
-	const initialize: { storage: MessagePort } | undefined = worker.postMessage.mock.calls[0]?.[0]
+	const initialize: { storage: MessagePort; storageScope: string } | undefined =
+		worker.postMessage.mock.calls[0]?.[0]
 	if (!initialize) throw new Error('Worker initialization missing')
 	const replies: unknown[] = []
 	initialize.storage.onmessage = (event) => replies.push(event.data)
@@ -106,9 +107,24 @@ it('binds the alpha.60 namespace before serving the worker account read', async 
 	const key = accountStorageKey('https://example.com/jazz')
 	try {
 		worker.emit({ type: 'STORAGE_NAMESPACE', key })
-		initialize.storage.postMessage({ type: 'READ', id })
+		initialize.storage.postMessage({
+			type: 'READ',
+			version: 1,
+			scope: initialize.storageScope,
+			requestId: id,
+			sequence: 1
+		})
 		await vi.waitFor(() =>
-			expect(replies).toEqual([{ type: 'RESULT', id, value: 'opaque-test-selection' }])
+			expect(replies).toEqual([
+				{
+					type: 'RESULT',
+					version: 1,
+					scope: initialize.storageScope,
+					requestId: id,
+					sequence: 1,
+					value: 'opaque-test-selection'
+				}
+			])
 		)
 		expect(getItem).toHaveBeenCalledExactlyOnceWith(key)
 	} finally {
@@ -137,5 +153,27 @@ it('executes an acknowledged provider navigation and releases the already-closed
 	expect(assign).toHaveBeenCalledExactlyOnceWith('https://provider.example.invalid/authorize')
 	expect(worker.terminate).toHaveBeenCalledOnce()
 	client.close()
+	expect(worker.terminate).toHaveBeenCalledOnce()
+})
+
+it('accepts a genuine late close acknowledgement after a shutdown failure without requiring another UI shutdown', () => {
+	vi.stubGlobal('Worker', NativeWorker)
+	vi.stubGlobal(
+		'window',
+		Object.assign(new EventTarget(), { location: { href: 'https://example.invalid/' } })
+	)
+	vi.stubGlobal('navigator', { onLine: true })
+	const client = openApplicationClient({
+		appId: crypto.randomUUID(),
+		serverUrl: 'https://example.invalid/jazz',
+		publish: vi.fn(),
+		recovery: vi.fn(),
+		failed: vi.fn()
+	})
+	const worker = NativeWorker.latest!
+	client.close()
+	worker.emit({ type: 'FAILED' })
+	expect(worker.terminate).not.toHaveBeenCalled()
+	worker.emit({ type: 'CLOSED' })
 	expect(worker.terminate).toHaveBeenCalledOnce()
 })

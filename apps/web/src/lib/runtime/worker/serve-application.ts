@@ -18,8 +18,10 @@ import { recoveryView } from './recovery-owner.js'
 import { inspectMachines } from '../../diagnostics/inspect.js'
 import { workerHostMachine } from './host-machine.js'
 import type { WorkerHost } from './host-machine.js'
-import { createWorkerAccountStore } from './account-store.js'
-import { accountStorageClient, accountStorageKey } from './storage-channel.js'
+import { createScopedWorkerAccountStore } from './scoped-account-store.js'
+import { accountStorageKey } from './storage-channel.js'
+import { createScopedAccountStorage } from './scoped-storage-channel.js'
+import { hostScopeSchema } from './host-close-channel.js'
 import { brokerHostClient } from './broker-channel.js'
 
 export function serveApplicationWorker(options: {
@@ -35,6 +37,8 @@ export function serveApplicationWorker(options: {
 		appId: z.string().uuid(),
 		serverUrl: z.string().url(),
 		storage: z.instanceof(MessagePort),
+		storageControl: z.instanceof(MessagePort),
+		storageScope: hostScopeSchema,
 		broker: z.instanceof(MessagePort)
 	})
 	let observedRecovery: object | undefined
@@ -99,20 +103,32 @@ export function serveApplicationWorker(options: {
 		if (!decoded.success) return
 		const { serverUrl, storage: storagePort, broker: brokerPort } = decoded.data
 		updateConnectivity = bindWorkerConnectivity(decoded.data.online ?? navigator.onLine)
-		const storage = accountStorageClient(storagePort)
+		const storage = createScopedAccountStorage(
+			storagePort,
+			decoded.data.storageControl,
+			decoded.data.storageScope,
+			{
+				onOverdue: () => self.postMessage({ type: 'FAILED' }),
+				onBlocked: () => self.postMessage({ type: 'FAILED' })
+			}
+		)
 		const broker = brokerHostClient(brokerPort)
 		const key = (options.storageKey ?? accountStorageKey)(serverUrl)
 		self.postMessage({ type: 'STORAGE_NAMESPACE', key })
+		const accountStore = createScopedWorkerAccountStore(key, storage, {
+			onOverdue: () => self.postMessage({ type: 'FAILED' })
+		})
 		const input = options.account({
 			serverUrl,
 			env: 'clipper',
-			store: createWorkerAccountStore(key, storage),
+			store: accountStore,
 			runtimeSources: { wasmUrl, wasmVersion: JAZZ_RUNTIME_VERSION, browserWorkerHost: broker }
 		})
 		const actor = createActor(workerHostMachine, {
 			input: {
 				...input,
 				scope: crypto.randomUUID(),
+				closeAccountStore: accountStore.close,
 				callbackAttempt: decoded.data.callbackAttempt,
 				authReturned: () => self.postMessage({ type: 'AUTH_RETURNED' })
 			},
@@ -194,7 +210,6 @@ export function serveApplicationWorker(options: {
 			complete: () => {
 				for (const subscription of subscriptions.values()) subscription.unsubscribe()
 				subscriptions.clear()
-				storage.close()
 				broker.close()
 				attachment?.close()
 				const url = actor.getSnapshot().context.redirect

@@ -74,3 +74,41 @@ it('refuses safe navigation when native SDK close fails', async () => {
 		vi.unstubAllGlobals()
 	}
 })
+
+it('waits for the account store and its native transport after SDK close before reporting realm closure', async () => {
+	const release = Promise.withResolvers<{ scope: string; requestId: string }>()
+	const closeStore = vi.fn(() => release.promise)
+	const f = fixture(undefined, closeStore)
+	try {
+		f.actor.start()
+		f.actor.send({ type: 'SHUTDOWN' })
+		await waitFor(f.actor, (snapshot) => snapshot.matches('closingAccountStore'), { timeout: 1000 })
+		expect(f.close).toHaveBeenCalledOnce()
+		expect(closeStore).toHaveBeenCalledOnce()
+		expect(f.actor.getSnapshot().status).toBe('active')
+		release.resolve({ scope: 'original', requestId: 'actual-close' })
+		await waitFor(f.actor, (snapshot) => snapshot.status === 'done', { timeout: 1000 })
+	} finally {
+		release.resolve({ scope: 'original', requestId: 'actual-close' })
+		f.actor.stop()
+		f.owner.stop()
+	}
+})
+
+it('account-store close failure refuses clean worker closure', async () => {
+	const closeStore = vi.fn(async () => {
+		throw new Error('unsettled account custody')
+	})
+	const f = fixture(undefined, closeStore)
+	try {
+		f.actor.start()
+		f.actor.send({ type: 'SHUTDOWN' })
+		await waitFor(f.actor, (snapshot) => snapshot.matches('failed'), { timeout: 1000 })
+		expect(f.close).toHaveBeenCalledOnce()
+		expect(closeStore).toHaveBeenCalledOnce()
+		expect(f.actor.getSnapshot().status).toBe('active')
+	} finally {
+		f.actor.stop()
+		f.owner.stop()
+	}
+})
