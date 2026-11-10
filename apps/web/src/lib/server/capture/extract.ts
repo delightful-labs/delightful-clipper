@@ -70,7 +70,7 @@ export async function extract(body: Uint8Array, mediaType: string, url: string) 
 			}
 		const article = /^text\/plain/i.test(mediaType)
 			? { title: new URL(url).hostname, byline: null, content: document.body.innerHTML }
-			: new Readability(document, { maxElemsToParse: 50000 }).parse()
+			: new Readability(document, { maxElemsToParse: 50000, keepClasses: true }).parse()
 		if (!article?.content) throw new CaptureError('parseFailed', 422)
 		const result = new JSDOM(article.content, { url, virtualConsole })
 		try {

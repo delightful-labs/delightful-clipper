@@ -85,10 +85,13 @@ async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 						candidate: {
 							title: 'Completely offline article',
 							text:
-								'Exact offline shell text café 🦊 ' + readingParagraphs.replace(/<[^>]*>/g, ' '),
+								'Exact offline shell text café 🦊 ' +
+								readingParagraphs.replace(/<[^>]*>/g, ' ') +
+								' const offlineAnswer = 42;',
 							html:
 								'<img alt="Offline image fixture" data-clipper-image="https%3A%2F%2Fexample.com%2Foffline.png"><h3>Offline structure</h3><details><summary>Offline diagram</summary><svg viewBox="0 0 100 100"><title>Chart</title><path d="M0 0 L10 10" stroke="red"/></svg></details><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p>' +
 								readingParagraphs +
+								'<pre><code class="language-js">const offlineAnswer = 42;</code></pre>' +
 								'<ol><li id="fn1">Offline footnote</li></ol>',
 							assetCandidates: [],
 							partialEvidence: [],
@@ -255,6 +258,15 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			reopened.getByText('Offline startup prepared on this browser.', { exact: true })
 		).toHaveCount(0)
 		await expect(reopened.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		await expect(reopened.locator('article code')).toHaveText('const offlineAnswer = 42;')
+		await expect
+			.poll(() =>
+				reopened.evaluate(() =>
+					[...(CSS.highlights.get('numeric') ?? [])].map((range) => range.toString())
+				)
+			)
+			.toContain('42')
+		await expect(reopened.locator('article code span')).toHaveCount(0)
 		await expect
 			.poll(() =>
 				reopened

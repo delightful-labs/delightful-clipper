@@ -5,6 +5,8 @@
 	import { imageUrlSchema } from '../images/schema.js'
 	import type { AssetResult } from '../contracts/storage.js'
 	import { savedContent } from '../reader/content.js'
+	import { highlightCode } from '../reader/syntax/surface-machine.js'
+	import 'microlighter/themes/github.css'
 
 	type Content = {
 		imageViews: Record<string, ImageView>
@@ -54,6 +56,7 @@
 			for (const image of images.splice(0)) void unmount(image.component)
 		}
 		let current = input
+		let releaseSyntax: (() => void) | undefined
 		const link = (event: MouseEvent) => current.onlink?.(event, node)
 		node.addEventListener('click', link)
 		let previous:
@@ -80,12 +83,14 @@
 			)
 				return
 			if (previous) value.onrelease?.()
+			releaseSyntax?.()
 			clearImages()
 			previous = { bytes, mediaType, text: value.text, sourceUrl: value.sourceUrl }
 			const fragment = savedContent(value.asset, node.ownerDocument, value.sourceUrl)
 			node.classList.toggle('plain', !fragment)
 			node.replaceChildren(fragment ?? node.ownerDocument.createTextNode(value.text))
 			value.onready?.(node)
+			releaseSyntax = highlightCode(node)
 			for (const image of node.querySelectorAll('img[data-clipper-image]')) {
 				let source: string
 				try {
@@ -124,6 +129,7 @@
 			update,
 			destroy: () => {
 				current.onrelease?.()
+				releaseSyntax?.()
 				clearImages()
 				node.removeEventListener('click', link)
 				previous = undefined
@@ -135,6 +141,7 @@
 
 <div
 	class="reader"
+	data-syntax-theme="github"
 	use:render={{
 		asset,
 		imageViews,
@@ -150,6 +157,7 @@
 
 <style>
 	.reader {
+		color-scheme: inherit;
 		font-family: var(--reader-font, Georgia, serif);
 		font-size: var(--reader-size, 20px);
 		line-height: var(--reader-spacing, 1.6);

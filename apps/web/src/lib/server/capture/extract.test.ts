@@ -1,5 +1,18 @@
 import { expect, it } from 'vitest'
 import { extract } from './extract.js'
+
+it('preserves code language metadata through Readability and removes source CSS classes', async () => {
+	const result = await extract(
+		new TextEncoder().encode(
+			`<article><h1>Code article</h1>${paragraph}<pre class="example language-JS"><code class="token">const answer = 42;</code></pre>${paragraph}</article>`
+		),
+		'text/html',
+		'https://example.com/code'
+	)
+	expect(result.candidate.html).toContain('class="language-js"')
+	expect(result.candidate.html).not.toMatch(/class="(?:example|token)/)
+	expect(result.candidate.text).toContain('const answer = 42;')
+})
 const paragraph =
 	'<p>' +
 	'A useful article sentence with enough context to keep the main content. '.repeat(40) +

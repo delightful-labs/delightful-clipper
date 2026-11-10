@@ -2,6 +2,16 @@
 
 This authorized batch follows merged Clipper PR #16 (`b21691f`). It adds positions/progress, shared theme/typography, contents, footnote popovers, distraction-free reading and explicit end-of-article Archive. Images and annotations remain excluded. The user approved the first 17 proposed reader labels/errors; those entries are now in the catalog. The user then explicitly approved the revised generic failure template, Sync action label and actionable unconfirmed-save message with “add them”; those shared entries are also in the catalog.
 
+## Code syntax highlighting
+
+The user explicitly requested Dave Rupert's CSS-based highlighting library. The identified package is `microlighter@2.2.0`, pinned as the requested dependency. Its GitHub theme colors code and inherits DUI's selected color scheme. No catalog wording or database migration is added.
+
+Readability retains classes until the shared sanitizer runs. The sanitizer keeps only bounded `language-*` classes and `data-language` on `pre`/`code`; unrelated source classes, styles and active attributes remain stripped. Older snapshots that already lost their language hints stay readable as plain code; this does not refresh or guess their original language.
+
+Each rendered saved-content lifetime owns one optional syntax surface. The chart selects unsupported/plain versus tokenization, then explicitly models worker acquisition, request posting and waiting. Worker failures, invalid ranges and a five-second deadline return to plain code. Leaving or replacing content stops that owner and removes only its native ranges, preserving other users of the CSS highlight registry.
+
+MicroLighter's public scanner expects a small DOM-shaped read surface and writes Range/Highlight objects. A pinned, tested adapter runs that scanner in an isolated worker: inert text records replace DOM nodes and native range writes become UTF-16 offsets. No tokenizer is copied or run on the UI thread. The UI creates real ranges against the original text nodes, preserving selection, copy text, markup and reading anchors. Input is bounded to 32 code blocks and 64 Ki UTF-16 units total; output is capped at 6,000 ranges. Vite bundles lazy grammars into the existing public offline-shell assets.
+
 ## Inspected reusable presentation
 
 Pinned DUI provides InputRange, Select, RadioGroup/RadioItem, Button, Dialog, Popover, Heading, StatusMessage and theme.css. Its `data-dui-theme` root attribute selects light/dark; absence follows the system live. No new palette or font download is needed. The approved SVG build dependency described below follows Finance's DUI consumer configuration. Controlled FontSettings, ThemeSettings, ReadingProgress, ContentsNavigation, ReaderActions and ReaderToolbar compose a ReaderView; Reader integration passes rendered DOM elements to the owning actor. SavedContent remains the sole sanitized-content renderer. DOM measurement/anchor helpers are separate from presentation.

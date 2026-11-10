@@ -26,7 +26,7 @@ export default defineConfig(({ command, mode }) => {
 		// The search worker starts after account readiness. Prebundle its dependency
 		// so a cold optimizer cannot trigger a late full-page reload.
 		optimizeDeps: {
-			exclude: ['delightful-ui', 'jazz-wasm'],
+			exclude: ['delightful-ui', 'jazz-wasm', 'microlighter'],
 			include: [
 				'minisearch',
 				'jazz-tools',
@@ -46,6 +46,10 @@ export default defineConfig(({ command, mode }) => {
 			]
 		},
 		ssr: { external: ['jazz-tools', 'jazz-napi', '@vercel/functions', '@vercel/sandbox', 'ws'] },
+		build: {
+			// Bundle MicroLighter's lazy grammar imports into offline shell assets.
+			dynamicImportVarsOptions: { exclude: [/node_modules\/(?!.*microlighter)/] }
+		},
 		resolve: {
 			alias: [
 				{ find: /^jazz-wasm$/, replacement: wasmEntry },

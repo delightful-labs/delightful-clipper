@@ -25,6 +25,7 @@
 		"jazz-napi": "2.0.0-alpha.60",
 		"jazz-tools": "2.0.0-alpha.60",
 		"jsdom": "29.1.1",
+		"microlighter": "2.2.0",
 		"minisearch": "7.2.0",
 		"svelte": "5.57.2",
 		"unicode-case-folding": "1.1.2",

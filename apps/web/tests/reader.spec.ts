@@ -69,6 +69,99 @@ async function phrase(page: Page) {
 	const value = await readRecoveryPhrase(page)
 	return value
 }
+
+async function codeReader(page: Page) {
+	await page.goto('/')
+	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
+	await page.evaluate(async () => {
+		const path = '/tests/reader-driver.ts'
+		return (await import(/* @vite-ignore */ path)).seedReader(
+			'https://example.com/code-reader',
+			1,
+			'<pre class="source language-JS"><code>const fox = "🦊"; // café</code></pre>' +
+				'<pre><code data-language="python">def greet():\n    return 42</code></pre>' +
+				'<pre class="language-css">.reader { color: red; }</pre>' +
+				'<pre><code>Unlabelled code stays readable.</code></pre>'
+		)
+	})
+	await page.getByRole('link', { name: 'Reader experience fixture', exact: true }).click()
+	await expect(page.getByRole('article')).toBeVisible()
+}
+
+test('highlights code with worker-owned MicroLighter ranges, preserves selection and follows reader themes', async ({
+	page
+}) => {
+	let syntaxWorkers = 0
+	page.on('worker', (worker) => {
+		if (worker.url().includes('tokenize.worker')) syntaxWorkers++
+	})
+	await codeReader(page)
+	const code = page.locator('article pre > code').first()
+	await expect
+		.poll(() => page.evaluate(() => CSS.highlights.get('storage')?.size ?? 0))
+		.toBeGreaterThan(0)
+	expect(syntaxWorkers).toBe(1)
+	await expect(code).toHaveText('const fox = "🦊"; // café')
+	expect(await code.evaluate((node) => node.childNodes.length)).toBe(1)
+	expect(await page.locator('article code span').count()).toBe(0)
+	await expect
+		.poll(() =>
+			page.evaluate(() =>
+				[...(CSS.highlights.get('numeric') ?? [])].map((range) => range.toString())
+			)
+		)
+		.toContain('42')
+	await expect
+		.poll(() =>
+			page.evaluate(() =>
+				[...(CSS.highlights.get('property') ?? [])].map((range) => range.toString())
+			)
+		)
+		.toContain('color')
+	const selected = await code.evaluate((node) => {
+		const selection = window.getSelection()!
+		selection.selectAllChildren(node)
+		return selection.toString()
+	})
+	expect(selected).toBe('const fox = "🦊"; // café')
+	const drawer = await controls(page)
+	await drawer.getByRole('radio', { name: 'Light', exact: true }).check()
+	await expect.poll(() => code.evaluate((node) => getComputedStyle(node).colorScheme)).toBe('light')
+	const light = await code.evaluate((node) => getComputedStyle(node, '::highlight(storage)').color)
+	await drawer.getByRole('radio', { name: 'Dark', exact: true }).check()
+	await expect.poll(() => code.evaluate((node) => getComputedStyle(node).colorScheme)).toBe('dark')
+	await expect
+		.poll(() => code.evaluate((node) => getComputedStyle(node, '::highlight(storage)').color))
+		.not.toBe(light)
+	await closeReadingControls(page)
+	await page.evaluate(() => {
+		const range = document.createRange()
+		range.selectNodeContents(document.querySelector('article code')!)
+		CSS.highlights.set('clipper-test-existing', new Highlight(range))
+	})
+	await openAllArticles(page)
+	await expect
+		.poll(() => page.evaluate(() => [...CSS.highlights.keys()]))
+		.toEqual(['clipper-test-existing'])
+	await page.evaluate(() => CSS.highlights.delete('clipper-test-existing'))
+})
+
+test('keeps code readable without starting a syntax worker when CSS highlights are unavailable', async ({
+	page
+}) => {
+	await page.addInitScript(() =>
+		Object.defineProperty(CSS, 'highlights', { value: undefined, configurable: true })
+	)
+	let syntaxWorkers = 0
+	page.on('worker', (worker) => {
+		if (worker.url().includes('tokenize.worker')) syntaxWorkers++
+	})
+	await codeReader(page)
+	await expect(page.locator('article code').first()).toHaveText('const fox = "🦊"; // café')
+	await expect(page.locator('article code span')).toHaveCount(0)
+	expect(syntaxWorkers).toBe(0)
+})
+
 test('uses shared reader controls, keyboard contents/footnotes, persistent focus-mode exit and explicit Archive', async ({
 	page
 }) => {

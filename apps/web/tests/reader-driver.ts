@@ -1,14 +1,14 @@
 import { createActor, toPromise } from 'xstate'
 import { currentLibraryRecords } from './fixture-records.js'
 import { projectReaderState } from '../src/lib/reader/schema.js'
-export async function seedReader(url: string, paragraphCount = 70) {
+export async function seedReader(url: string, paragraphCount = 70, codeHtml = '') {
 	const records = currentLibraryRecords()
 	const paragraphs = Array.from(
 		{ length: paragraphCount },
 		(_, index) =>
 			`<p>Paragraph ${index + 1}. ${'Readable café 🦊 text with reliable context. '.repeat(14)}</p>`
 	)
-	const html = `<h3 id="start">Beginning</h3><p>Opening text with <a href="#fn1">Citation</a>.</p>${paragraphs.slice(0, 35).join('')}<h3 id="middle">Middle chapter</h3>${paragraphs.slice(35).join('')}<h3 id="end">Ending</h3><ol><li id="fn1">A saved reader footnote.</li></ol>`
+	const html = `<h3 id="start">Beginning</h3><p>Opening text with <a href="#fn1">Citation</a>.</p>${codeHtml}${paragraphs.slice(0, 35).join('')}<h3 id="middle">Middle chapter</h3>${paragraphs.slice(35).join('')}<h3 id="end">Ending</h3><ol><li id="fn1">A saved reader footnote.</li></ol>`
 	const text = html.replace(/<[^>]*>/g, ' ')
 	const result = await toPromise(
 		createActor(records.articles.saveMachine, {
