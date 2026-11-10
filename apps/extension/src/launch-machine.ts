@@ -50,7 +50,7 @@ export function createLaunchMachine(cap: {
 			run: ({ input }: { input: Connection }) => cap.authorize(input)
 		}),
 		openSignIn: createAsyncLogic({ run: ({ input }: { input: string }) => cap.openSignIn(input) }),
-		popup: createCallbackLogic<{ type: 'UNUSED' }, number>(({ input, sendBack }) =>
+		popup: createCallbackLogic<never, number>(({ input, sendBack }) =>
 			cap.watchPopup(input, () => sendBack({ type: 'POPUP_CLOSED' }))
 		),
 		accountUnavailable: createAsyncLogic({

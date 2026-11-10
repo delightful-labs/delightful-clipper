@@ -1,3 +1,4 @@
+import { appendLocalReceipt } from './receipts.js'
 import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import type { EventPayload } from '../events.js'
 import { types, setup, createAsyncLogic, matchesState } from 'xstate'
@@ -294,10 +295,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 														kind: 'saved',
 														operationId: required(context.draft).article.id,
 														ready: false,
-														receipts:
-															output.settlement.kind === 'locallyPersisted'
-																? [output.settlement.workspace]
-																: []
+														receipts: appendLocalReceipt([], output.settlement)
 													}
 												}
 											}
@@ -340,10 +338,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 														kind: 'duplicate',
 														operationId: required(context.draft).article.id,
 														ready: true,
-														receipts:
-															output.settlement.kind === 'locallyPersisted'
-																? [output.settlement.workspace]
-																: []
+														receipts: appendLocalReceipt([], output.settlement)
 													}
 												}
 											}

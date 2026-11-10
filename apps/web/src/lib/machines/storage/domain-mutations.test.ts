@@ -1,6 +1,6 @@
 import { Transaction } from 'jazz-tools'
 import { expect, it, vi } from 'vitest'
-import { createActor, toPromise } from 'xstate'
+import { createActor, toPromise, waitFor } from 'xstate'
 
 import type { TransactionResource } from '../../backend/jazz/transaction.js'
 import { createDomainTransaction, type DomainSpawner } from './domain-transaction.js'
@@ -51,7 +51,7 @@ function fixture() {
 			}).start()
 		)
 	}
-	return { order, receipt, leaf, run, commit, rollback }
+	return { order, receipt, leaf, run, commit, rollback, resource }
 }
 function content(articleLinked: boolean, hasSource = articleLinked): PreparedSave {
 	return {
@@ -404,3 +404,57 @@ it('uses the prepared image facts and stages intent, bytes and publication in or
 	)
 	expect(f.order).toEqual(['intent', 'bytes', 'publish'])
 })
+
+it.each([false, true])(
+	'acknowledges staging privately only after the selected mutation succeeds (throws=%s)',
+	async (throws) => {
+		const f = fixture(),
+			draft = content(false),
+			order: string[] = [],
+			rejected = vi.fn()
+		const receipt = vi.fn(() => {
+			order.push('receipt')
+			return f.receipt
+		})
+		const logic = createContentIntentDomain({
+			read: async () => ({ draft, operationId: 'operation', intent: null, article: null }),
+			insertIntent: () => {
+				order.push('mutation')
+				if (throws) throw new Error('Selected mutation failed')
+			},
+			createArticle: f.leaf('unexpected-create'),
+			bindArticle: f.leaf('unexpected-bind'),
+			receipt
+		})
+		const actor = createActor(logic, {
+			input: {
+				resource: f.resource,
+				owner: { send: () => {} },
+				attempt: {
+					operationId: 'operation',
+					workspaceId: 'workspace',
+					membershipId: 'membership',
+					draft
+				}
+			},
+			onRejectedEvent: rejected
+		})
+		const result = toPromise(actor).catch(() => undefined)
+		actor.start()
+		await waitFor(actor, (s) => s.matches('ready'))
+		Reflect.apply(actor.send, actor, [{ type: 'STAGED' }])
+		expect(actor.getSnapshot().matches('ready')).toBe(true)
+		expect(order).toEqual([])
+		expect(rejected).toHaveBeenCalledWith(expect.objectContaining({ reason: 'internalEvent' }))
+		actor.send({ type: 'STAGE' })
+		if (throws) {
+			expect(await result).toBeUndefined()
+			expect(order).toEqual(['mutation'])
+			expect(receipt).not.toHaveBeenCalled()
+		} else {
+			expect(await result).toBe(f.receipt)
+			expect(order).toEqual(['mutation', 'receipt'])
+		}
+		expect(rejected).toHaveBeenCalledOnce()
+	}
+)

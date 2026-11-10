@@ -1,3 +1,4 @@
+import { appendLocalReceipt } from './receipts.js'
 import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import type { EventPayload } from '../events.js'
 import { types, setup, createAsyncLogic, matchesState } from 'xstate'
@@ -48,6 +49,44 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 				publish: types<import('xstate').ActorRefFrom<typeof actors.stage>>()
 			}
 		},
+		states: {
+			running: {
+				id: 'save-record.running',
+				states: {
+					control: {
+						id: 'save-record.running.control',
+						states: {
+							active: { id: 'save-record.running.control.active' },
+							stopping: { id: 'save-record.running.control.stopping' }
+						}
+					},
+					work: {
+						id: 'save-record.running.work',
+						states: {
+							admitting: { id: 'save-record.running.work.admitting' },
+							preparing: {
+								id: 'save-record.running.work.preparing',
+								schemas: { input: types<SaveRequest>() }
+							},
+							intent: {
+								id: 'save-record.running.work.intent',
+								schemas: { context: types<{ prepared: PreparedSave }>() }
+							},
+							publish: {
+								id: 'save-record.running.work.publish',
+								schemas: { context: types<{ prepared: PreparedSave }>() }
+							}
+						}
+					}
+				}
+			},
+			saved: { id: 'save-record.saved' },
+			unknown: { id: 'save-record.unknown' },
+			interrupted: { id: 'save-record.interrupted' },
+			scopeChanged: { id: 'save-record.scopeChanged' },
+			blocked: { id: 'save-record.blocked' },
+			failed: { id: 'save-record.failed' }
+		},
 		actors,
 		guards: {
 			stopping: ({ value }: { value: import('xstate').StateValue }) =>
@@ -87,14 +126,14 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 									if (args.guards.scopeLost()) {
 										return { target: '#save-record.scopeChanged' }
 									}
-									return { target: 'preparing' }
+									return { target: 'preparing', input: required(args.context.request) }
 								}
 							},
 							preparing: {
 								invoke: {
 									id: 'prepare',
 									src: 'prepare',
-									input: ({ context }: { context: Context }) => required(context.request),
+									input: ({ input }) => input,
 									onDone: (args) => {
 										if (args.guards.stopping(args)) {
 											return { target: '#save-record.interrupted' }
@@ -130,7 +169,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 												operationId: context.operationId,
 												workspaceId: context.operationId,
 												membershipId: context.operationId,
-												draft: required(context.prepared)
+												draft: context.prepared
 											}
 										}
 									}),
@@ -153,10 +192,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 											return {
 												target: 'publish',
 												context: {
-													receipts:
-														output?.settlement.kind === 'locallyPersisted'
-															? [...context.receipts, output.settlement.workspace]
-															: context.receipts
+													receipts: appendLocalReceipt(context.receipts, output.settlement)
 												}
 											}
 										}
@@ -188,7 +224,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 												operationId: context.operationId,
 												workspaceId: context.operationId,
 												membershipId: context.operationId,
-												draft: required(context.prepared)
+												draft: context.prepared
 											}
 										}
 									}),
@@ -211,10 +247,7 @@ export function createSaveRecordMachine(capability: SaveCapabilities) {
 											return {
 												target: '#save-record.saved',
 												context: {
-													receipts:
-														output?.settlement.kind === 'locallyPersisted'
-															? [...context.receipts, output.settlement.workspace]
-															: context.receipts
+													receipts: appendLocalReceipt(context.receipts, output.settlement)
 												}
 											}
 										}

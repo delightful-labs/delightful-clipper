@@ -249,3 +249,34 @@ it('passes the prepared sample plan and library identity to the actual seed chil
 	})
 	expect(stage.inputs[0]!.attempt.draft).toBe(samplePlan)
 })
+
+it.each(['tag', 'property'] as const)(
+	'drains the selected %s history read through shutdown without admitting a write',
+	async (kind) => {
+		const history = Promise.withResolvers<OrganizationDraft['operations']>()
+		const read = vi.fn(() => history.promise),
+			other = vi.fn(async () => [])
+		const stage = vi.fn(() => {
+			throw new Error('Write must not be admitted')
+		})
+		const request: OrganizationDraft =
+			kind === 'tag'
+				? { id: 'article', field: 'tag', value: 'Work', assigned: true, operations: [] }
+				: { id: 'article', field: 'favorite', value: true, operations: [] }
+		const logic = createOrganizationMachine(
+			stage,
+			() => true,
+			kind === 'tag' ? other : read,
+			kind === 'tag' ? read : other
+		)
+		const actor = createActor(logic, { input: request }).start()
+		await vi.waitFor(() => expect(read).toHaveBeenCalledOnce())
+		actor.send({ type: 'SHUTDOWN' })
+		expect(actor.getSnapshot().status).toBe('active')
+		expect(stage).not.toHaveBeenCalled()
+		history.resolve([])
+		expect(await toPromise(actor)).toMatchObject({ kind: 'interrupted' })
+		expect(other).not.toHaveBeenCalled()
+		expect(stage).not.toHaveBeenCalled()
+	}
+)

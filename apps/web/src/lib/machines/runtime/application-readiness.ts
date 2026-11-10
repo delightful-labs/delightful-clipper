@@ -419,6 +419,14 @@ export function createApplicationReadinessMachine<Session extends object>(
 		},
 		actors: accountActors,
 		guards: {
+			libraryStoppingFor: (
+				{ value }: { value: import('xstate').StateValue },
+				reason: 'restore' | 'logout' | 'replace'
+			) =>
+				matchesState(
+					{ active: { flow: { running: { library: { ready: { stopping: reason } } } } } },
+					value
+				),
 			existingRoot: (
 				_args: { context: Context<Session> },
 				result: { outcome: string; write?: RootWrite }
@@ -950,13 +958,11 @@ export function createApplicationReadinessMachine<Session extends object>(
 												return { host: context.host, observation: context.observation }
 											},
 											onDone: (args, _enq) => {
-												let pendingContext = {}
-
 												if (args.guards.stoppingPreparation(args)) {
-													return { context: pendingContext, target: 'draining' }
+													return { target: 'draining' }
 												}
 
-												return { context: pendingContext, target: 'refreshing' }
+												return { target: 'refreshing' }
 											},
 											onError: (args) => {
 												if (args.guards.stoppingPreparation(args)) {
@@ -1031,16 +1037,14 @@ export function createApplicationReadinessMachine<Session extends object>(
 									retrying: {
 										id: 'application-active-flow-running-retrying',
 										entry: (args, enq) => {
-											let context = args.context
-											let patch = {}
-											patch = { ...patch, retryAttempt: context.retryAttempt + 1 }
-											context = { ...args.context, ...patch }
+											const { context } = args
+											const retryAttempt = context.retryAttempt + 1
 											enq.sendTo('readiness', {
 												type: 'RETRY',
 												scope: context.readinessScope,
-												attempt: context.retryAttempt
+												attempt: retryAttempt
 											})
-											return { context: patch }
+											return { context: { retryAttempt } }
 										},
 										on: {
 											SESSION_RETRY_SETTLED: (args) => {
@@ -1059,17 +1063,15 @@ export function createApplicationReadinessMachine<Session extends object>(
 									},
 									reobserving: {
 										entry: (args, enq) => {
-											let context = args.context
-											let patch = {}
+											const { context } = args
+											const observationAttempt = context.observationAttempt + 1
 											enq.raise({ type: 'OBSERVATION_RESTARTED' })
-											patch = { ...patch, observationAttempt: context.observationAttempt + 1 }
-											context = { ...args.context, ...patch }
 											enq.sendTo('readiness', {
 												type: 'REOBSERVE',
 												scope: context.readinessScope,
-												observation: context.observationAttempt
+												observation: observationAttempt
 											})
-											return { context: patch }
+											return { context: { observationAttempt } }
 										},
 										on: {
 											OBSERVED: (args) => {
@@ -1095,29 +1097,23 @@ export function createApplicationReadinessMachine<Session extends object>(
 											src: 'create',
 											input: ({ context }) => context.host,
 											onDone: (args, _enq) => {
-												let pendingContext = {}
-
 												if (args.guards.stoppingCreate(args)) {
 													return {
-														context: pendingContext,
 														target: '#application-active-flow-running-draining'
 													}
 												}
 
-												return { context: pendingContext, target: 'refreshing' }
+												return { target: 'refreshing' }
 											},
 											onError: (args, enq) => {
-												let pendingContext = {}
-
 												if (args.guards.stoppingCreate(args)) {
 													return {
-														context: pendingContext,
 														target: '#application-active-flow-running-draining'
 													}
 												}
 												enq.raise({ type: 'IDENTITY_FAILED' })
 
-												return { context: pendingContext, target: 'refreshing' }
+												return { target: 'refreshing' }
 											}
 										}
 									},
@@ -1161,65 +1157,27 @@ export function createApplicationReadinessMachine<Session extends object>(
 												reportTo: self
 											}),
 											onDone: (args, enq) => {
-												let pendingContext = {}
-
-												const { event } = args
-												if (args.guards.stoppingRestore(args)) {
-													pendingContext = {
-														...pendingContext,
-														...(() => args.actions.clearPhrase().context)()
-													}
+												const patch = args.actions.clearPhrase().context
+												if (args.guards.stoppingRestore(args))
 													return {
-														context: pendingContext,
-														target: '#application-active-flow-running-draining'
+														target: '#application-active-flow-running-draining',
+														context: patch
 													}
-												}
-												if (isRestored(event.output)) {
-													enq.raise({ type: 'FEEDBACK_CLEAR' })
-													pendingContext = {
-														...pendingContext,
-														...(() => args.actions.clearPhrase().context)()
-													}
-
-													return { context: pendingContext, target: 'refreshing' }
-												}
-												if (isInvalidRestoration(event.output)) {
+												if (isRestored(args.event.output)) enq.raise({ type: 'FEEDBACK_CLEAR' })
+												else if (isInvalidRestoration(args.event.output))
 													enq.raise({ type: 'RESTORE_INVALID' })
-													pendingContext = {
-														...pendingContext,
-														...(() => args.actions.clearPhrase().context)()
-													}
-
-													return { context: pendingContext, target: 'refreshing' }
-												}
-												enq.raise({ type: 'RESTORE_FAILED' })
-												pendingContext = {
-													...pendingContext,
-													...(() => args.actions.clearPhrase().context)()
-												}
-
-												return { context: pendingContext, target: 'refreshing' }
+												else enq.raise({ type: 'RESTORE_FAILED' })
+												return { target: 'refreshing', context: patch }
 											},
 											onError: (args, enq) => {
-												let pendingContext = {}
-
-												if (args.guards.stoppingRestore(args)) {
-													pendingContext = {
-														...pendingContext,
-														...(() => args.actions.clearPhrase().context)()
-													}
+												const patch = args.actions.clearPhrase().context
+												if (args.guards.stoppingRestore(args))
 													return {
-														context: pendingContext,
-														target: '#application-active-flow-running-draining'
+														target: '#application-active-flow-running-draining',
+														context: patch
 													}
-												}
 												enq.raise({ type: 'RESTORE_FAILED' })
-												pendingContext = {
-													...pendingContext,
-													...(() => args.actions.clearPhrase().context)()
-												}
-
-												return { context: pendingContext, target: 'refreshing' }
+												return { target: 'refreshing', context: patch }
 											}
 										}
 									},
@@ -1383,55 +1341,12 @@ export function createApplicationReadinessMachine<Session extends object>(
 															? context.observation.library
 															: undefined,
 													onDone: (args) => {
-														if (
-															(({ value }: { value: import('xstate').StateValue }) =>
-																matchesState(
-																	{
-																		active: {
-																			flow: {
-																				running: { library: { ready: { stopping: 'restore' } } }
-																			}
-																		}
-																	},
-																	value
-																))(args)
-														) {
-															return {
-																target: '#application-active-flow-running-restoring'
-															}
-														}
-														if (
-															(({ value }: { value: import('xstate').StateValue }) =>
-																matchesState(
-																	{
-																		active: {
-																			flow: {
-																				running: { library: { ready: { stopping: 'logout' } } }
-																			}
-																		}
-																	},
-																	value
-																))(args)
-														) {
-															return {
-																target: '#application-active-flow-running-loggingOut'
-															}
-														}
-														if (
-															(({ value }: { value: import('xstate').StateValue }) =>
-																matchesState(
-																	{
-																		active: {
-																			flow: {
-																				running: { library: { ready: { stopping: 'replace' } } }
-																			}
-																		}
-																	},
-																	value
-																))(args)
-														) {
+														if (args.guards.libraryStoppingFor(args, 'restore'))
+															return { target: '#application-active-flow-running-restoring' }
+														if (args.guards.libraryStoppingFor(args, 'logout'))
+															return { target: '#application-active-flow-running-loggingOut' }
+														if (args.guards.libraryStoppingFor(args, 'replace'))
 															return { target: '#application-active-flow-running-route' }
-														}
 														return { target: '#application-active-flow-running-draining' }
 													}
 												},
@@ -1509,21 +1424,19 @@ export function createApplicationReadinessMachine<Session extends object>(
 								id: 'application-active-flow-closing',
 								meta: accountStatus('closing', t('account.status.closing')),
 								entry: (args, enq) => {
-									let context = args.context
-									let patch = {}
-									patch = { ...patch, ...args.actions.clearPhrase().context }
-									context = { ...args.context, ...patch }
+									const { context } = args
 									if (context.adoption)
 										enq.sendTo('bindingCustody', { type: 'RELEASE', binding: context.adoption })
 									enq(() => context.host?.release())
-									patch = {
-										...patch,
-										adoption: undefined,
-										candidate: undefined,
-										failedBinding: undefined
-									}
 									enq.sendTo('startup', { type: 'SHUTDOWN' })
-									return { context: patch }
+									return {
+										context: {
+											...args.actions.clearPhrase().context,
+											adoption: undefined,
+											candidate: undefined,
+											failedBinding: undefined
+										}
+									}
 								},
 								on: {
 									SESSION_ACQUIRED: {},

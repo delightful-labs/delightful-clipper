@@ -1,5 +1,13 @@
 import type { EventPayload } from '../machines/events.js'
-import { types, createCallbackLogic, setup, createAsyncLogic, type EnqueueObject } from 'xstate'
+import {
+	types,
+	createCallbackLogic,
+	setup,
+	createAsyncLogic,
+	type EnqueueObject,
+	type ActorRef,
+	type Snapshot
+} from 'xstate'
 
 import type { ImageCapability } from '../contracts/images.js'
 import type { ArticleImage } from './schema.js'
@@ -16,6 +24,7 @@ export type ImageView = {
 	retry: boolean
 }
 type Input = {
+	reportTo: ActorRef<Snapshot<unknown>, ImageViewReport>
 	capability: Pick<ImageCapability, 'isCurrent' | 'subscribeImage' | 'asset'>
 	documentId: string
 	sourceUrl: string
@@ -46,8 +55,11 @@ const observe = createCallbackLogic<Event, Input>(({ input, sendBack }) =>
 		() => sendBack({ type: 'FAILED' })
 	)
 )
-const load = createAsyncLogic<StoredAsset | null, Context>({
-	run: ({ input, signal }) => input.capability.asset(input.row!.assetId!, signal)
+const load = createAsyncLogic<
+	StoredAsset | null,
+	{ capability: Input['capability']; assetId: string }
+>({
+	run: ({ input, signal }) => input.capability.asset(input.assetId, signal)
 })
 const url = createCallbackLogic<Event, StoredAsset>(({ input, sendBack }) => {
 	const url = URL.createObjectURL(
@@ -56,6 +68,11 @@ const url = createCallbackLogic<Event, StoredAsset>(({ input, sendBack }) => {
 	sendBack({ type: 'URL', url })
 	return () => URL.revokeObjectURL(url)
 })
+function hasReadyImageAsset(
+	row: ArticleImage | undefined
+): row is ArticleImage & { assetId: string } {
+	return row?.status === 'ready' && typeof row.assetId === 'string'
+}
 function validImageAsset(context: Context, asset: StoredAsset | null) {
 	if (!context.capability.isCurrent()) return false
 	if (
@@ -94,6 +111,32 @@ const model = setup({
 			url: types<import('xstate').ActorRefFrom<typeof url>>()
 		}
 	},
+	states: {
+		observing: {
+			id: 'image-view.observing',
+			states: {
+				routing: { id: 'image-view.observing.routing' },
+				pending: { id: 'image-view.observing.pending' },
+				unknown: { id: 'image-view.observing.unknown' },
+				failed: { id: 'image-view.observing.failed' },
+				loading: {
+					id: 'image-view.observing.loading',
+					schemas: { input: types<{ assetId: string }>() }
+				},
+				owningURL: {
+					id: 'image-view.observing.owningURL',
+					schemas: { context: types<{ asset: StoredAsset }>() },
+					states: {
+						creating: { id: 'image-view.observing.owningURL.creating' },
+						available: {
+							id: 'image-view.observing.owningURL.available',
+							schemas: { context: types<{ url: string }>() }
+						}
+					}
+				}
+			}
+		}
+	},
 	actors: { observe, load, url },
 	guards: {
 		changedRow: ({ context, event }: { context: Context; event: Event }) =>
@@ -103,18 +146,14 @@ const model = setup({
 				context.row?.assetId !== event.rows[0]?.assetId),
 		pending: ({ context }: { context: Context }) =>
 			!context.row || context.row.status === 'pending',
-		ready: ({ context }: { context: Context }) => context.row?.status === 'ready',
 		validAsset: ({ context }: { context: Context }, params: { asset: StoredAsset | null }) =>
 			validImageAsset(context, params.asset)
 	}
 })
 const report =
 	(view: (context: Context) => ImageView) =>
-	(
-		{ context, parent }: { context: Context; parent: import('xstate').AnyActorRef | undefined },
-		enq: EnqueueObject<Event, never>
-	) => {
-		enq.sendTo(parent, {
+	({ context }: { context: Context }, enq: EnqueueObject<Event, never>) => {
+		enq.sendTo(context.reportTo, {
 			type: 'IMAGE_VIEW',
 			documentId: context.documentId,
 			sourceUrl: context.sourceUrl,
@@ -166,7 +205,12 @@ export const imageViewMachine = model.createMachine({
 						)
 					)
 						return
-					return { target: '.loading', context: { url: undefined } }
+					if (!hasReadyImageAsset(context.row)) return
+					return {
+						target: '.loading',
+						input: { assetId: context.row.assetId },
+						context: { url: undefined }
+					}
 				},
 				UNKNOWN: (args) => {
 					const { context, event } = args
@@ -188,8 +232,9 @@ export const imageViewMachine = model.createMachine({
 						if (args.guards.pending(args)) {
 							return { target: 'pending' }
 						}
-						if (args.guards.ready(args)) {
-							return { target: 'loading' }
+						const row = args.context.row
+						if (hasReadyImageAsset(row)) {
+							return { target: 'loading', input: { assetId: row.assetId } }
 						}
 						return { target: 'failed' }
 					}
@@ -222,10 +267,13 @@ export const imageViewMachine = model.createMachine({
 					invoke: {
 						id: 'load',
 						src: 'load',
-						input: ({ context }: { context: Context }) => context,
+						input: ({ context, input }) => ({
+							capability: context.capability,
+							assetId: input.assetId
+						}),
 						onDone: (args) => {
 							const { event } = args
-							if (args.guards.validAsset(args, { asset: event.output })) {
+							if (event.output && args.guards.validAsset(args, { asset: event.output })) {
 								return { target: 'owningURL', context: { asset: event.output } }
 							}
 							return { target: 'failed' }
@@ -238,7 +286,7 @@ export const imageViewMachine = model.createMachine({
 					invoke: {
 						id: 'url',
 						src: 'url',
-						input: ({ context }: { context: Context }) => context.asset!,
+						input: ({ context }) => context.asset,
 						onError: { target: 'failed' }
 					},
 					states: {
@@ -250,11 +298,19 @@ export const imageViewMachine = model.createMachine({
 							}
 						},
 						available: {
-							entry: report((context) => ({
-								status: 'ready',
-								retry: false,
-								url: context.url!
-							}))
+							entry: ({ context }, enq) => {
+								enq.sendTo(context.reportTo, {
+									type: 'IMAGE_VIEW',
+									documentId: context.documentId,
+									sourceUrl: context.sourceUrl,
+									view: {
+										status: 'ready',
+										retry: false,
+										url: context.url,
+										...(context.row ? { id: context.row.id } : {})
+									}
+								})
+							}
 						}
 					}
 				}

@@ -56,8 +56,8 @@ importers:
         specifier: 0.6.0
         version: 0.6.0
       delightful-local-first:
-        specifier: file:../../vendor/delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz
-        version: file:vendor/delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=494ab07875c34920f36feaf5d2aa34a7bbf3a4e8a5639c5e528d4440e5db0d85)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1)
+        specifier: file:../../vendor/delightful-local-first-auth-lifecycle-9c13e3f-alpha60.tgz
+        version: file:vendor/delightful-local-first-auth-lifecycle-9c13e3f-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=494ab07875c34920f36feaf5d2aa34a7bbf3a4e8a5639c5e528d4440e5db0d85)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1)
       delightful-ui:
         specifier: file:../../vendor/delightful-ui-7a7f61b-xstate-v6.tgz
         version: file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2)
@@ -123,8 +123,8 @@ importers:
         specifier: 1.7.18
         version: 1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))
       delightful-local-first:
-        specifier: file:../../vendor/delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz
-        version: file:vendor/delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=494ab07875c34920f36feaf5d2aa34a7bbf3a4e8a5639c5e528d4440e5db0d85)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1)
+        specifier: file:../../vendor/delightful-local-first-auth-lifecycle-9c13e3f-alpha60.tgz
+        version: file:vendor/delightful-local-first-auth-lifecycle-9c13e3f-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=494ab07875c34920f36feaf5d2aa34a7bbf3a4e8a5639c5e528d4440e5db0d85)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1)
       delightful-ui:
         specifier: file:../../vendor/delightful-ui-7a7f61b-xstate-v6.tgz
         version: file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2)
@@ -1512,8 +1512,8 @@ packages:
   defu@6.1.7:
     resolution: {integrity: sha512-7z22QmUWiQ/2d0KkdYmANbRUVABpZ9SNYyH5vx6PZ+nE5bcC0l7uFvEfHlyld/HcGBFTL536ClDt3DEcSlEJAQ==}
 
-  delightful-local-first@file:vendor/delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz:
-    resolution: {integrity: sha512-gsgvGnGYdmPZNzA7qpy8Ts1GDMEN3RuDjC1dZK3LpziocMPLv7g4VaNTdSUN9vK7Gjm9Fa9JMC1HkLaysyGdng==, tarball: file:vendor/delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz}
+  delightful-local-first@file:vendor/delightful-local-first-auth-lifecycle-9c13e3f-alpha60.tgz:
+    resolution: {integrity: sha512-9ZkBIdjQbwtLOz3Kuq8/wJVNlnEKDKMPpqYx9/4rszbtPs5BqejvHKRy4OjJOCFS9bqFKAVz+ZwiZ397566QRw==, tarball: file:vendor/delightful-local-first-auth-lifecycle-9c13e3f-alpha60.tgz}
     version: 0.0.0
     engines: {node: ^22.17.0 || >=24.0.0}
     peerDependencies:
@@ -3437,7 +3437,7 @@ snapshots:
 
   defu@6.1.7: {}
 
-  delightful-local-first@file:vendor/delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=494ab07875c34920f36feaf5d2aa34a7bbf3a4e8a5639c5e528d4440e5db0d85)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1):
+  delightful-local-first@file:vendor/delightful-local-first-auth-lifecycle-9c13e3f-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=494ab07875c34920f36feaf5d2aa34a7bbf3a4e8a5639c5e528d4440e5db0d85)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(better-auth@1.7.18(@opentelemetry/api@1.9.1)(@sveltejs/kit@3.0.1(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.57.2)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(typescript@6.0.3)(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7)))(svelte@5.57.2)(vitest@4.1.8(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(jsdom@29.1.1(@noble/hashes@2.4.0))(vite@8.3.4(@types/node@24.19.2)(esbuild@0.27.7))))(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1):
     dependencies:
       svelte: 5.57.2
       zod: 4.1.11

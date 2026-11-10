@@ -1,6 +1,13 @@
 import { identityLogic } from '../identity.js'
 import type { EventPayload } from '../events.js'
-import { types, setup, createAsyncLogic, type Snapshot, matchesState } from 'xstate'
+import {
+	types,
+	setup,
+	createAsyncLogic,
+	createCallbackLogic,
+	type Snapshot,
+	matchesState
+} from 'xstate'
 
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { ArticleSaveResult, SaveArticleRequest } from '../../contracts/articles.js'
@@ -11,6 +18,13 @@ export type FailureInput = {
 	attempt: { operationId: string; workspaceId: string; membershipId: string; draft: FailureDraft }
 }
 export type FailureResult = WorkspaceCreationResult<FailureDraft, SyncReceipt>
+type SaveReport =
+	| { type: 'SAVE_DONE'; actorId: string; output: ArticleSaveResult }
+	| { type: 'SAVE_ERROR'; actorId: string; error: unknown }
+type FailureReport =
+	| { type: 'FAILURE_DONE'; actorId: string; output: FailureResult }
+	| { type: 'FAILURE_ERROR'; actorId: string; error: unknown }
+type NetworkCall = Extract<WorkerCall, { method: 'resolve' | 'extract' }>
 export type HostCall = WorkerCall | { type: 'RETRY'; id: string }
 export type CallOutput = {
 	id: string
@@ -56,7 +70,6 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 	type Context = {
 		call: HostCall | undefined
 		failureOperationId: string
-		abort: AbortController | undefined
 		output: CallOutput
 		ownedSave:
 			| import('xstate').ActorInstance<
@@ -75,14 +88,46 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 		id: context.output.id,
 		...outcome
 	})
+	function saveOutput(context: Context, result: ArticleSaveResult): CallOutput {
+		return complete(context, {
+			result,
+			reply: {
+				method: 'save',
+				result: {
+					kind: result.kind,
+					operationId: result.operationId,
+					ready: 'ready' in result && result.ready === true
+				}
+			}
+		})
+	}
+
 	const actors = {
 		identity: identityLogic,
-		network: createAsyncLogic({
-			run: ({
-				input
-			}: {
-				input: { call: Extract<WorkerCall, { method: 'resolve' | 'extract' }>; signal: AbortSignal }
-			}) => cap.network(input.call, input.signal)
+		network: createCallbackLogic<{ type: 'ABORT' }, NetworkCall>(({ input, receive, sendBack }) => {
+			const controller = new AbortController()
+			let settled = false,
+				disposed = false
+			const abort = () => {
+				if (!settled && !controller.signal.aborted) controller.abort()
+			}
+			const failed = (error: unknown) => {
+				settled = true
+				if (!disposed) sendBack({ type: 'NETWORK_ERROR', error })
+			}
+			receive(abort)
+			try {
+				void cap.network(input, controller.signal).then((output) => {
+					settled = true
+					if (!disposed) sendBack({ type: 'NETWORK_DONE', output })
+				}, failed)
+			} catch (error) {
+				failed(error)
+			}
+			return () => {
+				disposed = true
+				abort()
+			}
 		}),
 		lookup: createAsyncLogic({
 			run: ({ input }: { input: Extract<WorkerCall, { method: 'document' | 'intent' }> }) =>
@@ -93,6 +138,8 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 		schemas: {
 			context: types<Context>(),
 			events: {
+				NETWORK_DONE: types<{ output: RpcReply }>(),
+				NETWORK_ERROR: types<{ error: unknown }>(),
 				SAVE_DONE: types<{ actorId: string; output: ArticleSaveResult }>(),
 				SAVE_ERROR: types<{ actorId: string; error: unknown }>(),
 				FAILURE_DONE: types<{ actorId: string; output: FailureResult }>(),
@@ -108,6 +155,53 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 				lookup: types<import('xstate').ActorRefFrom<(typeof actors)['lookup']>>()
 			}
 		},
+		states: {
+			running: {
+				id: 'article-worker-call.running',
+				states: {
+					control: {
+						id: 'article-worker-call.running.control',
+						states: {
+							active: { id: 'article-worker-call.running.control.active' },
+							stopping: { id: 'article-worker-call.running.control.stopping' }
+						}
+					},
+					work: {
+						id: 'article-worker-call.running.work',
+						states: {
+							routing: { id: 'article-worker-call.running.work.routing' },
+							network: {
+								id: 'article-worker-call.running.work.network',
+								schemas: { input: types<NetworkCall>() },
+								states: {
+									active: { id: 'article-worker-call.running.work.network.active' },
+									stopping: { id: 'article-worker-call.running.work.network.stopping' }
+								}
+							},
+							lookup: { id: 'article-worker-call.running.work.lookup' },
+							saving: {
+								id: 'article-worker-call.running.work.saving',
+								schemas: { input: types<SaveArticleRequest>() },
+								states: {
+									active: { id: 'article-worker-call.running.work.saving.active' },
+									stopping: { id: 'article-worker-call.running.work.saving.stopping' }
+								}
+							},
+							identifyingFailure: { id: 'article-worker-call.running.work.identifyingFailure' },
+							failing: {
+								id: 'article-worker-call.running.work.failing',
+								states: {
+									active: { id: 'article-worker-call.running.work.failing.active' },
+									stopping: { id: 'article-worker-call.running.work.failing.stopping' }
+								}
+							}
+						}
+					}
+				}
+			},
+			suppressed: { id: 'article-worker-call.suppressed' },
+			done: { id: 'article-worker-call.done' }
+		},
 		actors,
 		guards: {
 			closing: ({ value }: { value: import('xstate').StateValue }) =>
@@ -115,17 +209,17 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 			stale: () => !cap.isCurrent()
 		},
 		actions: {
-			completeFailure: (args: { context: Context }, _params?: undefined) => ({
-				context: {
-					output: (({ context }) => {
-						const call = required(context.call)
-						return complete(
+			completeFailure: ({ context }: { context: Context }) => {
+				const call = required(context.call)
+				return {
+					context: {
+						output: complete(
 							context,
 							call.type === 'RETRY' ? { retry: call.id } : { reply: { method: 'fail' } }
 						)
-					})(args)
+					}
 				}
-			})
+			}
 		}
 	})
 
@@ -138,7 +232,6 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 		initial: 'running',
 		context: ({ input }) => ({
 			call: input,
-			abort: undefined,
 			output: { id: input.id },
 			ownedSave: undefined,
 			ownedFailure: undefined,
@@ -172,13 +265,13 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 										return { target: 'identifyingFailure' }
 									}
 									if (context.call?.type === 'CALL' && context.call.method === 'save') {
-										return { target: 'saving' }
+										return { target: 'saving', input: context.call.request }
 									}
 									if (
 										context.call?.type === 'CALL' &&
 										(context.call.method === 'resolve' || context.call.method === 'extract')
 									) {
-										return { target: 'network', context: { abort: new AbortController() } }
+										return { target: 'network', input: context.call }
 									}
 									return { target: 'lookup' }
 								}
@@ -189,7 +282,7 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 									active: {
 										on: {
 											SHUTDOWN: (args, enq) => {
-												enq(() => required(args.context.abort).abort())
+												enq.sendTo('network', { type: 'ABORT' })
 												return { target: 'stopping' }
 											}
 										}
@@ -200,16 +293,15 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 								invoke: {
 									id: 'network',
 									src: 'network',
-									input: ({ context }: { context: Context }) => {
-										const call = required(context.call)
-										if (
-											call.type !== 'CALL' ||
-											(call.method !== 'resolve' && call.method !== 'extract')
-										)
-											throw new Error('Invalid network call')
-										return { call, signal: required(context.abort).signal }
-									},
-									onDone: (args) => {
+									input: ({ input }) => input,
+									onError: (args) => {
+										if (args.guards.closing(args) || args.guards.stale())
+											return { target: '#article-worker-call.suppressed' }
+										return { target: '#article-worker-call.done', context: failed(args) }
+									}
+								},
+								on: {
+									NETWORK_DONE: (args) => {
 										const { context } = args
 										if (args.guards.closing(args)) {
 											return { target: '#article-worker-call.suppressed' }
@@ -222,7 +314,7 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 											context: { output: complete(context, { reply: args.event.output }) }
 										}
 									},
-									onError: (args) => {
+									NETWORK_ERROR: (args) => {
 										const { context, event } = args
 										if (args.guards.closing(args)) {
 											return { target: '#article-worker-call.suppressed' }
@@ -291,35 +383,11 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 									},
 									stopping: {}
 								},
-								entry: (args, enq) => {
-									const ref = cap.save(
-										enq.spawn,
-										(({ context }: { context: Context }) => {
-											const call = required(context.call)
-											if (call.type !== 'CALL' || call.method !== 'save')
-												throw new Error('Invalid save call')
-											return call.request
-										})(args)
-									)
+								entry: ({ input }, enq) => {
+									const ref = cap.save(enq.spawn, input)
 									enq.subscribeTo(ref, {
-										done: (
-											output
-										):
-											| ({ type: 'SAVE_DONE' } & { actorId: string; output: ArticleSaveResult })
-											| ({ type: 'SAVE_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'SAVE_DONE',
-											actorId: ref.id,
-											output
-										}),
-										error: (
-											error
-										):
-											| ({ type: 'SAVE_DONE' } & { actorId: string; output: ArticleSaveResult })
-											| ({ type: 'SAVE_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'SAVE_ERROR',
-											actorId: ref.id,
-											error
-										})
+										done: (output): SaveReport => ({ type: 'SAVE_DONE', actorId: ref.id, output }),
+										error: (error): SaveReport => ({ type: 'SAVE_ERROR', actorId: ref.id, error })
 									})
 									return { context: { ownedSave: ref } }
 								},
@@ -338,20 +406,7 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 										return {
 											target: '#article-worker-call.done',
 											context: {
-												output: (({ context, event }) => {
-													const result = required<ArticleSaveResult>(event.output)
-													return complete(context, {
-														result,
-														reply: {
-															method: 'save',
-															result: {
-																kind: result.kind,
-																operationId: result.operationId,
-																ready: 'ready' in result && result.ready === true
-															}
-														}
-													})
-												})(args)
+												output: saveOutput(args.context, args.event.output)
 											}
 										}
 									},
@@ -395,39 +450,26 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 									},
 									stopping: {}
 								},
-								entry: (args, enq) => {
-									const ref = cap.failure(
-										enq.spawn,
-										(({ context }: { context: Context }) => {
-											const call = required(context.call)
-											if (call.type !== 'RETRY' && call.method !== 'fail')
-												throw new Error('Invalid failure call')
-											const id = call.type === 'RETRY' ? call.id : call.articleId
-											return {
-												attempt: {
-													operationId: context.failureOperationId,
-													workspaceId: id,
-													membershipId: id,
-													draft: { id, code: call.type === 'RETRY' ? null : call.code }
-												}
-											}
-										})(args)
-									)
+								entry: ({ context }, enq) => {
+									const call = required(context.call)
+									if (call.type !== 'RETRY' && call.method !== 'fail')
+										throw new Error('Invalid failure call')
+									const id = call.type === 'RETRY' ? call.id : call.articleId
+									const ref = cap.failure(enq.spawn, {
+										attempt: {
+											operationId: context.failureOperationId,
+											workspaceId: id,
+											membershipId: id,
+											draft: { id, code: call.type === 'RETRY' ? null : call.code }
+										}
+									})
 									enq.subscribeTo(ref, {
-										done: (
-											output
-										):
-											| ({ type: 'FAILURE_DONE' } & { actorId: string; output: FailureResult })
-											| ({ type: 'FAILURE_ERROR' } & { actorId: string; error: unknown }) => ({
+										done: (output): FailureReport => ({
 											type: 'FAILURE_DONE',
 											actorId: ref.id,
 											output
 										}),
-										error: (
-											error
-										):
-											| ({ type: 'FAILURE_DONE' } & { actorId: string; output: FailureResult })
-											| ({ type: 'FAILURE_ERROR' } & { actorId: string; error: unknown }) => ({
+										error: (error): FailureReport => ({
 											type: 'FAILURE_ERROR',
 											actorId: ref.id,
 											error
@@ -441,35 +483,17 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 								},
 								on: {
 									FAILURE_DONE: (args, enq) => {
-										let pendingContext = {}
-
-										const { event } = args
-										if (args.guards.closing(args)) {
-											return { context: pendingContext, target: '#article-worker-call.suppressed' }
-										}
-										if (args.guards.stale()) {
-											return { context: pendingContext, target: '#article-worker-call.suppressed' }
-										}
-										if (
-											required<FailureResult>(event.output).settlement.kind === 'locallyPersisted'
-										) {
-											enq(({ event }) => {
-												const settlement = required<FailureResult>(event.output).settlement
-												if (settlement.kind !== 'locallyPersisted')
-													throw new Error('Expected local failure receipt')
+										if (args.guards.closing(args) || args.guards.stale())
+											return { target: '#article-worker-call.suppressed' }
+										const settlement = args.event.output.settlement
+										if (settlement.kind === 'locallyPersisted')
+											enq(() => {
 												void settlement.workspace.global().catch(() => {})
-											}, args)
-											pendingContext = {
-												...pendingContext,
-												...(() => args.actions.completeFailure(args).context)()
-											}
-											return { context: pendingContext, target: '#article-worker-call.done' }
+											})
+										return {
+											target: '#article-worker-call.done',
+											context: args.actions.completeFailure(args).context
 										}
-										pendingContext = {
-											...pendingContext,
-											...(() => args.actions.completeFailure(args).context)()
-										}
-										return { context: pendingContext, target: '#article-worker-call.done' }
 									},
 									FAILURE_ERROR: (args) => {
 										const { context, event } = args
@@ -494,14 +518,14 @@ export function createArticleWorkerCallMachine(cap: CallCapability) {
 				type: 'final',
 				entry: (args) => {
 					return {
-						context: { output: { id: args.context.output.id }, call: undefined, abort: undefined }
+						context: { output: { id: args.context.output.id }, call: undefined }
 					}
 				}
 			},
 			done: {
 				type: 'final',
 				entry: () => {
-					return { context: { call: undefined, abort: undefined } }
+					return { context: { call: undefined } }
 				}
 			}
 		}

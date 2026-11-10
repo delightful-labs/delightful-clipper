@@ -1,3 +1,4 @@
+import { machineDiagnostics } from '../../web/src/lib/diagnostics/inspect.js'
 import { createActor, toPromise, waitFor } from 'xstate'
 import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 import {
@@ -21,6 +22,7 @@ async function command(message: unknown) {
 		throw new Error('invalidResponse')
 }
 const owner = createActor(createApplicationReadinessMachine<Session>(), {
+	...machineDiagnostics,
 	input: existingAccountInput({ serverUrl: __CLIPPER_SERVER__, env: 'clipper' }, extensionLibrary)
 })
 
@@ -69,7 +71,8 @@ const runtime = createActor(
 				...(articleId ? { articleId } : {})
 			})
 		}
-	})
+	}),
+	machineDiagnostics
 ).start()
 chrome.runtime.onMessage.addListener((value: unknown, sender, reply) => {
 	const authorization = authorizationRequestSchema.safeParse(value)
@@ -84,7 +87,7 @@ chrome.runtime.onMessage.addListener((value: unknown, sender, reply) => {
 				publish()
 				return () => subscription.unsubscribe()
 			}),
-			{ input: { expected: authorization.data.accountId } }
+			{ input: { expected: authorization.data.accountId }, ...machineDiagnostics }
 		)
 		void toPromise(actor)
 			.then(reply, () => reply({ status: 'unavailable' }))

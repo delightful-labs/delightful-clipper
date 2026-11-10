@@ -107,8 +107,8 @@ export function createImagePublicationDomain(io: {
 						args.actions.insertIntent(args, { facts: args.context.facts })
 						args.actions.insertAsset(args, { facts: args.context.facts })
 						args.actions.publishImage(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			}
@@ -187,8 +187,8 @@ export function createImageFailureDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.recordFailure(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			}

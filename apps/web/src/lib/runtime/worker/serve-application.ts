@@ -10,7 +10,7 @@ import { JAZZ_RUNTIME_VERSION } from '../../offline/runtime-version.js'
 import { projectRuntime } from './views.js'
 import { commandSchema } from './protocol.js'
 import { recoveryView } from './recovery-owner.js'
-import { inspectMachines } from '../../diagnostics/inspect.js'
+import { machineDiagnostics } from '../../diagnostics/inspect.js'
 import { workerHostMachine } from './host-machine.js'
 import type { WorkerHost } from './host-machine.js'
 import { createScopedWorkerAccountStore } from './scoped-account-store.js'
@@ -130,7 +130,7 @@ export function serveApplicationWorker(options: {
 				callbackAttempt: decoded.data.callbackAttempt,
 				authReturned: () => self.postMessage({ type: 'AUTH_RETURNED' })
 			},
-			inspect: inspectMachines
+			...machineDiagnostics
 		})
 		host = actor
 		const attachment = options.attach?.(actor)

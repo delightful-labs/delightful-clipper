@@ -1,11 +1,11 @@
 # Workflow ownership hardening specification
 
-**Status:** Partially implemented: A–F are complete for Clipper. G remains open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
+**Status:** Change sets A–G are implemented and qualified for Clipper. Finance adoption retains its separate actual-adapter gate; hosted-provider runtime/release qualification remains separate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
 
 The workflow branch incorporates merged PR34 at `e0856c6`. Its
 [integration and XState review](../../docs/reviews/pr34-workflow-integration.md)
 records preserved sign-in evidence, explicit shutdown receipts and terminal read
-outcomes. Those integration corrections were followed by E/F; G remains open.
+outcomes. Those integration corrections are preserved through E–G.
 
 Move the remaining authentication and runtime lifecycle decisions into their owning charts. A reader must be able to identify admission, replacement, operation order, completion, failure and cancellation from the statecharts and their typed protocols. Preserve established product and persistence semantics while making resource ownership explicit and adding recoverable outcomes for stalled operations.
 
@@ -590,6 +590,17 @@ V6-7: OAuth feedback derives from its active state contract, uses existing local
 SHARE-5: Preserve decode behavior for identity/gzip/Brotli/deflate, unsupported encoding and failed/oversized decoding. Preserve tag/property history selection. Verify behavior rather than machine-source text or line-count reduction.
 
 SHARE-6: Review the resulting parent charts and helpers together. Domain decisions remain visible, v6 schemas retain concrete input/output/command types, source injection works, and no helper duplicates DLF settlement ownership or moves domain work onto the UI thread.
+
+Implementation checkpoint: V6-1–7 and SHARE-5/6 are covered. Network abort
+resources are admitted by an invoked native owner; self-only coordination and
+all common-domain staging acknowledgements use private delivery after effects.
+Typed state-entry/guaranteed-context contracts preserve original write custody.
+The library/readiness/sync calculations, decoding and history reuse retain branch
+and effect order. Rejected-delivery diagnostics are sanitized and required
+recipients are tested separately from benign late deliveries. DLF source
+`9c13e3f` narrows the public child command without changing runtime bytes; both
+Clipper consumers use the qualified artifact. See
+[v6 ownership and qualification](../../docs/reviews/v6-contract-cleanup.md).
 
 ## Composed qualification and completion
 

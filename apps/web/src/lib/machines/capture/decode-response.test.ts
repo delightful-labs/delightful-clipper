@@ -42,3 +42,25 @@ it.each([undefined, 'identity', 'unknown'])(
 		else expect(result.hop.body).toBe(wire)
 	}
 )
+
+it.each(['gzip', 'br', 'deflate'] as const)(
+	'preserves failed/oversized %s decoding as bounded sourceTooLarge',
+	async (encoding) => {
+		const decode = vi.fn(async () => {
+			throw new Error('Native decode failed or exceeded its bound')
+		})
+		const actor = createActor(decodeResponseMachine, {
+			input: {
+				wire: new Uint8Array([1]),
+				encoding,
+				headers: { status: 200, location: undefined, mediaType: 'text/html' },
+				decode
+			}
+		}).start()
+		const result = await toPromise(actor)
+		expect(result.error).toMatchObject({ code: 'sourceTooLarge', status: 413 })
+		expect(result.hop.body).toHaveLength(0)
+		expect(actor.getSnapshot().context.wire).toHaveLength(0)
+		expect(decode).toHaveBeenCalledOnce()
+	}
+)

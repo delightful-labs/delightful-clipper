@@ -1,4 +1,3 @@
-import type { EventPayload } from '../../web/src/lib/machines/events.js'
 import { types, setup, createAsyncLogic, createCallbackLogic } from 'xstate'
 
 import { connectMessageSchema, trustedAccountPage } from './protocol.js'
@@ -32,8 +31,7 @@ export function createConnectStoreMachine(cap: {
 		schemas: {
 			context: types<Context>(),
 			events: {
-				CONFIRMATION_ISSUED: types<{ connection: Connection }>(),
-				UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>()
+				CONFIRMATION_ISSUED: types<{ connection: Connection }>()
 			},
 			input: types<Input>(),
 			output: types<{ accepted: boolean }>(),

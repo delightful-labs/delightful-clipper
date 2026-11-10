@@ -45,7 +45,6 @@ type Context = Input & {
 	blocked: string[]
 	uncertain: string[]
 	selected: ArticleImage | undefined
-	fetched: { bytes: Uint8Array; mediaType: string } | undefined
 	result: ProcessedImage | undefined
 	retryable: boolean
 	documentId: string
@@ -111,7 +110,6 @@ const model = setup({
 			FOCUS: types<EventPayload<Event, 'FOCUS'>>(),
 			SHOW_CONTROLS: types<EventPayload<Event, 'SHOW_CONTROLS'>>(),
 			OBSERVATION_FAILED: types<EventPayload<Event, 'OBSERVATION_FAILED'>>(),
-			REFRESH_SYNC: types<EventPayload<Event, 'REFRESH_SYNC'>>(),
 			FULLSCREEN_CHANGED: types<EventPayload<Event, 'FULLSCREEN_CHANGED'>>(),
 			FULLSCREEN_OBSERVED: types<EventPayload<Event, 'FULLSCREEN_OBSERVED'>>(),
 			IMAGE_VIEW: types<EventPayload<Event, 'IMAGE_VIEW'>>(),
@@ -134,6 +132,49 @@ const model = setup({
 			readyWrite: types<import('xstate').ActorRefFrom<typeof readyWrite>>(),
 			failureWrite: types<import('xstate').ActorRefFrom<typeof failureWrite>>()
 		}
+	},
+	states: {
+		admitting: { id: 'image-queue.admitting' },
+		running: {
+			id: 'image-queue.running',
+			states: {
+				control: {
+					id: 'image-queue.running.control',
+					states: {
+						accepting: { id: 'image-queue.running.control.accepting' },
+						closing: { id: 'image-queue.running.control.closing' }
+					}
+				},
+				queue: {
+					id: 'image-queue.running.queue',
+					states: {
+						routing: { id: 'image-queue.running.queue.routing' },
+						idle: { id: 'image-queue.running.queue.idle' },
+						selecting: { id: 'image-queue.running.queue.selecting' },
+						quotaBackoff: { id: 'image-queue.running.queue.quotaBackoff' },
+						quotaSelecting: { id: 'image-queue.running.queue.quotaSelecting' },
+						backoff: { id: 'image-queue.running.queue.backoff' },
+						reconciling: { id: 'image-queue.running.queue.reconciling' },
+						fetching: { id: 'image-queue.running.queue.fetching' },
+						fetchFailed: { id: 'image-queue.running.queue.fetchFailed' },
+						processing: {
+							id: 'image-queue.running.queue.processing',
+							schemas: { input: types<{ bytes: Uint8Array; mediaType: string }>() },
+							states: {
+								waiting: { id: 'image-queue.running.queue.processing.waiting' },
+								overdue: { id: 'image-queue.running.queue.processing.overdue' },
+								stopping: { id: 'image-queue.running.queue.processing.stopping' },
+								blocked: { id: 'image-queue.running.queue.processing.blocked' }
+							}
+						},
+						savingReady: { id: 'image-queue.running.queue.savingReady' },
+						savingFailure: { id: 'image-queue.running.queue.savingFailure' },
+						unavailable: { id: 'image-queue.running.queue.unavailable' }
+					}
+				}
+			}
+		},
+		closed: { id: 'image-queue.closed' }
 	},
 	actors: {
 		observe,
@@ -159,6 +200,9 @@ const model = setup({
 		quotaDelay: ({ context }) => context.quotaDelayMs
 	},
 	guards: {
+		owningWrite: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ running: { queue: 'savingReady' } }, value) ||
+			matchesState({ running: { queue: 'savingFailure' } }, value),
 		quotaCoolingDown: ({ context }: { context: Context }) => context.quotaDelayMs > 0,
 		currentView: ({ context, event }: { context: Context; event: Event }) =>
 			event.type === 'IMAGE_VIEW' &&
@@ -184,7 +228,6 @@ const model = setup({
 			context: {
 				selected: nextImage(context),
 				retryable: true,
-				fetched: undefined,
 				result: undefined
 			}
 		}),
@@ -196,7 +239,6 @@ const model = setup({
 						: row
 				),
 				blocked: [...context.blocked, context.selected!.id],
-				fetched: undefined,
 				result: undefined
 			}
 		}),
@@ -207,7 +249,6 @@ const model = setup({
 						? { ...row, status: 'failed', assetId: null, retryable: context.retryable }
 						: row
 				),
-				fetched: undefined,
 				result: undefined
 			}
 		}),
@@ -219,7 +260,6 @@ const model = setup({
 			context: {
 				blocked: [...context.blocked, context.selected!.id],
 				uncertain: [...context.uncertain, context.selected!.id],
-				fetched: undefined,
 				result: undefined
 			}
 		})
@@ -240,7 +280,6 @@ export const imageQueueMachine = model.createMachine({
 		blocked: [],
 		uncertain: [],
 		selected: undefined,
-		fetched: undefined,
 		result: undefined,
 		retryable: true,
 		documentId: '',
@@ -276,10 +315,7 @@ export const imageQueueMachine = model.createMachine({
 					!(
 						args.guards.closing(args) &&
 						!matchesState({ running: { queue: 'processing' } }, args.value) &&
-						!(({ value }: { value: import('xstate').StateValue }) =>
-							matchesState({ running: { queue: 'savingReady' } }, value))(args) &&
-						!(({ value }: { value: import('xstate').StateValue }) =>
-							matchesState({ running: { queue: 'savingFailure' } }, value))(args)
+						!args.guards.owningWrite(args)
 					)
 				)
 					return
@@ -343,6 +379,7 @@ export const imageQueueMachine = model.createMachine({
 							slots: urls.map((sourceUrl) =>
 								enq.spawn('view', {
 									input: {
+										reportTo: args.self,
 										capability: context.capability!,
 										documentId: event.documentId,
 										sourceUrl
@@ -364,6 +401,7 @@ export const imageQueueMachine = model.createMachine({
 							slots: urls.map((sourceUrl) =>
 								enq.spawn('view', {
 									input: {
+										reportTo: args.self,
 										capability: context.capability!,
 										documentId: event.documentId,
 										sourceUrl
@@ -538,7 +576,7 @@ export const imageQueueMachine = model.createMachine({
 								input: ({ context }: { context: Context }) => context,
 								onDone: (args) => {
 									if (args.guards.current(args)) {
-										return { target: 'processing', context: { fetched: args.event.output } }
+										return { target: 'processing', input: args.event.output }
 									}
 									return { target: 'idle' }
 								},
@@ -603,8 +641,8 @@ export const imageQueueMachine = model.createMachine({
 							invoke: {
 								id: 'process',
 								src: 'process',
-								input: ({ context }) => ({
-									...imageJob(context.fetched!),
+								input: ({ context, input }) => ({
+									...imageJob(input),
 									now: context.now ?? monotonicNow
 								}),
 								onSnapshot: ({ event }) =>
@@ -612,11 +650,11 @@ export const imageQueueMachine = model.createMachine({
 								onError: { target: '.blocked' },
 								onDone: (args) => {
 									if (args.guards.closing(args) || !args.guards.current(args))
-										return { target: 'idle', context: { fetched: undefined, result: undefined } }
+										return { target: 'idle', context: { result: undefined } }
 									if (args.context.observationFailed)
 										return {
 											target: 'unavailable',
-											context: { fetched: undefined, result: undefined }
+											context: { result: undefined }
 										}
 									const result = args.event.output
 									if (
@@ -626,11 +664,11 @@ export const imageQueueMachine = model.createMachine({
 									)
 										return {
 											target: 'savingReady',
-											context: { result: result.reply.result, fetched: undefined }
+											context: { result: result.reply.result }
 										}
 									return {
 										target: 'savingFailure',
-										context: { retryable: false, fetched: undefined }
+										context: { retryable: false }
 									}
 								}
 							}
@@ -761,7 +799,6 @@ export const imageQueueMachine = model.createMachine({
 						rows: [],
 						capability: undefined,
 						selected: undefined,
-						fetched: undefined,
 						result: undefined
 					}
 				}

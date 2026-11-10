@@ -1,7 +1,15 @@
 import { it, expect, vi } from 'vitest'
-import { createActor, createMachine, waitFor, toPromise, createAsyncLogic } from 'xstate'
+import {
+	createActor,
+	createMachine,
+	waitFor,
+	toPromise,
+	createAsyncLogic,
+	setup,
+	types
+} from 'xstate'
 import { createLogger } from 'delightful-local-first/diagnostics/logger'
-import { createMachineObserver } from './machines.js'
+import { createMachineObserver, createRejectedEventObserver } from './machines.js'
 
 function fixture(enabled = true) {
 	const sink = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
@@ -87,4 +95,50 @@ it('reports only modeled state and outcome from a completed save', async () => {
 	await waitFor(actor, (s) => s.status === 'done')
 	expect(JSON.stringify(sink.error.mock.calls)).toContain('unknown')
 	expect(JSON.stringify(sink.error.mock.calls)).not.toContain('private-content')
+})
+
+it('observes missing required recipients without exposing rejected payloads, dynamic IDs or errors', () => {
+	const sink = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+	const logger = createLogger('test', { enabled: true, sink })
+	const actor = createActor(
+		createMachine({
+			id: 'rejection-fixture',
+			entry: ({ parent }, enq) => {
+				enq.sendTo(parent, {
+					type: 'CLOSED',
+					phrase: 'private recovery phrase',
+					token: 'private-credential',
+					source: 'https://private.example/'
+				})
+			}
+		}),
+		{ onRejectedEvent: createRejectedEventObserver(logger, true) }
+	).start()
+	const logs = JSON.stringify(sink.warn.mock.calls)
+	expect(logs).toContain('Machine event rejected')
+	expect(logs).toContain('missingTarget')
+	expect(logs).toContain('CLOSED')
+	expect(logs).not.toMatch(/private|credential|phrase|https/)
+	actor.stop()
+})
+it('observes forbidden private delivery and disables rejected-event diagnostics without changing state', () => {
+	const sink = { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+		logger = createLogger('test', { enabled: true, sink })
+	const logic = setup({
+		schemas: { events: { START: types() }, internalEvents: { STAGED: types() } }
+	}).createMachine({
+		initial: 'waiting',
+		states: { waiting: { on: { STAGED: { target: 'done' } } }, done: { type: 'final' } }
+	})
+	for (const enabled of [true, false]) {
+		const actor = createActor(logic, {
+			onRejectedEvent: createRejectedEventObserver(logger, enabled)
+		}).start()
+		Reflect.apply(actor.send, actor, [{ type: 'STAGED', token: 'private-credential' }])
+		expect(actor.getSnapshot().matches('waiting')).toBe(true)
+		actor.stop()
+	}
+	expect(sink.warn).toHaveBeenCalledOnce()
+	expect(JSON.stringify(sink.warn.mock.calls)).toContain('internalEvent')
+	expect(JSON.stringify(sink.warn.mock.calls)).not.toContain('private-credential')
 })

@@ -66,7 +66,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 		})
 	}
 	const actors = {
-		resources: createCallbackLogic<{ type: 'UNUSED' }, Request>(({ input, sendBack }) => {
+		resources: createCallbackLogic<never, Request>(({ input, sendBack }) => {
 			const controller = new AbortController()
 			const signal = AbortSignal.any([input.signal, controller.signal])
 			sendBack({ type: 'READY', resources: { controller, signal, expiresAt: cap.now() + timeout } })
@@ -78,7 +78,7 @@ export function createCaptureRequestMachine<G extends Snapshot<GatewayResult>>(
 				cancelled: input.signal.aborted
 			})
 		}),
-		cancellation: createCallbackLogic<{ type: 'UNUSED' }, AbortSignal>(({ input, sendBack }) => {
+		cancellation: createCallbackLogic<never, AbortSignal>(({ input, sendBack }) => {
 			const abort = () => sendBack({ type: 'CANCEL' })
 			input.addEventListener('abort', abort, { once: true })
 			if (input.aborted) abort()

@@ -126,8 +126,8 @@ export function createNoteCreationMachine(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertArticle(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -135,8 +135,8 @@ export function createNoteCreationMachine(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertDocument(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			}
@@ -221,8 +221,8 @@ export function createNoteRevisionMachine(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertRevision(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			}
@@ -372,8 +372,8 @@ export function createLegacyNoteImportMachine(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertRevisions(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -382,8 +382,8 @@ export function createLegacyNoteImportMachine(io: {
 					enq(() => {
 						args.actions.insertArticle(args, { facts: args.context.facts })
 						args.actions.insertRevisions(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -392,8 +392,8 @@ export function createLegacyNoteImportMachine(io: {
 					enq(() => {
 						args.actions.insertDocument(args, { facts: args.context.facts })
 						args.actions.insertRevisions(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			}

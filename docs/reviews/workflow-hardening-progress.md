@@ -1,21 +1,22 @@
 # Workflow hardening PR checkpoint
 
-This checkpoint completes change sets A–F for Clipper. G remains separate
-work. Finance adoption retains its separate actual-adapter qualification gate. The
+This checkpoint completes change sets A–G for Clipper. Finance adoption retains
+its separate actual-adapter gate; hosted-provider runtime/release qualification
+remains separate. The
 [implementation specification](../../specs/001-jazz-clipper/workflow-ownership-hardening.md)
 remains authoritative; this PR does not complete the whole specification.
 
 ## Branches and source provenance
 
 - Clipper: `feat/workflow-hardening`, rebased onto merged PR34 at `e0856c6`.
-- DLF: `feat/domain-transaction-workflow`, based on `9d2b0f6`; qualified source `5bb6605`.
+- DLF: `feat/domain-transaction-workflow`, based on `9d2b0f6`; current qualified source `9c13e3f` (D's sign-out source remains `5bb6605`).
 - Finance comparison: clean worker-runtime revision
   `1125c5f1dc3d99c484988b6c4053e5d25526a45a`. Finance was reviewed, not modified
   or migrated.
 
 Both Clipper consumers pin
-`vendor/delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz`, SHA-256
-`eca27c4841b46340adaf4cd9fc5d2708cee17b702ae2d48610a74108d7f05783`.
+`vendor/delightful-local-first-auth-lifecycle-9c13e3f-alpha60.tgz`, SHA-256
+`8812fc4825b6b0f53ca199c84dc41b328cf7edb2c0163db425b6651c25a028ee`.
 The deterministic builder and `vendor/auth-lifecycle-provenance.json` record 12
 DLF source modules and their hashes. All 258 baseline payload files remain
 byte-identical to alpha.60; only package metadata changes, with 24 JS/declaration
@@ -196,6 +197,32 @@ Native browser cases run both real production Workers and inject actual
 uncloneable-post failures and cancellation. Parent regressions cover failure
 mapping, exact deadlines, stale results, shutdown and cleanup refusal.
 
+## G v6 contracts and calculation cleanup
+
+Article network cancellation now has an invoked native owner; pure transition
+exploration allocates nothing and shutdown drains the original request. Library,
+reader, shell and domain staging coordination is private, with mutation before
+native self-delivery. Every production common-domain consumer uses the protocol.
+DLF's public child command is narrowed to `STAGE`; the only artifact difference
+from the prior qualified pin is `dist/contracts/domain-transaction.d.ts`. Runtime
+bytes, native adapters, exports and the existing Jazz/recovery patches are unchanged.
+
+Typed state inputs/refinements cover selected calls, prepared record data, image
+processing/asset/URL data, reader writes and confirmation IDs. Image reports have
+an explicit narrow recipient. Library event types, readiness patch sequencing,
+receipt observer replacement, shared decoder/history completion and pure receipt
+collection are simplified. Empty protocols replace migration placeholders.
+Production roots observe sanitized rejected deliveries; tests distinguish required
+recipients from documented harmless stopped deliveries.
+
+See [v6 contract cleanup](v6-contract-cleanup.md) for the ownership graph, exact
+contracts and evidence. V6-1–7 and SHARE-5/6 are covered. The independent receipt
+ledger runs 120 schedules, up to 14 commands, seed `20261120`, with full reachable
+contract-model state/event/transition coverage. DLF additionally passes 14 domain
+transaction regressions, zero-error/warning library checks, strict package publint
+and all public consumer declarations/fixtures/builds, including its updated
+private-acknowledgement consumer.
+
 ## Checkpoint qualification
 
 The A/B DLF source at `1571ba2` passed 356 selected lifecycle/workspace/scoped-form
@@ -216,7 +243,7 @@ Final Clipper checkpoint checks passed:
 
 - `pnpm verify`: installed vendor integrity/import checks, repository formatting
   and lint, strict types, web/extension Svelte checks with zero errors/warnings,
-  **885 unit/native tests in 128 files**, and the production Netlify build.
+  **899 unit/native tests in 130 files**, and the production Netlify build.
 - `pnpm test:worker`: **32 browser cases**, including A → B → A restoration with an attached reader,
   account custody with dropped WRITE acknowledgement and delayed closure, plus real
   SharedWorker port ownership and late-port disposal. Both real image/extraction jobs, native post failure/cancellation and PR34's attached-reader
@@ -228,14 +255,14 @@ Final Clipper checkpoint checks passed:
   edits, reconnection, cold reader reopening with both servers stopped and shell
   update failure/recovery. Both production Netlify fixtures built successfully.
 
-- Prior PR34 rebase checkpoint: `pnpm test:schema` passed **eight Chromium/Firefox schema-upgrade cases**. E/F introduce no schema change.
+- Prior PR34 rebase checkpoint: `pnpm test:schema` passed **eight Chromium/Firefox schema-upgrade cases**. E–G introduce no schema change.
 
 This checkpoint incorporates merged PR34 at `e0856c6`, against the final production
 account-storage/broker integration and the frozen archive above, using Clipper's
 managed Node `24.22.2`. Main's proof-renewal, session-lifecycle and cold-reader connection fixes are preserved.
 Browser fixtures use its account settings page and article action popovers. Extension
 qualification ran on macOS; main's documented temporary Linux exclusions remain. They do not
-establish Finance adoption or completion of G.
+establish Finance adoption or hosted-provider release qualification.
 
 An initial F extension probe hit three sign-in/settings failures before extraction.
 All three passed on an unchanged focused rerun and then in the final full
@@ -283,7 +310,8 @@ product behavior were weakened.
 - E is complete: REC-4/5 cover scoped reader acknowledgement/cleanup, final-position
   uncertainty, bounded search waits and original-read custody through account shutdown.
 - F is complete: EXT-1–3, SHARE-4 and REC-8 cover shared browser jobs, native cleanup and unchanged deadline/fallback contracts.
-- G: finish the remaining v6 and calculation cleanup.
+- G is complete: V6-1–7 and SHARE-5/6 cover pure resource admission, private/native delivery, state contracts, observed facts, calculation order, narrow protocols and smaller reuse.
+- Finance actual-adapter adoption and hosted-provider runtime/release qualification remain separate; this checkpoint does not claim those external gates.
 
 The legacy account-store/storage fixtures and SDK compatibility worker remain for
 existing compatibility coverage; production application storage uses the scoped

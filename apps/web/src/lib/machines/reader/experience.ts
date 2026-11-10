@@ -52,7 +52,6 @@ export type ReaderExperienceEvent =
 				| 'SHOW_CONTROLS'
 				| 'SHUTDOWN'
 				| 'OBSERVATION_FAILED'
-				| 'REFRESH_SYNC'
 				| 'FULLSCREEN_CHANGED'
 				| 'FULLSCREEN_OBSERVED'
 	  }
@@ -161,10 +160,10 @@ const model = setup({
 			FOCUS: types<EventPayload<ReaderExperienceEvent, 'FOCUS'>>(),
 			SHOW_CONTROLS: types<EventPayload<ReaderExperienceEvent, 'SHOW_CONTROLS'>>(),
 			OBSERVATION_FAILED: types<EventPayload<ReaderExperienceEvent, 'OBSERVATION_FAILED'>>(),
-			REFRESH_SYNC: types<EventPayload<ReaderExperienceEvent, 'REFRESH_SYNC'>>(),
 			FULLSCREEN_CHANGED: types<EventPayload<ReaderExperienceEvent, 'FULLSCREEN_CHANGED'>>(),
 			FULLSCREEN_OBSERVED: types<EventPayload<ReaderExperienceEvent, 'FULLSCREEN_OBSERVED'>>()
 		},
+		internalEvents: { REFRESH_SYNC: types() },
 		input: types<Input>(),
 		tags: types<string>(),
 		children: {
@@ -178,6 +177,121 @@ const model = setup({
 			fullscreenObservation: types<import('xstate').ActorRefFrom<typeof fullscreenObservation>>(),
 			writeOperation: types<import('xstate').ActorRefFrom<typeof writeOperation>>()
 		}
+	},
+	states: {
+		admitting: { id: 'reader-experience.admitting' },
+		active: {
+			id: 'reader-experience.active',
+			states: {
+				control: {
+					id: 'reader-experience.active.control',
+					states: {
+						accepting: { id: 'reader-experience.active.control.accepting' },
+						closing: { id: 'reader-experience.active.control.closing' }
+					}
+				},
+				data: {
+					id: 'reader-experience.active.data',
+					states: {
+						observing: {
+							id: 'reader-experience.active.data.observing',
+							states: {
+								loading: { id: 'reader-experience.active.data.observing.loading' },
+								ready: { id: 'reader-experience.active.data.observing.ready' }
+							}
+						},
+						failed: { id: 'reader-experience.active.data.failed' },
+						closed: { id: 'reader-experience.active.data.closed' }
+					}
+				},
+				focus: {
+					id: 'reader-experience.active.focus',
+					states: {
+						normal: { id: 'reader-experience.active.focus.normal' },
+						focused: {
+							id: 'reader-experience.active.focus.focused',
+							states: {
+								admitting: { id: 'reader-experience.active.focus.focused.admitting' },
+								native: {
+									id: 'reader-experience.active.focus.focused.native',
+									states: {
+										registering: {
+											id: 'reader-experience.active.focus.focused.native.registering'
+										},
+										opening: {
+											id: 'reader-experience.active.focus.focused.native.opening',
+											states: {
+												requested: {
+													id: 'reader-experience.active.focus.focused.native.opening.requested'
+												},
+												cancelling: {
+													id: 'reader-experience.active.focus.focused.native.opening.cancelling'
+												}
+											}
+										},
+										fullscreen: { id: 'reader-experience.active.focus.focused.native.fullscreen' },
+										exiting: {
+											id: 'reader-experience.active.focus.focused.native.exiting',
+											states: {
+												checking: {
+													id: 'reader-experience.active.focus.focused.native.exiting.checking'
+												},
+												requesting: {
+													id: 'reader-experience.active.focus.focused.native.exiting.requesting'
+												}
+											}
+										}
+									}
+								},
+								fallback: { id: 'reader-fallback' }
+							}
+						}
+					}
+				},
+				viewport: {
+					id: 'reader-experience.active.viewport',
+					states: {
+						detached: { id: 'reader-experience.active.viewport.detached' },
+						identifying: { id: 'reader-experience.active.viewport.identifying' },
+						waiting: { id: 'reader-experience.active.viewport.waiting' },
+						owning: {
+							id: 'reader-experience.active.viewport.owning',
+							states: {
+								active: { id: 'reader-experience.active.viewport.owning.active' },
+								overdue: { id: 'reader-experience.active.viewport.owning.overdue' },
+								unavailable: { id: 'reader-experience.active.viewport.owning.unavailable' },
+								closing: { id: 'reader-experience.active.viewport.owning.closing' }
+							}
+						},
+						failed: { id: 'reader-experience.active.viewport.failed' }
+					}
+				},
+				synchronization: {
+					id: 'reader-experience.active.synchronization',
+					states: {
+						routing: { id: 'reader-experience.active.synchronization.routing' },
+						healthy: { id: 'reader-experience.active.synchronization.healthy' },
+						failed: { id: 'reader-experience.active.synchronization.failed' }
+					}
+				},
+				writer: {
+					id: 'reader-experience.active.writer',
+					states: {
+						idle: { id: 'reader-experience.active.writer.idle' },
+						debouncing: { id: 'reader-experience.active.writer.debouncing' },
+						routing: { id: 'reader-experience.active.writer.routing' },
+						identifyingWrite: { id: 'reader-experience.active.writer.identifyingWrite' },
+						writing: {
+							id: 'reader-experience.active.writer.writing',
+							schemas: { input: types<ReaderWriteInput>() }
+						},
+						failed: { id: 'reader-experience.active.writer.failed' },
+						uncertain: { id: 'reader-experience.active.writer.uncertain' }
+					}
+				}
+			}
+		},
+		closed: { id: 'reader-experience.closed' }
 	},
 	actors: {
 		attachmentIdentity,
@@ -936,6 +1050,11 @@ export const readerExperienceMachine = model.createMachine({
 								src: 'identity',
 								onDone: ({ context, event }) => ({
 									target: 'writing',
+									input: {
+										change: required(context.queue[0]),
+										operationId: event.output,
+										observed: context.rows
+									},
 									context: {
 										operationId: event.output,
 										issued: required(context.queue[0]),
@@ -948,13 +1067,9 @@ export const readerExperienceMachine = model.createMachine({
 							invoke: {
 								id: 'writeOperation',
 								src: 'writeOperation',
-								input: ({ context }) => ({
-									operationId: context.operationId,
-									input: {
-										change: required(context.issued),
-										operationId: context.operationId,
-										observed: context.rows
-									},
+								input: ({ context, input }) => ({
+									operationId: input.operationId,
+									input,
 									spawn: (spawn, input) =>
 										required(context.capability).spawnWrite(
 											spawn,

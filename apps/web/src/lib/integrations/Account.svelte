@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { observeBrowserConnection } from '../offline/browser.js'
 	import type { WorkflowMessage } from '../contracts/feedback.js'
-	import { inspectMachines } from '../diagnostics/inspect.js'
+	import { machineDiagnostics } from '../diagnostics/inspect.js'
 	import { onMount, setContext, type Snippet } from 'svelte'
 	import { libraryContextKey, type LibraryContext } from '../runtime/library-context.js'
 	import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
@@ -60,7 +60,7 @@
 		if (!appId || !serverUrl) return
 		const actor = createActor(applicationReadinessMachine, {
 			input: accountInput({ serverUrl, env: 'clipper' }, libraryFactory),
-			inspect: inspectMachines
+			...machineDiagnostics
 		})
 		send = (event) => actor.send(event)
 		const subscription = actor.subscribe((next) => {

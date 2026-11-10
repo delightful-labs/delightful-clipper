@@ -1,7 +1,14 @@
 import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import { identityLogic } from '../identity.js'
 import type { EventPayload } from '../events.js'
-import { types, setup, createAsyncLogic, matchesState, type Snapshot } from 'xstate'
+import {
+	types,
+	setup,
+	createAsyncLogic,
+	matchesState,
+	type Snapshot,
+	type StateValue
+} from 'xstate'
 
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { TagOperation } from '../../capture/tags.js'
@@ -45,14 +52,15 @@ export function createOrganizationMachine(
 		OrganizationStageResult,
 		{ type: 'SHUTDOWN' }
 	>()
+	type Context = {
+		request: OrganizationRequest | undefined
+		operations: OrganizationHistory[]
+		operationId: string
+		result: SaveResult | undefined
+	}
 	const model = setup({
 		schemas: {
-			context: types<{
-				request: OrganizationRequest | undefined
-				operations: OrganizationHistory[]
-				operationId: string
-				result: SaveResult | undefined
-			}>(),
+			context: types<Context>(),
 			events: {
 				SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>()
 			},
@@ -68,21 +76,36 @@ export function createOrganizationMachine(
 		},
 		actors: { history, tagHistory, identity: identityLogic, operation },
 		guards: {
-			tagRequest: ({
-				context
-			}: {
-				context: {
-					request: OrganizationRequest | undefined
-					operations: OrganizationHistory[]
-					operationId: string
-					result: SaveResult | undefined
-				}
-			}) => context.request?.field === 'tag',
+			tagRequest: ({ context }) => context.request?.field === 'tag',
 			stale: () => !isCurrent(),
 			stopping: ({ value }: { value: import('xstate').StateValue }) =>
 				matchesState({ working: { control: 'stopping' } }, value)
 		}
 	})
+
+	type HistoryArgs = {
+		value: StateValue
+		guards: { stopping: (args: { value: StateValue }) => boolean; stale: () => boolean }
+	}
+	const historyTransitions = {
+		input: ({ context }: { context: Context }) => required(context.request),
+		onDone: (
+			args: HistoryArgs & { event: { output: OrganizationHistory[] } }
+		):
+			| { target: '#organization-save.interrupted' }
+			| { target: 'writing'; context: { operations: OrganizationHistory[] } } => {
+			if (args.guards.stopping(args) || args.guards.stale())
+				return { target: '#organization-save.interrupted' }
+			return { target: 'writing', context: { operations: args.event.output } }
+		},
+		onError: (
+			args: HistoryArgs
+		): { target: '#organization-save.interrupted' | '#organization-save.failed' } => {
+			if (args.guards.stopping(args) || args.guards.stale())
+				return { target: '#organization-save.interrupted' }
+			return { target: '#organization-save.failed' }
+		}
+	}
 
 	return model.createMachine({
 		id: 'organization-save',
@@ -136,72 +159,8 @@ export function createOrganizationMachine(
 									return { target: 'observingProperty' }
 								}
 							},
-							observingTags: {
-								invoke: {
-									src: 'tagHistory',
-									input: ({
-										context
-									}: {
-										context: {
-											request: OrganizationRequest | undefined
-											operations: OrganizationHistory[]
-											operationId: string
-											result: SaveResult | undefined
-										}
-									}) => required(context.request),
-									onDone: (args) => {
-										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
-											return { target: '#organization-save.interrupted' }
-										}
-										if (args.guards.stale()) {
-											return { target: '#organization-save.interrupted' }
-										}
-										return { target: 'writing', context: { operations: args.event.output } }
-									},
-									onError: (args) => {
-										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
-											return { target: '#organization-save.interrupted' }
-										}
-										if (args.guards.stale()) {
-											return { target: '#organization-save.interrupted' }
-										}
-										return { target: '#organization-save.failed' }
-									}
-								}
-							},
-							observingProperty: {
-								invoke: {
-									src: 'history',
-									input: ({
-										context
-									}: {
-										context: {
-											request: OrganizationRequest | undefined
-											operations: OrganizationHistory[]
-											operationId: string
-											result: SaveResult | undefined
-										}
-									}) => required(context.request),
-									onDone: (args) => {
-										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
-											return { target: '#organization-save.interrupted' }
-										}
-										if (args.guards.stale()) {
-											return { target: '#organization-save.interrupted' }
-										}
-										return { target: 'writing', context: { operations: args.event.output } }
-									},
-									onError: (args) => {
-										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
-											return { target: '#organization-save.interrupted' }
-										}
-										if (args.guards.stale()) {
-											return { target: '#organization-save.interrupted' }
-										}
-										return { target: '#organization-save.failed' }
-									}
-								}
-							},
+							observingTags: { invoke: { src: 'tagHistory', ...historyTransitions } },
+							observingProperty: { invoke: { src: 'history', ...historyTransitions } },
 							writing: {
 								invoke: {
 									id: 'stage',

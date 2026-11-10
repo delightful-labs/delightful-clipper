@@ -49,7 +49,7 @@ export function createClipMachine() {
 		current: createAsyncLogic({
 			run: async ({ input }: { input: ClipCapability }) => input.current()
 		}),
-		feedback: createCallbackLogic<{ type: 'UNUSED' }, Library>(({ input, sendBack }) => {
+		feedback: createCallbackLogic<never, Library>(({ input, sendBack }) => {
 			const subscription = input.subscribe((snapshot) => sendBack({ type: 'LIBRARY', snapshot }))
 			sendBack({ type: 'LIBRARY', snapshot: input.getSnapshot() })
 			return () => subscription.unsubscribe()

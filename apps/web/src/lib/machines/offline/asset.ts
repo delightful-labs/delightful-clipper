@@ -1,4 +1,3 @@
-import type { EventPayload } from '../events.js'
 import { types, setup, createAsyncLogic } from 'xstate'
 
 type Input = {
@@ -25,7 +24,7 @@ const actors = {
 const shellAssetModel = setup({
 	schemas: {
 		context: types<Context>(),
-		events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+		events: {},
 		input: types<Input>(),
 		output: types<'ready' | 'failed'>(),
 		tags: types<string>(),
@@ -128,7 +127,7 @@ const readActors = {
 const shellReadModel = setup({
 	schemas: {
 		context: types<ReadContext>(),
-		events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+		events: {},
 		input: types<ReadInput>(),
 		output: types<{ response: Response | undefined; error: unknown }>(),
 		tags: types<string>(),
