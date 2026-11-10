@@ -10,7 +10,7 @@ import type { ExtractedContent, ParserReply } from './parser-protocol.js'
 function workerOpen(body: Uint8Array, mediaType: string, url: string): WorkerOpen {
 	return (report) => {
 		const relativePath = import.meta.env.DEV
-			? '../../../../.netlify/v1/parser/extract-worker.mjs'
+			? '../../../../.clipper-dev/parser/extract-worker.mjs'
 			: '../parser/extract-worker.mjs'
 		const workerUrl = process.env.VERCEL
 			? new URL('../../../../.netlify/v1/parser/extract-worker.mjs', import.meta.url)

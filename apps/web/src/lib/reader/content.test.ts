@@ -16,6 +16,23 @@ afterEach(() => {
 	for (const dom of windows) dom.window.close()
 	windows.length = 0
 })
+it('retains bounded code language hints without preserving source styles or unrelated classes', () => {
+	const fragment = savedContent(
+		asset(
+			'<p class="language-js other" data-language="js">Text</p>' +
+				'<pre class="source language-JS other"><code data-language="TS" class="token keyword">const safe = true</code></pre>' +
+				'<pre data-language="../../evil" class="language-js/evil">Plain</pre>' +
+				'<code class="language-css" style="color:red" onclick="alert(1)">color</code>'
+		),
+		document()
+	)!
+	expect(fragment.querySelector('p')?.attributes.length).toBe(0)
+	expect(fragment.querySelector('pre')?.className).toBe('language-js')
+	expect(fragment.querySelector('code')?.getAttribute('data-language')).toBe('ts')
+	expect(fragment.querySelector('code')?.hasAttribute('class')).toBe(false)
+	expect(fragment.querySelectorAll('pre')[1]?.attributes.length).toBe(0)
+	expect(fragment.querySelector('[style],[onclick]')).toBeNull()
+})
 it('retains article structure, Unicode, literal markup and references without remote resources', () => {
 	const fragment = savedContent(
 		asset(

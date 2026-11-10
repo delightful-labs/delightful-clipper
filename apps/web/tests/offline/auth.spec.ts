@@ -1,3 +1,5 @@
+import { openArticleActions } from '../article-actions.js'
+import { openAccountSettings, openAllArticles, expectSignedInAccount } from '../account-ui.js'
 import { authenticateGateway } from '../../src/lib/server/gateway-auth.js'
 import { handleConfiguredAuth } from '../../src/lib/server/auth/completion-handler.js'
 import { chromium, expect, test } from '@playwright/test'
@@ -113,9 +115,7 @@ for (const mode of ['linked', 'existing', 'expired'])
 				)?.user.id
 			).toBe(user.id)
 			await page.reload()
-			await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible({
-				timeout: 30000
-			})
+			await expectSignedInAccount(page)
 			await expect(page.locator(`[data-article-id="${id}"]`)).toBeVisible()
 			const cookies = await context.cookies(origin)
 			const request = new Request(origin + '/api/auth/get-session', {
@@ -166,8 +166,9 @@ for (const mode of ['linked', 'existing', 'expired'])
 							}
 				})
 			})
-			await page
-				.locator(`[data-article-id="${id}"]`)
+			await (
+				await openArticleActions(page.locator(`[data-article-id="${id}"]`))
+			)
 				.getByRole('button', { name: 'Retry', exact: true })
 				.click()
 			await expect(
@@ -190,7 +191,7 @@ for (const mode of ['linked', 'existing', 'expired'])
 				page = await context.newPage()
 				await page.goto(origin)
 				await expect(page.locator(`[data-article-id="${id}"]`)).toBeVisible({ timeout: 30000 })
-				await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
+				await expectSignedInAccount(page)
 				await expect
 					.poll(() =>
 						page.evaluate(async () => (await navigator.serviceWorker.ready).active?.state)
@@ -227,15 +228,30 @@ for (const mode of ['linked', 'existing', 'expired'])
 				await page.goto(origin)
 				const saved = page.locator(`[data-article-id="${id}"]`)
 				await expect(saved).toBeVisible({ timeout: 30000 })
+				await expectSignedInAccount(page)
+				await openAccountSettings(page)
+				const settingsResponse = await page.reload()
+				expect(settingsResponse?.fromServiceWorker()).toBe(true)
 				await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible()
+				await openAllArticles(page)
 				if (restart === 0) {
-					await saved.getByRole('button', { name: 'Favorite', exact: true }).click()
+					await (
+						await openArticleActions(saved)
+					)
+						.getByRole('button', { name: 'Favorite', exact: true })
+						.click()
 					await expect(
-						saved.getByRole('button', { name: 'Remove favorite', exact: true })
+						(await openArticleActions(saved)).getByRole('button', {
+							name: 'Remove favorite',
+							exact: true
+						})
 					).toBeEnabled()
 				} else {
 					await expect(
-						saved.getByRole('button', { name: 'Remove favorite', exact: true })
+						(await openArticleActions(saved)).getByRole('button', {
+							name: 'Remove favorite',
+							exact: true
+						})
 					).toBeVisible()
 				}
 				await page.getByRole('link', { name: 'Native authorized article', exact: true }).click()
@@ -251,20 +267,20 @@ for (const mode of ['linked', 'existing', 'expired'])
 			await context.setOffline(false)
 			await page.reload()
 			if (mode === 'expired') {
+				await openAccountSettings(page)
 				await expect(
 					page.getByRole('button', { name: 'Sign in with AT Protocol', exact: true })
 				).toBeVisible({ timeout: 30000 })
 				await issueSession()
 				await page.reload()
 			}
-			await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible({
-				timeout: 30000
-			})
+			await expectSignedInAccount(page)
 
 			await expect(
-				page
-					.locator(`[data-article-id="${id}"]`)
-					.getByRole('button', { name: 'Remove favorite', exact: true })
+				(await openArticleActions(page.locator(`[data-article-id="${id}"]`))).getByRole('button', {
+					name: 'Remove favorite',
+					exact: true
+				})
 			).toBeVisible({ timeout: 30000 })
 			await expect
 				.poll(() =>
@@ -277,12 +293,15 @@ for (const mode of ['linked', 'existing', 'expired'])
 				const signingOut = page.waitForResponse(
 					(response) => new URL(response.url()).pathname === '/api/auth/sign-out'
 				)
+				await openAccountSettings(page)
 				await page.getByRole('button', { name: 'Sign out', exact: true }).click()
 				const signOutResponse = await signingOut
 				expect(signOutResponse.status(), await signOutResponse.text()).toBe(200)
 				await expect(
 					page.getByRole('button', { name: 'Sign in with AT Protocol', exact: true })
 				).toBeVisible({ timeout: 30000 })
+				await page.getByRole('link', { name: 'All articles', exact: true }).click()
+				await expect(page).toHaveURL(origin + '/')
 				await expect(page.locator(`[data-article-id="${id}"]`)).toHaveCount(0)
 				const signedOutCookies = await context.cookies(origin)
 				expect(
@@ -304,6 +323,7 @@ for (const mode of ['linked', 'existing', 'expired'])
 					afterSignOut.getByRole('region', { name: 'Saved articles', exact: true })
 				).toBeVisible({ timeout: 30000 })
 				await expect(afterSignOut.locator(`[data-article-id="${id}"]`)).toHaveCount(0)
+				await openAccountSettings(afterSignOut)
 				await expect(
 					afterSignOut.getByRole('button', { name: 'Sign out', exact: true })
 				).toHaveCount(0)

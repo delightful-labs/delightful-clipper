@@ -83,7 +83,7 @@ it('rejects HTML fallbacks masquerading as generated runtime assets', () => {
 	).toBe(true)
 })
 
-it('serves only the public shell for exact article document navigations', () => {
+it('serves only the public shell for exact article and account navigations', () => {
 	const id = '4f3165d1-76c7-4cf4-980b-1ced7af05686'
 	const navigate = (path: string, headers?: HeadersInit) => {
 		const request = new Request('https://clipper.example' + path, { headers: headers ?? {} })
@@ -91,9 +91,14 @@ it('serves only the public shell for exact article document navigations', () => 
 		return request
 	}
 	expect(shellKey(policy, navigate('/articles/' + id))).toBe(policy.root)
+	expect(shellKey(policy, navigate('/account'))).toBe(policy.root)
+	expect(shellKey(policy, navigate('/account#recovery'))).toBe(policy.root)
 	expect(shellKey(policy, navigate('/articles/' + id + '#footnote'))).toBe(policy.root)
 	expect(shellKey(policy, new Request('https://clipper.example/articles/' + id))).toBeUndefined()
 	for (const path of [
+		'/account?private=x',
+		'/account/extra',
+		'/api/account',
 		'/articles/' + id + '?private=x',
 		'/articles/not-an-id',
 		'/articles/' + id + '/extra',

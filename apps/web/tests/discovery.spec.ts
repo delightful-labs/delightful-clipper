@@ -1,3 +1,5 @@
+import { openArticleActions } from './article-actions.js'
+import { readRecoveryPhrase, restoreAccount } from './account-ui.js'
 import { readingControls } from './reader-ui.js'
 import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from './library-popovers.js'
 import { test, expect, chromium } from '@playwright/test'
@@ -37,7 +39,7 @@ async function supplied(page: Page, url: string) {
 }
 async function tags(page: Page, row: ReturnType<Page['locator']>) {
 	await closeLibraryPopovers(page)
-	await row.getByRole('button', { name: 'tags', exact: true }).click()
+	await (await openArticleActions(row)).getByRole('button', { name: 'tags', exact: true }).click()
 	const dialog = page.getByRole('dialog', { name: 'tags', exact: true })
 	await expect(dialog).toBeVisible()
 	return dialog
@@ -74,10 +76,18 @@ test('creates Unicode-equivalent tags once, changes membership and combines tag/
 	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
 	await expect(second.row).toHaveCount(0)
 	await expect(page.getByRole('heading', { name: 'Saved articles', exact: true })).toBeFocused()
-	await first.row.getByLabel('Status', { exact: true }).selectOption('later')
+	await (
+		await openArticleActions(first.row)
+	)
+		.getByLabel('Status', { exact: true })
+		.selectOption('later')
 	await expect(first.row.getByLabel('Status', { exact: true })).toBeEnabled()
 	await closeLibraryPopovers(page)
-	await first.row.getByRole('button', { name: 'Favorite', exact: true }).click()
+	await (
+		await openArticleActions(first.row)
+	)
+		.getByRole('button', { name: 'Favorite', exact: true })
+		.click()
 	await openLibraryFilters(page)
 	await page.getByRole('radio', { name: 'Later', exact: true }).check()
 	await openLibraryFilters(page)
@@ -95,16 +105,28 @@ test('Trash controls preserve content/organization and duplicate Add Link offers
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	const url = 'https://example.com/trash-duplicate',
 		item = await supplied(page, url)
-	await item.row.getByLabel('Status', { exact: true }).selectOption('later')
+	await (
+		await openArticleActions(item.row)
+	)
+		.getByLabel('Status', { exact: true })
+		.selectOption('later')
 	await expect(item.row.getByLabel('Status', { exact: true })).toBeEnabled()
 	await closeLibraryPopovers(page)
-	await item.row.getByRole('button', { name: 'Favorite', exact: true }).click()
+	await (
+		await openArticleActions(item.row)
+	)
+		.getByRole('button', { name: 'Favorite', exact: true })
+		.click()
 	const before = await page.evaluate(async (url) => {
 		const path = '/tests/article-driver.ts'
 		return (await import(/* @vite-ignore */ path)).inspect([url])
 	}, url)
 	await closeLibraryPopovers(page)
-	await item.row.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+	await (
+		await openArticleActions(item.row)
+	)
+		.getByRole('button', { name: 'Move to Trash', exact: true })
+		.click()
 	await expect(item.row).toHaveCount(0)
 	await expect(page.getByRole('heading', { name: 'Saved articles', exact: true })).toBeFocused()
 	await openLibraryFilters(page)
@@ -121,7 +143,12 @@ test('Trash controls preserve content/organization and duplicate Add Link offers
 	await page.getByRole('button', { name: 'Restore article', exact: true }).click()
 	await expect(item.row).toBeVisible()
 	await expect(item.row.getByLabel('Status', { exact: true })).toHaveValue('later')
-	await expect(item.row.getByRole('button', { name: 'Remove favorite', exact: true })).toBeVisible()
+	await expect(
+		(await openArticleActions(item.row)).getByRole('button', {
+			name: 'Remove favorite',
+			exact: true
+		})
+	).toBeVisible()
 	const after = await page.evaluate(async (url) => {
 		const path = '/tests/article-driver.ts'
 		return (await import(/* @vite-ignore */ path)).inspect([url])
@@ -180,10 +207,7 @@ test('real browser worker searches saved body and URL offline, scopes Trash, and
 })
 
 async function phrase(page: Page) {
-	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-	const dialog = page.getByRole('dialog')
-	const value = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-	await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+	const value = await readRecoveryPhrase(page)
 	return value
 }
 async function addTag(page: Page, row: ReturnType<Page['locator']>, name: string) {
@@ -201,26 +225,42 @@ test('merges offline independent tag changes across restored clients and preserv
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	const url = 'https://example.com/tags-two-clients',
 		item = await supplied(page, url)
-	await item.row.getByLabel('Status', { exact: true }).selectOption('later')
+	await (
+		await openArticleActions(item.row)
+	)
+		.getByLabel('Status', { exact: true })
+		.selectOption('later')
 	await expect(item.row.getByLabel('Status', { exact: true })).toBeEnabled()
 	await closeLibraryPopovers(page)
-	await item.row.getByRole('button', { name: 'Favorite', exact: true }).click()
+	await (
+		await openArticleActions(item.row)
+	)
+		.getByRole('button', { name: 'Favorite', exact: true })
+		.click()
 	const recovery = await phrase(page)
 	const otherContext = await browser.newContext()
 	let stopped = false
 	try {
 		const other = await otherContext.newPage()
 		await other.goto('http://127.0.0.1:5180')
-		await other.getByLabel('Recovery phrase', { exact: true }).fill(recovery)
-		await other.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(other, recovery)
 		const remote = other.locator(`[data-article-id="${item.id}"]`)
 		await expect(remote).toBeVisible()
-		await expect(remote.getByRole('button', { name: 'Remove favorite', exact: true })).toBeVisible()
+		await expect(
+			(await openArticleActions(remote)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
+		).toBeVisible()
 		await authority.stop()
 		stopped = true
 		await addTag(page, item.row, 'First')
 		await addTag(other, remote, 'Second')
-		await remote.getByRole('button', { name: 'Remove favorite', exact: true }).click()
+		await (
+			await openArticleActions(remote)
+		)
+			.getByRole('button', { name: 'Remove favorite', exact: true })
+			.click()
 		await page.evaluate(async (url) => {
 			const path = '/tests/article-driver.ts'
 			return (await import(/* @vite-ignore */ path)).organize(
@@ -240,7 +280,9 @@ test('merges offline independent tag changes across restored clients and preserv
 		await expect(item.row).toBeVisible()
 		await expect(remote).toBeVisible()
 		await expect(item.row.getByLabel('Status', { exact: true })).toHaveValue('later')
-		await expect(item.row.getByRole('button', { name: 'Favorite', exact: true })).toBeVisible()
+		await expect(
+			(await openArticleActions(item.row)).getByRole('button', { name: 'Favorite', exact: true })
+		).toBeVisible()
 		const tagDialog = await tags(page, item.row)
 		await expect(tagDialog.getByRole('button', { name: 'Remove First', exact: true })).toBeVisible()
 		await expect(
@@ -323,8 +365,7 @@ test('reindexes a snapshot arriving from another restored client without restart
 	try {
 		const other = await otherContext.newPage()
 		await other.goto('http://127.0.0.1:5180')
-		await other.getByLabel('Recovery phrase', { exact: true }).fill(recovery)
-		await other.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(other, recovery)
 		await expect(other.getByText('Private library synced.', { exact: true })).toBeVisible()
 		const saved = await supplied(other, 'https://example.com/arriving')
 		await expect(page.locator(`[data-article-id="${saved.id}"]`)).toBeVisible()
@@ -355,10 +396,18 @@ test('search input combines title, URL and body keywords with status, favorites,
 	await expect(page.getByText('Private library synced.', { exact: true })).toBeVisible()
 	const first = await supplied(page, 'https://example.com/ui-needle')
 	const second = await supplied(page, 'https://example.com/ui-other')
-	await first.row.getByLabel('Status', { exact: true }).selectOption('later')
+	await (
+		await openArticleActions(first.row)
+	)
+		.getByLabel('Status', { exact: true })
+		.selectOption('later')
 	await expect(first.row.getByLabel('Status', { exact: true })).toBeEnabled()
 	await closeLibraryPopovers(page)
-	await first.row.getByRole('button', { name: 'Favorite', exact: true }).click()
+	await (
+		await openArticleActions(first.row)
+	)
+		.getByRole('button', { name: 'Favorite', exact: true })
+		.click()
 	await addTag(page, first.row, 'Work')
 	await addTag(page, first.row, 'Continues')
 	await openLibrarySearch(page)
@@ -400,14 +449,22 @@ test('search input combines title, URL and body keywords with status, favorites,
 	await search.fill('browser clip')
 	await expect(first.row).toBeVisible()
 	await closeLibraryPopovers(page)
-	await first.row.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+	await (
+		await openArticleActions(first.row)
+	)
+		.getByRole('button', { name: 'Move to Trash', exact: true })
+		.click()
 	await expect(first.row).toHaveCount(0)
 	await openLibraryFilters(page)
 	await page.getByRole('radio', { name: 'Trash', exact: true }).check()
 	await expect(first.row).toBeVisible()
 	await expect(second.row).toHaveCount(0)
 	await closeLibraryPopovers(page)
-	await first.row.getByRole('button', { name: 'Restore article', exact: true }).click()
+	await (
+		await openArticleActions(first.row)
+	)
+		.getByRole('button', { name: 'Restore article', exact: true })
+		.click()
 	await expect(first.row).toHaveCount(0)
 	await openLibraryFilters(page)
 	await page.getByRole('radio', { name: 'All', exact: true }).check()
@@ -482,7 +539,7 @@ test('tag validation uses the shared generic field error and clears it on edit a
 	await expect(dialog.getByRole('button', { name: 'Remove Valid', exact: true })).toBeVisible()
 	await input.fill('Draft')
 	await page.keyboard.press('Escape')
-	await expect(item.row.getByRole('button', { name: 'tags', exact: true })).toBeFocused()
+	await expect(item.row.getByRole('button', { name: 'Article actions', exact: true })).toBeFocused()
 	await tags(page, item.row)
 	await expect(input).toHaveValue('')
 	await expect(dialog.locator('p').filter({ hasText: /^Enter tag$/ })).toHaveCount(0)
@@ -566,16 +623,22 @@ test('extracted article components keep single borders, compact controls and nex
 	const middleId = await rows.nth(1).getAttribute('data-article-id')
 	const firstId = await rows.first().getAttribute('data-article-id')
 	const lastId = await rows.last().getAttribute('data-article-id')
-	await rows.nth(1).getByRole('button', { name: 'Move to Trash', exact: true }).click()
+	await (
+		await openArticleActions(rows.nth(1))
+	)
+		.getByRole('button', { name: 'Move to Trash', exact: true })
+		.click()
 	await expect(page.locator('[data-article-id="' + middleId + '"]')).toHaveCount(0)
 	await expect(page.locator('[data-article-id="' + lastId + '"]')).toBeFocused()
-	await page
-		.locator('[data-article-id="' + lastId + '"]')
+	await (
+		await openArticleActions(page.locator('[data-article-id="' + lastId + '"]'))
+	)
 		.getByRole('button', { name: 'Move to Trash', exact: true })
 		.click()
 	await expect(page.locator('[data-article-id="' + firstId + '"]')).toBeFocused()
-	await page
-		.locator('[data-article-id="' + firstId + '"]')
+	await (
+		await openArticleActions(page.locator('[data-article-id="' + firstId + '"]'))
+	)
 		.getByRole('button', { name: 'Move to Trash', exact: true })
 		.click()
 	await expect(page.getByRole('heading', { name: 'Saved articles', exact: true })).toBeFocused()

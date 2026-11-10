@@ -1,3 +1,4 @@
+import { readRecoveryPhrase, restoreAccount } from './account-ui.js'
 import { readingControls } from './reader-ui.js'
 import type { ArticleImage } from '../src/lib/images/schema.js'
 import { test, expect, chromium } from '@playwright/test'
@@ -181,18 +182,12 @@ test('persists processed native images across restart without Jazz and synchroni
 			route.fulfill({ status: 200, contentType: 'image/png', body: bytes })
 		)
 		const id = await seed(page, ['https://images.example/offline.png'])
-		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const phrase = await page
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const phrase = await readRecoveryPhrase(page)
 		await page.getByRole('link', { name: 'Offline image fixture', exact: true }).click()
 		await imageLoaded(page, 'Saved image 1', 24)
 		const restored = await independent.newPage()
 		await restored.goto('http://127.0.0.1:5180/')
-		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(restored, phrase)
 		await expect(restored.getByText('Private library synced.', { exact: true })).toBeVisible()
 		await restored.getByRole('link', { name: 'Offline image fixture', exact: true }).click()
 		await imageLoaded(restored, 'Saved image 1', 24)

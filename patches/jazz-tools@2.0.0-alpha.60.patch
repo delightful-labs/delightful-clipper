@@ -274,6 +274,58 @@ index e291bc6907967d1d89a79e26d8924b0e833cb191..d2090edb8211a2f41fb98f931092026f
      }
      catch {
          return failedGeneration + 1;
+diff --git a/dist/runtime/native-runtime/native-runtime-adapter.d.ts b/dist/runtime/native-runtime/native-runtime-adapter.d.ts
+index 5e46280b6bc73e643e5b5df66831ad3a9facae73..8cacc35b11aa9518b2f014bd4a2829c91f3e0b68 100644
+--- a/dist/runtime/native-runtime/native-runtime-adapter.d.ts
++++ b/dist/runtime/native-runtime/native-runtime-adapter.d.ts
+@@ -406,7 +406,7 @@ export declare class NativeRuntimeAdapter implements Runtime {
+      * a user serves only its own identity: it uploads what its peers write as
+      * itself, so a peer of another identity is refused (`identity_mismatch`).
+      */
+-    acceptPeer(claims?: Record<string, unknown>, localEpoch?: bigint, identity?: Uint8Array): Promise<Transport>;
++    acceptPeer(claims?: Record<string, unknown>, localEpoch?: bigint, identity?: Uint8Array, joiningProof?: NativeSelfSignedClientProof): Promise<Transport>;
+     private runWhenCoreIdle;
+     /**
+      * Forward the host's view of the server link to the core Db, which owns the
+diff --git a/dist/runtime/native-runtime/native-runtime-adapter.js b/dist/runtime/native-runtime/native-runtime-adapter.js
+index 4e3087eb82cdc6416fadc3011694aa083c5931d6..0a17eacbcbbbaa1d35ca6ac61a83ef38c37c324e 100644
+--- a/dist/runtime/native-runtime/native-runtime-adapter.js
++++ b/dist/runtime/native-runtime/native-runtime-adapter.js
+@@ -552,9 +552,9 @@ export class NativeRuntimeAdapter {
+      * a user serves only its own identity: it uploads what its peers write as
+      * itself, so a peer of another identity is refused (`identity_mismatch`).
+      */
+-    async acceptPeer(claims = {}, localEpoch, identity = this.peerIdentity) {
++    async acceptPeer(claims = {}, localEpoch, identity = this.peerIdentity, joiningProof) {
+         if (this !== this.ownerRuntime)
+-            return this.ownerRuntime.acceptPeer(claims, localEpoch, identity);
++            return this.ownerRuntime.acceptPeer(claims, localEpoch, identity, joiningProof);
+         if (this.closed)
+             throw new Error("Native runtime is closed");
+         return this.runWhenCoreIdle(async () => {
+@@ -570,16 +570,21 @@ export class NativeRuntimeAdapter {
+                 }),
+             };
+             try {
++                // A long-lived owner must verify the joining peer with its current proof.
++                // Native admission still checks signature, expiry, audience and identity.
+                 const proof = this.selfSignedClientProof;
+                 let subscriber;
+                 if (proof) {
++                    // Refresh only the proof, never the owner account or audience.
++                    if (joiningProof && (joiningProof.appId !== proof.appId || joiningProof.claimedAuthor !== proof.claimedAuthor))
++                        throw identityMismatchError();
+                     // The proof is this store's own: it vouches for no other identity.
+                     if (!sameBytes(identity, this.peerIdentity))
+                         throw identityMismatchError();
+                     if (!this.db.acceptSubscriberWithSelfSignedProof) {
+                         throw new Error("Native runtime does not support self-signed subscriber admission; rebuild the matching Jazz WASM artifact");
+                     }
+-                    subscriber = await this.db.acceptSubscriberWithSelfSignedProof(claims, proof.token, proof.appId, proof.claimedAuthor, localEpoch);
++                    subscriber = await this.db.acceptSubscriberWithSelfSignedProof(claims, joiningProof?.token ?? proof.token, proof.appId, proof.claimedAuthor, localEpoch);
+                 }
+                 else {
+                     if (!this.db.acceptSubscriber) {
 diff --git a/dist/session/create-jazz-session.js b/dist/session/create-jazz-session.js
 index db558187ab9a067135f1f329ab4264f9f0703360..65efeeadf41d64253bfb9bbf297d5df807e371b0 100644
 --- a/dist/session/create-jazz-session.js
@@ -287,3 +339,95 @@ index db558187ab9a067135f1f329ab4264f9f0703360..65efeeadf41d64253bfb9bbf297d5df8
              kept = sources;
          }
          try {
+diff --git a/dist/session/state.js b/dist/session/state.js
+index ae873392fe22a28c2b6ef14db5832117d95e7818..442a4cb032b735499e223c948cb064e91486df82 100644
+--- a/dist/session/state.js
++++ b/dist/session/state.js
+@@ -124,7 +124,10 @@ export async function createJazzSessionOwner(options) {
+                     await signOutOf(client);
+                 }
+                 else {
+-                    await client.shutdown({ waitForSync: true });
++                    // Retrying keeps the same account and its durable replica. Drain
++                    // local writes/leases, but do not require the failed connection
++                    // to reach remote sync before a fresh connection can replace it.
++                    await client.shutdown({ waitForSync: operation !== "retry" });
+                 }
+                 // Code that kept this client's Db learns it is gone, instead of
+                 // its queries going quiet.
+diff --git a/dist/worker/jazz-broker-worker.js b/dist/worker/jazz-broker-worker.js
+index f8d788c51afb9db07cd9ef5cc5aaf6631f54dd8e..421f7563b4f0d5d75a4112310a7e81517ea589ba 100644
+--- a/dist/worker/jazz-broker-worker.js
++++ b/dist/worker/jazz-broker-worker.js
+@@ -17739,9 +17739,9 @@ var NativeRuntimeAdapter = class _NativeRuntimeAdapter {
+    * a user serves only its own identity: it uploads what its peers write as
+    * itself, so a peer of another identity is refused (`identity_mismatch`).
+    */
+-  async acceptPeer(claims = {}, localEpoch, identity2 = this.peerIdentity) {
++  async acceptPeer(claims = {}, localEpoch, identity2 = this.peerIdentity, joiningProof) {
+     if (this !== this.ownerRuntime)
+-      return this.ownerRuntime.acceptPeer(claims, localEpoch, identity2);
++      return this.ownerRuntime.acceptPeer(claims, localEpoch, identity2, joiningProof);
+     if (this.closed) throw new Error("Native runtime is closed");
+     return this.runWhenCoreIdle(async () => {
+       if (this.closed) throw new Error("Native runtime is closed");
+@@ -17753,9 +17753,14 @@ var NativeRuntimeAdapter = class _NativeRuntimeAdapter {
+         })
+       };
+       try {
++        // A long-lived owner must verify the joining peer with its current proof.
++        // Native admission still checks signature, expiry, audience and identity.
+         const proof = this.selfSignedClientProof;
+         let subscriber;
+         if (proof) {
++          // Refresh only the proof, never the owner account or audience.
++          if (joiningProof && (joiningProof.appId !== proof.appId || joiningProof.claimedAuthor !== proof.claimedAuthor))
++              throw identityMismatchError();
+           if (!sameBytes(identity2, this.peerIdentity)) throw identityMismatchError();
+           if (!this.db.acceptSubscriberWithSelfSignedProof) {
+             throw new Error(
+@@ -17764,7 +17769,7 @@ var NativeRuntimeAdapter = class _NativeRuntimeAdapter {
+           }
+           subscriber = await this.db.acceptSubscriberWithSelfSignedProof(
+             claims,
+-            proof.token,
++            joiningProof?.token ?? proof.token,
+             proof.appId,
+             proof.claimedAuthor,
+             localEpoch
+@@ -22955,7 +22960,7 @@ async function connectTab(port, message, signal, finishBootstrap) {
+       return configureServer(context2, message.options);
+     });
+     assertAdmission();
+-    attachTab(context2, message.tabId, port, message.options.author);
++    attachTab(context2, message.tabId, port, message.options.author, false, message.options.selfSignedClientProof);
+     releaseClaim();
+     finishBootstrap();
+     post(port, { type: "runtime-ready" });
+@@ -23264,7 +23269,7 @@ async function waitForServerConnection(context2, runtime, signal) {
+     if (!context2.explicitlyDisconnected) return;
+   }
+ }
+-function attachTab(context2, tabId, port, author, inspectorAttachment = false) {
++function attachTab(context2, tabId, port, author, inspectorAttachment = false, joiningProof) {
+   closeTab(context2, tabId);
+   let peer;
+   const onMessage = (event) => {
+@@ -23275,6 +23280,7 @@ function attachTab(context2, tabId, port, author, inspectorAttachment = false) {
+     tabId,
+     context: context2,
+     author,
++    joiningProof,
+     port,
+     pump: null,
+     subscriber: null,
+@@ -23507,7 +23513,8 @@ async function handleTabMessage(peer, message) {
+           unownedSubscriber = await activeRuntime.acceptPeer(
+             message.sessionClaims,
+             peerAuthority.epoch,
+-            peer.author
++            peer.author,
++            peer.joiningProof
+           );
+           if (!canPublishAdmission()) return;
+           const pump = attachPeerTransport(peer, activeRuntime, unownedSubscriber);

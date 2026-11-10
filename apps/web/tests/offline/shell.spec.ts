@@ -1,3 +1,5 @@
+import { openArticleActions } from '../article-actions.js'
+import { readRecoveryPhrase, restoreAccount } from '../account-ui.js'
 import { closeLibraryPopovers, openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { openAddLink } from '../add-link.js'
 import { readingControls, closeReadingControls, visibleReadingParagraph } from '../reader-ui.js'
@@ -84,10 +86,13 @@ async function fixtureArticle(page: Page, beforeExtract?: () => Promise<void>) {
 						candidate: {
 							title: 'Completely offline article',
 							text:
-								'Exact offline shell text café 🦊 ' + readingParagraphs.replace(/<[^>]*>/g, ' '),
+								'Exact offline shell text café 🦊 ' +
+								readingParagraphs.replace(/<[^>]*>/g, ' ') +
+								' const offlineAnswer = 42;',
 							html:
 								'<img alt="Offline image fixture" data-clipper-image="https%3A%2F%2Fexample.com%2Foffline.png"><h3>Offline structure</h3><details><summary>Offline diagram</summary><svg viewBox="0 0 100 100"><title>Chart</title><path d="M0 0 L10 10" stroke="red"/></svg></details><p>Exact offline shell text café 🦊 <a href="#fn1">Citation</a></p>' +
 								readingParagraphs +
+								'<pre><code class="language-js">const offlineAnswer = 42;</code></pre>' +
 								'<ol><li id="fn1">Offline footnote</li></ol>',
 							assetCandidates: [],
 							partialEvidence: [],
@@ -141,17 +146,11 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 				wasmBytes: wasmRequests[0]?.bytes
 			})
 		)
-		await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const phrase = await page
-			.getByRole('dialog')
-			.getByLabel('Recovery phrase', { exact: true })
-			.inputValue()
-		await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+		const phrase = await readRecoveryPhrase(page)
 		const restored = await independent.newPage()
 		await restored.goto('http://127.0.0.1:5190')
 		await ready(restored)
-		await restored.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await restored.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(restored, phrase)
 		await expect(
 			restored.getByRole('region', { name: 'Saved articles', exact: true })
 		).toBeVisible()
@@ -184,14 +183,29 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		const organized = page
 			.getByRole('region', { name: 'Saved articles' })
 			.locator('[data-article-id]')
-		await organized.getByLabel('Status', { exact: true }).selectOption('archive')
+		await (
+			await openArticleActions(organized)
+		)
+			.getByLabel('Status', { exact: true })
+			.selectOption('archive')
 		await expect(organized.getByLabel('Status', { exact: true })).toBeEnabled()
-		await organized.getByRole('button', { name: 'Favorite', exact: true }).click()
+		await (
+			await openArticleActions(organized)
+		)
+			.getByRole('button', { name: 'Favorite', exact: true })
+			.click()
 		await expect(
-			organized.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(organized)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toBeEnabled()
 
-		await organized.getByRole('button', { name: 'tags', exact: true }).click()
+		await (
+			await openArticleActions(organized)
+		)
+			.getByRole('button', { name: 'tags', exact: true })
+			.click()
 		const tagDialog = page.getByRole('dialog', { name: 'tags', exact: true })
 		await tagDialog.locator('input[type="text"]').fill('RestartOnlyTag')
 		await tagDialog.getByRole('button', { name: 'Add tag', exact: true }).click()
@@ -260,6 +274,15 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			reopened.getByText('Offline startup prepared on this browser.', { exact: true })
 		).toHaveCount(0)
 		await expect(reopened.getByRole('article')).toContainText('Exact offline shell text café 🦊')
+		await expect(reopened.locator('article code')).toHaveText('const offlineAnswer = 42;')
+		await expect
+			.poll(() =>
+				reopened.evaluate(() =>
+					[...(CSS.highlights.get('numeric') ?? [])].map((range) => range.toString())
+				)
+			)
+			.toContain('42')
+		await expect(reopened.locator('article code span')).toHaveCount(0)
 		await expect
 			.poll(() =>
 				reopened
@@ -301,14 +324,21 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			.getByRole('region', { name: 'Saved articles' })
 			.locator('[data-article-id]')
 		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
-		await offlineRow.getByRole('button', { name: 'tags', exact: true }).click()
+		await (
+			await openArticleActions(offlineRow)
+		)
+			.getByRole('button', { name: 'tags', exact: true })
+			.click()
 		const offlineTags = reopened.getByRole('dialog', { name: 'tags', exact: true })
 		await expect(
 			offlineTags.getByRole('button', { name: 'Remove RestartOnlyTag', exact: true })
 		).toBeVisible()
 		await offlineTags.getByRole('button', { name: 'Close', exact: true }).click()
 		await expect(
-			offlineRow.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(offlineRow)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toHaveAttribute('aria-pressed', 'true')
 		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Inbox', exact: true }).check()
@@ -328,14 +358,22 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 		await search.fill('RESTARTONLYTAGS shel')
 		await expect(offlineRow).toBeVisible()
 		await closeLibraryPopovers(reopened)
-		await offlineRow.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+		await (
+			await openArticleActions(offlineRow)
+		)
+			.getByRole('button', { name: 'Move to Trash', exact: true })
+			.click()
 		await expect(offlineRow).toHaveCount(0)
 		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Trash', exact: true }).check()
 		await expect(offlineRow).toBeVisible()
 		await expect(offlineRow.getByLabel('Status', { exact: true })).toHaveValue('archive')
 		await closeLibraryPopovers(reopened)
-		await offlineRow.getByRole('button', { name: 'Restore article', exact: true }).click()
+		await (
+			await openArticleActions(offlineRow)
+		)
+			.getByRole('button', { name: 'Restore article', exact: true })
+			.click()
 		await expect(offlineRow).toHaveCount(0)
 		await openLibraryFilters(reopened)
 		await reopened.getByRole('radio', { name: 'Archive', exact: true }).check()
@@ -356,7 +394,10 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 			timeout: 30000
 		})
 		await expect(
-			syncedOrganization.getByRole('button', { name: 'Remove favorite', exact: true })
+			(await openArticleActions(syncedOrganization)).getByRole('button', {
+				name: 'Remove favorite',
+				exact: true
+			})
 		).toHaveAttribute('aria-pressed', 'true')
 		await restored
 			.getByRole('region', { name: 'Saved articles' })

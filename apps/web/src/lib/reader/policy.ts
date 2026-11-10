@@ -1,4 +1,5 @@
 import createDOMPurify, { type Config, type WindowLike } from 'dompurify'
+import { codeLanguageSchema } from './syntax/schema.js'
 
 const svgAttributes = [
 	'viewbox',
@@ -97,6 +98,8 @@ export const articlePolicy = {
 		'open',
 		'data-clipper-image',
 		'alt',
+		'class',
+		'data-language',
 		...svgAttributes
 	],
 	ALLOW_DATA_ATTR: false,
@@ -119,6 +122,16 @@ export function articlePurifier(window: WindowLike) {
 					/^(?:none|currentColor|transparent|[a-z]{1,32}|#[a-f0-9]{3,8}|(?:rgb|rgba|hsl|hsla)\([0-9.,%+\-\s]+\))$/i.test(
 						value
 					)
+		} else if (['pre', 'code'].includes(node.localName) && event.attrName === 'class') {
+			const language =
+				event.attrValue.length <= 256
+					? event.attrValue.match(/(?:^|\s)(language-[a-z0-9_-]{1,32})(?=\s|$)/i)?.[1]
+					: undefined
+			event.keepAttr = !!language
+			if (language) event.attrValue = language.toLowerCase()
+		} else if (['pre', 'code'].includes(node.localName) && event.attrName === 'data-language') {
+			event.attrValue = event.attrValue.toLowerCase()
+			event.keepAttr = codeLanguageSchema.safeParse(event.attrValue).success
 		} else {
 			event.keepAttr =
 				htmlAttributes.has(event.attrName) ||

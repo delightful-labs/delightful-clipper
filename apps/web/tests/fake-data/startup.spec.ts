@@ -1,3 +1,5 @@
+import { openArticleActions } from '../article-actions.js'
+import { readRecoveryPhrase, restoreAccount } from '../account-ui.js'
 import { readingControls } from '../reader-ui.js'
 import { openLibrarySearch, openLibraryFilters } from '../library-popovers.js'
 import { test, expect } from '@playwright/test'
@@ -45,9 +47,13 @@ test('flag-enabled startup populates a real library once and preserves edits, re
 	)
 	const first = rows.first(),
 		id = await first.getAttribute('data-article-id')
-	await first.getByLabel('Status', { exact: true }).selectOption('archive')
+	await (
+		await openArticleActions(first)
+	)
+		.getByLabel('Status', { exact: true })
+		.selectOption('archive')
 	await expect(first.getByLabel('Status', { exact: true })).toBeEnabled()
-	await first.getByRole('button', { name: 'tags', exact: true }).click()
+	await (await openArticleActions(first)).getByRole('button', { name: 'tags', exact: true }).click()
 	const tags = page.getByRole('dialog', { name: 'tags', exact: true })
 	await expect(
 		tags.getByRole('list', { name: 'tags', exact: true }).getByRole('listitem')
@@ -81,16 +87,12 @@ test('flag-enabled startup populates a real library once and preserves edits, re
 	await expect(
 		page.locator(`[data-article-id="${id}"]`).getByLabel('Status', { exact: true })
 	).toHaveValue('archive')
-	await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-	const recovery = page.getByRole('dialog')
-	const phrase = await recovery.getByLabel('Recovery phrase', { exact: true }).inputValue()
-	await recovery.getByRole('button', { name: 'Close', exact: true }).click()
+	const phrase = await readRecoveryPhrase(page)
 	const otherContext = await browser.newContext()
 	try {
 		const other = await otherContext.newPage()
 		await other.goto('/')
-		await other.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-		await other.getByRole('button', { name: 'Restore account', exact: true }).click()
+		await restoreAccount(other, phrase)
 		await expect(other.locator(`[data-article-id="${id}"]`)).toBeVisible({ timeout: 30000 })
 		await expect(other.locator('[data-article-id]')).toHaveCount(22)
 		await expect(

@@ -108,6 +108,40 @@ function root(local: Promise<void>, global: Promise<void>) {
 }
 
 describe('account/root ownership', () => {
+	it('reopens the native session before retrying a failed library bootstrap', async () => {
+		const staleRead = vi.fn(async () => {
+			throw new Error('Synthetic refused connection')
+		})
+		const freshRead = vi.fn(async () => 'compatible' as const)
+		const ensure = vi.fn()
+		const f = fixture(ready('bootstrap-retry', { read: staleRead, ensure }))
+		const retry = vi.fn(async () => {
+			f.emit(ready('bootstrap-retry', { read: freshRead, ensure }))
+		})
+		const actor = createActor(applicationReadinessMachine, {
+			input: input({
+				...f.host,
+				readiness: { ...f.host.readiness, capability: { ...f.host.readiness.capability, retry } }
+			})
+		}).start()
+		try {
+			await waitFor(
+				actor,
+				(snapshot) => selectApplicationView(snapshot, true).status === 'rootFailed'
+			)
+			expect(selectApplicationView(actor.getSnapshot(), true).canRetry).toBe(true)
+			actor.send({ type: 'RETRY' })
+			await waitFor(actor, (snapshot) => !!selectLibraryActor(snapshot))
+			expect(retry).toHaveBeenCalledOnce()
+			expect(staleRead).toHaveBeenCalledOnce()
+			expect(freshRead).toHaveBeenCalledOnce()
+			expect(ensure).not.toHaveBeenCalled()
+		} finally {
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			actor.stop()
+		}
+	})
 	it('exposes recovery only for the ready library and withdraws it during shutdown', async () => {
 		const reading = Promise.withResolvers<'compatible'>()
 		const observation = ready('recovery-lifetime', { read: () => reading.promise, ensure: vi.fn() })

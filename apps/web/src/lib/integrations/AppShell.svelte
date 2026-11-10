@@ -2,9 +2,18 @@
 	import type { WorkflowMessage } from '../contracts/feedback.js'
 	import { onMount, type Snippet } from 'svelte'
 	import { page } from '$app/state'
-	import { Button, Drawer, Heading, Icon, Navigation } from 'delightful-ui'
+	import {
+		Button,
+		Drawer,
+		Heading,
+		Icon,
+		Navigation,
+		NavigationLink,
+		StatusMessage
+	} from 'delightful-ui'
 	import type { ReaderPreferences } from '../reader/schema.js'
 	import { setAccountNavigation } from '../runtime/navigation.js'
+	import { setAccountSettings } from '../runtime/account-settings.js'
 	import AddLink from './AddLink.svelte'
 	import ConnectionStatus from './ConnectionStatus.svelte'
 	import { useWorkerLibrary } from '../runtime/worker/context.js'
@@ -13,9 +22,21 @@
 	let {
 		account,
 		children,
-		connectionMessage
-	}: { account: Snippet; children: Snippet; connectionMessage: WorkflowMessage | undefined } =
-		$props()
+		connectionMessage,
+		accountMessage,
+		runtimeFeedback
+	}: {
+		account: Snippet
+		children: Snippet
+		connectionMessage: WorkflowMessage | undefined
+		accountMessage: WorkflowMessage | undefined
+		runtimeFeedback: Snippet
+	} = $props()
+	setAccountSettings({
+		get controls() {
+			return account
+		}
+	})
 	const library = useWorkerLibrary()
 	const id = $props.id()
 	const drawerId = `${id}-account`
@@ -104,26 +125,37 @@
 					</div>
 					<Navigation label={t('library.heading')}>
 						<li>
-							<a
+							<NavigationLink
 								href="/"
 								aria-current={page.url.pathname === '/' ? 'page' : undefined}
 								onclick={() => {
 									if (mobile) setDrawerOpen(false)
-								}}>{t('library.heading')}</a
+								}}>{t('library.all_articles')}</NavigationLink
+							>
+						</li>
+						<li>
+							<NavigationLink
+								href="/account"
+								aria-current={page.url.pathname === '/account' ? 'page' : undefined}
+								onclick={() => {
+									if (mobile) setDrawerOpen(false)
+								}}>{noun('account')}</NavigationLink
 							>
 						</li>
 					</Navigation>
 					<div class="account-panel">
-						<Heading level="h2" size="md">{noun('account')}</Heading>
-						{@render account()}
+						{#if accountMessage?.text}<StatusMessage {...accountMessage} />{/if}
 						<ConnectionStatus message={connectionMessage} />
 					</div>
 				</div>
 			</Drawer>
 		{/if}
 		<main class="content" inert={modal && !readerFocused}>
-			<div class="page-content">{@render children()}</div>
-			{#if library.actor && !readerFocused}
+			<div class="page-content">
+				{@render runtimeFeedback()}
+				{@render children()}
+			</div>
+			{#if library.actor && !readerFocused && page.url.pathname === '/'}
 				<div class="capture-control">
 					{#key library.actor}<AddLink actor={library.actor} />{/key}
 				</div>

@@ -6,6 +6,7 @@
 	import { t } from '../../localization/index.js'
 	import ReadingProgress from '../reader/ReadingProgress.svelte'
 	import ArticleActions from './ArticleActions.svelte'
+	import ArticleActionsPopover from './ArticleActionsPopover.svelte'
 	let {
 		row,
 		id,
@@ -20,7 +21,7 @@
 		id: string
 		readable: boolean
 		enabled: boolean
-		onorganize: (request: OrganizationRequest) => void
+		onorganize: (request: OrganizationRequest, trigger: HTMLElement) => void
 		ontrash: (trigger: HTMLElement) => void
 		ontags: (trigger: HTMLElement) => void
 		onretry: () => void
@@ -29,17 +30,42 @@
 
 <li {id} tabindex="-1" data-article-id={row.id}>
 	<div class="article-header">
-		<div class="article-title">
+		<div id={`${id}-title`} class="article-title">
 			<Heading level="h3" size="xl">
 				{#if readable}<a href={articleHref(row.id)}>{row.title}</a>{:else}{row.title}{/if}
 			</Heading>
 		</div>
-		<ArticleActions {row} {enabled} {onorganize} {ontrash} {ontags} />
+		<ArticleActionsPopover label={t('library.article_actions')} descriptionId={`${id}-title`}>
+			{#snippet children(dismiss)}
+				<ArticleActions
+					{row}
+					{enabled}
+					onorganize={(request) => {
+						const trigger = dismiss()
+						if (trigger) onorganize(request, trigger)
+					}}
+					ontrash={() => {
+						const trigger = dismiss()
+						if (trigger) ontrash(trigger)
+					}}
+					ontags={() => {
+						const trigger = dismiss()
+						if (trigger) ontags(trigger)
+					}}
+				/>
+				{#if !readable && row.failure}
+					<Button
+						type="button"
+						onclick={() => {
+							dismiss()
+							onretry()
+						}}>{t('actions.retry')}</Button
+					>
+				{/if}
+			{/snippet}
+		</ArticleActionsPopover>
 	</div>
 	<ReadingProgress value={row.readingProgress} />
-	{#if !readable && row.failure}
-		<Button type="button" onclick={onretry}>{t('actions.retry')}</Button>
-	{/if}
 </li>
 
 <style>
@@ -54,14 +80,14 @@
 	}
 
 	.article-header {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: start;
 		gap: var(--dui-spacing-sm);
 	}
 
 	.article-title {
-		flex: 1 1 16rem;
 		min-inline-size: 0;
+		overflow-wrap: anywhere;
 	}
 </style>

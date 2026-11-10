@@ -19,7 +19,7 @@
 		"format:check": "oxfmt --check .",
 		"verify:vendor": "node tooling/verify-vendor.mjs --installed",
 		"verify": "pnpm verify:vendor && pnpm format:check && pnpm lint && pnpm check && pnpm test:unit && pnpm build",
-		"test:unit": "pnpm --filter @delightful-clipper/web build:parser-worker && vitest run",
+		"test:unit": "pnpm --filter @delightful-clipper/web build:parser-worker:dev && vitest run",
 		"test:e2e": "node tooling/test-browser.mjs",
 		"test:schema": "playwright test --config playwright.schema.config.ts",
 		"dev:agent": "pnpm --filter @delightful-clipper/web dev:agent",
