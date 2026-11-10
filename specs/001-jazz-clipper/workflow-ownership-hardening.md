@@ -2,6 +2,11 @@
 
 **Status:** Partially implemented: A–D are complete for Clipper. E–G remain open; Finance adoption retains its separate actual-adapter qualification gate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
 
+The A–D branch incorporates merged PR34 at `e0856c6`. Its
+[integration and XState review](../../docs/reviews/pr34-workflow-integration.md)
+records preserved sign-in evidence, explicit shutdown receipts and terminal read
+outcomes. These corrections do not complete E–G.
+
 Move the remaining authentication and runtime lifecycle decisions into their owning charts. A reader must be able to identify admission, replacement, operation order, completion, failure and cancellation from the statecharts and their typed protocols. Preserve established product and persistence semantics while making resource ownership explicit and adding recoverable outcomes for stalled operations.
 
 Follow [XState memory](../../docs/memory/xstate.md), [worker runtime boundaries](../../docs/memory/worker-runtime.md), [the v6 specification](xstate-v6-migration.md), [the product specification](spec.md), [design decisions](design-decisions.md) and [implementation handoff](implementation-handoff.md). This specification narrows the next refactor; it does not reopen accepted product scope cuts.

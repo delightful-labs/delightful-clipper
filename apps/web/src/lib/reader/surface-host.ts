@@ -67,10 +67,11 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 				viewport = actor
 				actor.subscribe({
 					complete: () => {
-						port.postMessage({
-							type: 'VIEWPORT_CLOSED',
-							position: actor.getSnapshot().output?.position
-						})
+						const snapshot = actor.getSnapshot()
+						if (snapshot.output && snapshot.matches('closed'))
+							port.postMessage({ type: 'VIEWPORT_CLOSED', position: snapshot.output.position })
+						else if (snapshot.status !== 'done')
+							port.postMessage({ type: 'VIEWPORT_FAILED', attachmentId: message.attachmentId })
 						if (disposeRequest) dispose(disposeRequest.id)
 					},
 					error: () =>

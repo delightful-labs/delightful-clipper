@@ -66,9 +66,9 @@ still does not establish atomic single use or safe replay after a lost reply.
 
 ## Qualification
 
-Clipper passed `pnpm verify` (826 unit/native tests in 122 files, installed vendor
+Clipper passed `pnpm verify` (831 unit/native tests in 123 files, installed vendor
 integrity/import checks, formatting, lint, strict types, zero Svelte errors/warnings
-and production build), all 17 Worker browser cases, 12 packaged-extension cases
+and production build), all 19 Worker browser cases, 12 packaged-extension cases
 and eight production offline/restart cases. The latter includes actual linked
 sign-out, existing/expired credentials, persisted edits and reconnection.
 
@@ -79,6 +79,10 @@ header and body stalls for authorization/completion and prove abort delivery.
 Explicit cases cover delayed timer delivery, stale completion, refreshed identity,
 account replacement during provider waiting and both stages during realm shutdown.
 No new catalog wording or third-party dependency was added.
+
+The [PR34 integration review](pr34-workflow-integration.md) records preserved
+native provider refresh persistence tests and the successful-terminal-output
+requirement for host shutdown acknowledgements.
 
 DLF source `5bb6605` passed 191 selected regressions in 11 files, strict test types,
 zero-error/warning library checks, strict package publint and all public package

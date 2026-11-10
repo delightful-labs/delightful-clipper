@@ -165,6 +165,12 @@ An independent close ledger generates 120 schedules with up to 12 commands,
 seed `20261116`, with complete contract-model state/event/transition coverage.
 Explicit tests cover delayed native timer delivery after actual closure.
 
+The native Worker adapter requires the host's explicit successful closure output.
+A subscription's `complete` callback also fires on forced stop and cannot serve
+as closure proof. The Window viewport adapter likewise distinguishes its successful
+closed state from failure before reporting closure. See the
+[PR34 integration review](pr34-workflow-integration.md).
+
 The real Chromium case restores A → B → A while a saved reader is attached. It
 checks withdrawal of the old article, recovery identity and return to the original
 saved reader without navigation. Cold development startup prebundles the adopted

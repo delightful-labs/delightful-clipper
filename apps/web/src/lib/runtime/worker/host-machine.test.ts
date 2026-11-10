@@ -2,6 +2,21 @@ import { waitFor, SimulatedClock } from 'xstate'
 import { expect, it, vi } from 'vitest'
 import { createWorkerHostFixture as fixture } from './host-machine.test-support.js'
 
+it('forced actor stop completes observation without producing a clean realm-closure result', () => {
+	const f = fixture(),
+		outputs: unknown[] = []
+	f.actor.subscribe({ complete: () => outputs.push(f.actor.getSnapshot().output) })
+	try {
+		f.actor.start()
+		f.actor.stop()
+		expect(outputs).toEqual([undefined])
+		expect(f.close).not.toHaveBeenCalled()
+	} finally {
+		f.actor.stop()
+		f.owner.stop()
+	}
+})
+
 it('closes the SDK only after the application has acknowledged clean shutdown', async () => {
 	const f = fixture()
 	try {
@@ -11,6 +26,7 @@ it('closes the SDK only after the application has acknowledged clean shutdown', 
 			timeout: 1000
 		})
 		expect(f.actor.getSnapshot().value).toBe('closed')
+		expect(f.actor.getSnapshot().output).toEqual({ outcome: 'closed', redirect: undefined })
 		expect(f.close).toHaveBeenCalledOnce()
 	} finally {
 		f.actor.stop()

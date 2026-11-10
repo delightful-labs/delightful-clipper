@@ -7,7 +7,7 @@ remains authoritative; this PR does not complete the whole specification.
 
 ## Branches and source provenance
 
-- Clipper: `feat/workflow-hardening`, based on PR #20 merge `168cd0b`.
+- Clipper: `feat/workflow-hardening`, rebased onto merged PR34 at `e0856c6`.
 - DLF: `feat/domain-transaction-workflow`, based on `9d2b0f6`; qualified source `5bb6605`.
 - Finance comparison: clean worker-runtime revision
   `1125c5f1dc3d99c484988b6c4053e5d25526a45a`. Finance was reviewed, not modified
@@ -27,7 +27,7 @@ separate recovery/view patch are retained.
 ## A consumer migration and qualification
 
 DLF `9b3f094` adds the generic domain-transaction bridge and operation supervisor.
-Clipper `5e16cec` adopts the bridge; `71cdd08` migrates all ten supervision sites.
+Clipper adopts the bridge and migrates all ten supervision sites.
 DLF owns acquisition, commit, rollback and native settlement. Clipper retains
 eligibility, mutation selection and existing caller failure mapping.
 
@@ -169,10 +169,11 @@ Final Clipper checkpoint checks passed:
 
 - `pnpm verify`: installed vendor integrity/import checks, repository formatting
   and lint, strict types, web/extension Svelte checks with zero errors/warnings,
-  **826 unit/native tests in 122 files**, and the production Netlify build.
-- `pnpm test:worker`: **17 browser cases**, including A → B → A restoration with an attached reader,
+  **831 unit/native tests in 123 files**, and the production Netlify build.
+- `pnpm test:worker`: **19 browser cases**, including A → B → A restoration with an attached reader,
   account custody with dropped WRITE acknowledgement and delayed closure, plus real
-  SharedWorker port ownership and late-port disposal.
+  SharedWorker port ownership and late-port disposal. PR34's attached-reader
+  shutdown and forced root stop without clean closure are also covered.
 - `pnpm test:extension`: **12 packaged-extension cases**, including restoration,
   offline saves, browser restart and repeated settings teardown.
 - `pnpm test:offline`: **eight production cases**, including linked, existing and
@@ -180,12 +181,19 @@ Final Clipper checkpoint checks passed:
   edits, reconnection, cold reader reopening with both servers stopped and shell
   update failure/recovery. Both production Netlify fixtures built successfully.
 
-These checks ran after integrating `main` at `a5f7773`, against the final production
+- `pnpm test:schema`: **eight Chromium/Firefox schema-upgrade cases**.
+
+This checkpoint incorporates merged PR34 at `e0856c6`, against the final production
 account-storage/broker integration and the frozen archive above, using Clipper's
 managed Node `24.22.2`. Main's proof-renewal, session-lifecycle and cold-reader connection fixes are preserved.
 Browser fixtures use its account settings page and article action popovers. Extension
 qualification ran on macOS; main's documented temporary Linux exclusions remain. They do not
 establish Finance adoption or completion of E–G.
+
+The [PR34 integration and XState review](pr34-workflow-integration.md) records the
+rebase and the targeted completion/outcome corrections. Native observer completion
+alone no longer acknowledges clean host or viewport closure; the chart must
+select and return successful completion.
 
 The focused lifecycle regressions include independent generated custody and
 realm-close campaigns (120 runs each,
@@ -205,7 +213,7 @@ unchanged. This run uses `CLIPPER_TEST_WEB_URL=http://127.0.0.1:5482`,
 the actual assigned port. Earlier attempts were blocked before test execution by
 occupied default ports; no unidentified process was stopped. Cold Worker startup
 now prebundles the adopted DLF lifecycle exports, preventing an initial dependency
-optimizer reload. All 17 Worker cases passed with source frozen. No assertions or
+optimizer reload. All 19 Worker cases passed with source frozen. No assertions or
 product behavior were weakened.
 
 ## Follow-up boundary

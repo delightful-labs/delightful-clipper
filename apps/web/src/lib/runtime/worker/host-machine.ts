@@ -146,6 +146,7 @@ const actors = {
 export const workerHostMachine = setup({
 	schemas: {
 		context: types<Context>(),
+		output: types<{ outcome: 'closed'; redirect: string | undefined }>(),
 		events: {
 			SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>(),
 			ATPROTO: types<EventPayload<Event, 'ATPROTO'>>(),
@@ -268,6 +269,7 @@ export const workerHostMachine = setup({
 		tagForm: undefined,
 		tagArticleId: ''
 	}),
+	output: ({ context }) => ({ outcome: 'closed', redirect: context.redirect }),
 	on: {
 		RENDER: ({ context }) => ({ context: { renderRevision: context.renderRevision + 1 } }),
 		CLOSE_ISSUE: ({ context, event }) => ({

@@ -159,7 +159,12 @@ export function serveApplicationWorker(options: {
 			next: publish,
 			complete: () => {
 				attachment?.close()
-				const url = actor.getSnapshot().context.redirect
+				const result = actor.getSnapshot().output
+				if (!result) {
+					self.postMessage({ type: 'FAILED', issue: { stage: 'realm', reason: 'custody' } })
+					return
+				}
+				const url = result.redirect
 				self.postMessage(url ? { type: 'NAVIGATE', url } : { type: 'CLOSED' })
 			},
 			error: () => self.postMessage({ type: 'FAILED' })

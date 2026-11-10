@@ -43,7 +43,6 @@ const clear = {
 	source: undefined
 }
 function available(context: Context): ReadResult {
-	if (!context.capability?.isCurrent()) return { kind: 'unavailable' }
 	const document = required(context.document),
 		snapshot = required(context.snapshot),
 		asset = context.asset,
@@ -172,7 +171,8 @@ export const readRecordMachine = model.createMachine({
 		// Only the required snapshot can fail the read; asset/source remain optional.
 		resources: {
 			type: 'parallel',
-			onDone: { target: 'available' },
+			onDone: (args) =>
+				args.guards.scopeLost(args) ? { target: 'unavailable' } : { target: 'available' },
 			states: {
 				snapshot: {
 					initial: 'reading',
@@ -289,7 +289,7 @@ export const readRecordMachine = model.createMachine({
 				{
 					const params: { result: ReadResult } = {
 						result: {
-							kind: context.capability?.isCurrent() ? 'missing' : 'unavailable'
+							kind: 'missing'
 						}
 					}
 					const { result } = params
@@ -319,7 +319,7 @@ export const readRecordMachine = model.createMachine({
 				{
 					const params: { result: ReadResult } = {
 						result: {
-							kind: context.capability?.isCurrent() ? 'corrupt' : 'unavailable'
+							kind: 'corrupt'
 						}
 					}
 					const { result } = params
