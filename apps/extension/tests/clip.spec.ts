@@ -3,6 +3,8 @@ import { extensionId, extensionPublicKey } from '../../../tooling/extension-iden
 import { test, expect, chromium } from '@playwright/test'
 import { openLibraryFilters } from '../../web/tests/library-popovers.js'
 import { readingControls } from '../../web/tests/reader-ui.js'
+import { readRecoveryPhrase, restoreAccount } from '../../web/tests/account-ui.js'
+import { openArticleActions } from '../../web/tests/article-actions.js'
 import type { BrowserContext, Page } from '@playwright/test'
 import { startLocalJazzServer } from '../../web/tests/browser-core.js'
 import { createServer } from 'node:http'
@@ -132,7 +134,7 @@ async function extension(profile: string, connected = true) {
 		let phrase: string
 		try {
 			await web.goto('http://127.0.0.1:5180/')
-			phrase = await readRecovery(web)
+			phrase = await readRecoveryPhrase(web)
 		} finally {
 			await web.close()
 		}
@@ -280,8 +282,7 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 				'restore the extension account in the web replica',
 				async () => {
 					await reader.goto('/')
-					await reader.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
-					await reader.getByRole('button', { name: 'Restore account', exact: true }).click()
+					await restoreAccount(reader, phrase)
 					await expect(
 						reader.getByRole('link', { name: 'Rendered browser article', exact: true })
 					).toBeVisible({ timeout: 15000 })
@@ -319,7 +320,11 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 					await readingControls(reader)
 					await reader.getByRole('link', { name: 'Open library', exact: true }).click()
 					const row = reader.locator('[data-article-id]')
-					await row.getByRole('button', { name: 'Move to Trash', exact: true }).click()
+					await (
+						await openArticleActions(row)
+					)
+						.getByRole('button', { name: 'Move to Trash', exact: true })
+						.click()
 					await expect(row).toHaveCount(0)
 					await clip(context, id, source)
 					await expect(source.getByRole('status')).toHaveText('Already saved.')
@@ -466,9 +471,8 @@ test('saves directly offline, restarts the browser, and syncs without gateway re
 			if (request.url().includes('/api/capture/')) gateway++
 		})
 		await reader.goto('/')
-		await reader.getByLabel('Recovery phrase', { exact: true }).fill(phrase)
+		await restoreAccount(reader, phrase)
 		phrase = ''
-		await reader.getByRole('button', { name: 'Restore account', exact: true }).click()
 		await reader.getByRole('link', { name: 'Rendered browser article', exact: true }).click()
 		await expect(
 			reader.getByText('Only present after JavaScript rendering.', { exact: false })
@@ -547,12 +551,7 @@ test('restoring an account in options moves subsequent automatic clips to that l
 		const phrase =
 			await test.step('reveal the independent web account recovery phrase', async () => {
 				await reader.goto('/')
-				await reader.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-				const dialog = reader.getByRole('dialog')
-				await expect(dialog).toBeVisible()
-				const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-				await dialog.getByRole('button', { name: 'Close', exact: true }).click()
-				return phrase
+				return readRecoveryPhrase(reader)
 			})
 		await test.step('restore and confirm the new extension connection', async () => {
 			const options = await context.newPage()
@@ -637,12 +636,7 @@ test('a signed-out click opens sign-in, rejects invalid input, then saves to the
 			if (request.url().includes('/api/capture/')) gateway++
 		})
 		await reader.goto('/')
-		await expect(reader.getByRole('button', { name: 'Restore account', exact: true })).toBeVisible()
-		await reader.getByRole('button', { name: 'Show recovery phrase', exact: true }).click()
-		const dialog = reader.getByRole('dialog')
-		await expect(dialog).toBeVisible()
-		const phrase = await dialog.getByLabel('Recovery phrase', { exact: true }).inputValue()
-		await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+		const phrase = await readRecoveryPhrase(reader)
 		const source = await context.newPage()
 		await source.goto('http://127.0.0.1:5230/signin')
 		const opened = context.waitForEvent('page')

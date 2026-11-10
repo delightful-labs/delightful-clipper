@@ -324,3 +324,23 @@ Production auth configuration, storage and data were unchanged by these tests.
 
 The separate Linux extension recovery issue and its three user-approved temporary
 skips remain deferred.
+
+## PR #34 CI fixture alignment
+
+[Run 42878321588](https://github.com/delightful-labs/delightful-clipper/actions/runs/42878321588/job/130047512748)
+passed tooling/types/build, all 60 web cases, eight schema cases, 12 worker cases
+and eight offline cases. Seven extension cases then failed during their shared
+web-account setup: they still expected recovery controls on the library page,
+although merged main moved them to `/account`. Two extension cases passed and
+the three previously deferred Linux cases remained skipped. This failure occurred
+before extension restoration and does not establish the deferred Linux bug.
+
+The extension tests now reuse the same web recovery/restoration navigation
+helpers as the passing web suite. Their duplicate/Trash check also opens the
+article-actions popover introduced on main. Assertions, operation timeouts and
+Linux exclusions are unchanged; no product or dependency code was modified.
+All 12 packaged-extension cases pass locally on macOS/Chromium after these
+fixture changes, including offline process restart and repeated settings teardown.
+Strict types, lint, formatting and whitespace checks pass. This does not change
+the Linux qualification boundary; the next CI run must verify its nine enabled
+extension cases, retaining the three existing Linux exclusions.
