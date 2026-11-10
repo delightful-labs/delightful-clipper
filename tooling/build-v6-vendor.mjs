@@ -14,8 +14,8 @@ const sources = [
 	{
 		name: 'delightful-local-first',
 		source: dlfSource,
-		commit: '2532309d1b1d77518d166c145d392368e9d0fe1c',
-		file: 'delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz'
+		commit: 'dbc452eda6d874e67f24ec971be0a689dca8ef68',
+		file: 'delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz'
 	},
 	{
 		name: 'delightful-ui',

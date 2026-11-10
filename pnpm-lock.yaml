@@ -53,8 +53,8 @@ importers:
         specifier: 0.6.0
         version: 0.6.0
       delightful-local-first:
-        specifier: file:../../vendor/delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz
-        version: file:vendor/delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=4fb51a1c70a9e64eed1915530dc8eb98064bb579ae50ecaaca135ce30e44a1bd)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1)
+        specifier: file:../../vendor/delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz
+        version: file:vendor/delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=4fb51a1c70a9e64eed1915530dc8eb98064bb579ae50ecaaca135ce30e44a1bd)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1)
       delightful-ui:
         specifier: file:../../vendor/delightful-ui-7a7f61b-xstate-v6.tgz
         version: file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2)
@@ -114,8 +114,8 @@ importers:
         specifier: 3.9.1
         version: 3.9.1
       delightful-local-first:
-        specifier: file:../../vendor/delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz
-        version: file:vendor/delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=4fb51a1c70a9e64eed1915530dc8eb98064bb579ae50ecaaca135ce30e44a1bd)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1)
+        specifier: file:../../vendor/delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz
+        version: file:vendor/delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=4fb51a1c70a9e64eed1915530dc8eb98064bb579ae50ecaaca135ce30e44a1bd)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1)
       delightful-ui:
         specifier: file:../../vendor/delightful-ui-7a7f61b-xstate-v6.tgz
         version: file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2)
@@ -1295,8 +1295,8 @@ packages:
     resolution: {integrity: sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==}
     engines: {node: '>=0.10.0'}
 
-  delightful-local-first@file:vendor/delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz:
-    resolution: {integrity: sha512-Erk7ITuuLVc3dG2PhbZ4ficu74WVfs2ywz+9wbzlpgTJ9LWon+Q5bS0blc7TtVmS+lGLPc7lrSizVUzvRiO5lw==, tarball: file:vendor/delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz}
+  delightful-local-first@file:vendor/delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz:
+    resolution: {integrity: sha512-JvvwxnjDshoWfPWuFLJB6BeW9SHZNUve5Axg+xyMdWgN4kos0a8xazfGBjyCKzG0NiMnmsPA5Bi8WJLBTHZgpA==, tarball: file:vendor/delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz}
     version: 0.0.0
     engines: {node: ^22.17.0 || >=24.0.0}
     peerDependencies:
@@ -2998,7 +2998,7 @@ snapshots:
 
   deepmerge@4.3.1: {}
 
-  delightful-local-first@file:vendor/delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=4fb51a1c70a9e64eed1915530dc8eb98064bb579ae50ecaaca135ce30e44a1bd)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1):
+  delightful-local-first@file:vendor/delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz(patch_hash=16d054dca5635206dee075b1ad96aca500a8905f182d9218a4d62d9255f793db)(delightful-ui@file:vendor/delightful-ui-7a7f61b-xstate-v6.tgz(svelte@5.57.2))(jazz-tools@2.0.0-alpha.60(patch_hash=4fb51a1c70a9e64eed1915530dc8eb98064bb579ae50ecaaca135ce30e44a1bd)(@vercel/functions@3.11.0(ws@8.22.1))(@vercel/sandbox@3.9.1)(svelte@5.57.2)(ws@8.22.1))(svelte@5.57.2)(xstate@6.0.0-beta.1):
     dependencies:
       svelte: 5.57.2
       zod: 4.1.11

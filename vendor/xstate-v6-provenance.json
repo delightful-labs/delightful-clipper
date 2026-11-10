@@ -1,10 +1,14 @@
 [
 	{
-		"file": "delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz",
-		"source": "2532309d1b1d77518d166c145d392368e9d0fe1c",
+		"file": "delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz",
+		"source": "dbc452eda6d874e67f24ec971be0a689dca8ef68",
 		"xstate": "6.0.0-beta.1",
 		"jazz": "2.0.0-alpha.60",
-		"adaptation": "Preserves the existing alpha.60 native adapter delta; presentation export remains a separate pnpm patch."
+		"adaptation": "Updates the three qualified generic workflow modules while preserving the prior alpha.60 native adapter build. Clipper retains its existing separate presentation-export patch.",
+		"adapterBaseline": {
+			"file": "delightful-local-first-2532309-xstate-v6-jazz-alpha60.tgz",
+			"sha256": "74d97cb7a5532bb07f07f2d9eac4e99c258e18f7e1b66fdf0fb842dd09570f44"
+		}
 	},
 	{
 		"file": "delightful-ui-7a7f61b-xstate-v6.tgz",
