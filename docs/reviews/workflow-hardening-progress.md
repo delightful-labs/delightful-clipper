@@ -228,6 +228,54 @@ matching host-close receipt; keep late receipt handling after close timeout.
 The channel owner, concurrent routing, native adapter changes and account-owner
 integration remain subsequent work. SHARE-3, REC-3 and DLF-3 remain open.
 
+## B channel, native control and effect-drain qualification
+
+The user authorized continued implementation and tests while away, overriding the
+per-unit source-review/test gate for this work. The same consumer pins apply.
+
+DLF `b0059fe` adds the bounded channel owner and public contracts. It registers
+requests before posting, admits at most eight, assigns monotonic sequences,
+correlates out-of-order replies and disposes unclaimed transferred resources.
+Native observer/resource custody also handles forced stop and callback failures.
+Only REQUEST/CLOSE are public; native and child reports remain private. One close
+request uses an independent control listener, which remains alive after deadline
+or control failure until the exact original scope and close ID acknowledge closure.
+28 targeted tests and 400 generated sequences (seed 20261113, maximum 24 commands)
+pass, with full contract-model event/state/transition coverage.
+
+DLF `5bda676` adds the effect-drain chart: await actual quiescence of the original
+native effect or the exact scoped host-close receipt. An uncertain/rejected observer
+or deadline cannot release custody, replay the write or change the original unknown
+result. Its 16 tests and 300 generated sequences (seed 20261114, maximum 16 commands)
+pass. A public-import parent holding an actual native Web Lock proves that a waiting
+competitor remains blocked past the deadline and enters only after matching closure
+proof and real native release. Forced-stop tests reobserve the original receipts
+without a write capability or replay.
+
+The current DLF regression selection passes 356 tests in 15 files, plus strict
+TypeScript, zero-error/warning library checks, strict package publint, all public
+consumer declarations/fixtures/builds, format, lint and whitespace checks. The real
+MessageChannel consumer fixture separately proves orphaned-port closure, a lost
+write acknowledgement, conservative unknown output and late receipt handling.
+These bounded/generated/native fixtures do not substitute for consumer adoption.
+
+Clipper `host-close-channel.ts` supplies the native independent control boundary.
+Window calls the synchronous data-host disposer before acknowledging; failed native
+close produces no receipt. Strict schemas reject foreign scopes/versions/extra
+fields and close malformed transfers. Worker control errors retain the late receipt
+listener. There is no SDK/domain work, timer or retry in this native adapter.
+Seven new native tests pass; the complete Clipper selection passes 680 tests in
+108 files, and all seven worker browser cases pass. The new actual Window case
+observes native transfer disposal and proves no storage effects run after the
+receipt, including after a control error. Web/extension checks report zero Svelte
+errors/warnings; changed-source format/lint/strict TypeScript pass.
+
+The native adapter is prepared separately from the production account transport.
+The qualified A archive and existing production storage namespaces remain unchanged.
+Next, integrate the account owner and detached native lock custody before cutting
+storage/broker traffic over to the scoped channel. SHARE-3, REC-3 and DLF-3 remain
+open until that composed adapter and unknown-write recovery qualification passes.
+
 ## Remaining implementation
 
 Continue with B's shared account transport, then the dependency-ordered
