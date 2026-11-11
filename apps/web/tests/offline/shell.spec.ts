@@ -171,9 +171,22 @@ test('production shell and DLF account restart with web and Jazz servers stopped
 					paths.push(new URL(request.url).pathname)
 			return paths
 		})
-		expect(cachePaths.every((path) => path === '/' || path.startsWith('/_app/immutable/'))).toBe(
-			true
-		)
+		const publicShellPaths = [
+			'/',
+			'/apple-touch-icon.png',
+			'/favicon-96x96.png',
+			'/favicon.ico',
+			'/favicon.svg',
+			'/site.webmanifest',
+			'/web-app-manifest-192x192.png',
+			'/web-app-manifest-512x512.png'
+		]
+		expect(cachePaths).toEqual(expect.arrayContaining(publicShellPaths))
+		expect(
+			cachePaths.filter(
+				(path) => !publicShellPaths.includes(path) && !path.startsWith('/_app/immutable/')
+			)
+		).toEqual([])
 		expect(cachePaths.filter((path) => path.endsWith('.wasm'))).toHaveLength(1)
 
 		const readerPath = await page
