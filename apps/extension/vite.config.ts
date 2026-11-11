@@ -6,10 +6,19 @@ import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
 export default defineConfig(({ mode }) => {
 	const env = {
-		...loadEnv(mode, resolve('../web'), ''),
 		...loadEnv(mode, process.cwd(), ''),
 		...process.env
 	}
+	// Web development coordinates must never select the library of a release build.
+	const coordinates = [
+		env.EXTENSION_JAZZ_APP_ID,
+		env.EXTENSION_JAZZ_SERVER_URL,
+		env.EXTENSION_WEB_URL
+	]
+	if (coordinates.some(Boolean) && !coordinates.every(Boolean))
+		throw new Error(
+			'Set all three EXTENSION_JAZZ_APP_ID, EXTENSION_JAZZ_SERVER_URL and EXTENSION_WEB_URL together'
+		)
 	const serviceUrl = (value: string) => {
 		const parsed = z.url().safeParse(value)
 		if (!parsed.success) throw new Error('Invalid public extension service URL')
@@ -21,21 +30,10 @@ export default defineConfig(({ mode }) => {
 		return url
 	}
 	const server = serviceUrl(
-		env.EXTENSION_JAZZ_SERVER_URL ??
-			env.PUBLIC_JAZZ_SERVER_URL ??
-			'https://clipper.delightfullabs.com/jazz'
+		env.EXTENSION_JAZZ_SERVER_URL ?? 'https://clipper.delightfullabs.com/jazz'
 	)
-	const appId =
-		env.EXTENSION_JAZZ_APP_ID ?? env.PUBLIC_JAZZ_APP_ID ?? '9c0871ad-3ea3-49d0-9eaf-b034914da924'
-	const localWeb: Record<string, string> = {
-		'http://127.0.0.1:5173': 'http://127.0.0.1:5173/',
-		'http://localhost:5173': 'http://localhost:5173/',
-		'http://127.0.0.1:5174': 'http://127.0.0.1:5173/',
-		'http://localhost:5174': 'http://localhost:5173/'
-	}
-	const web = serviceUrl(
-		env.EXTENSION_WEB_URL ?? localWeb[server.origin] ?? 'https://clipper.delightfullabs.com/'
-	)
+	const appId = env.EXTENSION_JAZZ_APP_ID ?? '9c0871ad-3ea3-49d0-9eaf-b034914da924'
+	const web = serviceUrl(env.EXTENSION_WEB_URL ?? 'https://clipper.delightfullabs.com/')
 	const csp = `script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; worker-src 'self'; connect-src 'self' ${server.origin} ${server.origin.replace(/^http/, 'ws')}; base-uri 'none'; frame-ancestors 'none'`
 	return {
 		plugins: [
