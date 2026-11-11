@@ -1,3 +1,4 @@
+import { articleMetadataSchema } from './metadata.js'
 import { articleSchema } from './article-schema.js'
 import { lowercaseUuidSchema } from '../validation/values.js'
 import { articleId, normalizedSource } from './source.js'
@@ -40,6 +41,7 @@ export async function prepareArticle(
 						articleId: id,
 						operationId: target,
 						title: request.content.title,
+						...articleMetadataSchema.parse(request.content),
 						text: request.content.text,
 						bytes: new TextEncoder().encode(request.content.html),
 						mediaType: 'text/html',

@@ -239,6 +239,7 @@ for (const browser of [chromium, firefox]) {
 					await expect(
 						page.getByRole('link', { name: 'Legacy browser article', exact: true })
 					).toBeVisible()
+					await expect(page.locator('.article-excerpt')).toContainText('Legacy browser content')
 					const url = 'https://example.com/after-browser-upgrade'
 					await openAddLink(page)
 					await page.getByLabel('Article URL', { exact: true }).fill(url)

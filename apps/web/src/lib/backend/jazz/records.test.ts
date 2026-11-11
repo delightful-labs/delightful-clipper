@@ -9,6 +9,7 @@ import permissions from './permissions.js'
 import { createLibraryRecords } from './records.js'
 import { storageSyncMachine } from '../../machines/storage/sync.js'
 import { BYTE_LIMIT, prepareSave } from '../../storage/prepare.js'
+import { makeExcerpt } from '../../capture/excerpt.js'
 
 let fixture: PolicyTestApp
 beforeAll(async () => {
@@ -45,6 +46,57 @@ function request(bytes = new Uint8Array([7, 8, 9, 10])) {
 		mediaType: 'application/octet-stream'
 	}
 }
+it('persists excerpts and projects legacy and Unicode snapshots without changing saved text', async () => {
+	const { db, id, store } = await owner('excerpt-owner')
+	const input = {
+		...request(),
+		text: 'Body text that differs from the description.',
+		excerpt: 'Parser description café 🦊. '.repeat(200),
+		author: 'Ada Example',
+		siteName: 'Example Journal',
+		publishedTime: '2026-10-02T12:30:00+02:00',
+		lang: 'ar',
+		dir: 'rtl',
+		featuredImageUrl: 'https://example.com/cover.png'
+	}
+	const result = await toPromise(createActor(store.saveMachine, { input }).start())
+	if (result.kind !== 'saved') throw new Error('Expected excerpt save')
+	await Promise.all(result.receipts.map((receipt) => receipt.global()))
+	expect(await db.one(app.snapshots.where({ id: input.operationId }))).toMatchObject({
+		excerpt: input.excerpt,
+		author: input.author,
+		siteName: input.siteName,
+		publishedTime: input.publishedTime,
+		lang: input.lang,
+		dir: input.dir,
+		featuredImageUrl: input.featuredImageUrl,
+		text: input.text
+	})
+	for (const text of ['legacy body '.repeat(500), 'a'.repeat(1023) + '😀 tail']) {
+		const operation = crypto.randomUUID()
+		await db
+			.insert(
+				app.storageOperations,
+				{ libraryId: id, payloadHash: 'legacy-preview', createdAt: new Date().toISOString() },
+				{ id: operation }
+			)
+			.wait({ tier: 'global' })
+		await db
+			.insert(
+				app.snapshots,
+				{ libraryId: id, documentId: operation, text, formatVersion: '1' },
+				{ id: operation }
+			)
+			.wait({ tier: 'global' })
+		const preview = await db.one(
+			app.snapshots.where({ id: operation }).select('id', 'text', 'excerpt')
+		)
+		expect(preview?.excerpt).toBeNull()
+		expect(makeExcerpt(preview?.text ?? '').length).toBeLessThanOrEqual(240)
+		expect(makeExcerpt(preview?.text ?? '')).not.toContain('\uFFFD')
+		expect(await db.one(app.snapshots.where({ id: operation }))).toMatchObject({ text })
+	}
+})
 it('publishes text and native byte payload only after local persistence', async () => {
 	const { db, store } = await owner('records-owner')
 	const input = request(randomBytes(600 * 1024))

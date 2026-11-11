@@ -29,6 +29,10 @@ import { startLocalJazzServer as startCore, deploy as deployCore } from 'jazz-to
 import { app } from './schema.js'
 import { app as beforeAuth } from '../../../../tests/fixtures/schema-history/preauth-schema.test-support.js'
 import authMigration from './migrations/20261109T125137-better-auth-native-bb82b0448a9f-7c74c142a5dc.js'
+import { app as beforeMetadata } from '../../../../tests/fixtures/schema-history/premetadata-schema.test-support.js'
+import metadataMigration from './migrations/20261110T161543-article-metadata-5e70efdb5795-8a4e11c993e0.js'
+import { app as beforeExcerpts } from '../../../../tests/fixtures/schema-history/preexcerpt-schema.test-support.js'
+import excerptMigration from './migrations/20261110T152256-article-excerpts-7c74c142a5dc-5e70efdb5795.js'
 import { legacyApp } from '../../../../tests/fixtures/schema-history/legacy-schema.test-support.js'
 import permissions from './permissions.js'
 import { app as preOrganizationApp } from '../../../../tests/fixtures/schema-history/preorganization-schema.test-support.js'
@@ -74,7 +78,10 @@ const historicalSchemas: Record<string, { wasmSchema: typeof app.wasmSchema }> =
 	dc1365b4b2ec: preNotesApp,
 	b7805d9b30d2: preEntitiesApp,
 	'92a26a023aa5': beforeAuth,
-	'current-auth': app
+	'current-auth': beforeExcerpts,
+	'7c74c142a5dc': beforeExcerpts,
+	'5e70efdb5795': beforeMetadata,
+	'8a4e11c993e0': app
 }
 async function deploy(input: Parameters<typeof deployCore>[0]) {
 	if (!input.migration) return deployCore(input)
@@ -83,10 +90,25 @@ async function deploy(input: Parameters<typeof deployCore>[0]) {
 	if (!from || !to) throw new Error('Unknown historical migration fixture endpoint')
 	const fromHash = await computeSchemaHash(from.wasmSchema)
 	const toHash = await computeSchemaHash(to.wasmSchema)
+	const remaining =
+		to === beforeAuth
+			? [
+					{ schema: beforeExcerpts, migration: authMigration },
+					{ schema: beforeMetadata, migration: excerptMigration },
+					{ schema: app, migration: metadataMigration }
+				]
+			: to === beforeExcerpts
+				? [
+						{ schema: beforeMetadata, migration: excerptMigration },
+						{ schema: app, migration: metadataMigration }
+					]
+				: to === beforeMetadata
+					? [{ schema: app, migration: metadataMigration }]
+					: []
 	const result = await deployCore({
 		...input,
-		schemas: to === beforeAuth ? [from, to, app] : [from, to],
-		...(to === beforeAuth ? { migrations: [authMigration] } : {}),
+		schemas: [from, to, ...remaining.map((step) => step.schema)],
+		...(remaining.length ? { migrations: remaining.map((step) => step.migration) } : {}),
 		migration: { ...input.migration, fromHash, toHash }
 	})
 	const edges = deployedEdges.get(input.appId) ?? []
@@ -94,12 +116,15 @@ async function deploy(input: Parameters<typeof deployCore>[0]) {
 		edges.push({ fromHash, toHash, forward: serializeForwardLenses(input.migration.forward) })
 		deployedEdges.set(input.appId, edges)
 	}
-	if (to === beforeAuth) {
+	let previousHash = toHash
+	for (const step of remaining) {
+		const nextHash = await computeSchemaHash(step.schema.wasmSchema)
 		edges.push({
-			fromHash: toHash,
-			toHash: await computeSchemaHash(app.wasmSchema),
-			forward: serializeForwardLenses(authMigration.forward)
+			fromHash: previousHash,
+			toHash: nextHash,
+			forward: serializeForwardLenses(step.migration.forward)
 		})
+		previousHash = nextHash
 	}
 	return result
 }
@@ -333,6 +358,30 @@ it('upgrades a persisted pre-article library without resetting its root or reada
 			bootstrapVersion: '1'
 		})
 		const records = createLibraryRecords(current, owner, () => true)
+		expect(await current.one(app.snapshots.where({ id: documentId }))).toMatchObject({
+			text: 'Legacy text',
+			excerpt: null,
+			author: null,
+			siteName: null,
+			publishedTime: null,
+			lang: null,
+			dir: null,
+			featuredImageUrl: null
+		})
+		let excerpt: string | undefined
+		const releasePreview = records.articles.subscribe(
+			(rows) => {
+				excerpt = rows.find((row) => row.id === documentId)?.excerpt
+			},
+			() => {
+				throw new Error('Migrated previews unavailable')
+			}
+		)
+		try {
+			await expect.poll(() => excerpt).toBe('Legacy text')
+		} finally {
+			releasePreview()
+		}
 		expect(await readRecord(records.readCapabilities, documentId)).toMatchObject({
 			kind: 'available',
 			text: 'Legacy text'

@@ -41,7 +41,11 @@ jobs:
 
   browser:
     name: Account, library and offline browser tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      # Match @playwright/test in package.json; browsers and OS libraries are preinstalled.
+      image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
+      options: --ipc=host
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -53,7 +57,27 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium firefox
+      - name: Verify preinstalled browsers
+        timeout-minutes: 2
+        run: |
+          # Firefox requires the mounted home directory to belong to the container user.
+          chown "$(id -u):$(id -g)" "$HOME"
+          node <<'NODE'
+          const { chromium, firefox } = require('@playwright/test')
+          ;(async () => {
+            for (const browserType of [chromium, firefox]) {
+              const browser = await browserType.launch()
+              console.log(`${browserType.name()}: ${browser.version()}`)
+              await browser.close()
+            }
+            const browser = await chromium.launch({ channel: 'chromium' })
+            console.log(`Extension Chromium: ${browser.version()}`)
+            await browser.close()
+          })().catch(error => {
+            console.error(error)
+            process.exitCode = 1
+          })
+          NODE
       - run: pnpm test:e2e
       - run: pnpm test:schema
       - run: pnpm test:worker

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { articleMetadataSchema } from '../capture/metadata.js'
 import { nonblankStringSchema, utf8StringSchema, uuidSchema } from '../validation/values.js'
 export const TEXT_LIMIT = 64 * 1024
 export const BYTE_LIMIT = 1024 * 1024
@@ -12,13 +13,15 @@ export const sourceMetadataSchema = z.object({
 	submittedUrl: z.string().max(8192),
 	provenance: z.string().max(32768)
 })
-export const savePayloadSchema = z.object({
-	operationId: uuidSchema,
-	title: titleSchema,
-	text: textSchema,
-	bytes: z.instanceof(Uint8Array).refine((value) => value.byteLength <= BYTE_LIMIT),
-	mediaType: mediaTypeSchema
-})
+export const savePayloadSchema = z
+	.object({
+		operationId: uuidSchema,
+		title: titleSchema,
+		text: textSchema,
+		bytes: z.instanceof(Uint8Array).refine((value) => value.byteLength <= BYTE_LIMIT),
+		mediaType: mediaTypeSchema
+	})
+	.extend(articleMetadataSchema.shape)
 export const saveRequestSchema = savePayloadSchema.extend({
 	articleId: z.string().optional(),
 	source: sourceMetadataSchema.optional()

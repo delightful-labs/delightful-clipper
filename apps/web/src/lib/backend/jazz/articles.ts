@@ -14,6 +14,7 @@ import { ReadTier } from 'jazz-tools'
 import type { Db } from 'jazz-tools'
 
 import { createSaveArticleMachine } from '../../machines/storage/save-article.js'
+import { EXCERPT_SOURCE_LIMIT, makeExcerpt } from '../../capture/excerpt.js'
 import { articleRecord, prepareArticle, uuid } from '../../capture/articles.js'
 import type { Article, ArticleDraft, LibraryArticle } from '../../contracts/articles.js'
 
@@ -134,6 +135,38 @@ export function createArticleRecords(
 				app.articles.where({ libraryId }),
 				{
 					onUpdate: (rows) => next(rows.map((row) => articleRecord(row, libraryId))),
+					onError: error
+				},
+				{ tier: ReadTier.LocalFirst }
+			),
+		excerpts: (next, error) =>
+			db.subscribe(
+				app.snapshots.where({ libraryId }).select('id', 'excerpt'),
+				{
+					onUpdate: (rows) =>
+						next(
+							rows.map((row) => ({
+								id: row.id,
+								text: '',
+								excerpt: row.excerpt == null ? null : makeExcerpt(row.excerpt)
+							}))
+						),
+					onError: error
+				},
+				{ tier: ReadTier.LocalFirst }
+			),
+		legacyPreviews: (next, error) =>
+			db.subscribe(
+				app.snapshots.where({ libraryId, excerpt: null }).select('id', 'text'),
+				{
+					onUpdate: (rows) =>
+						next(
+							rows.map((row) => ({
+								id: row.id,
+								text: row.text.slice(0, EXCERPT_SOURCE_LIMIT),
+								excerpt: null
+							}))
+						),
 					onError: error
 				},
 				{ tier: ReadTier.LocalFirst }

@@ -27,6 +27,13 @@ async function owner(name: string) {
 const url = 'https://short.example/article?b=2&a=1#note'
 const content = {
 	title: 'Saved article',
+	excerpt: 'Parser description café 🦊. '.repeat(200),
+	author: 'Ada Example',
+	siteName: 'Example Journal',
+	publishedTime: '2026-10-02T12:30:00+02:00',
+	lang: 'ar',
+	dir: 'rtl',
+	featuredImageUrl: 'https://example.com/cover.png',
 	text: 'Exact text café 🦊',
 	html: '<p>Exact text café 🦊</p>',
 	finalUrl: 'https://example.com/article',
@@ -66,6 +73,15 @@ it('the same save operation accepts content and completes the original article w
 	const row = await a.records.articles.read(saved.operationId)
 	expect(row?.originalSavedAt).toBe(before?.originalSavedAt)
 	expect(row?.contentId).toBe(await articleId(a.id, content.finalUrl))
+	expect(await a.db.one(app.snapshots.where({ id: row!.contentId! }))).toMatchObject({
+		excerpt: content.excerpt,
+		author: content.author,
+		siteName: content.siteName,
+		publishedTime: content.publishedTime,
+		lang: content.lang,
+		dir: content.dir,
+		featuredImageUrl: content.featuredImageUrl
+	})
 	expect(await readRecord(a.records.readCapabilities, saved.operationId)).toMatchObject({
 		kind: 'available',
 		text: content.text,
