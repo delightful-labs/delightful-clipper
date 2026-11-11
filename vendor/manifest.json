@@ -14,5 +14,21 @@
 	{
 		"file": "delightful-ui-7a7f61b-xstate-v6.tgz",
 		"sha256": "28d2139b7eb377e365a821743bb4fe998de2cbc59066ca15bd78862867891407"
+	},
+	{
+		"file": "delightful-local-first-domain-transaction-alpha60.tgz",
+		"sha256": "388faab60b1c2848b16e03f29d4038f30c5ff75874f58c4f08da73c01e22569b"
+	},
+	{
+		"file": "delightful-local-first-workflow-hardening-alpha60.tgz",
+		"sha256": "aaf16fe628393537aed32ba487d141d8cb7bc47b3000eff35556ff04a8b11fb7"
+	},
+	{
+		"file": "delightful-local-first-worker-transport-1571ba2-alpha60.tgz",
+		"sha256": "1ffa8d8490915da61fb7dc9a600733eed00dcce33cdc772ca0a12d1bbf0d95b1"
+	},
+	{
+		"file": "delightful-local-first-auth-lifecycle-5bb6605-alpha60.tgz",
+		"sha256": "eca27c4841b46340adaf4cd9fc5d2708cee17b702ae2d48610a74108d7f05783"
 	}
 ]

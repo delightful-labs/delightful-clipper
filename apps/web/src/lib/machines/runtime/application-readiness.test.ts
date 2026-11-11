@@ -5,7 +5,7 @@ import {
 	createSessionAcquisitionMachine,
 	selectAcquiredSession
 } from 'delightful-local-first/session/workflow'
-import { createActor, waitFor } from 'xstate'
+import { createActor, waitFor, SimulatedClock } from 'xstate'
 import { describe, expect, it, vi } from 'vitest'
 import {
 	createApplicationReadinessMachine,
@@ -108,6 +108,148 @@ function root(local: Promise<void>, global: Promise<void>) {
 }
 
 describe('account/root ownership', () => {
+	it('recognizes native provider following that already signed out without logging out a new local identity', async () => {
+		const f = fixture({ status: 'signed-out' }),
+			pending = Promise.withResolvers<void>()
+		let status: 'current' | 'signed-out' = 'current'
+		f.emit({
+			...ready('original-native', { read: async () => 'compatible', ensure: vi.fn() }),
+			signedIn: true,
+			logoutStatus: () => status
+		})
+		const provider = vi.fn(() => pending.promise),
+			source = startup(async () => ({ ...f.host, signOut: provider })),
+			actor = createActor(applicationReadinessMachine, { input: source.attach() }).start()
+		try {
+			await waitFor(actor, (snapshot) => selectApplicationView(snapshot, true).status === 'ready')
+			actor.send({ type: 'LOGOUT' })
+			await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce())
+			status = 'signed-out'
+			f.emit({ status: 'signed-out' })
+			pending.resolve()
+			await waitFor(actor, (snapshot) =>
+				snapshot.matches({ active: { flow: { running: 'signedOut' } } })
+			)
+			expect(f.host.logout).not.toHaveBeenCalled()
+			expect(selectApplicationView(actor.getSnapshot(), true).feedback).toBeUndefined()
+		} finally {
+			pending.resolve()
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			source.owner.stop()
+		}
+	})
+	it('refreshes native facts after provider rejection and never automatically retries or invokes native logout', async () => {
+		const f = fixture({
+			...ready('provider-rejection', { read: async () => 'compatible', ensure: vi.fn() }),
+			signedIn: true
+		})
+		const provider = vi.fn(async () => {
+				throw new Error('Provider unavailable')
+			}),
+			read = vi.fn(f.host.read)
+		const source = startup(async () => ({ ...f.host, read, signOut: provider })),
+			actor = createActor(applicationReadinessMachine, { input: source.attach() }).start()
+		try {
+			await waitFor(actor, (snapshot) => selectApplicationView(snapshot, true).status === 'ready')
+			actor.send({ type: 'LOGOUT' })
+			await waitFor(
+				actor,
+				(snapshot) =>
+					selectApplicationView(snapshot, true).feedback === 'identityFailed' &&
+					selectApplicationView(snapshot, true).status === 'ready'
+			)
+			expect(provider).toHaveBeenCalledOnce()
+			expect(f.host.logout).not.toHaveBeenCalled()
+			expect(read.mock.calls.length).toBeGreaterThan(1)
+			expect(selectApplicationView(actor.getSnapshot(), true).canLogout).toBe(true)
+		} finally {
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			source.owner.stop()
+		}
+	})
+	it('retains original native logout admission when the account changes during a delayed provider call', async () => {
+		const pending = Promise.withResolvers<void>(),
+			f = fixture({ status: 'signed-out' })
+		let current = 'A'
+		const mutate = vi.fn(),
+			logoutA = vi.fn(async () => {
+				if (current !== 'A') throw new Error('Original scope expired')
+				mutate('A')
+			})
+		f.emit({
+			...ready('A', { read: async () => 'compatible', ensure: vi.fn() }),
+			logout: logoutA,
+			signedIn: true
+		})
+		const provider = vi.fn(() => pending.promise),
+			source = startup(async () => ({ ...f.host, signOut: provider })),
+			actor = createActor(applicationReadinessMachine, { input: source.attach() }).start()
+		try {
+			await waitFor(actor, (snapshot) => selectApplicationView(snapshot, true).status === 'ready')
+			actor.send({ type: 'LOGOUT' })
+			await vi.waitFor(() => expect(provider).toHaveBeenCalledOnce())
+			current = 'B'
+			f.emit({ ...ready('B', { read: async () => 'compatible', ensure: vi.fn() }), signedIn: true })
+			pending.resolve()
+			await waitFor(
+				actor,
+				(snapshot) =>
+					snapshot.context.observation.status === 'ready' &&
+					snapshot.context.observation.accountId === 'B' &&
+					selectApplicationView(snapshot, true).status === 'ready'
+			)
+			expect(logoutA).toHaveBeenCalledOnce()
+			expect(mutate).not.toHaveBeenCalled()
+			expect(f.host.logout).not.toHaveBeenCalled()
+			expect(selectApplicationView(actor.getSnapshot(), true).feedback).toBe('identityFailed')
+		} finally {
+			pending.resolve()
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			source.owner.stop()
+		}
+	})
+	it('requires reload feedback while native logout is overdue and refreshes observed identity only after settlement', async () => {
+		const pending = Promise.withResolvers<void>(),
+			clock = new SimulatedClock(),
+			f = fixture({
+				...ready('native-pending', { read: async () => 'compatible', ensure: vi.fn() }),
+				signedIn: true
+			})
+		const logout = vi.fn(async () => {
+			await pending.promise
+			f.emit({ status: 'signed-out' })
+		})
+		const source = startup(async () => ({ ...f.host, logout })),
+			actor = createActor(applicationReadinessMachine, { clock, input: source.attach() }).start()
+		try {
+			await waitFor(actor, (snapshot) => selectApplicationView(snapshot, true).status === 'ready')
+			actor.send({ type: 'LOGOUT' })
+			await vi.waitFor(() => expect(logout).toHaveBeenCalledOnce())
+			const child = actor.getSnapshot().children.logout
+			clock.increment(30_000)
+			expect(selectApplicationView(actor.getSnapshot(), true)).toMatchObject({
+				feedback: 'identityFailed',
+				requiresReload: true,
+				canLogout: false,
+				canRetry: false
+			})
+			expect(actor.getSnapshot().children.logout).toBe(child)
+			pending.resolve()
+			await waitFor(actor, (snapshot) =>
+				snapshot.matches({ active: { flow: { running: 'signedOut' } } })
+			)
+			expect(selectApplicationView(actor.getSnapshot(), true).requiresReload).toBe(false)
+			expect(logout).toHaveBeenCalledOnce()
+		} finally {
+			pending.resolve()
+			actor.send({ type: 'SHUTDOWN' })
+			await waitFor(actor, (snapshot) => snapshot.status === 'done')
+			source.owner.stop()
+		}
+	})
 	it('reopens the native session before retrying a failed library bootstrap', async () => {
 		const staleRead = vi.fn(async () => {
 			throw new Error('Synthetic refused connection')
@@ -900,6 +1042,192 @@ it('prepares a different backend account after its superseded guest preparation 
 			accountId: 'backend',
 			localFirst: true
 		})
+	} finally {
+		actor.stop()
+	}
+})
+
+function adoptingFixture(initial: Extract<AccountObservation, { status: 'ready' }>) {
+	const f = fixture(initial)
+	const released: ReturnType<typeof vi.fn>[] = []
+	const adopt = vi.fn((observation: Extract<AccountObservation, { status: 'ready' }>) => {
+		const release = vi.fn()
+		released.push(release)
+		return { observation, release }
+	})
+	return { ...f, adopt, released, input: input({ ...f.host, adopt }) }
+}
+it('adopts once for unchanged native identity/preparation facts and reuses the library actor', async () => {
+	const initial = {
+		...ready('stable', { read: async () => 'compatible', ensure: vi.fn() }),
+		clientBinding: {},
+		databaseBinding: {},
+		signedIn: false
+	}
+	const f = adoptingFixture(initial)
+	const actor = createActor(applicationReadinessMachine, { input: f.input }).start()
+	try {
+		await waitFor(actor, (s) => !!selectLibraryActor(s))
+		const library = selectLibraryActor(actor.getSnapshot())
+		for (let index = 0; index < 4; index++) f.emit({ ...initial, signedIn: true })
+		await vi.waitFor(() =>
+			expect(actor.getSnapshot().context.observation).toMatchObject({ signedIn: true })
+		)
+		expect(f.adopt).toHaveBeenCalledExactlyOnceWith(initial)
+		expect(selectLibraryActor(actor.getSnapshot())).toBe(library)
+		expect(f.released[0]).not.toHaveBeenCalled()
+		actor.send({ type: 'SHUTDOWN' })
+		await waitFor(actor, (s) => s.status === 'done')
+		expect(f.released[0]).toHaveBeenCalledOnce()
+	} finally {
+		actor.stop()
+	}
+})
+it.each(['clientBinding', 'databaseBinding'] as const)(
+	'retires a same-account %s replacement and adopts its exact new observation',
+	async (field) => {
+		const initial = {
+			...ready('same-account', { read: async () => 'compatible', ensure: vi.fn() }),
+			clientBinding: {},
+			databaseBinding: {}
+		}
+		const f = adoptingFixture(initial),
+			next = { ...initial, [field]: {} }
+		const actor = createActor(applicationReadinessMachine, { input: f.input }).start()
+		try {
+			await waitFor(actor, (s) => !!selectLibraryActor(s))
+			const previous = selectLibraryActor(actor.getSnapshot())
+			f.emit(next)
+			await vi.waitFor(() => expect(f.adopt).toHaveBeenCalledTimes(2))
+			await waitFor(actor, (s) => !!selectLibraryActor(s))
+			expect(f.adopt).toHaveBeenLastCalledWith(next)
+			expect(f.released[0]).toHaveBeenCalledOnce()
+			expect(selectLibraryActor(actor.getSnapshot())).not.toBe(previous)
+		} finally {
+			actor.stop()
+		}
+	}
+)
+it('adopts only C after A → B → C while an original A write drains, preserving its unknown result', async () => {
+	const pending = Promise.withResolvers<import('../../contracts/storage.js').SaveResult>()
+	const shutdown = vi.fn(),
+		save = controlledSave(() => pending.promise, shutdown),
+		id = crypto.randomUUID()
+	const library = testLibraryCapability(
+		{
+			id,
+			title: 'A',
+			text: 'A',
+			html: '<p>A</p>',
+			finalUrl: 'https://example.com/',
+			submittedUrl: 'https://example.com/',
+			provenance: '{}',
+			imagesMissing: false
+		},
+		{ spawnSave: (spawn, request) => spawn(save, { input: request }) }
+	)
+	const access: RootAccess = { read: async () => 'compatible', ensure: vi.fn() }
+	const a = { ...ready('A', access), library },
+		b = ready('B', access),
+		c = ready('C', access)
+	const f = adoptingFixture(a),
+		actor = createActor(applicationReadinessMachine, { input: f.input }).start()
+	try {
+		await waitFor(actor, (s) => !!selectLibraryActor(s))
+		const original = selectLibraryActor(actor.getSnapshot())
+		if (!original) throw new Error('Missing A library')
+		original.send({ type: 'ADD', url: 'https://example.com/' })
+		await waitFor(original, (s) => s.matches({ running: { capture: 'saving' } }))
+		f.emit(b)
+		f.emit(c)
+		await waitFor(
+			actor,
+			(s) => s.context.observation.status === 'ready' && s.context.observation.accountId === 'C'
+		)
+		expect(selectLibraryActor(actor.getSnapshot())).toBeUndefined()
+		expect(f.adopt).toHaveBeenCalledOnce()
+		expect(f.released[0]).not.toHaveBeenCalled()
+		expect(shutdown).toHaveBeenCalledOnce()
+		pending.resolve({ kind: 'unknown', operationId: id })
+		await waitFor(actor, (s) => !!selectLibraryActor(s))
+		expect(f.adopt.mock.calls.map(([observation]) => observation.accountId)).toEqual(['A', 'C'])
+		expect(f.adopt).toHaveBeenLastCalledWith(c)
+		expect(f.released[0]).toHaveBeenCalledOnce()
+	} finally {
+		pending.resolve({ kind: 'unknown', operationId: id })
+		actor.stop()
+	}
+})
+it('releases a candidate superseded during native creation before adopting the replacement', async () => {
+	const access: RootAccess = { read: async () => 'compatible', ensure: vi.fn() },
+		a = ready('A', access),
+		b = ready('B', access)
+	const f = adoptingFixture(a),
+		first = f.adopt.getMockImplementation()
+	if (!first) throw new Error('Missing native adoption')
+	f.adopt.mockImplementation((observation) => {
+		if (observation === a) f.emit(b)
+		return first(observation)
+	})
+	const actor = createActor(applicationReadinessMachine, { input: f.input }).start()
+	try {
+		await waitFor(actor, (s) => !!selectLibraryActor(s))
+		expect(actor.getSnapshot().context.observation).toMatchObject({ accountId: 'B' })
+		expect(f.adopt.mock.calls.map(([observation]) => observation.accountId)).toEqual(['A', 'B'])
+		expect(f.released[0]).toHaveBeenCalledOnce()
+	} finally {
+		actor.stop()
+	}
+})
+it('forced application stop revokes the adopted native capability exactly once', async () => {
+	const f = adoptingFixture(ready('stop', { read: async () => 'compatible', ensure: vi.fn() }))
+	const actor = createActor(applicationReadinessMachine, { input: f.input }).start()
+	await waitFor(actor, (s) => !!selectLibraryActor(s))
+	actor.stop()
+	actor.stop()
+	expect(f.released[0]).toHaveBeenCalledOnce()
+})
+
+it('does not retry failed native binding construction from duplicate observations; explicit retry admits another attempt', async () => {
+	const observation = ready('failed-binding', { read: async () => 'compatible', ensure: vi.fn() }),
+		f = adoptingFixture(observation)
+	f.adopt.mockImplementationOnce(() => {
+		throw new Error('Native capability unavailable')
+	})
+	const actor = createActor(applicationReadinessMachine, { input: f.input }).start()
+	try {
+		await waitFor(actor, (s) => s.matches({ active: { flow: { running: 'unavailable' } } }), {
+			timeout: 1000
+		})
+		f.emit({ ...observation })
+		f.emit({ ...observation })
+		expect(f.adopt).toHaveBeenCalledOnce()
+		actor.send({ type: 'RETRY' })
+		await waitFor(actor, (s) => !!selectLibraryActor(s), { timeout: 1000 })
+		expect(f.adopt).toHaveBeenCalledTimes(2)
+	} finally {
+		actor.stop()
+	}
+})
+it('shutdown during native candidate construction releases that candidate once and never publishes it', async () => {
+	const observation = ready('shutdown-candidate', {
+			read: vi.fn(async (): Promise<'compatible'> => 'compatible'),
+			ensure: vi.fn()
+		}),
+		f = adoptingFixture(observation)
+	const construct = f.adopt.getMockImplementation()
+	if (!construct) throw new Error('Missing native construction')
+	const actor = createActor(applicationReadinessMachine, { input: f.input })
+	f.adopt.mockImplementation((candidate) => {
+		actor.send({ type: 'SHUTDOWN' })
+		return construct(candidate)
+	})
+	actor.start()
+	try {
+		await waitFor(actor, (s) => s.status === 'done', { timeout: 1000 })
+		expect(selectLibraryActor(actor.getSnapshot())).toBeUndefined()
+		expect(observation.root.read).not.toHaveBeenCalled()
+		expect(f.released[0]).toHaveBeenCalledOnce()
 	} finally {
 		actor.stop()
 	}

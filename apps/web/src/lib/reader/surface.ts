@@ -8,10 +8,13 @@ export type FullscreenSurface = {
 	observe: (changed: () => void) => () => void
 }
 export type ReaderSurface = {
+	lifecycle?: { accepted: () => void; released: () => void }
 	fullscreen: FullscreenSurface
 	viewport: { native: ViewportElements } | { port: MessagePort }
 }
 export type SurfaceViewportInput = ReaderSurface['viewport'] & {
 	attachmentId: string
 	position: ReadingPosition | undefined
+	replyTimeoutMs?: number
+	now?: () => number
 }

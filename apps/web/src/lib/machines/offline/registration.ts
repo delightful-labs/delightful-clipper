@@ -11,9 +11,7 @@ export type ShellRegistration = EventTarget & {
 	waiting: ShellWorker | null
 	installing: ShellWorker | null
 }
-export type ShellEvent =
-	| { type: 'STATUS'; status: ShellStatus }
-	| { type: 'RETRY' | 'SHUTDOWN' | 'ATTEMPT_SETTLED' | 'TIMED_OUT' }
+export type ShellEvent = { type: 'STATUS'; status: ShellStatus } | { type: 'RETRY' | 'SHUTDOWN' }
 export type ShellPlatform = {
 	register: () => Promise<ShellRegistration | undefined>
 	observe: (registration: ShellRegistration, report: (event: ShellEvent) => void) => () => void
@@ -39,10 +37,9 @@ export function createShellRegistrationMachine(platform: ShellPlatform) {
 			events: {
 				STATUS: types<{ status: ShellStatus }>(),
 				RETRY: types(),
-				SHUTDOWN: types(),
-				ATTEMPT_SETTLED: types(),
-				TIMED_OUT: types()
+				SHUTDOWN: types()
 			},
+			internalEvents: { ATTEMPT_SETTLED: types(), TIMED_OUT: types() },
 			meta: types<NamedState & { status: ShellStatus }>(),
 			tags: types<string>(),
 			children: {

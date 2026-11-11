@@ -6,7 +6,7 @@ import { createActor, toPromise } from 'xstate'
 import { createArticleWorkerHostMachine } from '../../machines/capture/article-worker-host.js'
 import { openArticleWorkerBrowser } from '../../machines/capture/article-worker-browser.js'
 import { readCaptureResponse } from '../../machines/capture/article-worker-io.js'
-import { inspectMachines } from '../../diagnostics/inspect.js'
+import { machineDiagnostics } from '../../diagnostics/inspect.js'
 import { debugEnabled } from '../../diagnostics/logger.js'
 import type { LibraryRecords } from './records.js'
 /** Binding only. The library owns saving, worker lifetime and SDK leaf resources. */
@@ -56,7 +56,7 @@ export function createLibraryCapability(
 		worker: (report) => {
 			const actor = createActor(workerMachine, {
 				input: { report },
-				inspect: inspectMachines
+				...machineDiagnostics
 			}).start()
 			const stopped = toPromise(actor).then(() => {})
 			return {

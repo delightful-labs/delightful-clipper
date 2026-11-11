@@ -61,6 +61,96 @@ it('drains a URL write and the worker resource before closing the account scope'
 	expect(actor.getSnapshot().context.capability).toBeUndefined()
 	expect(actor.getSnapshot().context.rows).toEqual([])
 })
+
+it('keeps local saving usable after search failure and waits for its native read during account shutdown', async () => {
+	const pending = Promise.withResolvers<import('../../search/schema.js').SearchDocument[]>()
+	const load = vi.fn(() => pending.promise),
+		dispose = vi.fn(),
+		save = vi.fn(async (): Promise<ArticleSaveResult> => ({
+			kind: 'saved',
+			operationId: id,
+			ready: false,
+			receipts: []
+		}))
+	let report: (event: import('../../search/protocol.js').SearchWorkerOutput) => void = () => {}
+	const cap = testLibraryCapability(candidate, {
+		spawnSave: (spawn, input) => spawn(controlledSave(save, vi.fn()), { input }),
+		search: {
+			libraryId: 'original-library',
+			isCurrent: () => true,
+			load,
+			observe: () => () => {},
+			open: (next) => {
+				report = next
+				return { post: () => {}, dispose }
+			}
+		}
+	})
+	const actor = createActor(libraryMachine, { input: cap }).start()
+	try {
+		actor.send({ type: 'SEARCH_OPEN' })
+		await vi.waitFor(() => expect(load).toHaveBeenCalledOnce())
+		report({ type: 'WORKER_ERROR' })
+		actor.send({ type: 'ADD', url: candidate.submittedUrl })
+		await waitFor(actor, (s) => s.matches({ running: { capture: 'saved' } }))
+		expect(save).toHaveBeenCalledOnce()
+		actor.send({ type: 'SHUTDOWN' })
+		expect(actor.getSnapshot().status).toBe('active')
+		expect(actor.getSnapshot().children.search?.getSnapshot().status).toBe('active')
+		pending.resolve([])
+		await toPromise(actor)
+		expect(dispose).toHaveBeenCalledOnce()
+	} finally {
+		pending.resolve([])
+		actor.stop()
+	}
+})
+
+it.each(['before', 'after'] as const)(
+	'drains expired-scope search settlement %s library retirement',
+	async (settlement) => {
+		const pending = Promise.withResolvers<import('../../search/schema.js').SearchDocument[]>()
+		let current = true
+		const load = vi.fn(() => pending.promise)
+		const cap = testLibraryCapability(candidate, {
+			isCurrent: () => current,
+			search: {
+				libraryId: 'original-library',
+				isCurrent: () => current,
+				load,
+				observe: () => () => {},
+				open: () => ({ post: () => {}, dispose: () => {} })
+			}
+		})
+		const actor = createActor(libraryMachine, { input: cap })
+		actor.subscribe({ error: () => {} })
+		actor.start()
+		actor.send({ type: 'SEARCH_OPEN' })
+		await vi.waitFor(() => expect(load).toHaveBeenCalledOnce())
+		current = false
+		if (settlement === 'after') {
+			actor.send({ type: 'SHUTDOWN' })
+			expect(actor.getSnapshot().status).toBe('active')
+		}
+		pending.resolve([])
+		if (settlement === 'before') {
+			await waitFor(actor, (s) => s.matches({ running: { searchLifecycle: 'closed' } }))
+			actor.send({ type: 'SHUTDOWN' })
+		}
+		expect(actor.getSnapshot().status).not.toBe('error')
+		await toPromise(actor)
+	}
+)
+
+it('does not wait for unsupported search work during library shutdown', async () => {
+	const { actor } = fixture()
+	const search = actor.getSnapshot().children.search
+	expect(search?.getSnapshot().context.capability).toBeUndefined()
+	expect(actor.getSnapshot().matches({ running: { searchLifecycle: 'unsupported' } })).toBe(true)
+	actor.send({ type: 'SHUTDOWN' })
+	await toPromise(actor)
+	expect(search?.getSnapshot().status).toBe('stopped')
+})
 it('keeps URL persistence independent of reader navigation', async () => {
 	const gate = Promise.withResolvers<ArticleSaveResult>()
 	const { actor, shutdown } = fixture(() => gate.promise)

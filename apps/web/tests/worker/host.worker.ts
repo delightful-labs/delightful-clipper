@@ -14,7 +14,10 @@ import {
 import { JAZZ_RUNTIME_VERSION } from '../../src/lib/offline/runtime-version.js'
 self.onmessage = async ({ data }) => {
 	const storage = accountStorageClient(data.port)
-	const brokerHost = brokerHostClient(data.broker)
+	const brokerHost = brokerHostClient(data.broker, data.brokerControl, data.brokerScope, {
+		onOverdue: () => self.postMessage({ type: 'FAILED' }),
+		onBlocked: () => self.postMessage({ type: 'FAILED' })
+	})
 	try {
 		const key = accountStorageKey(data.serverUrl)
 		const session = await createJazzClient({
@@ -91,7 +94,7 @@ self.onmessage = async ({ data }) => {
 			sharedWorker: typeof SharedWorker
 		})
 	} finally {
-		brokerHost.close()
+		await brokerHost.close()
 		storage.close()
 		self.postMessage({ type: 'CLOSED' })
 	}

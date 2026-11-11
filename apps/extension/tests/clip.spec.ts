@@ -3,7 +3,12 @@ import { extensionId, extensionPublicKey } from '../../../tooling/extension-iden
 import { test, expect, chromium } from '@playwright/test'
 import { openLibraryFilters } from '../../web/tests/library-popovers.js'
 import { readingControls } from '../../web/tests/reader-ui.js'
-import { readRecoveryPhrase, restoreAccount } from '../../web/tests/account-ui.js'
+import {
+	openAccountSettings,
+	openAllArticles,
+	readRecoveryPhrase,
+	restoreAccount
+} from '../../web/tests/account-ui.js'
 import { openArticleActions } from '../../web/tests/article-actions.js'
 import type { BrowserContext, Page } from '@playwright/test'
 import { startLocalJazzServer } from '../../web/tests/browser-core.js'
@@ -25,13 +30,15 @@ const machineEvidenceSchema = z.object({
 	error: z.object({ message: z.string().max(1000).optional() }).optional()
 })
 const machineEvidence = new WeakMap<BrowserContext, z.infer<typeof machineEvidenceSchema>[]>()
+const webUrl = process.env.CLIPPER_TEST_WEB_URL ?? 'http://127.0.0.1:5180'
 let authority: Awaited<ReturnType<typeof startLocalJazzServer>>
 let directory: string
+let sourceUrl: string
 const startAuthority = () =>
 	startLocalJazzServer({
 		appId: '2db98ae3-fcf1-41e8-b7d3-9818496bde60',
 		host: '127.0.0.1',
-		port: 5181,
+		port: Number(new URL(process.env.CLIPPER_TEST_CORE_URL ?? 'http://127.0.0.1:5181').port),
 		dataDir: join(directory, 'authority'),
 		schema: app,
 		permissions
@@ -45,7 +52,13 @@ const sourceServer = createServer((_request, response) => {
 test.beforeAll(async () => {
 	directory = await mkdtemp(join(tmpdir(), 'clipper-extension-'))
 	authority = await startAuthority()
-	await new Promise<void>((resolve) => sourceServer.listen(5230, '127.0.0.1', resolve))
+	await new Promise<void>((resolve) =>
+		sourceServer.listen(Number(process.env.CLIPPER_TEST_SOURCE_PORT ?? 5230), '127.0.0.1', resolve)
+	)
+	const address = sourceServer.address()
+	if (!address || typeof address === 'string')
+		throw new Error('Source fixture listener unavailable')
+	sourceUrl = `http://127.0.0.1:${address.port}`
 })
 test.afterAll(async () => {
 	sourceServer.closeAllConnections()
@@ -133,7 +146,7 @@ async function extension(profile: string, connected = true) {
 		const web = await context.newPage()
 		let phrase: string
 		try {
-			await web.goto('http://127.0.0.1:5180/')
+			await web.goto(`${webUrl}/`)
 			phrase = await readRecoveryPhrase(web)
 		} finally {
 			await web.close()
@@ -244,13 +257,14 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 	const { context, id } = await extension(join(directory, 'profile'))
 	try {
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/article')
+		await source.goto(`${sourceUrl}/article`)
 		await clip(context, id, source)
 		await expect(source.getByRole('status')).toHaveText(saved)
-		await expect(source.getByRole('link', { name: 'Open article', exact: true })).toHaveAttribute(
-			'href',
-			/^http:\/\/127\.0\.0\.1:5180\/articles\/[a-f0-9-]+$/
-		)
+		const articleLink = source.getByRole('link', { name: 'Open article', exact: true })
+		await expect(articleLink).toHaveAttribute('href', /\/articles\/[a-f0-9-]+$/)
+		const readerUrl = new URL((await articleLink.getAttribute('href')) ?? '', webUrl)
+		expect(readerUrl.origin).toBe(new URL(webUrl).origin)
+		expect(readerUrl.pathname).toMatch(/^\/articles\/[a-f0-9-]+$/)
 		expect(
 			await source
 				.locator('delightful-clipper-bar')
@@ -297,7 +311,7 @@ test('toolbar saves directly, shows a top bar, and syncs rendered content withou
 			await expect(reader.locator('body')).toContainText('café 🦊')
 			await expect(reader.getByRole('link', { name: 'Related article' })).toHaveAttribute(
 				'href',
-				'http://127.0.0.1:5230/related'
+				`${sourceUrl}/related`
 			)
 			await test.step(
 				'clip the changed source again and preserve the original snapshot',
@@ -359,7 +373,7 @@ test('source messages cannot issue saves and navigation removes the old document
 	const { context, id, worker } = await extension(join(directory, 'security-profile'))
 	try {
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/original')
+		await source.goto(`${sourceUrl}/original`)
 		await clip(context, id, source)
 		await expect(source.getByRole('status')).toHaveText(saved)
 		await source.evaluate(() =>
@@ -448,7 +462,7 @@ test('saves directly offline, restarts the browser, and syncs without gateway re
 	try {
 		phrase = await recovery(first.context, first.id)
 		const source = await first.context.newPage()
-		await source.goto('http://127.0.0.1:5230/offline')
+		await source.goto(`${sourceUrl}/offline`)
 		await authority.stop()
 		await clip(first.context, first.id, source)
 		await expect(source.getByRole('status')).toHaveText(
@@ -461,7 +475,7 @@ test('saves directly offline, restarts the browser, and syncs without gateway re
 	const web = await browser.newContext()
 	try {
 		const source = await second.context.newPage()
-		await source.goto('http://127.0.0.1:5230/offline')
+		await source.goto(`${sourceUrl}/offline`)
 		await clip(second.context, second.id, source)
 		await expect(source.getByRole('status')).toHaveText('Already saved.')
 		authority = await startAuthority()
@@ -489,12 +503,12 @@ test('Close dismisses only the bar, keeps the source and saved article, and allo
 	const { context, id, worker } = await extension(join(directory, 'dismiss-profile'))
 	try {
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/dismiss')
+		await source.goto(`${sourceUrl}/dismiss`)
 		await clip(context, id, source)
 		await expect(source.getByRole('status')).toHaveText(saved)
 		await source.getByRole('button', { name: 'Close', exact: true }).click()
 		await expect(source.locator('delightful-clipper-bar')).toHaveCount(0)
-		expect(source.url()).toBe('http://127.0.0.1:5230/dismiss')
+		expect(source.url()).toBe(`${sourceUrl}/dismiss`)
 		await clip(context, id, source)
 		await expect(source.getByRole('status')).toHaveText('Already saved.')
 		expect(
@@ -538,7 +552,7 @@ test('restoring an account in options moves subsequent automatic clips to that l
 	try {
 		const source = await context.newPage()
 		await test.step('save into the original extension account', async () => {
-			await source.goto('http://127.0.0.1:5230/before-restore')
+			await source.goto(`${sourceUrl}/before-restore`)
 			await clip(context, id, source)
 			await expect(source.getByRole('status')).toHaveText(saved)
 		})
@@ -551,7 +565,7 @@ test('restoring an account in options moves subsequent automatic clips to that l
 		const phrase =
 			await test.step('reveal the independent web account recovery phrase', async () => {
 				await reader.goto('/')
-				return readRecoveryPhrase(reader)
+				return await readRecoveryPhrase(reader)
 			})
 		await test.step('restore and confirm the new extension connection', async () => {
 			const options = await context.newPage()
@@ -575,7 +589,7 @@ test('restoring an account in options moves subsequent automatic clips to that l
 				.toBe(true)
 		})
 		await test.step('save into the restored account and read it in the web replica', async () => {
-			await source.goto('http://127.0.0.1:5230/after-restore')
+			await source.goto(`${sourceUrl}/after-restore`)
 			await clip(context, id, source)
 			await expect(source.getByRole('status')).toHaveText(saved)
 			await reader.reload()
@@ -600,8 +614,8 @@ test('successive toolbar clicks save different tabs through one hidden runtime',
 	try {
 		const first = await context.newPage()
 		const second = await context.newPage()
-		await first.goto('http://127.0.0.1:5230/rapid-first')
-		await second.goto('http://127.0.0.1:5230/rapid-second')
+		await first.goto(`${sourceUrl}/rapid-first`)
+		await second.goto(`${sourceUrl}/rapid-second`)
 		await clip(context, id, first)
 		await clip(context, id, second)
 		await expect(first.getByRole('status')).toHaveText(saved)
@@ -636,9 +650,12 @@ test('a signed-out click opens sign-in, rejects invalid input, then saves to the
 			if (request.url().includes('/api/capture/')) gateway++
 		})
 		await reader.goto('/')
+		await openAccountSettings(reader)
+		await expect(reader.getByRole('button', { name: 'Restore account', exact: true })).toBeVisible()
 		const phrase = await readRecoveryPhrase(reader)
+		await openAllArticles(reader)
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/signin')
+		await source.goto(`${sourceUrl}/signin`)
 		const opened = context.waitForEvent('page')
 		await invokeToolbar(context, id, source)
 		const popup = await opened
@@ -695,7 +712,7 @@ test('canceling sign-in leaves no article reference and a later click can prompt
 	const { context, id, worker } = await extension(join(directory, 'canceled-signin-profile'), false)
 	try {
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/canceled-signin')
+		await source.goto(`${sourceUrl}/canceled-signin`)
 		const opened = context.waitForEvent('page')
 		await invokeToolbar(context, id, source)
 		const popup = await opened
@@ -750,7 +767,7 @@ test('a stale connection for another account prompts again and cannot save', asy
 			})
 		})
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/stale-connection')
+		await source.goto(`${sourceUrl}/stale-connection`)
 		const opened = context.waitForEvent('page')
 		await invokeToolbar(context, id, source)
 		const popup = await opened
@@ -782,7 +799,7 @@ test('repeated settings teardown preserves the confirmed account and toolbar cap
 			async () => (await chrome.storage.local.get('clipper.connection'))['clipper.connection']
 		)
 		const source = await context.newPage()
-		await source.goto('http://127.0.0.1:5230/teardown-source')
+		await source.goto(`${sourceUrl}/teardown-source`)
 		for (let iteration = 0; iteration < 24; iteration++) {
 			await test.step(`settings teardown ${iteration + 1}`, async () => {
 				const options = await openOptions(context, id)
@@ -794,7 +811,7 @@ test('repeated settings teardown preserves the confirmed account and toolbar cap
 				).toHaveLength(1)
 				expect(await options.evaluate(() => Reflect.get(globalThis, 'mainThreadWasmCalls'))).toBe(0)
 				await options.close()
-				await source.goto(`http://127.0.0.1:5230/teardown-${iteration}`)
+				await source.goto(`${sourceUrl}/teardown-${iteration}`)
 				await clip(context, id, source)
 				await expect(source.getByRole('status')).toHaveText(saved)
 				expect(

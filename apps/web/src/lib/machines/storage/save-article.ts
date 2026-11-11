@@ -1,3 +1,5 @@
+import { appendLocalReceipt } from './receipts.js'
+import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import type { EventPayload } from '../events.js'
 import { types, setup, createAsyncLogic, matchesState } from 'xstate'
 
@@ -19,21 +21,6 @@ type Context = {
 	draft: ArticleDraft | undefined
 	existing: Article | null
 	result: ArticleSaveResult | undefined
-	ownedEnsure:
-		| import('xstate').ActorInstance<
-				import('xstate').Snapshot<ArticleStageResult>,
-				{ type: 'SHUTDOWN' | 'CANCEL' }
-		  >
-		| undefined
-	ownedAttach:
-		| import('xstate').ActorInstance<
-				import('xstate').Snapshot<ArticleStageResult>,
-				{ type: 'SHUTDOWN' | 'CANCEL' }
-		  >
-		| undefined
-	ownedContent:
-		| import('xstate').ActorInstance<import('xstate').Snapshot<SaveResult>, { type: 'SHUTDOWN' }>
-		| undefined
 }
 export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 	const actors = {
@@ -42,18 +29,22 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 		}),
 		read: createAsyncLogic({ run: ({ input }: { input: string }) => cap.read(input) }),
 		document: createAsyncLogic({ run: ({ input }: { input: string }) => cap.document(input) }),
-		intent: createAsyncLogic({ run: ({ input }: { input: string }) => cap.intent(input) })
+		intent: createAsyncLogic({ run: ({ input }: { input: string }) => cap.intent(input) }),
+		stage: createOwnedOperation<
+			Parameters<ArticleSaveCapability['ensure']>[1],
+			ArticleStageResult,
+			{ type: 'SHUTDOWN' }
+		>(),
+		contentSave: createOwnedOperation<
+			Parameters<ArticleSaveCapability['content']>[1],
+			SaveResult,
+			{ type: 'SHUTDOWN' }
+		>()
 	}
 	const model = setup({
 		schemas: {
 			context: types<Context>(),
 			events: {
-				ENSURE_DONE: types<{ actorId: string; output: ArticleStageResult }>(),
-				ENSURE_ERROR: types<{ actorId: string; error: unknown }>(),
-				ATTACH_DONE: types<{ actorId: string; output: ArticleStageResult }>(),
-				ATTACH_ERROR: types<{ actorId: string; error: unknown }>(),
-				CONTENT_DONE: types<{ actorId: string; output: SaveResult }>(),
-				CONTENT_ERROR: types<{ actorId: string; error: unknown }>(),
 				SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>()
 			},
 			input: types<SaveArticleRequest>(),
@@ -63,7 +54,10 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 				prepare: types<import('xstate').ActorRefFrom<(typeof actors)['prepare']>>(),
 				read: types<import('xstate').ActorRefFrom<(typeof actors)['read']>>(),
 				document: types<import('xstate').ActorRefFrom<(typeof actors)['document']>>(),
-				intent: types<import('xstate').ActorRefFrom<(typeof actors)['intent']>>()
+				intent: types<import('xstate').ActorRefFrom<(typeof actors)['intent']>>(),
+				ensure: types<import('xstate').ActorRefFrom<typeof actors.stage>>(),
+				attach: types<import('xstate').ActorRefFrom<typeof actors.stage>>(),
+				content: types<import('xstate').ActorRefFrom<typeof actors.contentSave>>()
 			}
 		},
 		actors,
@@ -93,10 +87,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 			request: input,
 			draft: undefined,
 			existing: null,
-			result: undefined,
-			ownedEnsure: undefined,
-			ownedAttach: undefined,
-			ownedContent: undefined
+			result: undefined
 		}),
 		output: ({ context }) => required(context.result),
 		states: {
@@ -277,56 +268,26 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 								}
 							},
 							ensure: {
-								initial: 'active',
-								states: {
-									active: {
-										on: {
-											SHUTDOWN: ({ context }, enq) => {
-												enq.sendTo(context.ownedEnsure, { type: 'SHUTDOWN' })
-												return { target: 'stopping' }
-											}
-										}
-									},
-									stopping: {}
-								},
-								entry: (args, enq) => {
-									const ref = cap.ensure(enq.spawn, draft(args))
-									enq.subscribeTo(ref, {
-										done: (
-											output
-										):
-											| { type: 'ENSURE_DONE'; actorId: string; output: ArticleStageResult }
-											| { type: 'ENSURE_ERROR'; actorId: string; error: unknown } => ({
-											type: 'ENSURE_DONE',
-											actorId: ref.id,
-											output
-										}),
-										error: (
-											error
-										):
-											| { type: 'ENSURE_DONE'; actorId: string; output: ArticleStageResult }
-											| { type: 'ENSURE_ERROR'; actorId: string; error: unknown } => ({
-											type: 'ENSURE_ERROR',
-											actorId: ref.id,
-											error
-										})
-									})
-									return { context: { ownedEnsure: ref } }
-								},
-								exit: ({ context }, enq) => {
-									enq.stop(context.ownedEnsure)
-									return { context: { ownedEnsure: undefined } }
-								},
-								on: {
-									ENSURE_ERROR: { target: '#save-article.unknown' },
-									ENSURE_DONE: (args) => {
-										const { context, event } = args
-										if (event.actorId !== context.ownedEnsure?.id) return
-										if (!event.output || event.output.settlement.kind === 'unresolved')
+								invoke: {
+									id: 'ensure',
+									src: 'stage',
+									input: ({ context }) => ({
+										operationId: required(context.draft).article.id,
+										spawn: cap.ensure,
+										input: draft({ context })
+									}),
+									onDone: (args) => {
+										const operation = args.event.output
+										if (operation.kind === 'failed') return { target: '#save-article.unknown' }
+										const output = operation.output
+
+										const { context } = args
+
+										if (!output || output.settlement.kind === 'unresolved')
 											return { target: '#save-article.unknown' }
 										if (args.guards.stale()) return { target: '#save-article.scopeChanged' }
 										if (args.guards.closing(args)) return { target: '#save-article.interrupted' }
-										if (event.output.outcome === 'succeeded')
+										if (output.outcome === 'succeeded')
 											return {
 												target: '#save-article.done',
 												context: {
@@ -334,69 +295,42 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 														kind: 'saved',
 														operationId: required(context.draft).article.id,
 														ready: false,
-														receipts:
-															event.output.settlement.kind === 'locallyPersisted'
-																? [event.output.settlement.workspace]
-																: []
+														receipts: appendLocalReceipt([], output.settlement)
 													}
 												}
 											}
-										if (event.output.outcome === 'blocked') return { target: 'rereading' }
+										if (output.outcome === 'blocked') return { target: 'rereading' }
 										return { target: '#save-article.failed' }
+									},
+									onError: { target: '#save-article.unknown' }
+								},
+								on: {
+									SHUTDOWN: (_, enq) => {
+										enq.sendTo('ensure', { type: 'INTERRUPT', command: { type: 'SHUTDOWN' } })
 									}
 								}
 							},
 							attach: {
-								initial: 'active',
-								states: {
-									active: {
-										on: {
-											SHUTDOWN: ({ context }, enq) => {
-												enq.sendTo(context.ownedAttach, { type: 'SHUTDOWN' })
-												return { target: 'stopping' }
-											}
-										}
-									},
-									stopping: {}
-								},
-								entry: (args, enq) => {
-									const ref = cap.attach(enq.spawn, draft(args))
-									enq.subscribeTo(ref, {
-										done: (
-											output
-										):
-											| { type: 'ATTACH_DONE'; actorId: string; output: ArticleStageResult }
-											| { type: 'ATTACH_ERROR'; actorId: string; error: unknown } => ({
-											type: 'ATTACH_DONE',
-											actorId: ref.id,
-											output
-										}),
-										error: (
-											error
-										):
-											| { type: 'ATTACH_DONE'; actorId: string; output: ArticleStageResult }
-											| { type: 'ATTACH_ERROR'; actorId: string; error: unknown } => ({
-											type: 'ATTACH_ERROR',
-											actorId: ref.id,
-											error
-										})
-									})
-									return { context: { ownedAttach: ref } }
-								},
-								exit: ({ context }, enq) => {
-									enq.stop(context.ownedAttach)
-									return { context: { ownedAttach: undefined } }
-								},
-								on: {
-									ATTACH_ERROR: { target: '#save-article.unknown' },
-									ATTACH_DONE: (args) => {
-										const { context, event } = args
-										if (event.actorId !== context.ownedAttach?.id) return
-										if (!event.output || event.output.settlement.kind === 'unresolved')
+								invoke: {
+									id: 'attach',
+									src: 'stage',
+									input: ({ context }) => ({
+										operationId: required(context.draft).article.id,
+										spawn: cap.attach,
+										input: draft({ context })
+									}),
+									onDone: (args) => {
+										const operation = args.event.output
+										if (operation.kind === 'failed') return { target: '#save-article.unknown' }
+										const output = operation.output
+
+										const { context } = args
+
+										if (!output || output.settlement.kind === 'unresolved')
 											return { target: '#save-article.unknown' }
 										if (args.guards.stale()) return { target: '#save-article.scopeChanged' }
 										if (args.guards.closing(args)) return { target: '#save-article.interrupted' }
-										if (event.output.outcome === 'succeeded')
+										if (output.outcome === 'succeeded')
 											return {
 												target: '#save-article.done',
 												context: {
@@ -404,15 +338,18 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 														kind: 'duplicate',
 														operationId: required(context.draft).article.id,
 														ready: true,
-														receipts:
-															event.output.settlement.kind === 'locallyPersisted'
-																? [event.output.settlement.workspace]
-																: []
+														receipts: appendLocalReceipt([], output.settlement)
 													}
 												}
 											}
-										if (event.output.outcome === 'blocked') return { target: 'rereading' }
+										if (output.outcome === 'blocked') return { target: 'rereading' }
 										return { target: '#save-article.failed' }
+									},
+									onError: { target: '#save-article.unknown' }
+								},
+								on: {
+									SHUTDOWN: (_, enq) => {
+										enq.sendTo('attach', { type: 'INTERRUPT', command: { type: 'SHUTDOWN' } })
 									}
 								}
 							},
@@ -449,54 +386,20 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 								}
 							},
 							content: {
-								initial: 'active',
-								states: {
-									active: {
-										on: {
-											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedContent, { type: 'SHUTDOWN' })
-												return { target: 'stopping' }
-											}
-										}
-									},
-									stopping: {}
-								},
-								entry: (args, enq) => {
-									const ref = cap.content(
-										enq.spawn,
-										(({ context }: { context: Context }) =>
-											required(required(context.draft).content))(args)
-									)
-									enq.subscribeTo(ref, {
-										done: (
-											output
-										):
-											| ({ type: 'CONTENT_DONE' } & { actorId: string; output: SaveResult })
-											| ({ type: 'CONTENT_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'CONTENT_DONE',
-											actorId: ref.id,
-											output
-										}),
-										error: (
-											error
-										):
-											| ({ type: 'CONTENT_DONE' } & { actorId: string; output: SaveResult })
-											| ({ type: 'CONTENT_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'CONTENT_ERROR',
-											actorId: ref.id,
-											error
-										})
-									})
-									return { context: { ownedContent: ref } }
-								},
-								exit: ({ context }, enq) => {
-									enq.stop(context.ownedContent)
-									return { context: { ownedContent: undefined } }
-								},
-								on: {
-									CONTENT_DONE: (args) => {
-										const { event } = args
-										if (!event.output || event.output.kind === 'unknown') {
+								invoke: {
+									id: 'content',
+									src: 'contentSave',
+									input: ({ context }) => ({
+										operationId: required(required(context.draft).content).operationId,
+										spawn: cap.content,
+										input: required(required(context.draft).content)
+									}),
+									onDone: (args) => {
+										const operation = args.event.output
+										if (operation.kind === 'failed') return { target: '#save-article.unknown' }
+										const output = operation.output
+
+										if (!output || output.kind === 'unknown') {
 											return { target: '#save-article.unknown' }
 										}
 										if (args.guards.stale()) {
@@ -505,7 +408,7 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 										if (args.guards.closing(args)) {
 											return { target: '#save-article.interrupted' }
 										}
-										if (event.output?.kind === 'saved') {
+										if (output?.kind === 'saved') {
 											return {
 												target: '#save-article.done',
 												context: {
@@ -513,14 +416,19 @@ export function createSaveArticleMachine(cap: ArticleSaveCapability) {
 														kind: 'saved',
 														operationId: required(args.context.draft).article.id,
 														ready: true,
-														receipts: event.output?.kind === 'saved' ? event.output.receipts : []
+														receipts: output?.kind === 'saved' ? output.receipts : []
 													}
 												}
 											}
 										}
 										return { target: '#save-article.unknown' }
 									},
-									CONTENT_ERROR: { target: '#save-article.unknown' }
+									onError: { target: '#save-article.unknown' }
+								},
+								on: {
+									SHUTDOWN: (_, enq) => {
+										enq.sendTo('content', { type: 'INTERRUPT', command: { type: 'SHUTDOWN' } })
+									}
 								}
 							}
 						}

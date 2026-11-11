@@ -43,6 +43,17 @@ function savedResult(value: ArticleSaveResult | FakeDataOutcome) {
 		throw new Error('Expected locally saved result')
 	return result
 }
+type Event =
+	| LibraryEvent
+	| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
+	| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
+	| {
+			type: 'WRITE_DONE'
+			actorId: string
+			output: ArticleSaveResult | FakeDataOutcome
+	  }
+	| { type: 'WRITE_ERROR'; actorId: string; error: unknown }
+type WriteReport = Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }>
 type Context = {
 	fakeDataRef: FakeDataRef | undefined
 	organizationRef: SaveRef | undefined
@@ -144,371 +155,33 @@ export const libraryMachine = setup({
 		events: {
 			WRITE_DONE: types<{ actorId: string; output: ArticleSaveResult | FakeDataOutcome }>(),
 			WRITE_ERROR: types<{ actorId: string; error: unknown }>(),
-			RETRY_IMAGE: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'RETRY_IMAGE'
-				>
-			>(),
-			IMAGE_ERROR: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'IMAGE_ERROR'
-				>
-			>(),
-			READER_EVENT: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'READER_EVENT'
-				>
-			>(),
-			ORGANIZE: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'ORGANIZE'
-				>
-			>(),
-			FILTER: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'FILTER'
-				>
-			>(),
-			TAG_FILTER: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'TAG_FILTER'
-				>
-			>(),
-			QUERY: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'QUERY'
-				>
-			>(),
-			RETRY_SEARCH: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'RETRY_SEARCH'
-				>
-			>(),
-			SEARCH_OPEN: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'SEARCH_OPEN'
-				>
-			>(),
-			READ_RESULT: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'READ_RESULT'
-				>
-			>(),
-			SYNC: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'SYNC'
-				>
-			>(),
-			BACKGROUND_STATUS: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'BACKGROUND_STATUS'
-				>
-			>(),
-			BACKGROUND_SAVED: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'BACKGROUND_SAVED'
-				>
-			>(),
-			BACKGROUND_CLOSED: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'BACKGROUND_CLOSED'
-				>
-			>(),
-			BACKGROUND_ERROR: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'BACKGROUND_ERROR'
-				>
-			>(),
-			ADD: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'ADD'
-				>
-			>(),
-			CANCEL: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'CANCEL'
-				>
-			>(),
-			SHUTDOWN: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'SHUTDOWN'
-				>
-			>(),
-			CLOSE_READER: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'CLOSE_READER'
-				>
-			>(),
-			OPEN: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'OPEN'
-				>
-			>(),
-			RETRY: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'RETRY'
-				>
-			>(),
-			ROWS: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'ROWS'
-				>
-			>(),
-			LIST_FAILED: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'LIST_FAILED'
-				>
-			>(),
-			CAPTURE_UPDATED: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'CAPTURE_UPDATED'
-				>
-			>(),
-			CAPTURE_SAVED: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'CAPTURE_SAVED'
-				>
-			>(),
-			WATCH_RECEIPTS: types<
-				EventPayload<
-					| LibraryEvent
-					| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-					| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-					| {
-							type: 'WRITE_DONE'
-							actorId: string
-							output: ArticleSaveResult | FakeDataOutcome
-					  }
-					| { type: 'WRITE_ERROR'; actorId: string; error: unknown },
-					'WATCH_RECEIPTS'
-				>
-			>()
+			RETRY_IMAGE: types<EventPayload<Event, 'RETRY_IMAGE'>>(),
+			IMAGE_ERROR: types<EventPayload<Event, 'IMAGE_ERROR'>>(),
+			READER_EVENT: types<EventPayload<Event, 'READER_EVENT'>>(),
+			ORGANIZE: types<EventPayload<Event, 'ORGANIZE'>>(),
+			FILTER: types<EventPayload<Event, 'FILTER'>>(),
+			TAG_FILTER: types<EventPayload<Event, 'TAG_FILTER'>>(),
+			QUERY: types<EventPayload<Event, 'QUERY'>>(),
+			RETRY_SEARCH: types<EventPayload<Event, 'RETRY_SEARCH'>>(),
+			SEARCH_OPEN: types<EventPayload<Event, 'SEARCH_OPEN'>>(),
+			READ_RESULT: types<EventPayload<Event, 'READ_RESULT'>>(),
+			SYNC: types<EventPayload<Event, 'SYNC'>>(),
+			BACKGROUND_STATUS: types<EventPayload<Event, 'BACKGROUND_STATUS'>>(),
+			BACKGROUND_SAVED: types<EventPayload<Event, 'BACKGROUND_SAVED'>>(),
+			BACKGROUND_CLOSED: types<EventPayload<Event, 'BACKGROUND_CLOSED'>>(),
+			BACKGROUND_ERROR: types<EventPayload<Event, 'BACKGROUND_ERROR'>>(),
+			ADD: types<EventPayload<Event, 'ADD'>>(),
+			CANCEL: types<EventPayload<Event, 'CANCEL'>>(),
+			SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>(),
+			CLOSE_READER: types<EventPayload<Event, 'CLOSE_READER'>>(),
+			OPEN: types<EventPayload<Event, 'OPEN'>>(),
+			RETRY: types<EventPayload<Event, 'RETRY'>>(),
+			ROWS: types<EventPayload<Event, 'ROWS'>>(),
+			LIST_FAILED: types<EventPayload<Event, 'LIST_FAILED'>>(),
+			CAPTURE_SAVED: types<EventPayload<Event, 'CAPTURE_SAVED'>>(),
+			WATCH_RECEIPTS: types<EventPayload<Event, 'WATCH_RECEIPTS'>>()
 		},
+		internalEvents: { CAPTURE_UPDATED: types() },
 		input: types<LibraryCapability | undefined>(),
 		output: types<undefined>(),
 		meta: types<Meta>(),
@@ -525,6 +198,8 @@ export const libraryMachine = setup({
 	},
 	actors,
 	guards: {
+		searchSupported: ({ context }: { context: Context }) =>
+			context.capability?.search !== undefined,
 		isReaderAvailable: ({ context }: { context: Context }) => context.reader?.kind === 'available',
 		isOrganizationRejected: ({ context }: { context: Context }) =>
 			organizationStatuses(context, context.organizationId).includes('rejected'),
@@ -551,22 +226,7 @@ export const libraryMachine = setup({
 			matchesState({ running: { reading: 'loading' } }, value)
 	},
 	actions: {
-		updateRows: ({
-			context,
-			event
-		}: {
-			context: Context
-			event:
-				| LibraryEvent
-				| { type: 'CAPTURE_UPDATED' | 'CAPTURE_SAVED' }
-				| { type: 'WATCH_RECEIPTS'; result: ArticleSaveResult }
-				| {
-						type: 'WRITE_DONE'
-						actorId: string
-						output: ArticleSaveResult | FakeDataOutcome
-				  }
-				| { type: 'WRITE_ERROR'; actorId: string; error: unknown }
-		}) => {
+		updateRows: ({ context, event }: { context: Context; event: Event }) => {
 			if (event.type !== 'ROWS') throw new Error('Expected collection rows')
 			return {
 				context: {
@@ -628,14 +288,6 @@ export const libraryMachine = setup({
 					input: ({ context }: { context: Context }) => context.capability
 				},
 				{
-					id: 'search',
-					src: 'search',
-					input: ({ context }: { context: Context }) => ({
-						capability: context.capability?.search
-					}),
-					onSnapshot: {}
-				},
-				{
 					id: 'worker',
 					src: 'worker',
 					input: ({ context }: { context: Context }) => context.capability
@@ -647,6 +299,8 @@ export const libraryMachine = setup({
 					!(
 						matchesState({ running: { control: 'closing' } }, args.value) &&
 						matchesState({ running: { fakeDataLifecycle: 'closed' } }, args.value) &&
+						(matchesState({ running: { searchLifecycle: 'closed' } }, args.value) ||
+							matchesState({ running: { searchLifecycle: 'unsupported' } }, args.value)) &&
 						(matchesState({ running: { imageLifecycle: 'closed' } }, args.value) ||
 							matchesState({ running: { imageLifecycle: 'failed' } }, args.value)) &&
 						(matchesState({ running: { readerLifecycle: 'closed' } }, args.value) ||
@@ -681,6 +335,10 @@ export const libraryMachine = setup({
 						enq.sendTo('readerExperience', event.event)
 						return {}
 					}
+					if (event.event.type === 'ATTACH_SURFACE')
+						enq(() => {
+							if (event.event.type === 'ATTACH_SURFACE') event.event.surface.lifecycle?.released()
+						})
 				},
 
 				QUERY: (args, enq) => {
@@ -768,34 +426,14 @@ export const libraryMachine = setup({
 					}
 				},
 				ROWS: (args, enq) => {
-					const { context } = args
-					if (
-						matchesState({ running: { control: 'active' } }, args.value) &&
-						!!context.capability?.isCurrent() &&
-						!matchesState({ running: { reading: 'loading' } }, args.value) &&
-						shouldReopenReader(context, args.event.rows)
-					) {
-						let context = args.context
-						let patch = {}
-						patch = { ...patch, ...args.actions.updateRows(args).context }
-						context = { ...args.context, ...patch }
-						enq.sendTo('search', { type: 'ROWS', rows: context.rows })
-						enq.raise({ type: 'CAPTURE_UPDATED' })
-						enq.raise({ type: 'OPEN', id: context.readerId })
-						return { context: patch }
-					}
-					if (
-						matchesState({ running: { control: 'active' } }, args.value) &&
-						!!context.capability?.isCurrent()
-					) {
-						let context = args.context
-						let patch = {}
-						patch = { ...patch, ...args.actions.updateRows(args).context }
-						context = { ...args.context, ...patch }
-						enq.sendTo('search', { type: 'ROWS', rows: context.rows })
-						enq.raise({ type: 'CAPTURE_UPDATED' })
-						return { context: patch }
-					}
+					if (!args.guards.accepting(args) || !args.context.capability?.isCurrent()) return
+					const reopen =
+						!args.guards.readInFlight(args) && shouldReopenReader(args.context, args.event.rows)
+					const patch = args.actions.updateRows(args).context
+					enq.sendTo('search', { type: 'ROWS', rows: patch.rows })
+					enq.raise({ type: 'CAPTURE_UPDATED' })
+					if (reopen) enq.raise({ type: 'OPEN', id: args.context.readerId })
+					return { context: patch }
 				},
 				LIST_FAILED: () => {
 					return { context: { listFailed: true } }
@@ -969,43 +607,21 @@ export const libraryMachine = setup({
 						},
 						active: {
 							entry: (args, enq) => {
-								return {
-									context: {
-										fakeDataRef: (({ context, spawn }) =>
-											(() => {
-												const ref = required(context.capability?.spawnFakeData)(spawn)
-												enq.subscribeTo(ref, {
-													done: (
-														output
-													):
-														| {
-																type: 'WRITE_DONE'
-																actorId: string
-																output: ArticleSaveResult | FakeDataOutcome
-														  }
-														| { type: 'WRITE_ERROR'; actorId: string; error: unknown } => ({
-														type: 'WRITE_DONE',
-														actorId: ref.id,
-														output
-													}),
-													error: (
-														error
-													):
-														| {
-																type: 'WRITE_DONE'
-																actorId: string
-																output: ArticleSaveResult | FakeDataOutcome
-														  }
-														| { type: 'WRITE_ERROR'; actorId: string; error: unknown } => ({
-														type: 'WRITE_ERROR',
-														actorId: ref.id,
-														error
-													})
-												})
-												return ref
-											})())({ ...args, spawn: enq.spawn })
-									}
-								}
+								const { context } = args
+								const ref = required(context.capability?.spawnFakeData)(enq.spawn)
+								enq.subscribeTo(ref, {
+									done: (output): WriteReport => ({
+										type: 'WRITE_DONE',
+										actorId: ref.id,
+										output
+									}),
+									error: (error): WriteReport => ({
+										type: 'WRITE_ERROR',
+										actorId: ref.id,
+										error
+									})
+								})
+								return { context: { fakeDataRef: ref } }
 							},
 							on: {
 								WRITE_DONE: (args) => {
@@ -1060,45 +676,24 @@ export const libraryMachine = setup({
 							},
 							initial: 'active',
 							entry: (args, enq) => {
-								return {
-									context: (({ context, spawn }) => ({
-										organizationRef: (() => {
-											const ref = required(required(context.capability).spawnOrganization)(
-												spawn,
-												required(context.organizationRequest)
-											)
-											enq.subscribeTo(ref, {
-												done: (
-													output
-												):
-													| {
-															type: 'WRITE_DONE'
-															actorId: string
-															output: ArticleSaveResult | FakeDataOutcome
-													  }
-													| { type: 'WRITE_ERROR'; actorId: string; error: unknown } => ({
-													type: 'WRITE_DONE',
-													actorId: ref.id,
-													output
-												}),
-												error: (
-													error
-												):
-													| {
-															type: 'WRITE_DONE'
-															actorId: string
-															output: ArticleSaveResult | FakeDataOutcome
-													  }
-													| { type: 'WRITE_ERROR'; actorId: string; error: unknown } => ({
-													type: 'WRITE_ERROR',
-													actorId: ref.id,
-													error
-												})
-											})
-											return ref
-										})()
-									}))({ ...args, spawn: enq.spawn })
-								}
+								const { context } = args
+								const ref = required(required(context.capability).spawnOrganization)(
+									enq.spawn,
+									required(context.organizationRequest)
+								)
+								enq.subscribeTo(ref, {
+									done: (output): WriteReport => ({
+										type: 'WRITE_DONE',
+										actorId: ref.id,
+										output
+									}),
+									error: (error): WriteReport => ({
+										type: 'WRITE_ERROR',
+										actorId: ref.id,
+										error
+									})
+								})
+								return { context: { organizationRef: ref } }
 							},
 							exit: (args, enq) => {
 								enq.stop(required(args.context.organizationRef))
@@ -1222,18 +817,45 @@ export const libraryMachine = setup({
 						}
 					}
 				},
+				searchLifecycle: {
+					initial: 'admitting',
+					invoke: {
+						id: 'search',
+						src: 'search',
+						input: ({ context }) => ({ capability: context.capability?.search }),
+						onSnapshot: {},
+						onDone: { target: '.closed' },
+						onError: { target: '.blocked' }
+					},
+					states: {
+						admitting: {
+							type: 'choice',
+							choice: (args) =>
+								args.guards.searchSupported(args) ? { target: 'active' } : { target: 'unsupported' }
+						},
+						active: {
+							on: {
+								SHUTDOWN: (_args, enq) => {
+									enq.sendTo('search', { type: 'STOP' })
+								}
+							}
+						},
+						// No corpus/worker capability was admitted; this child cannot own a
+						// native read. Its idle invocation exits with the library.
+						unsupported: {},
+						blocked: { meta: { name: t('library.search_failed'), variant: 'error' } },
+						closed: {}
+					}
+				},
 				control: {
 					initial: 'active',
 					states: {
 						active: {
 							on: {
 								SHUTDOWN: (args, enq) => {
-									let patch = {}
 									enq.sendTo('worker', { type: 'STOP' })
-									enq.sendTo('search', { type: 'STOP' })
 									enq.sendTo('receipts', { type: 'SHUTDOWN' })
-									patch = {
-										...patch,
+									const patch = {
 										reader: undefined,
 										rows: [],
 										query: '',
@@ -1358,45 +980,24 @@ export const libraryMachine = setup({
 							},
 							initial: 'active',
 							entry: (args, enq) => {
-								return {
-									context: (({ context, spawn }) => ({
-										saveRef: (() => {
-											const ref = required(context.capability).spawnSave(spawn, {
-												url: context.url,
-												...(context.content ? { content: context.content } : {})
-											})
-											enq.subscribeTo(ref, {
-												done: (
-													output
-												):
-													| {
-															type: 'WRITE_DONE'
-															actorId: string
-															output: ArticleSaveResult | FakeDataOutcome
-													  }
-													| { type: 'WRITE_ERROR'; actorId: string; error: unknown } => ({
-													type: 'WRITE_DONE',
-													actorId: ref.id,
-													output
-												}),
-												error: (
-													error
-												):
-													| {
-															type: 'WRITE_DONE'
-															actorId: string
-															output: ArticleSaveResult | FakeDataOutcome
-													  }
-													| { type: 'WRITE_ERROR'; actorId: string; error: unknown } => ({
-													type: 'WRITE_ERROR',
-													actorId: ref.id,
-													error
-												})
-											})
-											return ref
-										})()
-									}))({ ...args, spawn: enq.spawn })
-								}
+								const { context } = args
+								const ref = required(context.capability).spawnSave(enq.spawn, {
+									url: context.url,
+									...(context.content ? { content: context.content } : {})
+								})
+								enq.subscribeTo(ref, {
+									done: (output): WriteReport => ({
+										type: 'WRITE_DONE',
+										actorId: ref.id,
+										output
+									}),
+									error: (error): WriteReport => ({
+										type: 'WRITE_ERROR',
+										actorId: ref.id,
+										error
+									})
+								})
+								return { context: { saveRef: ref } }
 							},
 							exit: (args, enq) => {
 								enq.stop(required(args.context.saveRef))

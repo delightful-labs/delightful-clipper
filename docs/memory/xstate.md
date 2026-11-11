@@ -48,6 +48,12 @@ Callback actors translate native events into machine events and execute selected
 
 Stopping a promise actor does not undo an issued effect. Use cooperative cancellation where supported, drain issued writes before releasing their owner, and preserve uncertain results. Do not replace a draining adapter with a plain invocation unless equivalent cleanup and settlement behavior is qualified.
 
+Native `subscribe({ complete })` also runs when an actor is stopped. Require an
+explicit successful terminal output before acknowledging clean shutdown or
+navigation; distinguish failed terminal states when they share an output shape.
+Actual native resource disposal has its own acknowledgement. Do not confuse this
+observer with v6 `enq.subscribeTo(..., { done })`, which observes child completion.
+
 ## Preserve transaction and account boundaries
 
 Use one transaction owner for acquisition, transaction-local reads, mutation staging, commit, local durability and rollback. Keep eligibility reads and the selected writes in that same transaction. Do not open a second transaction merely to make a branch easier to model.

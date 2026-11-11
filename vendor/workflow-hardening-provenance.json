@@ -1,0 +1,19 @@
+{
+	"file": "delightful-local-first-workflow-hardening-alpha60.tgz",
+	"sha256": "aaf16fe628393537aed32ba487d141d8cb7bc47b3000eff35556ff04a8b11fb7",
+	"baseline": {
+		"file": "delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz",
+		"sha256": "8bf38f5fb030e5fd233fdfb7a10a58e9da4dacbc438b662d5b7318794adf8709"
+	},
+	"dlfBase": "9d2b0f6ae10d6a19f4dfa3cf7d606edbe4554e50",
+	"sourceFiles": {
+		"src/lib/contracts/domain-transaction.ts": "b3f77689acd59ab8deccf9af8479c6fef2f07592563bcc2e048d01a416cd8b0b",
+		"src/lib/machines/workspaces/domain-transaction.ts": "b3ab288107c6756ac7241e9c39e6f224da0dae578980897a63faac750ead90d7",
+		"src/lib/contracts/owned-operation.ts": "36206f9479b0337fe44a2706486d6343895971e6d18713850af02a3b09e1c632",
+		"src/lib/machines/lifecycle/owned-operation.ts": "d650b6a20e7c607d768900f52dacff18e1943d0bfb6e8f04c7eaaf0850c22bfd"
+	},
+	"adaptation": "Add only generic domain transaction and owned operation JS/declarations and public exports; retain all baseline modules and alpha.60 adapters unchanged. The existing pnpm recovery/view patch remains applied separately at installation.",
+	"xstate": "6.0.0-beta.1",
+	"jazz": "2.0.0-alpha.60",
+	"dlfSource": "9b3f094a1d79b1ac0b557e266d244a2c2391226f"
+}

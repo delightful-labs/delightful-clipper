@@ -57,6 +57,17 @@ export function createSignInMachine(cap: {
 			tags: types<string>(),
 			children: { connect: types<import('xstate').ActorRefFrom<(typeof actors)['connect']>>() }
 		},
+		states: {
+			idle: { id: 'extension-sign-in.idle' },
+			restoring: { id: 'extension-sign-in.restoring' },
+			confirming: {
+				id: 'extension-sign-in.confirming',
+				schemas: { input: types<{ accountId: string }>() }
+			},
+			connected: { id: 'extension-sign-in.connected' },
+			failed: { id: 'extension-sign-in.failed' },
+			closed: { id: 'extension-sign-in.closed' }
+		},
 		actors,
 		guards: { restorable: () => cap.restore?.can() ?? false }
 	})
@@ -105,9 +116,9 @@ export function createSignInMachine(cap: {
 					if (context.observation.kind === 'ready') {
 						return {
 							target: 'confirming',
+							input: { accountId: context.observation.accountId },
 							context: {
-								accountId:
-									context.observation.kind === 'ready' ? context.observation.accountId : undefined
+								accountId: context.observation.accountId
 							}
 						}
 					}
@@ -123,7 +134,7 @@ export function createSignInMachine(cap: {
 				invoke: {
 					id: 'connect',
 					src: 'connect',
-					input: ({ context }: { context: Context }) => context.accountId!,
+					input: ({ input }) => input.accountId,
 					onDone: (args) => {
 						const { context } = args
 						if (
@@ -167,7 +178,7 @@ export function createSignInMachine(cap: {
 							)
 						)
 							return
-						return { target: 'confirming' }
+						return { target: 'confirming', input: { accountId: context.observation.accountId } }
 					}
 				},
 				always: (args) => {

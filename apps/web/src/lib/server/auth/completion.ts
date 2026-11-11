@@ -51,7 +51,8 @@ export function completedAttempt(response: Response, origin: string) {
 	if (response.status !== 302) return undefined
 	const location = response.headers.get('location')
 	if (!location) return undefined
-	const url = new URL(location, origin)
+	const url = URL.parse(location, origin)
+	if (!url) return undefined
 	const attemptId = z.uuid().safeParse(url.searchParams.get('atproto_attempt'))
 	return url.origin === origin && url.pathname === '/' && attemptId.success
 		? attemptId.data

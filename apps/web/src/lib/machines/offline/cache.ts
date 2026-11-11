@@ -1,4 +1,3 @@
-import type { EventPayload } from '../events.js'
 import { types, setup, createAsyncLogic } from 'xstate'
 
 type Port = {
@@ -33,7 +32,7 @@ const input = ({ context }: { context: Context }) => port(context)
 export const shellCacheMachine = setup({
 	schemas: {
 		context: types<Context>(),
-		events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+		events: {},
 		input: types<Input>(),
 		output: types<'ready' | 'failed'>(),
 		tags: types<string>(),

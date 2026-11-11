@@ -5,7 +5,7 @@ import { expect, it, vi } from 'vitest'
 import { imageViewMachine } from './view-machine.js'
 import type { ImageViewReport } from './view-machine.js'
 import type { ArticleImage } from './schema.js'
-function owner(input: InputFrom<typeof imageViewMachine>) {
+function owner(input: Omit<InputFrom<typeof imageViewMachine>, 'reportTo'>) {
 	const reports: ImageViewReport[] = []
 	const model = setup({
 		schemas: {
@@ -16,7 +16,7 @@ function owner(input: InputFrom<typeof imageViewMachine>) {
 		actors: { view: imageViewMachine }
 	}).createMachine({
 		context: {},
-		invoke: { id: 'view', src: 'view', input },
+		invoke: { id: 'view', src: 'view', input: ({ self }) => ({ ...input, reportTo: self }) },
 		on: {
 			IMAGE_VIEW: (args, enq) => {
 				const { event } = args
@@ -106,4 +106,32 @@ it('owns blob URLs, reports decode errors, reloads saved bytes on Retry and igno
 		actor.stop()
 		revoke.mockRestore()
 	}
+})
+
+function incompatibleRecipient(
+	input: Omit<InputFrom<typeof imageViewMachine>, 'reportTo'>,
+	recipient: import('xstate').ActorRef<import('xstate').Snapshot<unknown>, { type: 'OTHER' }>
+) {
+	// @ts-expect-error The report recipient must accept IMAGE_VIEW, not an unrelated protocol.
+	createActor(imageViewMachine, { input: { ...input, reportTo: recipient } })
+}
+void incompatibleRecipient
+
+it('refuses a ready row without an asset identity before issuing a native read', () => {
+	const asset = vi.fn(async () => null)
+	const f = owner({
+		documentId: row.documentId,
+		sourceUrl: row.sourceUrl,
+		capability: {
+			isCurrent: () => true,
+			subscribeImage: (_document, _url, next) => {
+				next([{ ...row, status: 'ready', assetId: null }])
+				return () => {}
+			},
+			asset
+		}
+	})
+	expect(f.reports.at(-1)?.view.status).toBe('failed')
+	expect(asset).not.toHaveBeenCalled()
+	f.actor.stop()
 })

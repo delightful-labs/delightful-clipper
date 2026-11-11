@@ -1,40 +1,41 @@
+import {
+	imageJobMachine,
+	imageJob,
+	IMAGE_PROCESS_TIMEOUT_MS,
+	hasImageResult
+} from './processing-job.js'
+import { monotonicNow, withinResourceDeadline } from '../contracts/resource-waits.js'
+import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import type { EventPayload } from '../machines/events.js'
 import { types, createCallbackLogic, setup, createAsyncLogic, matchesState } from 'xstate'
 import { connectivityEvents, isOnline } from '../offline/connectivity.js'
 import { t } from '../localization/index.js'
 import { canRetryImageFetch, imageRetryDelay } from './failure.js'
 
-import type {
-	ImageCapability,
-	ImageSpawner,
-	ImageStageRef,
-	ImageStageResult
-} from '../contracts/images.js'
+import type { ImageCapability, ImageStageResult } from '../contracts/images.js'
 import type { ReaderExperienceEvent } from '../machines/reader/experience.js'
 import { imageViewMachine } from './view-machine.js'
 import type { ImageView, ImageViewReport } from './view-machine.js'
-import { canAcquireImage, imageWorkerResultSchema, imageSources } from './schema.js'
-import type { ArticleImage, ProcessedImage } from './schema.js'
+import { canAcquireImage, imageSources } from './schema.js'
+import type { ArticleImage, ProcessedImage, ReadyImageWrite, FailedImageWrite } from './schema.js'
 import { syncOwnerMachine } from '../machines/storage/sync-owner.js'
 import type { SyncReport } from '../contracts/storage.js'
-type Input = { capability: ImageCapability | undefined }
+type Input = {
+	capability: ImageCapability | undefined
+	processTimeoutMs?: number
+	now?: () => number
+}
 type Event =
 	| ReaderExperienceEvent
 	| ImageViewReport
 	| SyncReport
 	| { type: 'IMAGE_ROWS'; rows: ArticleImage[] }
 	| { type: 'CONNECTIVITY'; online: boolean }
-	| { type: 'WORKER_RESULT'; value: unknown }
-	| { type: 'WORKER_OPENED'; worker: Worker }
-	| { type: 'POSTED' }
 	| { type: 'OBSERVATION_FAILED' }
 	| { type: 'RETRY'; id: string }
 	| { type: 'IMAGE_ERROR'; id: string; url: string }
 	| { type: 'WAKE' }
-	| { type: 'WRITE_DONE'; actorId: string; output: ImageStageResult }
-	| { type: 'WRITE_ERROR'; actorId: string; error: unknown }
 type Context = Input & {
-	worker: Worker | undefined
 	observationFailed: boolean
 	issue: unknown
 	quotaDelayMs: number
@@ -44,10 +45,8 @@ type Context = Input & {
 	blocked: string[]
 	uncertain: string[]
 	selected: ArticleImage | undefined
-	fetched: { bytes: Uint8Array; mediaType: string } | undefined
 	result: ProcessedImage | undefined
 	retryable: boolean
-	write: ImageStageRef | undefined
 	documentId: string
 	slots: import('xstate').ActorFromLogic<typeof imageViewMachine>[]
 	views: Record<string, ImageView>
@@ -81,21 +80,8 @@ const fetchImage = createAsyncLogic<{ bytes: Uint8Array; mediaType: string }, Co
 	run: ({ input, signal }) =>
 		input.capability!.request(input.selected!.sourceUrl, input.selected!.id, signal)
 })
-const process = createCallbackLogic<Event>(({ sendBack }) => {
-	const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
-	worker.onmessage = (event) => sendBack({ type: 'WORKER_RESULT', value: event.data })
-	worker.onerror = () => sendBack({ type: 'WORKER_RESULT', value: undefined })
-	sendBack({ type: 'WORKER_OPENED', worker })
-	return () => {
-		worker.onmessage = null
-		worker.onerror = null
-		worker.terminate()
-	}
-})
-const post = createCallbackLogic<Event, Context>(({ input, sendBack }) => {
-	input.worker!.postMessage(input.fetched)
-	sendBack({ type: 'POSTED' })
-})
+const process = imageJobMachine
+
 function nextImage(context: Context) {
 	const eligible = context.rows.filter(
 		(row) =>
@@ -105,12 +91,12 @@ function nextImage(context: Context) {
 	)
 	return eligible.find((row) => row.status === 'pending') ?? eligible[0]
 }
+const readyWrite = createOwnedOperation<ReadyImageWrite, ImageStageResult>()
+const failureWrite = createOwnedOperation<FailedImageWrite, ImageStageResult>()
 const model = setup({
 	schemas: {
 		context: types<Context>(),
 		events: {
-			WRITE_DONE: types<{ actorId: string; output: ImageStageResult }>(),
-			WRITE_ERROR: types<{ actorId: string; error: unknown }>(),
 			SYNC: types<EventPayload<Event, 'SYNC'>>(),
 			MEASURE: types<EventPayload<Event, 'MEASURE'>>(),
 			VIEWPORT_FAILED: types<EventPayload<Event, 'VIEWPORT_FAILED'>>(),
@@ -124,15 +110,11 @@ const model = setup({
 			FOCUS: types<EventPayload<Event, 'FOCUS'>>(),
 			SHOW_CONTROLS: types<EventPayload<Event, 'SHOW_CONTROLS'>>(),
 			OBSERVATION_FAILED: types<EventPayload<Event, 'OBSERVATION_FAILED'>>(),
-			REFRESH_SYNC: types<EventPayload<Event, 'REFRESH_SYNC'>>(),
 			FULLSCREEN_CHANGED: types<EventPayload<Event, 'FULLSCREEN_CHANGED'>>(),
 			FULLSCREEN_OBSERVED: types<EventPayload<Event, 'FULLSCREEN_OBSERVED'>>(),
 			IMAGE_VIEW: types<EventPayload<Event, 'IMAGE_VIEW'>>(),
 			IMAGE_ROWS: types<EventPayload<Event, 'IMAGE_ROWS'>>(),
 			CONNECTIVITY: types<EventPayload<Event, 'CONNECTIVITY'>>(),
-			WORKER_RESULT: types<EventPayload<Event, 'WORKER_RESULT'>>(),
-			WORKER_OPENED: types<EventPayload<Event, 'WORKER_OPENED'>>(),
-			POSTED: types<EventPayload<Event, 'POSTED'>>(),
 			RETRY: types<EventPayload<Event, 'RETRY'>>(),
 			IMAGE_ERROR: types<EventPayload<Event, 'IMAGE_ERROR'>>(),
 			WAKE: types<EventPayload<Event, 'WAKE'>>()
@@ -145,10 +127,54 @@ const model = setup({
 			fetchImage: types<import('xstate').ActorRefFrom<typeof fetchImage>>(),
 			reconcile: types<import('xstate').ActorRefFrom<typeof reconcile>>(),
 			process: types<import('xstate').ActorRefFrom<typeof process>>(),
-			post: types<import('xstate').ActorRefFrom<typeof post>>(),
 			receipts: types<import('xstate').ActorRefFrom<typeof syncOwnerMachine>>(),
-			view: types<import('xstate').ActorRefFrom<typeof imageViewMachine>>()
+			view: types<import('xstate').ActorRefFrom<typeof imageViewMachine>>(),
+			readyWrite: types<import('xstate').ActorRefFrom<typeof readyWrite>>(),
+			failureWrite: types<import('xstate').ActorRefFrom<typeof failureWrite>>()
 		}
+	},
+	states: {
+		admitting: { id: 'image-queue.admitting' },
+		running: {
+			id: 'image-queue.running',
+			states: {
+				control: {
+					id: 'image-queue.running.control',
+					states: {
+						accepting: { id: 'image-queue.running.control.accepting' },
+						closing: { id: 'image-queue.running.control.closing' }
+					}
+				},
+				queue: {
+					id: 'image-queue.running.queue',
+					states: {
+						routing: { id: 'image-queue.running.queue.routing' },
+						idle: { id: 'image-queue.running.queue.idle' },
+						selecting: { id: 'image-queue.running.queue.selecting' },
+						quotaBackoff: { id: 'image-queue.running.queue.quotaBackoff' },
+						quotaSelecting: { id: 'image-queue.running.queue.quotaSelecting' },
+						backoff: { id: 'image-queue.running.queue.backoff' },
+						reconciling: { id: 'image-queue.running.queue.reconciling' },
+						fetching: { id: 'image-queue.running.queue.fetching' },
+						fetchFailed: { id: 'image-queue.running.queue.fetchFailed' },
+						processing: {
+							id: 'image-queue.running.queue.processing',
+							schemas: { input: types<{ bytes: Uint8Array; mediaType: string }>() },
+							states: {
+								waiting: { id: 'image-queue.running.queue.processing.waiting' },
+								overdue: { id: 'image-queue.running.queue.processing.overdue' },
+								stopping: { id: 'image-queue.running.queue.processing.stopping' },
+								blocked: { id: 'image-queue.running.queue.processing.blocked' }
+							}
+						},
+						savingReady: { id: 'image-queue.running.queue.savingReady' },
+						savingFailure: { id: 'image-queue.running.queue.savingFailure' },
+						unavailable: { id: 'image-queue.running.queue.unavailable' }
+					}
+				}
+			}
+		},
+		closed: { id: 'image-queue.closed' }
 	},
 	actors: {
 		observe,
@@ -156,11 +182,13 @@ const model = setup({
 		fetchImage,
 		reconcile,
 		process,
-		post,
 		receipts: syncOwnerMachine,
-		view: imageViewMachine
+		view: imageViewMachine,
+		readyWrite,
+		failureWrite
 	},
 	delays: {
+		processingDeadline: ({ context }) => context.processTimeoutMs ?? IMAGE_PROCESS_TIMEOUT_MS,
 		retryDelay: ({ context }) =>
 			Math.min(
 				300000,
@@ -172,6 +200,9 @@ const model = setup({
 		quotaDelay: ({ context }) => context.quotaDelayMs
 	},
 	guards: {
+		owningWrite: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ running: { queue: 'savingReady' } }, value) ||
+			matchesState({ running: { queue: 'savingFailure' } }, value),
 		quotaCoolingDown: ({ context }: { context: Context }) => context.quotaDelayMs > 0,
 		currentView: ({ context, event }: { context: Context; event: Event }) =>
 			event.type === 'IMAGE_VIEW' &&
@@ -187,36 +218,17 @@ const model = setup({
 		eligible: ({ context }: { context: Context }) => !!nextImage(context),
 		closing: ({ value }: { value: import('xstate').StateValue }) =>
 			matchesState({ running: { control: 'closing' } }, value),
-		ownCompletion: ({ context, event }: { context: Context; event: Event }) =>
-			'actorId' in event && event.actorId === context.write?.id,
-		workerSucceeded: ({ event }: { event: Event }) =>
-			event.type === 'WORKER_RESULT' && imageWorkerResultSchema.safeParse(event.value).success
+		processingOverdue: ({ value }) =>
+			matchesState({ running: { queue: { processing: 'overdue' } } }, value),
+		processingTimely: ({ context }, result: { elapsedMs: number }) =>
+			withinResourceDeadline(result.elapsedMs, context.processTimeoutMs ?? IMAGE_PROCESS_TIMEOUT_MS)
 	},
 	actions: {
 		selectNext: ({ context }: { context: Context }) => ({
 			context: {
 				selected: nextImage(context),
 				retryable: true,
-				fetched: undefined,
 				result: undefined
-			}
-		}),
-		startReady: ({ context, spawn }: { context: Context; spawn: ImageSpawner }) => ({
-			context: {
-				write: context.capability!.spawnReady(spawn, {
-					image: context.selected!,
-					kind: 'ready',
-					result: context.result!
-				})
-			}
-		}),
-		startFailure: ({ context, spawn }: { context: Context; spawn: ImageSpawner }) => ({
-			context: {
-				write: context.capability!.spawnFailure(spawn, {
-					image: context.selected!,
-					kind: 'failed',
-					retryable: context.retryable
-				})
 			}
 		}),
 		recordReady: ({ context }: { context: Context }): { context: Partial<Context> } => ({
@@ -227,8 +239,6 @@ const model = setup({
 						: row
 				),
 				blocked: [...context.blocked, context.selected!.id],
-				write: undefined,
-				fetched: undefined,
 				result: undefined
 			}
 		}),
@@ -239,8 +249,6 @@ const model = setup({
 						? { ...row, status: 'failed', assetId: null, retryable: context.retryable }
 						: row
 				),
-				write: undefined,
-				fetched: undefined,
 				result: undefined
 			}
 		}),
@@ -252,8 +260,6 @@ const model = setup({
 			context: {
 				blocked: [...context.blocked, context.selected!.id],
 				uncertain: [...context.uncertain, context.selected!.id],
-				write: undefined,
-				fetched: undefined,
 				result: undefined
 			}
 		})
@@ -265,7 +271,6 @@ export const imageQueueMachine = model.createMachine({
 	initial: 'admitting',
 	context: ({ input }) => ({
 		...input,
-		worker: undefined,
 		observationFailed: false,
 		issue: undefined,
 		quotaDelayMs: 0,
@@ -275,10 +280,8 @@ export const imageQueueMachine = model.createMachine({
 		blocked: [],
 		uncertain: [],
 		selected: undefined,
-		fetched: undefined,
 		result: undefined,
 		retryable: true,
-		write: undefined,
 		documentId: '',
 		slots: [],
 		views: {}
@@ -311,10 +314,8 @@ export const imageQueueMachine = model.createMachine({
 				if (
 					!(
 						args.guards.closing(args) &&
-						!(({ value }: { value: import('xstate').StateValue }) =>
-							matchesState({ running: { queue: 'savingReady' } }, value))(args) &&
-						!(({ value }: { value: import('xstate').StateValue }) =>
-							matchesState({ running: { queue: 'savingFailure' } }, value))(args)
+						!matchesState({ running: { queue: 'processing' } }, args.value) &&
+						!args.guards.owningWrite(args)
 					)
 				)
 					return
@@ -378,6 +379,7 @@ export const imageQueueMachine = model.createMachine({
 							slots: urls.map((sourceUrl) =>
 								enq.spawn('view', {
 									input: {
+										reportTo: args.self,
 										capability: context.capability!,
 										documentId: event.documentId,
 										sourceUrl
@@ -399,6 +401,7 @@ export const imageQueueMachine = model.createMachine({
 							slots: urls.map((sourceUrl) =>
 								enq.spawn('view', {
 									input: {
+										reportTo: args.self,
 										capability: context.capability!,
 										documentId: event.documentId,
 										sourceUrl
@@ -573,7 +576,7 @@ export const imageQueueMachine = model.createMachine({
 								input: ({ context }: { context: Context }) => context,
 								onDone: (args) => {
 									if (args.guards.current(args)) {
-										return { target: 'processing', context: { fetched: args.event.output } }
+										return { target: 'processing', input: args.event.output }
 									}
 									return { target: 'idle' }
 								},
@@ -612,158 +615,150 @@ export const imageQueueMachine = model.createMachine({
 							}
 						},
 						processing: {
-							initial: 'creating',
+							initial: 'waiting',
 							states: {
-								creating: {
-									on: {
-										WORKER_OPENED: (args) => {
-											return { target: 'posting', context: { worker: args.event.worker } }
-										}
+								waiting: {
+									timeout: 'processingDeadline',
+									onTimeout: (_args, enq) => {
+										enq.sendTo('process', { type: 'CANCEL' })
+										return { target: 'overdue' }
 									}
 								},
-								posting: {
-									invoke: {
-										id: 'post',
-										src: 'post',
-										input: ({ context }: { context: Context }) => context,
-										onError: () => {
-											return {
-												target: '#image-queue.running.queue.savingFailure',
-												context: { retryable: false }
-											}
-										}
-									},
-									on: {
-										POSTED: () => {
-											return { target: 'waiting', context: { fetched: undefined } }
-										}
-									}
+								overdue: {},
+								stopping: { on: { SHUTDOWN: {} } },
+								blocked: {}
+							},
+							on: {
+								SHUTDOWN: (_args, enq) => {
+									enq.sendTo('process', { type: 'CANCEL' })
+									return { target: '.stopping' }
 								},
-								waiting: {}
+								OBSERVATION_FAILED: (_args, enq) => {
+									enq.sendTo('process', { type: 'CANCEL' })
+									return { target: '.stopping', context: { observationFailed: true } }
+								}
 							},
 							invoke: {
 								id: 'process',
 								src: 'process',
-								onError: () => {
-									return { target: 'savingFailure', context: { retryable: false } }
-								}
-							},
-							on: {
-								WORKER_RESULT: (args) => {
-									if (!args.guards.current(args)) {
-										return { target: 'idle', context: { fetched: undefined, result: undefined } }
-									}
-									if (args.guards.workerSucceeded(args)) {
+								input: ({ context, input }) => ({
+									...imageJob(input),
+									now: context.now ?? monotonicNow
+								}),
+								onSnapshot: ({ event }) =>
+									event.snapshot.matches('blocked') ? { target: '.blocked' } : undefined,
+								onError: { target: '.blocked' },
+								onDone: (args) => {
+									if (args.guards.closing(args) || !args.guards.current(args))
+										return { target: 'idle', context: { result: undefined } }
+									if (args.context.observationFailed)
+										return {
+											target: 'unavailable',
+											context: { result: undefined }
+										}
+									const result = args.event.output
+									if (
+										hasImageResult(result) &&
+										!args.guards.processingOverdue(args) &&
+										args.guards.processingTimely(args, result)
+									)
 										return {
 											target: 'savingReady',
-											context: { result: imageWorkerResultSchema.parse(args.event.value).result }
+											context: { result: result.reply.result }
 										}
+									return {
+										target: 'savingFailure',
+										context: { retryable: false }
 									}
-									return { target: 'savingFailure', context: { retryable: false } }
-								}
-							},
-							after: {
-								20000: () => {
-									return { target: 'savingFailure', context: { retryable: false } }
 								}
 							}
 						},
 						savingReady: {
-							entry: (args, enq) => {
-								const result = args.actions['startReady']({ ...args, spawn: enq.spawn })
-								const ref = result.context.write
-								enq.subscribeTo(ref, {
-									done: (output): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
-										type: 'WRITE_DONE',
-										actorId: ref.id,
-										output
-									}),
-									error: (error): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
-										type: 'WRITE_ERROR',
-										actorId: ref.id,
-										error
-									})
-								})
-								return result
-							},
-							exit: (args, enq) => {
-								enq.stop(args.context.write!)
-							},
-							on: {
-								SHUTDOWN: {},
-								OBSERVATION_FAILED: () => {
-									return { context: { observationFailed: true } }
-								},
-								WAKE: {},
-								WRITE_DONE: (args, enq) => {
-									if (!args.guards.ownCompletion(args)) return
-									const { context, event } = args
-									if (!event.output || event.output.settlement.kind === 'unresolved') {
+							invoke: {
+								id: 'readyWrite',
+								src: 'readyWrite',
+								input: ({ context }) => ({
+									operationId: context.selected!.id,
+									spawn: context.capability!.spawnReady,
+									input: { image: context.selected!, kind: 'ready', result: context.result! }
+								}),
+								onDone: (args, enq) => {
+									const operation = args.event.output
+									if (operation.kind === 'failed') {
 										enq(args.actions.notifyUncertain, args)
 										return {
 											target: 'routing',
 											context: args.actions.recordUncertain(args).context
 										}
 									}
-									if (event.output.settlement.kind === 'locallyPersisted') {
+									const output = operation.output
+
+									const { context } = args
+									if (!output || output.settlement.kind === 'unresolved') {
+										enq(args.actions.notifyUncertain, args)
+										return {
+											target: 'routing',
+											context: args.actions.recordUncertain(args).context
+										}
+									}
+									if (output.settlement.kind === 'locallyPersisted') {
 										enq.sendTo('receipts', {
 											type: 'WATCH',
 											id: context.selected!.id,
-											receipts: [event.output.settlement.workspace]
+											receipts: [output.settlement.workspace]
 										})
 										return { target: 'routing', context: args.actions['recordReady'](args).context }
 									}
 									return { target: 'routing', context: args.actions.recordUncertain(args).context }
 								},
-								WRITE_ERROR: (args, enq) => {
-									if (!args.guards.ownCompletion(args)) return
+								onError: (args, enq) => {
 									enq(args.actions.notifyUncertain, args)
 									return { target: 'routing', context: args.actions.recordUncertain(args).context }
 								}
-							}
-						},
-						savingFailure: {
-							entry: (args, enq) => {
-								const result = args.actions['startFailure']({ ...args, spawn: enq.spawn })
-								const ref = result.context.write
-								enq.subscribeTo(ref, {
-									done: (output): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
-										type: 'WRITE_DONE',
-										actorId: ref.id,
-										output
-									}),
-									error: (error): Extract<Event, { type: 'WRITE_DONE' | 'WRITE_ERROR' }> => ({
-										type: 'WRITE_ERROR',
-										actorId: ref.id,
-										error
-									})
-								})
-								return result
-							},
-							exit: (args, enq) => {
-								enq.stop(args.context.write!)
 							},
 							on: {
-								SHUTDOWN: {},
+								SHUTDOWN: (_, enq) => {
+									enq.sendTo('readyWrite', { type: 'DRAIN' })
+								},
 								OBSERVATION_FAILED: () => {
 									return { context: { observationFailed: true } }
 								},
-								WAKE: {},
-								WRITE_DONE: (args, enq) => {
-									if (!args.guards.ownCompletion(args)) return
-									const { context, event } = args
-									if (!event.output || event.output.settlement.kind === 'unresolved') {
+								WAKE: {}
+							}
+						},
+						savingFailure: {
+							invoke: {
+								id: 'failureWrite',
+								src: 'failureWrite',
+								input: ({ context }) => ({
+									operationId: context.selected!.id,
+									spawn: context.capability!.spawnFailure,
+									input: { image: context.selected!, kind: 'failed', retryable: context.retryable }
+								}),
+								onDone: (args, enq) => {
+									const operation = args.event.output
+									if (operation.kind === 'failed') {
 										enq(args.actions.notifyUncertain, args)
 										return {
 											target: 'routing',
 											context: args.actions.recordUncertain(args).context
 										}
 									}
-									if (event.output.settlement.kind === 'locallyPersisted') {
+									const output = operation.output
+
+									const { context } = args
+									if (!output || output.settlement.kind === 'unresolved') {
+										enq(args.actions.notifyUncertain, args)
+										return {
+											target: 'routing',
+											context: args.actions.recordUncertain(args).context
+										}
+									}
+									if (output.settlement.kind === 'locallyPersisted') {
 										enq.sendTo('receipts', {
 											type: 'WATCH',
 											id: context.selected!.id,
-											receipts: [event.output.settlement.workspace]
+											receipts: [output.settlement.workspace]
 										})
 										return {
 											target: 'routing',
@@ -772,11 +767,19 @@ export const imageQueueMachine = model.createMachine({
 									}
 									return { target: 'routing', context: args.actions.recordUncertain(args).context }
 								},
-								WRITE_ERROR: (args, enq) => {
-									if (!args.guards.ownCompletion(args)) return
+								onError: (args, enq) => {
 									enq(args.actions.notifyUncertain, args)
 									return { target: 'routing', context: args.actions.recordUncertain(args).context }
 								}
+							},
+							on: {
+								SHUTDOWN: (_, enq) => {
+									enq.sendTo('failureWrite', { type: 'DRAIN' })
+								},
+								OBSERVATION_FAILED: () => {
+									return { context: { observationFailed: true } }
+								},
+								WAKE: {}
 							}
 						},
 						unavailable: {}
@@ -796,9 +799,7 @@ export const imageQueueMachine = model.createMachine({
 						rows: [],
 						capability: undefined,
 						selected: undefined,
-						fetched: undefined,
-						result: undefined,
-						write: undefined
+						result: undefined
 					}
 				}
 			}

@@ -30,7 +30,8 @@ export function transactionDomainModel<Draft, Facts>(
 	return setup({
 		schemas: {
 			context: types<DomainContext<Draft, Facts>>(),
-			events: { STAGE: types(), STAGED: types() },
+			events: { STAGE: types() },
+			internalEvents: { STAGED: types() },
 			input: types<TransactionDomainInput<Draft>>(),
 			output: types<SyncReceipt>(),
 			tags: types<string>(),

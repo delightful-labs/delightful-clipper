@@ -1,3 +1,7 @@
+import { extractionJobMachine, EXTRACTION_TIMEOUT_MS } from './worker.js'
+import type { BrowserWorkerJobInput } from '../../web/src/lib/machines/browser-worker-job.js'
+import type { ExtractionReply } from './protocol.js'
+import { withinResourceDeadline } from '../../web/src/lib/contracts/resource-waits.js'
 import type { EventPayload } from '../../web/src/lib/machines/events.js'
 import {
 	types,
@@ -10,7 +14,7 @@ import {
 } from 'xstate'
 
 import { z } from 'zod'
-import { captureSchema, contentSchema, sourceSchema, matchingContent } from './protocol.js'
+import { captureSchema, sourceSchema, matchingContent } from './protocol.js'
 import type { Capture, Source } from './protocol.js'
 import type { ArticleContent } from '../../web/src/lib/contracts/articles.js'
 import { libraryMachine, selectLibraryView } from '../../web/src/lib/machines/capture/library.js'
@@ -22,6 +26,7 @@ type Event =
 	| { type: 'LIBRARY'; snapshot: SnapshotFrom<typeof libraryMachine> }
 type Context = {
 	capability: ClipCapability
+	extractionTimeoutMs?: number
 	id: string
 	capture: Capture | undefined
 	source: Source | undefined
@@ -35,7 +40,7 @@ export type ClipCapability = {
 	accountId: string
 	current: () => boolean
 	read: (id: string) => Promise<unknown>
-	extract: (source: Source, signal: AbortSignal) => Promise<unknown>
+	extraction: (source: Source) => BrowserWorkerJobInput<Source, ExtractionReply>
 	issue: (capture: Capture, accountId: string) => Promise<void>
 	remove: (id: string) => Promise<void>
 }
@@ -44,7 +49,7 @@ export function createClipMachine() {
 		current: createAsyncLogic({
 			run: async ({ input }: { input: ClipCapability }) => input.current()
 		}),
-		feedback: createCallbackLogic<{ type: 'UNUSED' }, Library>(({ input, sendBack }) => {
+		feedback: createCallbackLogic<never, Library>(({ input, sendBack }) => {
 			const subscription = input.subscribe((snapshot) => sendBack({ type: 'LIBRARY', snapshot }))
 			sendBack({ type: 'LIBRARY', snapshot: input.getSnapshot() })
 			return () => subscription.unsubscribe()
@@ -53,15 +58,7 @@ export function createClipMachine() {
 			run: ({ input }: { input: Pick<Context, 'capability' | 'id'> }) =>
 				input.capability.read(input.id)
 		}),
-		extract: createAsyncLogic({
-			run: ({
-				input,
-				signal
-			}: {
-				input: { capability: ClipCapability; source: Source }
-				signal: AbortSignal
-			}) => input.capability.extract(input.source, signal)
-		}),
+		extract: extractionJobMachine,
 		issue: createAsyncLogic({
 			run: ({ input }: { input: { capability: ClipCapability; capture: Capture } }) =>
 				input.capability.issue(input.capture, input.capability.accountId)
@@ -91,7 +88,7 @@ export function createClipMachine() {
 				SHUTDOWN: types<EventPayload<Event, 'SHUTDOWN'>>(),
 				LIBRARY: types<EventPayload<Event, 'LIBRARY'>>()
 			},
-			input: types<{ id: string; capability: ClipCapability }>(),
+			input: types<{ id: string; capability: ClipCapability; extractionTimeoutMs?: number }>(),
 			tags: types<string>(),
 			children: {
 				current: types<ActorRefFrom<typeof actors.current>>(),
@@ -104,7 +101,18 @@ export function createClipMachine() {
 			}
 		},
 		actors,
+		delays: {
+			extractionDeadline: ({ context }) => context.extractionTimeoutMs ?? EXTRACTION_TIMEOUT_MS
+		},
 		guards: {
+			stoppingExtraction: ({ value }) =>
+				matchesState({ running: { extracting: 'stopping' } }, value),
+			extractionOverdue: ({ value }) => matchesState({ running: { extracting: 'overdue' } }, value),
+			withinExtractionDeadline: ({ context }, result: { elapsedMs: number }) =>
+				withinResourceDeadline(
+					result.elapsedMs,
+					context.extractionTimeoutMs ?? EXTRACTION_TIMEOUT_MS
+				),
 			stopping: ({ value }: { value: import('xstate').StateValue }) =>
 				matchesState({ running: { issuing: 'stopping' } }, value),
 			validReply: (
@@ -186,27 +194,52 @@ export function createClipMachine() {
 						}
 					},
 					extracting: {
-						after: { 15000: { target: 'linkOnly' } },
+						initial: 'active',
 						entry: message('capture.status.pending'),
-						on: { SHUTDOWN: { target: '#extension-clip.closed' } },
+						on: {
+							SHUTDOWN: (_args, enq) => {
+								enq.sendTo('extract', { type: 'CANCEL' })
+								return { target: '.stopping' }
+							}
+						},
+						states: {
+							active: {
+								timeout: 'extractionDeadline',
+								onTimeout: (_args, enq) => {
+									enq.sendTo('extract', { type: 'CANCEL' })
+									return { target: 'overdue' }
+								}
+							},
+							overdue: {},
+							stopping: { on: { SHUTDOWN: {} } },
+							blocked: { entry: message('capture.status.save_failed', 'error') }
+						},
 						invoke: {
 							id: 'extract',
 							src: 'extract',
-							input: ({ context }: { context: Context }) => ({
-								source: context.source!,
-								capability: context.capability
-							}),
+							input: ({ context }) => context.capability.extraction(context.source!),
+							onSnapshot: ({ event }) =>
+								event.snapshot.matches('blocked') ? { target: '.blocked' } : undefined,
+							onError: { target: '.blocked' },
 							onDone: (args) => {
-								const { event } = args
-								if (args.guards.matchingContent(args, { value: event.output })) {
+								const result = args.event.output
+								if (args.guards.stoppingExtraction(args))
+									return { target: '#extension-clip.closed' }
+								if (result.kind === 'cancelled' && !args.guards.extractionOverdue(args))
+									return { target: '#extension-clip.closed' }
+								if (
+									result.kind === 'replied' &&
+									'content' in result.reply &&
+									!args.guards.extractionOverdue(args) &&
+									args.guards.withinExtractionDeadline(args, result) &&
+									args.guards.matchingContent(args, { value: result.reply.content })
+								)
 									return {
 										target: 'checkingIssue',
-										context: { content: contentSchema.parse(event.output), source: undefined }
+										context: { content: result.reply.content, source: undefined }
 									}
-								}
 								return { target: 'linkOnly' }
-							},
-							onError: { target: 'linkOnly' }
+							}
 						}
 					},
 					linkOnly: {

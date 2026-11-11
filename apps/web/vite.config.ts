@@ -23,12 +23,14 @@ export default defineConfig(({ command, mode }) => {
 		process.env.CLIPPER_EPHEMERAL_JAZZ = 'true'
 	return {
 		envPrefix: ['VITE_', 'PUBLIC_'],
-		// The search worker starts after account readiness. Prebundle its dependency
-		// so a cold optimizer cannot trigger a late full-page reload.
+		// Search and extraction workers start after account readiness. Prebundle
+		// their lazy dependencies so a cold optimizer cannot reload an active job.
 		optimizeDeps: {
 			exclude: ['delightful-ui', 'jazz-wasm', 'microlighter'],
 			include: [
 				'minisearch',
+				'@mozilla/readability',
+				'@mozilla/readability/JSDOMParser.js',
 				'jazz-tools',
 				'jazz-tools/client',
 				'jazz-tools/local-first',
@@ -40,9 +42,15 @@ export default defineConfig(({ command, mode }) => {
 				'delightful-local-first/backend/jazz/recovery',
 				'delightful-local-first/backend/jazz/restoration',
 				'delightful-local-first/session/workflow',
+				'delightful-local-first/session/sign-out/workflow',
 				'delightful-local-first/restoration/workflow',
 				'delightful-local-first/recovery/workflow',
-				'delightful-local-first/workspace/creation/workflow'
+				'delightful-local-first/workspace/creation/workflow',
+				'delightful-local-first/transactions/workflow',
+				'delightful-local-first/lifecycle/operation/workflow',
+				'delightful-local-first/worker/request/workflow',
+				'delightful-local-first/worker/channel/workflow',
+				'delightful-local-first/worker/effect-drain/workflow'
 			]
 		},
 		ssr: { external: ['jazz-tools', 'jazz-napi', '@vercel/functions', '@vercel/sandbox', 'ws'] },
@@ -95,7 +103,12 @@ export default defineConfig(({ command, mode }) => {
 			host: process.env.CLIPPER_TEST === 'true' ? '127.0.0.1' : '0.0.0.0',
 			port: 5173,
 			strictPort: true,
-			...(process.env.CLIPPER_TEST === 'true' ? { fs: { allow: ['.'] } } : {})
+			...(process.env.CLIPPER_TEST === 'true'
+				? {
+						// The native job fixture invokes the actual extension producer/Worker.
+						fs: { allow: ['.', '../extension/src'] }
+					}
+				: {})
 		},
 		preview: { host: '127.0.0.1', port: 4173, strictPort: true }
 	}

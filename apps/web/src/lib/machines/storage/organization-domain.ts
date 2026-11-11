@@ -155,8 +155,8 @@ export function createOrganizationDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertTagArticle(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -164,8 +164,8 @@ export function createOrganizationDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertTagDocument(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -173,8 +173,8 @@ export function createOrganizationDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertArticle(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -182,8 +182,8 @@ export function createOrganizationDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertDocument(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			}

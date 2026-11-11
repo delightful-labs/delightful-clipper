@@ -1,0 +1,25 @@
+{
+	"file": "delightful-local-first-worker-transport-1571ba2-alpha60.tgz",
+	"sha256": "1ffa8d8490915da61fb7dc9a600733eed00dcce33cdc772ca0a12d1bbf0d95b1",
+	"baseline": {
+		"file": "delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz",
+		"sha256": "8bf38f5fb030e5fd233fdfb7a10a58e9da4dacbc438b662d5b7318794adf8709"
+	},
+	"dlfBase": "9d2b0f6ae10d6a19f4dfa3cf7d606edbe4554e50",
+	"sourceFiles": {
+		"src/lib/contracts/domain-transaction.ts": "b3f77689acd59ab8deccf9af8479c6fef2f07592563bcc2e048d01a416cd8b0b",
+		"src/lib/machines/workspaces/domain-transaction.ts": "b3ab288107c6756ac7241e9c39e6f224da0dae578980897a63faac750ead90d7",
+		"src/lib/contracts/owned-operation.ts": "36206f9479b0337fe44a2706486d6343895971e6d18713850af02a3b09e1c632",
+		"src/lib/machines/lifecycle/owned-operation.ts": "d650b6a20e7c607d768900f52dacff18e1943d0bfb6e8f04c7eaaf0850c22bfd",
+		"src/lib/contracts/worker-request.ts": "17984be9c2ed1c28414d8589fbd08416181c945005b3f8139ae67d82ed2965eb",
+		"src/lib/machines/lifecycle/worker-request.ts": "a61b771b38b613de6773d061916a4fd1cdf4e891100cb5685dbef33f567a1a86",
+		"src/lib/contracts/worker-channel.ts": "717d6d5b0385e07c54d7be8fac0eadd2057e616ae5b4ffcd358e698eb3004c8a",
+		"src/lib/machines/lifecycle/worker-channel.ts": "53f490d0f018dfcf00ad00481905884a665a9dd1ebe7a632f43b00b3124a3704",
+		"src/lib/contracts/worker-effect-drain.ts": "990445ad5834afd718d54b679577766023fdbbb9d0d6262d47ae949ba7598ab8",
+		"src/lib/machines/lifecycle/worker-effect-drain.ts": "dfe64490cb304ebff22787de057b337009d292cb3a7e97375361c4983c9cf1ed"
+	},
+	"adaptation": "Add only generic domain transaction, owned operation, scoped worker request/channel and effect-drain JS/declarations and public exports; retain all baseline modules and alpha.60 adapters unchanged. The existing pnpm recovery/view patch remains applied separately at installation.",
+	"xstate": "6.0.0-beta.1",
+	"jazz": "2.0.0-alpha.60",
+	"dlfSource": "1571ba2b9e2f5ec4d90d12ff480aa706ebe6eaa9"
+}

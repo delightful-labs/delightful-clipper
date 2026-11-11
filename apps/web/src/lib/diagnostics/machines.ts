@@ -100,3 +100,57 @@ export function createMachineObserver(logger: Logger, enabled: boolean) {
 		}
 	}
 }
+
+const lifecycleEvents = new Set([
+	'SHUTDOWN',
+	'CANCEL',
+	'STOP',
+	'CLOSED',
+	'OPENED',
+	'SETTLED',
+	'RELEASE',
+	'RELEASED',
+	'ADOPT',
+	'LIBRARY_ADOPTED',
+	'LIBRARY_BOUND',
+	'ATTACH',
+	'DETACH',
+	'ATTACHED',
+	'VIEWPORT_OPENED',
+	'VIEWPORT_CLOSED',
+	'STAGE',
+	'STAGED',
+	'CAPTURE_UPDATED',
+	'REFRESH_SYNC',
+	'ATTEMPT_SETTLED',
+	'TIMED_OUT',
+	'NETWORK_DONE',
+	'NETWORK_ERROR',
+	'xstate.done.actor',
+	'xstate.error.actor',
+	'xstate.snapshot'
+])
+/** Dead letters are separate from inspection. Never serialize payloads, actor IDs,
+ * schema issues or error messages: all may contain private application values. */
+export function createRejectedEventObserver(logger: Logger, enabled: boolean) {
+	return (rejection: import('xstate').EventRejection) => {
+		if (!enabled) return
+		try {
+			const eventType = field(rejection.event, 'type')
+			const machine = identifier(field(field(field(rejection.sourceRef, 'logic'), 'config'), 'id'))
+			logger.warn('Machine event rejected', {
+				machine: machine ?? 'external-or-leaf',
+				eventType:
+					typeof eventType === 'string' && lifecycleEvents.has(eventType) ? eventType : 'other',
+				reason: ['invalidEvent', 'internalEvent', 'stopped', 'missingTarget'].includes(
+					rejection.reason
+				)
+					? rejection.reason
+					: 'other',
+				origin: rejection.eventOrigin === 'actor' ? 'actor' : 'external'
+			})
+		} catch {
+			/* Diagnostics never change actor delivery or settlement. */
+		}
+	}
+}

@@ -34,14 +34,19 @@ export async function handleAuth(request: Request): Promise<Response> {
 		}
 	}
 	if (!parsed.success) return unavailable('invalid_auth_configuration', fields)
-	let stage = 'initialization'
+	let configured: ReturnType<typeof configuredAuth>
 	try {
-		const configured = configuredAuth()
-		if (!configured) return unavailable('invalid_auth_configuration')
-		stage = 'request'
+		configured = configuredAuth()
+	} catch {
+		return unavailable('auth_initialization_failed', [], 500)
+	}
+	if (!configured) return unavailable('invalid_auth_configuration')
+	try {
 		return await handleConfiguredAuth(configured, request, parsed.data)
 	} catch {
-		// Deliberately exclude raw errors, connection strings, tokens and stack traces.
-		return unavailable(`auth_${stage}_failed`, [], 500)
+		if (request.signal.aborted)
+			throw new DOMException('Authentication request disconnected', 'AbortError')
+		// Unexpected actor failure keeps the existing sanitized error contract.
+		return unavailable('auth_request_failed', [], 500)
 	}
 }

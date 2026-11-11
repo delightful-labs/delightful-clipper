@@ -1,3 +1,4 @@
+import { serveScopedAccountStorage } from '../../src/lib/runtime/worker/scoped-storage-channel.js'
 import { serveBrokerHost } from '../../src/lib/runtime/worker/broker-channel.js'
 import {
 	serveAccountStorage,
@@ -7,14 +8,23 @@ import { z } from 'zod'
 import { fixtureServerUrl } from '../browser-account-store.js'
 const { PUBLIC_JAZZ_APP_ID } = z.object({ PUBLIC_JAZZ_APP_ID: z.string() }).parse(import.meta.env)
 const PUBLIC_JAZZ_SERVER_URL = fixtureServerUrl()
+function serveNativeBroker(data: MessagePort, control: MessagePort, scope: string) {
+	return serveBrokerHost(data, control, scope, {
+		origin: location.origin,
+		storage: localStorage,
+		open: (url, name) => new SharedWorker(url, { type: 'module', name })
+	})
+}
 export async function qualifyHost() {
 	const { currentLibraryRecords } = await import('../fixture-records.js')
 	const expected = currentLibraryRecords().articles.libraryId
 	const key = accountStorageKey(PUBLIC_JAZZ_SERVER_URL)
 	const worker = new Worker(new URL('./host.worker.ts', import.meta.url), { type: 'module' })
 	const channel = new MessageChannel()
-	const broker = new MessageChannel()
-	const stopBroker = serveBrokerHost(broker.port1)
+	const broker = new MessageChannel(),
+		brokerControl = new MessageChannel()
+	const brokerScope = crypto.randomUUID()
+	const stopBroker = serveNativeBroker(broker.port1, brokerControl.port1, brokerScope)
 	const stop = serveAccountStorage(channel.port1, localStorage, key)
 	try {
 		return await new Promise((resolve, reject) => {
@@ -34,10 +44,12 @@ export async function qualifyHost() {
 				{
 					port: channel.port2,
 					broker: broker.port2,
+					brokerControl: brokerControl.port2,
+					brokerScope,
 					appId: PUBLIC_JAZZ_APP_ID,
 					serverUrl: PUBLIC_JAZZ_SERVER_URL
 				},
-				[channel.port2, broker.port2]
+				[channel.port2, broker.port2, brokerControl.port2]
 			)
 		})
 	} finally {
@@ -55,9 +67,19 @@ export async function qualifyApplicationHost(shutdownImmediately = false) {
 		{ type: 'module' }
 	)
 	const storage = new MessageChannel(),
-		broker = new MessageChannel()
-	const stopStorage = serveAccountStorage(storage.port1, localStorage, key)
-	const stopBroker = serveBrokerHost(broker.port1)
+		storageControl = new MessageChannel(),
+		broker = new MessageChannel(),
+		brokerControl = new MessageChannel()
+	const brokerScope = crypto.randomUUID()
+	const storageScope = crypto.randomUUID()
+	const stopStorage = serveScopedAccountStorage(
+		storage.port1,
+		storageControl.port1,
+		storageScope,
+		localStorage,
+		key
+	)
+	const stopBroker = serveNativeBroker(broker.port1, brokerControl.port1, brokerScope)
 	try {
 		return await new Promise((resolve, reject) => {
 			let result: unknown
@@ -76,9 +98,13 @@ export async function qualifyApplicationHost(shutdownImmediately = false) {
 					appId: PUBLIC_JAZZ_APP_ID,
 					serverUrl: PUBLIC_JAZZ_SERVER_URL,
 					storage: storage.port2,
-					broker: broker.port2
+					storageControl: storageControl.port2,
+					storageScope,
+					broker: broker.port2,
+					brokerControl: brokerControl.port2,
+					brokerScope
 				},
-				[storage.port2, broker.port2]
+				[storage.port2, storageControl.port2, broker.port2, brokerControl.port2]
 			)
 			if (shutdownImmediately) worker.postMessage({ type: 'SHUTDOWN' })
 		})
@@ -101,9 +127,19 @@ export async function qualifyScopedCommands() {
 		{ type: 'module' }
 	)
 	const storage = new MessageChannel(),
-		broker = new MessageChannel()
-	const stopStorage = serveAccountStorage(storage.port1, localStorage, key),
-		stopBroker = serveBrokerHost(broker.port1)
+		storageControl = new MessageChannel(),
+		broker = new MessageChannel(),
+		brokerControl = new MessageChannel()
+	const brokerScope = crypto.randomUUID()
+	const storageScope = crypto.randomUUID()
+	const stopStorage = serveScopedAccountStorage(
+			storage.port1,
+			storageControl.port1,
+			storageScope,
+			localStorage,
+			key
+		),
+		stopBroker = serveNativeBroker(broker.port1, brokerControl.port1, brokerScope)
 	try {
 		return await new Promise((resolve, reject) => {
 			let sent = false
@@ -146,9 +182,13 @@ export async function qualifyScopedCommands() {
 					appId: PUBLIC_JAZZ_APP_ID,
 					serverUrl: PUBLIC_JAZZ_SERVER_URL,
 					storage: storage.port2,
-					broker: broker.port2
+					storageControl: storageControl.port2,
+					storageScope,
+					broker: broker.port2,
+					brokerControl: brokerControl.port2,
+					brokerScope
 				},
-				[storage.port2, broker.port2]
+				[storage.port2, storageControl.port2, broker.port2, brokerControl.port2]
 			)
 		})
 	} finally {

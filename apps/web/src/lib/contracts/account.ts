@@ -1,4 +1,5 @@
 import type { LibraryCapability } from './library.js'
+import type { SignOutSessionStatus } from 'delightful-local-first/session/sign-out/contracts'
 import type { SessionOwnerRef } from 'delightful-local-first/session/workflow'
 import type {
 	SessionScope,
@@ -27,6 +28,11 @@ export type AccountObservation =
 			status: 'ready'
 			localFirst?: boolean
 			binding: object
+			clientBinding?: object
+			databaseBinding?: object
+			prepare?: () => Promise<void>
+			logout?: () => Promise<void>
+			logoutStatus?: () => SignOutSessionStatus
 			accountId: string
 			signedIn?: boolean
 			library?: LibraryCapability
@@ -34,8 +40,47 @@ export type AccountObservation =
 			recovery: RecoveryBinding
 	  }>
 	| Readonly<{ status: 'signed-out' | 'transitioning' | 'error' | 'closed' }>
+export type ReadyAccountObservation = Extract<AccountObservation, { status: 'ready' }>
+export type AccountBindingIdentity = Pick<
+	ReadyAccountObservation,
+	'status' | 'binding' | 'clientBinding' | 'databaseBinding' | 'accountId'
+>
+export function accountBindingIdentity(
+	observation: ReadyAccountObservation
+): AccountBindingIdentity {
+	return {
+		status: 'ready',
+		binding: observation.binding,
+		accountId: observation.accountId,
+		...(observation.clientBinding === undefined
+			? {}
+			: { clientBinding: observation.clientBinding }),
+		...(observation.databaseBinding === undefined
+			? {}
+			: { databaseBinding: observation.databaseBinding })
+	}
+}
+export type AccountBinding = Readonly<{
+	observation: ReadyAccountObservation
+	release: () => void
+}>
+/** Native identity facts only; lifecycle/reuse decisions belong to readiness. */
+export function sameAccountBinding(
+	left: AccountObservation | AccountBindingIdentity,
+	right: AccountObservation | AccountBindingIdentity
+) {
+	return (
+		left.status === 'ready' &&
+		right.status === 'ready' &&
+		left.binding === right.binding &&
+		left.accountId === right.accountId &&
+		left.clientBinding === right.clientBinding &&
+		left.databaseBinding === right.databaseBinding
+	)
+}
 export type AccountHost = Readonly<{
 	read: () => AccountObservation
+	adopt?: (observation: ReadyAccountObservation) => AccountBinding
 	prepare?: () => Promise<void>
 	readiness: SessionReadinessBinding
 	create: () => Promise<void>

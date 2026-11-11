@@ -1,4 +1,3 @@
-import type { EventPayload } from '../../web/src/lib/machines/events.js'
 import { types, setup, createAsyncLogic } from 'xstate'
 
 import {
@@ -34,7 +33,7 @@ export function createCaptureReadMachine(cap: {
 	const model = setup({
 		schemas: {
 			context: types<Context>(),
-			events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+			events: {},
 			input: types<Input>(),
 			output: types<Reply>(),
 			tags: types<string>(),

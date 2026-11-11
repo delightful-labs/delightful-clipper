@@ -1,3 +1,4 @@
+import { machineDiagnostics } from '../../web/src/lib/diagnostics/inspect.js'
 import { createActor, toPromise, waitFor } from 'xstate'
 import { stopAfterShutdown } from 'delightful-local-first/forms/lifecycle'
 import {
@@ -15,12 +16,13 @@ import {
 	runtimeMessageSchema
 } from './protocol.js'
 import { createAuthorizationMachine, selectAccountAccess } from './authorization-machine.js'
-import { extractSource } from './worker.js'
+import { extractionJob } from './worker.js'
 async function command(message: unknown) {
 	if (!acceptedAcknowledgmentSchema.safeParse(await chrome.runtime.sendMessage(message)).success)
 		throw new Error('invalidResponse')
 }
 const owner = createActor(createApplicationReadinessMachine<Session>(), {
+	...machineDiagnostics,
 	input: existingAccountInput({ serverUrl: __CLIPPER_SERVER__, env: 'clipper' }, extensionLibrary)
 })
 
@@ -49,7 +51,7 @@ const runtime = createActor(
 				accountId: bound.libraryId,
 				current: bound.isCurrent,
 				read: (id) => chrome.runtime.sendMessage({ type: 'CAPTURE', id }),
-				extract: extractSource,
+				extraction: extractionJob,
 				issue: (capture, accountId) => command({ type: 'ISSUE', id: capture.id, accountId }),
 				remove: (id) => command({ type: 'REMOVE', id })
 			}
@@ -69,7 +71,8 @@ const runtime = createActor(
 				...(articleId ? { articleId } : {})
 			})
 		}
-	})
+	}),
+	machineDiagnostics
 ).start()
 chrome.runtime.onMessage.addListener((value: unknown, sender, reply) => {
 	const authorization = authorizationRequestSchema.safeParse(value)
@@ -84,7 +87,7 @@ chrome.runtime.onMessage.addListener((value: unknown, sender, reply) => {
 				publish()
 				return () => subscription.unsubscribe()
 			}),
-			{ input: { expected: authorization.data.accountId } }
+			{ input: { expected: authorization.data.accountId }, ...machineDiagnostics }
 		)
 		void toPromise(actor)
 			.then(reply, () => reply({ status: 'unavailable' }))

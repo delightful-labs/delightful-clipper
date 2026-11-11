@@ -1,4 +1,3 @@
-import type { EventPayload } from '../machines/events.js'
 import { types, createCallbackLogic, setup, createAsyncLogic } from 'xstate'
 
 import { imageDimensions } from './dimensions.js'
@@ -17,7 +16,7 @@ const decode = createAsyncLogic<ImageBitmap, Input>({
 	run: ({ input }) =>
 		createImageBitmap(new Blob([new Uint8Array(input.bytes)], { type: input.mediaType }))
 })
-const bitmap = createCallbackLogic<{ type: 'UNUSED' }, ImageBitmap>(
+const bitmap = createCallbackLogic<never, ImageBitmap>(
 	({ input }) =>
 		() =>
 			input.close()
@@ -64,7 +63,7 @@ export function canDecodeImage(input: Input) {
 const imageProcessingModel = setup({
 	schemas: {
 		context: types<Context>(),
-		events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+		events: {},
 		input: types<Input>(),
 		output: types<ProcessedImage | undefined>(),
 		tags: types<string>(),

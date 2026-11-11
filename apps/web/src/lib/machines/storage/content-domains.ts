@@ -118,8 +118,8 @@ export function createContentIntentDomain(io: {
 					enq(() => {
 						args.actions.insertIntent(args, { facts: args.context.facts })
 						args.actions.bindArticle(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -128,8 +128,8 @@ export function createContentIntentDomain(io: {
 					enq(() => {
 						args.actions.insertIntent(args, { facts: args.context.facts })
 						args.actions.createArticle(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -137,8 +137,8 @@ export function createContentIntentDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.insertIntent(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			}
@@ -258,8 +258,8 @@ export function createContentPublicationDomain(io: {
 						args.actions.publishContent(args, { facts: args.context.facts })
 						args.actions.attachContent(args, { facts: args.context.facts })
 						args.actions.publishSource(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -268,8 +268,8 @@ export function createContentPublicationDomain(io: {
 					enq(() => {
 						args.actions.publishContent(args, { facts: args.context.facts })
 						args.actions.attachContent(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -278,8 +278,8 @@ export function createContentPublicationDomain(io: {
 					enq(() => {
 						args.actions.publishContent(args, { facts: args.context.facts })
 						args.actions.publishSource(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			},
@@ -287,8 +287,8 @@ export function createContentPublicationDomain(io: {
 				entry: (args, enq) => {
 					enq(() => {
 						args.actions.publishContent(args, { facts: args.context.facts })
-						args.self.send({ type: 'STAGED' })
 					})
+					enq.sendTo(args.self, { type: 'STAGED' })
 				},
 				on: { STAGED: { target: 'done' } }
 			}

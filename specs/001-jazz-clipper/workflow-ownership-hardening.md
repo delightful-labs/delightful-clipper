@@ -1,6 +1,11 @@
 # Workflow ownership hardening specification
 
-**Status:** Proposed implementation specification. **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`. This document can merge independently; authentication changes require PR #20 or its equivalent before implementation.
+**Status:** Change sets A–G are implemented and qualified for Clipper. Finance adoption retains its separate actual-adapter gate; hosted-provider runtime/release qualification remains separate. See the [PR checkpoint and qualification record](../../docs/reviews/workflow-hardening-progress.md). **Source baseline:** PR #20, `b33a22d426cfc40d71d265fc824ad4b4950e2fdc`; implementation starts from its merged equivalent.
+
+The workflow branch incorporates merged PR34 at `e0856c6`. Its
+[integration and XState review](../../docs/reviews/pr34-workflow-integration.md)
+records preserved sign-in evidence, explicit shutdown receipts and terminal read
+outcomes. Those integration corrections are preserved through E–G.
 
 Move the remaining authentication and runtime lifecycle decisions into their owning charts. A reader must be able to identify admission, replacement, operation order, completion, failure and cancellation from the statecharts and their typed protocols. Preserve established product and persistence semantics while making resource ownership explicit and adding recoverable outcomes for stalled operations.
 
@@ -141,6 +146,12 @@ Incomplete notes and drafts are excluded from this implemented-workflow audit an
 
 ## A Shared persistence composition
 
+Implementation: the generic transaction bridge and owned-operation supervisor
+are committed in DLF as `9b3f094`; all ten Clipper caller sites use the compatible
+alpha.60 artifact. See the [implementation and qualification record](../../docs/reviews/workflow-hardening-progress.md#a-consumer-migration-and-qualification)
+for the current ownership diagram, source provenance and consumer evidence.
+The review findings below retain their original source baseline.
+
 **Files and owners:** DLF `machines/workspaces/creation-transaction.ts`, transaction custody and new domain-neutral lifecycle exports; Clipper `machines/storage/domain-transaction.ts`, `domain-model.ts`, `save.ts`, `save-article.ts`, `organize.ts`, image queue, reader experience and sample-data machine.
 
 **Prerequisites:** Agree typed spawn/result/interruption contracts and the compatible package path. Retain existing workspace/form APIs.
@@ -182,6 +193,16 @@ DLF-2: Qualify shared child lifecycles with independently modeled domain-free co
 
 ## B Shared account transport
 
+Implementation checkpoint: shared DLF request/channel/effect-drain contracts and
+Clipper's production scoped account owner, native lock custody and shutdown
+ordering are implemented, including broker migration and transferred-port custody.
+[The account protocol](../../docs/reviews/scoped-account-transport.md) and
+[broker protocol/comparison](../../docs/reviews/scoped-broker-transport.md) describe
+actual root invocation boundaries, deadline policies and qualification. SHARE-3
+and REC-3 are covered for Clipper. The pinned comparison and Clipper evidence for
+DLF-3 are complete; actual-adapter qualification remains required before Finance
+adoption. No Finance adoption is included in this change set.
+
 **Files and owners:** DLF Jazz account-store/worker-host integration; Clipper `runtime/worker/account-store.ts`, `storage-channel.ts`, `broker-channel.ts` and narrow Window compatibility adapters.
 
 **Prerequisites:** A ownership contract; pin Finance and Clipper revisions before extraction. Design the binding/host-closure handshake with C.
@@ -217,6 +238,13 @@ REC-3: Fault-inject dropped and late storage WRITE replies. Prove no second tran
 DLF-3: Before adopting shared account runtime in another app, pin and review both consumer revisions. Prove request correlation/bounds, queued lock cancellation, issued-write retention, late reply/port cleanup, host closure and A → B → A stale-generation refusal against each consumer's actual adapter. Preserve existing storage namespaces and identities.
 
 ## C Account binding and realm lifecycle
+
+Implementation checkpoint: opaque native observations and chart-owned candidate
+adoption/reuse/retirement, scoped host attachments, acknowledged Window surface
+cleanup and retained overdue realm closure are implemented. See
+[the ownership protocol and qualification](../../docs/reviews/account-binding-lifecycle.md).
+HOST/BIND and the host/acquisition/session-close portion of REC-6 are covered;
+D retains sign-out recovery and E retains its search/viewport failure requirements.
 
 **Files and owners:** DLF session acquisition/startup/readiness contracts; Clipper `backend/jazz/account.ts`, `machines/runtime/application-readiness.ts`, `runtime/worker/host-machine.ts`, `application.worker.ts`, `client.ts`, `views.ts`, recovery owner and tag attachment.
 
@@ -300,6 +328,12 @@ BIND-4: Real native account following, restoration, sign-out and offline restart
 
 ## D Authentication requests and sign out
 
+Implementation checkpoint: request-scoped server ownership, response transfer and
+disconnect cleanup, bounded OAuth header/body reads with uncertain-completion
+handling, and DLF ordered sign-out with native identity reconciliation are
+implemented. AUTH-1–5, REC-7 and D's portion of REC-6 are covered, including C's
+composed shutdown ordering. See [the ownership and qualification record](../../docs/reviews/auth-request-lifecycle.md).
+
 **Files and owners:** Clipper `server/auth/handler.ts`, `completion-handler.ts`, `completion.ts`, `machines/runtime/atproto.ts`, `sign-out.ts`; DLF provider-injected ordered sign-out workflow, with C application-readiness integration.
 
 **Prerequisites:** PR #20 or equivalent for auth-specific code; C drain/observation contract for logout. The request-scoped server chart can be prepared independently.
@@ -381,6 +415,13 @@ Use the shared deadline/outcome contract. An open reader or standing search subs
 
 Reader attachment admission, last-position acknowledgment, fullscreen exit and write-drain behavior are specified with their host owner in C. This change set implements the surface/search side of that same protocol rather than introducing another binding authority.
 
+Implementation checkpoint: scoped viewport startup/settlement, monotonic finite
+reply deadlines, retained final-position/write custody and admitted-search drain
+are implemented. The library joins actual native corpus settlement; unsupported
+search has no drain obligation. Native browser cases cover silent index/query
+workers, transport/post failures and account replacement during overdue detach.
+REC-4/5 are covered. See [reader/search ownership and qualification](../../docs/reviews/reader-search-lifetimes.md).
+
 ### Acceptance criteria
 
 REC-4: Suppress viewport open/detach replies, fail the port and replace the account during detach. Prove final-position uncertainty is exposed, stale surfaces cannot attach and clean shutdown is not acknowledged prematurely.
@@ -410,10 +451,10 @@ Invoke an extraction child directly from the clip chart's existing extraction st
 ```mermaid
 flowchart LR
     Admit[Admit extraction] -->|Not cancelled| Waiting[Own worker and await result]
-    Admit -->|Already cancelled| Cancelled[Cancelled]
-    Waiting -->|Valid result| Success[Succeeded]
-    Waiting -->|Worker error or malformed reply| Failed[Failed]
-    Waiting -->|Cancel or shutdown| Cancelled
+    Admit -->|Already cancelled| Cleanup[Remove listeners and terminate acquired Worker]
+    Waiting -->|Validated reply, failure, cancel or shutdown| Cleanup
+    Cleanup -->|Cleanup returned| Settled[Selected typed outcome]
+    Cleanup -->|Cleanup threw| Blocked[Retain ownership; no terminal acknowledgement]
 ```
 
 The waiting state's resource adapter owns worker creation, postMessage, native callbacks, abort listeners and termination. Native resource cleanup occurs before terminal acknowledgment. Failure to construct a worker must not imply a resource was acquired.
@@ -428,13 +469,22 @@ The waiting state's resource adapter owns worker creation, postMessage, native c
 
 EXT-1: Meaningful generated schedules cover result/error/abort ordering, pre-abort, duplicate replies, malformed replies, construction failure, post failure and parent shutdown.
 
-EXT-2: The oracle proves at most one outcome, one termination per acquired worker, no post after pre-abort, and no save after failed/cancelled extraction.
+EXT-2: The oracle proves at most one outcome, one termination per acquired worker, no post after pre-abort, no unchecked extracted content after failure, and no save admission after independent cancellation/shutdown. Extraction failure or deadline expiry retains the explicitly required URL-only fallback after cleanup; cancellation does not undo an already-issued save.
 
 EXT-3: The rebuilt packaged extension passes the complete existing capture suite. Reproduce and resolve or separately explain PR #20's toolbar/source-message regression; do not weaken assertions or call the refactor release-qualified while it remains open.
 
 SHARE-4: Run both image and extension worker jobs through the shared child with real browser workers, plus injected construction/post/result/error/abort races. Prove cleanup before terminal acknowledgment, unchanged parent deadlines/fallbacks and no worker or listener leaks.
 
 REC-8: Preserve the existing bounded extraction, authorization, image, capture and parser behavior. Test post-timeout cleanup and account/shutdown races rather than asserting timer configuration text.
+
+Implementation checkpoint: both consumers invoke the typed Clipper-local job child.
+Native resource handles stay in its adapter; cleanup precedes terminal output,
+and failed cleanup blocks parent settlement. Parent-owned 15/20-second deadlines
+include exact-boundary monotonic checks, without a competing child timer. The
+extraction promise wrapper is removed. EXT-1–3, SHARE-4 and REC-8 are covered by
+generated resource-ledger campaigns, parent regressions, both real native
+Workers and the unchanged packaged-extension/offline suites. See
+[browser worker job ownership](../../docs/reviews/browser-worker-jobs.md).
 
 ## G V6 contracts and calculation cleanup
 
@@ -540,6 +590,17 @@ V6-7: OAuth feedback derives from its active state contract, uses existing local
 SHARE-5: Preserve decode behavior for identity/gzip/Brotli/deflate, unsupported encoding and failed/oversized decoding. Preserve tag/property history selection. Verify behavior rather than machine-source text or line-count reduction.
 
 SHARE-6: Review the resulting parent charts and helpers together. Domain decisions remain visible, v6 schemas retain concrete input/output/command types, source injection works, and no helper duplicates DLF settlement ownership or moves domain work onto the UI thread.
+
+Implementation checkpoint: V6-1–7 and SHARE-5/6 are covered. Network abort
+resources are admitted by an invoked native owner; self-only coordination and
+all common-domain staging acknowledgements use private delivery after effects.
+Typed state-entry/guaranteed-context contracts preserve original write custody.
+The library/readiness/sync calculations, decoding and history reuse retain branch
+and effect order. Rejected-delivery diagnostics are sanitized and required
+recipients are tested separately from benign late deliveries. DLF source
+`9c13e3f` narrows the public child command without changing runtime bytes; both
+Clipper consumers use the qualified artifact. See
+[v6 ownership and qualification](../../docs/reviews/v6-contract-cleanup.md).
 
 ## Composed qualification and completion
 

@@ -1,6 +1,14 @@
+import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import { identityLogic } from '../identity.js'
 import type { EventPayload } from '../events.js'
-import { types, setup, createAsyncLogic, matchesState, type Snapshot } from 'xstate'
+import {
+	types,
+	setup,
+	createAsyncLogic,
+	matchesState,
+	type Snapshot,
+	type StateValue
+} from 'xstate'
 
 import type { WorkspaceCreationResult } from 'delightful-local-first/workspace/creation/contracts'
 import type { TagOperation } from '../../capture/tags.js'
@@ -39,23 +47,21 @@ export function createOrganizationMachine(
 	const tagHistory = createAsyncLogic({
 		run: ({ input }: { input: OrganizationRequest }) => observeTags(input)
 	})
+	const operation = createOwnedOperation<
+		Parameters<OrganizationStage>[1],
+		OrganizationStageResult,
+		{ type: 'SHUTDOWN' }
+	>()
+	type Context = {
+		request: OrganizationRequest | undefined
+		operations: OrganizationHistory[]
+		operationId: string
+		result: SaveResult | undefined
+	}
 	const model = setup({
 		schemas: {
-			context: types<{
-				request: OrganizationRequest | undefined
-				operations: OrganizationHistory[]
-				operationId: string
-				result: SaveResult | undefined
-				ownedStage:
-					| import('xstate').ActorInstance<
-							import('xstate').Snapshot<OrganizationStageResult>,
-							{ type: 'SHUTDOWN' | 'CANCEL' }
-					  >
-					| undefined
-			}>(),
+			context: types<Context>(),
 			events: {
-				STAGE_DONE: types<{ actorId: string; output: OrganizationStageResult }>(),
-				STAGE_ERROR: types<{ actorId: string; error: unknown }>(),
 				SHUTDOWN: types<EventPayload<{ type: 'SHUTDOWN' }, 'SHUTDOWN'>>()
 			},
 			input: types<OrganizationRequest>(),
@@ -64,26 +70,42 @@ export function createOrganizationMachine(
 			children: {
 				identity: types<import('xstate').ActorRefFrom<typeof identityLogic>>(),
 				history: types<import('xstate').ActorRefFrom<typeof history>>(),
-				tagHistory: types<import('xstate').ActorRefFrom<typeof tagHistory>>()
+				tagHistory: types<import('xstate').ActorRefFrom<typeof tagHistory>>(),
+				stage: types<import('xstate').ActorRefFrom<typeof operation>>()
 			}
 		},
-		actors: { history, tagHistory, identity: identityLogic },
+		actors: { history, tagHistory, identity: identityLogic, operation },
 		guards: {
-			tagRequest: ({
-				context
-			}: {
-				context: {
-					request: OrganizationRequest | undefined
-					operations: OrganizationHistory[]
-					operationId: string
-					result: SaveResult | undefined
-				}
-			}) => context.request?.field === 'tag',
+			tagRequest: ({ context }) => context.request?.field === 'tag',
 			stale: () => !isCurrent(),
 			stopping: ({ value }: { value: import('xstate').StateValue }) =>
 				matchesState({ working: { control: 'stopping' } }, value)
 		}
 	})
+
+	type HistoryArgs = {
+		value: StateValue
+		guards: { stopping: (args: { value: StateValue }) => boolean; stale: () => boolean }
+	}
+	const historyTransitions = {
+		input: ({ context }: { context: Context }) => required(context.request),
+		onDone: (
+			args: HistoryArgs & { event: { output: OrganizationHistory[] } }
+		):
+			| { target: '#organization-save.interrupted' }
+			| { target: 'writing'; context: { operations: OrganizationHistory[] } } => {
+			if (args.guards.stopping(args) || args.guards.stale())
+				return { target: '#organization-save.interrupted' }
+			return { target: 'writing', context: { operations: args.event.output } }
+		},
+		onError: (
+			args: HistoryArgs
+		): { target: '#organization-save.interrupted' | '#organization-save.failed' } => {
+			if (args.guards.stopping(args) || args.guards.stale())
+				return { target: '#organization-save.interrupted' }
+			return { target: '#organization-save.failed' }
+		}
+	}
 
 	return model.createMachine({
 		id: 'organization-save',
@@ -92,8 +114,7 @@ export function createOrganizationMachine(
 			request: { ...input },
 			operations: [],
 			operationId: '',
-			result: undefined,
-			ownedStage: undefined
+			result: undefined
 		}),
 		output: ({ context }) => required(context.result),
 		states: {
@@ -138,142 +159,30 @@ export function createOrganizationMachine(
 									return { target: 'observingProperty' }
 								}
 							},
-							observingTags: {
-								invoke: {
-									src: 'tagHistory',
-									input: ({
-										context
-									}: {
-										context: {
-											request: OrganizationRequest | undefined
-											operations: OrganizationHistory[]
-											operationId: string
-											result: SaveResult | undefined
-										}
-									}) => required(context.request),
-									onDone: (args) => {
-										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
-											return { target: '#organization-save.interrupted' }
-										}
-										if (args.guards.stale()) {
-											return { target: '#organization-save.interrupted' }
-										}
-										return { target: 'writing', context: { operations: args.event.output } }
-									},
-									onError: (args) => {
-										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
-											return { target: '#organization-save.interrupted' }
-										}
-										if (args.guards.stale()) {
-											return { target: '#organization-save.interrupted' }
-										}
-										return { target: '#organization-save.failed' }
-									}
-								}
-							},
-							observingProperty: {
-								invoke: {
-									src: 'history',
-									input: ({
-										context
-									}: {
-										context: {
-											request: OrganizationRequest | undefined
-											operations: OrganizationHistory[]
-											operationId: string
-											result: SaveResult | undefined
-										}
-									}) => required(context.request),
-									onDone: (args) => {
-										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
-											return { target: '#organization-save.interrupted' }
-										}
-										if (args.guards.stale()) {
-											return { target: '#organization-save.interrupted' }
-										}
-										return { target: 'writing', context: { operations: args.event.output } }
-									},
-									onError: (args) => {
-										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
-											return { target: '#organization-save.interrupted' }
-										}
-										if (args.guards.stale()) {
-											return { target: '#organization-save.interrupted' }
-										}
-										return { target: '#organization-save.failed' }
-									}
-								}
-							},
+							observingTags: { invoke: { src: 'tagHistory', ...historyTransitions } },
+							observingProperty: { invoke: { src: 'history', ...historyTransitions } },
 							writing: {
-								initial: 'active',
-								states: {
-									active: {
-										on: {
-											SHUTDOWN: (args, enq) => {
-												enq.sendTo(args.context.ownedStage, { type: 'SHUTDOWN' })
-												return { target: 'stopping' }
-											}
-										}
-									},
-									stopping: {}
-								},
-								entry: (args, enq) => {
-									const ref = stage(
-										enq.spawn,
-										(({
-											context
-										}: {
-											context: {
-												request: OrganizationRequest | undefined
-												operations: OrganizationHistory[]
-												operationId: string
-												result: SaveResult | undefined
-											}
-										}) => ({
+								invoke: {
+									id: 'stage',
+									src: 'operation',
+									input: ({ context }) => ({
+										operationId: context.operationId,
+										spawn: stage,
+										input: {
 											attempt: {
 												operationId: context.operationId,
 												workspaceId: context.operationId,
 												membershipId: context.operationId,
 												draft: { ...required(context.request), operations: context.operations }
 											}
-										}))(args)
-									)
-									enq.subscribeTo(ref, {
-										done: (
-											output
-										):
-											| ({ type: 'STAGE_DONE' } & {
-													actorId: string
-													output: OrganizationStageResult
-											  })
-											| ({ type: 'STAGE_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'STAGE_DONE',
-											actorId: ref.id,
-											output
-										}),
-										error: (
-											error
-										):
-											| ({ type: 'STAGE_DONE' } & {
-													actorId: string
-													output: OrganizationStageResult
-											  })
-											| ({ type: 'STAGE_ERROR' } & { actorId: string; error: unknown }) => ({
-											type: 'STAGE_ERROR',
-											actorId: ref.id,
-											error
-										})
-									})
-									return { context: { ownedStage: ref } }
-								},
-								exit: ({ context }, enq) => {
-									enq.stop(context.ownedStage)
-									return { context: { ownedStage: undefined } }
-								},
-								on: {
-									STAGE_DONE: (args) => {
-										const { event } = args
-										if (!event.output || event.output.settlement.kind === 'unresolved') {
+										}
+									}),
+									onDone: (args) => {
+										const operation = args.event.output
+										if (operation.kind === 'failed') return { target: '#organization-save.unknown' }
+										const output = operation.output
+
+										if (!output || output.settlement.kind === 'unresolved') {
 											return { target: '#organization-save.unknown' }
 										}
 										if (matchesState({ working: { control: 'stopping' } }, args.value)) {
@@ -282,7 +191,7 @@ export function createOrganizationMachine(
 										if (args.guards.stale()) {
 											return { target: '#organization-save.interrupted' }
 										}
-										if (event.output?.settlement.kind === 'locallyPersisted') {
+										if (output?.settlement.kind === 'locallyPersisted') {
 											return {
 												target: '#organization-save.saved',
 												context: {
@@ -290,8 +199,8 @@ export function createOrganizationMachine(
 														kind: 'saved',
 														operationId: args.context.operationId,
 														receipts:
-															event.output?.settlement.kind === 'locallyPersisted'
-																? [event.output.settlement.workspace]
+															output?.settlement.kind === 'locallyPersisted'
+																? [output.settlement.workspace]
 																: []
 													}
 												}
@@ -299,7 +208,12 @@ export function createOrganizationMachine(
 										}
 										return { target: '#organization-save.failed' }
 									},
-									STAGE_ERROR: { target: '#organization-save.unknown' }
+									onError: { target: '#organization-save.unknown' }
+								},
+								on: {
+									SHUTDOWN: (_, enq) => {
+										enq.sendTo('stage', { type: 'INTERRUPT', command: { type: 'SHUTDOWN' } })
+									}
 								}
 							}
 						}

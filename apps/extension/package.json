@@ -9,7 +9,7 @@
 	},
 	"dependencies": {
 		"@mozilla/readability": "0.6.0",
-		"delightful-local-first": "file:../../vendor/delightful-local-first-dbc452e-xstate-v6-jazz-alpha60.tgz",
+		"delightful-local-first": "file:../../vendor/delightful-local-first-auth-lifecycle-9c13e3f-alpha60.tgz",
 		"delightful-ui": "file:../../vendor/delightful-ui-7a7f61b-xstate-v6.tgz",
 		"dompurify": "3.4.17",
 		"i18next": "26.7.1",

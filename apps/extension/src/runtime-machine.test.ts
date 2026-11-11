@@ -1,3 +1,5 @@
+import { promiseWorkerJob } from '../../web/src/lib/machines/browser-worker-job.test-support.js'
+import { extractionReplySchema } from './protocol.js'
 import { expect, it, vi } from 'vitest'
 import { createActor, waitFor } from 'xstate'
 import type { Capture } from './protocol.js'
@@ -62,7 +64,12 @@ function fixture(
 					capture: { ...capture, id: requested },
 					source: { url: capture.url, base: capture.url, html: '<html>article</html>' }
 				}),
-				extract: async () => content,
+				extraction: (source) =>
+					promiseWorkerJob(
+						source,
+						(reply) => extractionReplySchema.parse(reply),
+						async () => ({ content })
+					),
 				issue,
 				remove: async () => {}
 			}),

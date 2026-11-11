@@ -1,4 +1,3 @@
-import type { EventPayload } from '../../web/src/lib/machines/events.js'
 import { types, setup, createAsyncLogic } from 'xstate'
 
 import { captureFor, captureSchema, referenceMessageSchema, trustedSender } from './protocol.js'
@@ -20,7 +19,7 @@ export function createReferenceMachine(cap: {
 	const model = setup({
 		schemas: {
 			context: types<Context>(),
-			events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+			events: {},
 			input: types<Input>(),
 			output: types<{ accepted: boolean }>(),
 			tags: types<string>(),

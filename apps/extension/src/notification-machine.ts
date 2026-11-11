@@ -1,4 +1,3 @@
-import type { EventPayload } from '../../web/src/lib/machines/events.js'
 import { types, setup, createAsyncLogic } from 'xstate'
 
 import {
@@ -43,7 +42,7 @@ export function createNotificationMachine(cap: {
 	return setup({
 		schemas: {
 			context: types<Context>(),
-			events: { UNUSED: types<EventPayload<{ type: 'UNUSED' }, 'UNUSED'>>() },
+			events: {},
 			input: types<Input>(),
 			output: types<{ accepted: boolean }>(),
 			tags: types<string>(),

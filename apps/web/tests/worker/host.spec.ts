@@ -1,6 +1,24 @@
 import { z } from 'zod'
 import { ACCOUNT_STORAGE_PREFIX } from '../../src/lib/runtime/worker/storage-channel.js'
 import { test, expect } from '@playwright/test'
+
+test('a forcibly stopped host reports failure without clean closure or releasing native custody', async ({
+	page
+}) => {
+	await page.goto('/')
+	await expect(page.getByRole('region', { name: 'Saved articles', exact: true })).toBeVisible()
+	const result = await page.evaluate(async () => {
+		const path = '/tests/worker/host-stop-driver.ts'
+		return (await import(/* @vite-ignore */ path)).qualifyForcedHostStop()
+	})
+	expect(result).toEqual({
+		outcome: 'failed-after-stop',
+		failures: 1,
+		releases: 0,
+		closure: []
+	})
+})
+
 test('dedicated worker reuses the existing identity and persistent library without a Window shim', async ({
 	page
 }) => {

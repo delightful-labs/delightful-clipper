@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { inspectMachines } from '../diagnostics/inspect.js'
+	import { machineDiagnostics } from '../diagnostics/inspect.js'
 	import { onMount } from 'svelte'
 	import { dev } from '$app/env'
 	import { createActor, type SnapshotFrom } from 'xstate'
@@ -31,7 +31,7 @@
 					: Promise.resolve(undefined),
 			observe: observeShell
 		})
-		const actor = createActor(machine, { inspect: inspectMachines })
+		const actor = createActor(machine, { ...machineDiagnostics })
 		const subscription = actor.subscribe((next) => {
 			snapshot = next
 			if (selectShellView(next).admitted) onAdmission()

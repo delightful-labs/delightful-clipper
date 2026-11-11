@@ -1,3 +1,5 @@
+import { READER_REPLY_TIMEOUT_MS, monotonicNow } from '../../contracts/resource-waits.js'
+import { createOwnedOperation } from 'delightful-local-first/lifecycle/operation/workflow'
 import { identityLogic } from '../identity.js'
 import type { EventPayload } from '../events.js'
 import {
@@ -9,7 +11,7 @@ import {
 	type SnapshotFrom
 } from 'xstate'
 
-import type { ReaderCapability, ReaderStageRef, ReaderStageResult } from '../../contracts/reader.js'
+import type { ReaderCapability, ReaderStageResult } from '../../contracts/reader.js'
 import type { ReaderChange, ReaderOperation, ReadingPosition } from '../../reader/schema.js'
 import {
 	canQueueReaderChange,
@@ -28,12 +30,16 @@ import type { SyncReport } from '../../contracts/storage.js'
 import { t } from '../../localization/index.js'
 import { stateFeedback } from '../../contracts/feedback.js'
 
-type Input = { capability: ReaderCapability | undefined }
+type Input = {
+	capability: ReaderCapability | undefined
+	viewportReplyTimeoutMs?: number
+	now?: () => number
+}
 type Attachment = { documentId: string; surface: ReaderSurface }
 type OwnedAttachment = Attachment & { id: string }
 export type ReaderExperienceEvent =
 	| { type: 'MEASURE'; position: ReadingPosition; attachmentId: string }
-	| { type: 'VIEWPORT_FAILED'; attachmentId: string }
+	| { type: 'VIEWPORT_FAILED'; attachmentId: string; reason?: 'failed' | 'overdue' }
 	| { type: 'CHANGE'; change: ReaderChange }
 	| { type: 'ROWS'; rows: ReaderOperation[] }
 	| ({ type: 'ATTACH' } & ViewportElements & { documentId: string })
@@ -46,26 +52,21 @@ export type ReaderExperienceEvent =
 				| 'SHOW_CONTROLS'
 				| 'SHUTDOWN'
 				| 'OBSERVATION_FAILED'
-				| 'REFRESH_SYNC'
 				| 'FULLSCREEN_CHANGED'
 				| 'FULLSCREEN_OBSERVED'
 	  }
 	| SyncReport
-type ReaderLifecycle =
-	| { type: 'READER_WRITE_DONE'; actorId: string; output: ReaderStageResult }
-	| { type: 'READER_WRITE_ERROR'; actorId: string; error: unknown }
-type Event = ReaderExperienceEvent | ReaderLifecycle
 type Context = Input & {
 	rows: ReaderOperation[]
 	queue: ReaderChange[]
 	drafts: ReaderChange[]
-	write: ReaderStageRef | undefined
 	operationId: string
 	issued: ReaderChange | undefined
 	attachment: OwnedAttachment | undefined
 	pendingAttachment: Attachment | undefined
 	progress: Record<string, number>
 	display: FullscreenSurface | undefined
+	retiringSurfaces: ReaderSurface[]
 	sync: Record<string, 'pending' | 'accepted' | 'rejected'>
 }
 // Keep attachment admission synchronous so native fullscreen retains user activation.
@@ -94,6 +95,27 @@ const fullscreenObservation = createCallbackLogic<ReaderExperienceEvent, Fullscr
 	}
 )
 
+function retirePendingAttachment(context: Context) {
+	return {
+		pendingAttachment: undefined,
+		retiringSurfaces: context.pendingAttachment
+			? [...context.retiringSurfaces, context.pendingAttachment.surface]
+			: context.retiringSurfaces
+	}
+}
+function retireAttachments(context: Context) {
+	return {
+		attachment: undefined,
+		pendingAttachment: undefined,
+		retiringSurfaces: [
+			...new Set([
+				...context.retiringSurfaces,
+				...(context.attachment ? [context.attachment.surface] : []),
+				...(context.pendingAttachment ? [context.pendingAttachment.surface] : [])
+			])
+		]
+	}
+}
 function required<T>(value: T | undefined): T {
 	if (value === undefined) throw new Error('Reading resource unavailable')
 	return value
@@ -112,6 +134,8 @@ function remainingDrafts(drafts: ReaderChange[], rows: ReaderOperation[]) {
 			) !== JSON.stringify(change.value)
 	)
 }
+type ReaderWriteInput = { change: ReaderChange; operationId: string; observed: ReaderOperation[] }
+const writeOperation = createOwnedOperation<ReaderWriteInput, ReaderStageResult>()
 const model = setup({
 	schemas: {
 		meta: types<{
@@ -123,8 +147,6 @@ const model = setup({
 		context: types<Context>(),
 		events: {
 			ATTACHMENT_IDENTIFIED: types<{ id: string }>(),
-			READER_WRITE_DONE: types<{ actorId: string; output: ReaderStageResult }>(),
-			READER_WRITE_ERROR: types<{ actorId: string; error: unknown }>(),
 			SYNC: types<EventPayload<ReaderExperienceEvent, 'SYNC'>>(),
 			MEASURE: types<EventPayload<ReaderExperienceEvent, 'MEASURE'>>(),
 			VIEWPORT_FAILED: types<EventPayload<ReaderExperienceEvent, 'VIEWPORT_FAILED'>>(),
@@ -138,10 +160,10 @@ const model = setup({
 			FOCUS: types<EventPayload<ReaderExperienceEvent, 'FOCUS'>>(),
 			SHOW_CONTROLS: types<EventPayload<ReaderExperienceEvent, 'SHOW_CONTROLS'>>(),
 			OBSERVATION_FAILED: types<EventPayload<ReaderExperienceEvent, 'OBSERVATION_FAILED'>>(),
-			REFRESH_SYNC: types<EventPayload<ReaderExperienceEvent, 'REFRESH_SYNC'>>(),
 			FULLSCREEN_CHANGED: types<EventPayload<ReaderExperienceEvent, 'FULLSCREEN_CHANGED'>>(),
 			FULLSCREEN_OBSERVED: types<EventPayload<ReaderExperienceEvent, 'FULLSCREEN_OBSERVED'>>()
 		},
+		internalEvents: { REFRESH_SYNC: types() },
 		input: types<Input>(),
 		tags: types<string>(),
 		children: {
@@ -152,8 +174,124 @@ const model = setup({
 			receipts: types<import('xstate').ActorRefFrom<typeof syncOwnerMachine>>(),
 			fullscreenEntry: types<import('xstate').ActorRefFrom<typeof fullscreenEntry>>(),
 			fullscreenExit: types<import('xstate').ActorRefFrom<typeof fullscreenExit>>(),
-			fullscreenObservation: types<import('xstate').ActorRefFrom<typeof fullscreenObservation>>()
+			fullscreenObservation: types<import('xstate').ActorRefFrom<typeof fullscreenObservation>>(),
+			writeOperation: types<import('xstate').ActorRefFrom<typeof writeOperation>>()
 		}
+	},
+	states: {
+		admitting: { id: 'reader-experience.admitting' },
+		active: {
+			id: 'reader-experience.active',
+			states: {
+				control: {
+					id: 'reader-experience.active.control',
+					states: {
+						accepting: { id: 'reader-experience.active.control.accepting' },
+						closing: { id: 'reader-experience.active.control.closing' }
+					}
+				},
+				data: {
+					id: 'reader-experience.active.data',
+					states: {
+						observing: {
+							id: 'reader-experience.active.data.observing',
+							states: {
+								loading: { id: 'reader-experience.active.data.observing.loading' },
+								ready: { id: 'reader-experience.active.data.observing.ready' }
+							}
+						},
+						failed: { id: 'reader-experience.active.data.failed' },
+						closed: { id: 'reader-experience.active.data.closed' }
+					}
+				},
+				focus: {
+					id: 'reader-experience.active.focus',
+					states: {
+						normal: { id: 'reader-experience.active.focus.normal' },
+						focused: {
+							id: 'reader-experience.active.focus.focused',
+							states: {
+								admitting: { id: 'reader-experience.active.focus.focused.admitting' },
+								native: {
+									id: 'reader-experience.active.focus.focused.native',
+									states: {
+										registering: {
+											id: 'reader-experience.active.focus.focused.native.registering'
+										},
+										opening: {
+											id: 'reader-experience.active.focus.focused.native.opening',
+											states: {
+												requested: {
+													id: 'reader-experience.active.focus.focused.native.opening.requested'
+												},
+												cancelling: {
+													id: 'reader-experience.active.focus.focused.native.opening.cancelling'
+												}
+											}
+										},
+										fullscreen: { id: 'reader-experience.active.focus.focused.native.fullscreen' },
+										exiting: {
+											id: 'reader-experience.active.focus.focused.native.exiting',
+											states: {
+												checking: {
+													id: 'reader-experience.active.focus.focused.native.exiting.checking'
+												},
+												requesting: {
+													id: 'reader-experience.active.focus.focused.native.exiting.requesting'
+												}
+											}
+										}
+									}
+								},
+								fallback: { id: 'reader-fallback' }
+							}
+						}
+					}
+				},
+				viewport: {
+					id: 'reader-experience.active.viewport',
+					states: {
+						detached: { id: 'reader-experience.active.viewport.detached' },
+						identifying: { id: 'reader-experience.active.viewport.identifying' },
+						waiting: { id: 'reader-experience.active.viewport.waiting' },
+						owning: {
+							id: 'reader-experience.active.viewport.owning',
+							states: {
+								active: { id: 'reader-experience.active.viewport.owning.active' },
+								overdue: { id: 'reader-experience.active.viewport.owning.overdue' },
+								unavailable: { id: 'reader-experience.active.viewport.owning.unavailable' },
+								closing: { id: 'reader-experience.active.viewport.owning.closing' }
+							}
+						},
+						failed: { id: 'reader-experience.active.viewport.failed' }
+					}
+				},
+				synchronization: {
+					id: 'reader-experience.active.synchronization',
+					states: {
+						routing: { id: 'reader-experience.active.synchronization.routing' },
+						healthy: { id: 'reader-experience.active.synchronization.healthy' },
+						failed: { id: 'reader-experience.active.synchronization.failed' }
+					}
+				},
+				writer: {
+					id: 'reader-experience.active.writer',
+					states: {
+						idle: { id: 'reader-experience.active.writer.idle' },
+						debouncing: { id: 'reader-experience.active.writer.debouncing' },
+						routing: { id: 'reader-experience.active.writer.routing' },
+						identifyingWrite: { id: 'reader-experience.active.writer.identifyingWrite' },
+						writing: {
+							id: 'reader-experience.active.writer.writing',
+							schemas: { input: types<ReaderWriteInput>() }
+						},
+						failed: { id: 'reader-experience.active.writer.failed' },
+						uncertain: { id: 'reader-experience.active.writer.uncertain' }
+					}
+				}
+			}
+		},
+		closed: { id: 'reader-experience.closed' }
 	},
 	actors: {
 		attachmentIdentity,
@@ -163,9 +301,13 @@ const model = setup({
 		receipts: syncOwnerMachine,
 		fullscreenEntry,
 		fullscreenExit,
-		fullscreenObservation
+		fullscreenObservation,
+		writeOperation
 	},
 	guards: {
+		viewportUnavailable: ({ value }: { value: import('xstate').StateValue }) =>
+			matchesState({ active: { viewport: { owning: 'unavailable' } } }, value) ||
+			matchesState({ active: { viewport: { owning: 'overdue' } } }, value),
 		fullscreenSupported: ({ context }: { context: Context }) =>
 			context.display?.supported() === true,
 		fullscreenActive: ({ context }: { context: Context }) => context.display?.active() === true,
@@ -181,9 +323,7 @@ const model = setup({
 			matchesState({ active: { data: { observing: 'ready' } } }, value),
 		validChange: ({ context, event }: { context: Context; event: ReaderExperienceEvent }) =>
 			event.type === 'CHANGE' && canQueueReaderChange(context.queue, event.change),
-		queued: ({ context }: { context: Context }) => context.queue.length > 0,
-		ownCompletion: ({ context, event }: { context: Context; event: Event }) =>
-			'actorId' in event && event.actorId === context.write?.id
+		queued: ({ context }: { context: Context }) => context.queue.length > 0
 	},
 	actions: {
 		updateRows: ({ context, event }: { context: Context; event: ReaderExperienceEvent }) =>
@@ -220,18 +360,19 @@ const model = setup({
 export const readerExperienceMachine = model.createMachine({
 	id: 'reader-experience',
 	initial: 'admitting',
+	on: { ATTACH_SURFACE: ({ event }, enq) => enq(() => event.surface.lifecycle?.released()) },
 	context: ({ input }) => ({
 		...input,
 		rows: [],
 		queue: [],
 		drafts: [],
-		write: undefined,
 		operationId: '',
 		issued: undefined,
 		attachment: undefined,
 		pendingAttachment: undefined,
 		progress: {},
 		display: undefined,
+		retiringSurfaces: [],
 		sync: {}
 	}),
 	states: {
@@ -252,11 +393,34 @@ export const readerExperienceMachine = model.createMachine({
 				input: ({ self }) => ({ reportTo: self }),
 				onError: { target: '#reader-experience.active.synchronization.failed' }
 			},
-			always: (args) => {
+			always: (args, enq) => {
+				const released = args.context.retiringSurfaces.filter(
+					(surface) =>
+						surface !== args.context.attachment?.surface &&
+						surface !== args.context.pendingAttachment?.surface &&
+						surface.fullscreen !== args.context.display
+				)
+				if (
+					released.length &&
+					matchesState({ active: { focus: 'normal' } }, args.value) &&
+					!args.guards.queued(args) &&
+					!matchesState({ active: { writer: 'writing' } }, args.value)
+				) {
+					for (const surface of released) enq(() => surface.lifecycle?.released())
+					return {
+						context: {
+							retiringSurfaces: args.context.retiringSurfaces.filter(
+								(surface) => !released.includes(surface)
+							)
+						}
+					}
+				}
 				if (
 					!(
 						matchesState({ active: { control: 'closing' } }, args.value) &&
 						!args.guards.queued(args) &&
+						!args.context.pendingAttachment &&
+						args.context.retiringSurfaces.length === 0 &&
 						!matchesState({ active: { writer: 'writing' } }, args.value) &&
 						matchesState({ active: { focus: 'normal' } }, args.value) &&
 						matchesState({ active: { viewport: 'detached' } }, args.value)
@@ -470,8 +634,40 @@ export const readerExperienceMachine = model.createMachine({
 				},
 				viewport: {
 					initial: 'detached',
+					on: {
+						ATTACH_SURFACE: (args, enq) => {
+							const { context, event } = args
+							if (
+								context.attachment?.surface === event.surface ||
+								context.pendingAttachment?.surface === event.surface
+							)
+								return
+							if (
+								!args.guards.current(args) ||
+								!matchesState({ active: { control: 'accepting' } }, args.value) ||
+								matchesState({ active: { viewport: 'failed' } }, args.value)
+							) {
+								enq(() => event.surface.lifecycle?.released())
+								return
+							}
+							enq(() => event.surface.lifecycle?.accepted())
+							enq.raise({ type: 'SHOW_CONTROLS' })
+							return {
+								target: '.identifying',
+								reenter: true,
+								context: {
+									...retireAttachments(context),
+									pendingAttachment: { surface: event.surface, documentId: event.documentId }
+								}
+							}
+						}
+					},
 					states: {
 						detached: {
+							always: (args) =>
+								args.context.pendingAttachment && args.guards.accepting(args)
+									? { target: 'identifying' }
+									: undefined,
 							on: {
 								ATTACH: (args) => {
 									if (
@@ -492,15 +688,18 @@ export const readerExperienceMachine = model.createMachine({
 										}
 									}
 								},
-								ATTACH_SURFACE: (args) => {
+								ATTACH_SURFACE: (args, enq) => {
 									if (
 										!(
 											matchesState({ active: { control: 'accepting' } }, args.value) &&
 											args.guards.current(args)
 										)
-									)
+									) {
+										enq(() => args.event.surface.lifecycle?.released())
 										return
+									}
 									const { event } = args
+									enq(() => event.surface.lifecycle?.accepted())
 									return {
 										target: 'identifying',
 										context: {
@@ -527,8 +726,26 @@ export const readerExperienceMachine = model.createMachine({
 										pendingAttachment: undefined
 									}
 								}),
-								DETACH: { target: 'detached', context: { pendingAttachment: undefined } },
-								SHUTDOWN: { target: 'detached', context: { pendingAttachment: undefined } }
+								DETACH: ({ context }) => ({
+									target: 'detached',
+									context: {
+										pendingAttachment: undefined,
+										retiringSurfaces: [
+											...context.retiringSurfaces,
+											required(context.pendingAttachment).surface
+										]
+									}
+								}),
+								SHUTDOWN: ({ context }) => ({
+									target: 'detached',
+									context: {
+										pendingAttachment: undefined,
+										retiringSurfaces: [
+											...context.retiringSurfaces,
+											required(context.pendingAttachment).surface
+										]
+									}
+								})
 							}
 						},
 						waiting: {
@@ -537,11 +754,29 @@ export const readerExperienceMachine = model.createMachine({
 								return { target: 'owning' }
 							},
 							on: {
-								DETACH: () => {
-									return { target: 'detached', context: { attachment: undefined } }
+								DETACH: ({ context }) => {
+									return {
+										target: 'detached',
+										context: {
+											attachment: undefined,
+											retiringSurfaces: [
+												...context.retiringSurfaces,
+												required(context.attachment).surface
+											]
+										}
+									}
 								},
-								SHUTDOWN: () => {
-									return { target: 'detached', context: { attachment: undefined } }
+								SHUTDOWN: ({ context }) => {
+									return {
+										target: 'detached',
+										context: {
+											attachment: undefined,
+											retiringSurfaces: [
+												...context.retiringSurfaces,
+												required(context.attachment).surface
+											]
+										}
+									}
 								}
 							}
 						},
@@ -553,13 +788,20 @@ export const readerExperienceMachine = model.createMachine({
 								input: ({ context }: { context: Context }) => ({
 									...required(context.attachment).surface.viewport,
 									attachmentId: required(context.attachment).id,
+									replyTimeoutMs: context.viewportReplyTimeoutMs ?? READER_REPLY_TIMEOUT_MS,
+									now: context.now ?? monotonicNow,
 									position: projectReaderState(context.rows).positions[
 										required(context.attachment).documentId
 									]
 								}),
-								onError: { target: 'failed' },
+								onError: { target: '.unavailable' },
 								onDone: (args) => {
 									const { event } = args
+									if (event.output.outcome !== 'closed')
+										return {
+											target: args.guards.closing(args) ? 'detached' : 'failed',
+											context: retireAttachments(args.context)
+										}
 									if (
 										args.guards.current(args) &&
 										positionSchema.safeParse(event.output.position).success &&
@@ -582,15 +824,55 @@ export const readerExperienceMachine = model.createMachine({
 													progress,
 													queue: replaceDesired(context.queue, change),
 													drafts: replaceDesired(context.drafts, change),
-													attachment: undefined
+													attachment: undefined,
+													retiringSurfaces: [
+														...context.retiringSurfaces,
+														required(context.attachment).surface
+													]
 												}
 											})(args)
 										}
 									}
-									return { target: 'detached', context: { attachment: undefined } }
+									return {
+										target: 'detached',
+										context: {
+											attachment: undefined,
+											retiringSurfaces: [
+												...args.context.retiringSurfaces,
+												required(args.context.attachment).surface
+											]
+										}
+									}
 								}
 							},
 							on: {
+								ATTACH_SURFACE: (args, enq) => {
+									const { context, event } = args
+									if (
+										context.attachment?.surface === event.surface ||
+										context.pendingAttachment?.surface === event.surface
+									)
+										return {}
+									if (
+										!args.guards.current(args) ||
+										!matchesState({ active: { control: 'accepting' } }, args.value)
+									) {
+										enq(() => event.surface.lifecycle?.released())
+										return {}
+									}
+									enq(() => event.surface.lifecycle?.accepted())
+									enq.raise({ type: 'SHOW_CONTROLS' })
+									enq.sendTo('viewport', { type: 'DETACH' })
+									return {
+										target: args.guards.viewportUnavailable(args) ? '.unavailable' : '.closing',
+										context: {
+											pendingAttachment: { surface: event.surface, documentId: event.documentId },
+											retiringSurfaces: context.pendingAttachment
+												? [...context.retiringSurfaces, context.pendingAttachment.surface]
+												: context.retiringSurfaces
+										}
+									}
+								},
 								REFLOW: (args, enq) => {
 									enq.sendTo('viewport', { type: 'REFLOW' })
 								},
@@ -605,7 +887,7 @@ export const readerExperienceMachine = model.createMachine({
 								},
 								VIEWPORT_FAILED: (args) => {
 									if (!args.guards.currentViewport(args)) return
-									return { target: 'failed' }
+									return { target: args.event.reason === 'overdue' ? '.overdue' : '.unavailable' }
 								}
 							},
 							states: {
@@ -655,17 +937,42 @@ export const readerExperienceMachine = model.createMachine({
 										}
 									}
 								},
-								closing: { on: { DETACH: {}, SHUTDOWN: {} } }
+								overdue: {
+									meta: { name: t('reader.data_unavailable'), variant: 'error', priority: 4 },
+									on: {
+										DETACH: ({ context }) => ({ context: retirePendingAttachment(context) }),
+										SHUTDOWN: ({ context }) => ({ context: retirePendingAttachment(context) })
+									}
+								},
+								unavailable: {
+									meta: { name: t('reader.data_unavailable'), variant: 'error', priority: 4 },
+									on: {
+										DETACH: ({ context }) => ({ context: retirePendingAttachment(context) }),
+										SHUTDOWN: ({ context }) => ({ context: retirePendingAttachment(context) })
+									}
+								},
+								closing: {
+									on: {
+										DETACH: ({ context }) => ({ context: retirePendingAttachment(context) }),
+										SHUTDOWN: ({ context }) => ({ context: retirePendingAttachment(context) })
+									}
+								}
 							}
 						},
 						failed: {
 							meta: { name: t('reader.data_unavailable'), variant: 'error', priority: 4 },
 							on: {
-								DETACH: () => {
-									return { target: 'detached', context: { attachment: undefined } }
+								DETACH: ({ context }) => {
+									return {
+										target: 'detached',
+										context: retireAttachments(context)
+									}
 								},
-								SHUTDOWN: () => {
-									return { target: 'detached', context: { attachment: undefined } }
+								SHUTDOWN: ({ context }) => {
+									return {
+										target: 'detached',
+										context: retireAttachments(context)
+									}
 								}
 							}
 						}
@@ -741,65 +1048,60 @@ export const readerExperienceMachine = model.createMachine({
 							invoke: {
 								id: 'identity',
 								src: 'identity',
-								onDone: ({ event }) => ({
+								onDone: ({ context, event }) => ({
 									target: 'writing',
-									context: { operationId: event.output }
+									input: {
+										change: required(context.queue[0]),
+										operationId: event.output,
+										observed: context.rows
+									},
+									context: {
+										operationId: event.output,
+										issued: required(context.queue[0]),
+										queue: context.queue.slice(1)
+									}
 								})
 							}
 						},
 						writing: {
-							exit: (args, enq) => {
-								enq.stop(required(args.context.write))
-							},
-							entry: (args, enq) => {
-								return {
-									context: (({ context, spawn }) => {
-										const issued = required(context.queue[0]),
-											operationId = context.operationId
+							invoke: {
+								id: 'writeOperation',
+								src: 'writeOperation',
+								input: ({ context, input }) => ({
+									operationId: input.operationId,
+									input,
+									spawn: (spawn, input) =>
+										required(context.capability).spawnWrite(
+											spawn,
+											input.change,
+											input.operationId,
+											input.observed
+										)
+								}),
+								onDone: (args, enq) => {
+									const operation = args.event.output
+									if (operation.kind === 'failed')
+										return { target: 'uncertain', context: { queue: [], drafts: [] } }
+									const output = operation.output
+									if (!output || output.settlement.kind === 'unresolved')
+										return { target: 'uncertain', context: { queue: [], drafts: [] } }
+									if (output.settlement.kind === 'locallyPersisted') {
+										enq.sendTo('receipts', {
+											type: 'WATCH',
+											id: args.context.operationId,
+											receipts: [output.settlement.workspace]
+										})
 										return {
-											issued,
-											operationId,
-											queue: context.queue.slice(1),
-											write: (() => {
-												const ref = required(context.capability).spawnWrite(
-													spawn,
-													issued,
-													operationId,
-													context.rows
-												)
-												enq.subscribeTo(ref, {
-													done: (
-														output
-													):
-														| {
-																type: 'READER_WRITE_DONE'
-																actorId: string
-																output: ReaderStageResult
-														  }
-														| { type: 'READER_WRITE_ERROR'; actorId: string; error: unknown } => ({
-														type: 'READER_WRITE_DONE',
-														actorId: ref.id,
-														output
-													}),
-													error: (
-														error
-													):
-														| {
-																type: 'READER_WRITE_DONE'
-																actorId: string
-																output: ReaderStageResult
-														  }
-														| { type: 'READER_WRITE_ERROR'; actorId: string; error: unknown } => ({
-														type: 'READER_WRITE_ERROR',
-														actorId: ref.id,
-														error
-													})
-												})
-												return ref
-											})()
+											target: 'routing',
+											context: {
+												...args.actions.dropIssuedDraft(args).context,
+												sync: { ...args.context.sync, [args.context.operationId]: 'pending' }
+											}
 										}
-									})({ ...args, spawn: enq.spawn })
-								}
+									}
+									return { target: 'failed', context: args.actions.dropIssuedDraft(args).context }
+								},
+								onError: { target: 'uncertain', context: { queue: [], drafts: [] } }
 							},
 							on: {
 								CHANGE: (args) => {
@@ -814,58 +1116,8 @@ export const readerExperienceMachine = model.createMachine({
 										return
 									return { context: args.actions.enqueue(args).context }
 								},
-								SHUTDOWN: {},
-								READER_WRITE_DONE: (args, enq) => {
-									const { event } = args
-									if (
-										args.guards.ownCompletion(args) &&
-										(!event.output || event.output.settlement.kind === 'unresolved')
-									) {
-										return {
-											target: 'uncertain',
-											context: { queue: [], drafts: [], write: undefined }
-										}
-									}
-									if (
-										args.guards.ownCompletion(args) &&
-										event.output?.settlement.kind === 'locallyPersisted'
-									) {
-										let context = args.context
-										let patch = {}
-										patch = { ...patch, ...args.actions.dropIssuedDraft(args).context }
-										context = { ...args.context, ...patch }
-										enq.sendTo('receipts', {
-											type: 'WATCH',
-											id: context.operationId,
-											receipts:
-												event.output?.settlement.kind === 'locallyPersisted'
-													? [event.output.settlement.workspace]
-													: []
-										})
-										patch = {
-											...patch,
-											sync: {
-												...context.sync,
-												[context.operationId]: 'pending'
-											},
-											write: undefined
-										}
-										context = { ...args.context, ...patch }
-										return { target: 'routing', context: patch }
-									}
-									if (args.guards.ownCompletion(args)) {
-										return {
-											target: 'failed',
-											context: { ...args.actions.dropIssuedDraft(args).context, write: undefined }
-										}
-									}
-								},
-								READER_WRITE_ERROR: (args) => {
-									if (!args.guards.ownCompletion(args)) return
-									return {
-										target: 'uncertain',
-										context: { queue: [], drafts: [], write: undefined }
-									}
+								SHUTDOWN: (_, enq) => {
+									enq.sendTo('writeOperation', { type: 'DRAIN' })
 								}
 							}
 						},
@@ -893,7 +1145,6 @@ export const readerExperienceMachine = model.createMachine({
 						queue: [],
 						drafts: [],
 						attachment: undefined,
-						write: undefined,
 						capability: undefined,
 						issued: undefined,
 						progress: {},

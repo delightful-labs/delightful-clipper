@@ -1,3 +1,4 @@
+import type { ViewportReply } from './surface-viewport.js'
 import { createActor, type ActorRefFrom } from 'xstate'
 import { z } from 'zod'
 import { viewportMachine } from './viewport.js'
@@ -11,15 +12,18 @@ const command = z.discriminatedUnion('type', [
 		attachmentId: z.string().uuid(),
 		position: positionSchema.optional()
 	}),
-	z.object({ type: z.enum(['DETACH', 'REFLOW', 'DISPOSE']) }),
+	z.object({ type: z.enum(['DETACH', 'REFLOW']) }),
+	z.object({ type: z.literal('DISPOSE'), id: z.string().uuid().optional() }),
 	z.object({ type: z.enum(['FULLSCREEN_ENTER', 'FULLSCREEN_EXIT']), id: z.string().uuid() })
 ])
 /** UI resource boundary: the viewport actor reads layout and applies scrolling.
  * It reports measurements; it has no account, database or persistence capability. */
 export function serveReaderSurface(port: MessagePort, elements: ViewportElements) {
 	const surface = nativeReaderSurface(elements)
+	const reportViewport = (message: ViewportReply) => port.postMessage(message)
 	let viewport: ActorRefFrom<typeof viewportMachine> | undefined
 	let released = false
+	let disposeRequest: { id?: string | undefined } | undefined
 	const detach = () => {
 		released = true
 		if (viewport?.getSnapshot().status === 'active') viewport.send({ type: 'DETACH' })
@@ -33,11 +37,16 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 			active: surface.fullscreen.active()
 		})
 	const releaseFullscreen = surface.fullscreen.observe(() => fullscreen())
-	const dispose = () => {
+	let disposed = false
+	const dispose = (id?: string) => {
+		if (disposed) return
+		disposed = true
 		releaseFullscreen()
 		port.onmessage = null
+		if (id) port.postMessage({ type: 'DISPOSED', id })
 		port.close()
 	}
+
 	port.onmessage = ({ data }: MessageEvent<unknown>) => {
 		const decoded = command.safeParse(data)
 		if (!decoded.success) return
@@ -45,7 +54,16 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 		switch (message.type) {
 			case 'VIEWPORT_OPEN': {
 				if (released) {
-					port.postMessage({ type: 'VIEWPORT_CLOSED' })
+					const previous = viewport?.getSnapshot()
+					if (previous && previous.status !== 'done') {
+						reportViewport({ type: 'VIEWPORT_FAILED', attachmentId: message.attachmentId })
+						return
+					}
+					reportViewport({
+						type: 'VIEWPORT_SETTLED',
+						attachmentId: message.attachmentId,
+						outcome: previous && !previous.matches('closed') ? 'failed' : 'closed'
+					})
 					return
 				}
 				if (viewport) return
@@ -54,23 +72,32 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 						...elements,
 						attachmentId: message.attachmentId,
 						position: message.position,
-						report: (event) => port.postMessage(event)
+						report: reportViewport
 					}
 				})
 				viewport = actor
 				actor.subscribe({
-					complete: () =>
-						port.postMessage({
-							type: 'VIEWPORT_CLOSED',
-							position: actor.getSnapshot().output?.position
-						}),
+					complete: () => {
+						const snapshot = actor.getSnapshot()
+						if (snapshot.status === 'done' && snapshot.output)
+							reportViewport({
+								type: 'VIEWPORT_SETTLED',
+								attachmentId: message.attachmentId,
+								outcome: snapshot.matches('closed') ? 'closed' : 'failed',
+								position: snapshot.output.position
+							})
+						else reportViewport({ type: 'VIEWPORT_FAILED', attachmentId: message.attachmentId })
+						if (disposeRequest) dispose(disposeRequest.id)
+					},
 					error: () =>
-						port.postMessage({
+						reportViewport({
 							type: 'VIEWPORT_FAILED',
 							attachmentId: message.attachmentId
 						})
 				})
 				actor.start()
+				if (actor.getSnapshot().status === 'active')
+					reportViewport({ type: 'VIEWPORT_OPENED', attachmentId: message.attachmentId })
 				break
 			}
 			case 'REFLOW':
@@ -92,7 +119,9 @@ export function serveReaderSurface(port: MessagePort, elements: ViewportElements
 				)
 				break
 			case 'DISPOSE':
-				dispose()
+				disposeRequest = message
+				if (viewport?.getSnapshot().status === 'active') detach()
+				else dispose(message.id)
 		}
 	}
 	port.start()

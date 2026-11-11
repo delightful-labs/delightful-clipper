@@ -3,7 +3,7 @@ import { createConnectStoreMachine } from './connect-store-machine.js'
 import { authorizationSchema, connectionFor, connectionKey } from './connection.js'
 import { createLaunchMachine } from './launch-machine.js'
 import { createActor, toPromise } from 'xstate'
-import { inspectMachines } from '../../web/src/lib/diagnostics/inspect.js'
+import { machineDiagnostics } from '../../web/src/lib/diagnostics/inspect.js'
 import { z } from 'zod'
 import {
 	acknowledgmentSchema,
@@ -86,7 +86,7 @@ const notifications = createNotificationMachine({
 })
 chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 	if (connectMessageSchema.safeParse(message).success) {
-		const actor = createActor(connections, { input: { message, sender }, inspect: inspectMachines })
+		const actor = createActor(connections, { input: { message, sender }, ...machineDiagnostics })
 		void toPromise(actor)
 			.then(reply, () => reply({ accepted: false }))
 			.finally(() => actor.stop())
@@ -95,7 +95,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 	}
 
 	if (notificationSchema.safeParse(message).success) {
-		const actor = createActor(notifications, { input: { message, sender } })
+		const actor = createActor(notifications, { input: { message, sender }, ...machineDiagnostics })
 		void toPromise(actor)
 			.then(reply, () => reply({ accepted: false }))
 			.finally(() => actor.stop())
@@ -104,7 +104,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 	}
 
 	if (messageSchema.safeParse(message).success) {
-		const actor = createActor(reader, { input: { message, sender } })
+		const actor = createActor(reader, { input: { message, sender }, ...machineDiagnostics })
 		void toPromise(actor)
 			.then(reply, () => reply({ error: 'captureFailed' }))
 			.finally(() => actor.stop())
@@ -112,7 +112,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, reply) => {
 		return true
 	}
 	if (referenceMessageSchema.safeParse(message).success) {
-		const actor = createActor(references, { input: { message, sender } })
+		const actor = createActor(references, { input: { message, sender }, ...machineDiagnostics })
 		void toPromise(actor)
 			.then(reply, () => reply({ accepted: false }))
 			.finally(() => actor.stop())
