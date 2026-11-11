@@ -1,8 +1,6 @@
 import { extensionId, extensionPublicKey } from '../../../tooling/extension-identity.js'
 /// <reference types="chrome" />
 import { test, expect, chromium } from '@playwright/test'
-import { readRecoveryPhrase, restoreAccount } from '../../web/tests/account-ui.js'
-import { openArticleActions } from '../../web/tests/article-actions.js'
 import { openLibraryFilters } from '../../web/tests/library-popovers.js'
 import { readingControls } from '../../web/tests/reader-ui.js'
 import {
