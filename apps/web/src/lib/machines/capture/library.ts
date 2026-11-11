@@ -1329,7 +1329,7 @@ function selectRows(
 	const view = {
 		rows: filtered.map((row) => ({
 			...row,
-			readingProgress: row.contentId ? progress[row.contentId] : undefined
+			readingProgress: row.contentId ? (progress[row.contentId] ?? 0) : 0
 		})),
 		readable: Object.fromEntries(c.rows.map((row) => [row.id, !!row.contentId]))
 	}

@@ -27,6 +27,7 @@ const candidate = {
 const tag = { key: tagKey('Reading'), name: 'Reading' }
 const rows: LibraryArticle[] = [
 	{
+		readingProgress: 0,
 		id: a,
 		title: 'First article',
 		url: 'https://example.com/one',
@@ -38,6 +39,7 @@ const rows: LibraryArticle[] = [
 		tags: [tag]
 	},
 	{
+		readingProgress: 0,
 		id: b,
 		title: 'Second article',
 		url: 'https://example.com/two',
@@ -49,6 +51,7 @@ const rows: LibraryArticle[] = [
 		tags: [tag]
 	},
 	{
+		readingProgress: 0,
 		id: c,
 		title: 'Third article',
 		url: 'https://example.com/three',
@@ -109,6 +112,9 @@ it('combines real indexed text matches with status, Favorites, tag AND filters a
 		}
 	}).start()
 	actor.send({ type: 'ROWS', rows })
+	expect(
+		selectLibraryView(actor.getSnapshot()).rows.every((row) => row.readingProgress === 0)
+	).toBe(true)
 	actor.send({ type: 'QUERY', query: 'needle' })
 	actor.send({ type: 'SEARCH_OPEN' })
 	await waitFor(actor, (s) => selectLibraryView(s).search.ids !== undefined)

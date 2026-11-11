@@ -203,12 +203,14 @@ it('keeps pending article failures on their rows without offering a fake reader'
 				title: candidate.finalUrl,
 				url: candidate.finalUrl,
 				contentId: null,
+				readingProgress: 0,
 				originalSavedAt: new Date().toISOString(),
 				failure: 'captureFailed'
 			}
 		]
 	})
 	expect(selectLibraryView(actor.getSnapshot()).rows[0]?.failure).toBe('captureFailed')
+	expect(selectLibraryView(actor.getSnapshot()).rows[0]?.readingProgress).toBe(0)
 	expect(selectLibraryView(actor.getSnapshot()).canOpenCapture).toBe(false)
 	actor.send({ type: 'SHUTDOWN' })
 	await toPromise(actor)
@@ -251,6 +253,7 @@ it.each([
 					title: candidate.title,
 					url: candidate.finalUrl,
 					contentId: id,
+					readingProgress: 0,
 					originalSavedAt: '2026-11-03T12:00:00.000Z',
 					failure: null
 				}
@@ -353,6 +356,7 @@ it('keeps an issued reader read when unrelated organization rows arrive', async 
 						title: candidate.title,
 						url: candidate.finalUrl,
 						contentId: id,
+						readingProgress: 0,
 						originalSavedAt: '',
 						failure: null,
 						favorite
@@ -411,6 +415,7 @@ it('still reopens a missing link-only reader when its content arrives', async ()
 				title: candidate.title,
 				url: candidate.finalUrl,
 				contentId: id,
+				readingProgress: 0,
 				originalSavedAt: '',
 				failure: null
 			}

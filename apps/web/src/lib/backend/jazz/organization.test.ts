@@ -55,6 +55,7 @@ it('persists desired values in native transactions, preserves other fields, and 
 				title: 'article',
 				url: null,
 				contentId: null,
+				readingProgress: 0,
 				originalSavedAt: '',
 				failure: null
 			}
@@ -193,6 +194,7 @@ it('persists canonical tag memberships and independent Trash, enforcing private 
 				title: 'URL',
 				url: null,
 				contentId: null,
+				readingProgress: 0,
 				originalSavedAt: '',
 				failure: null
 			}

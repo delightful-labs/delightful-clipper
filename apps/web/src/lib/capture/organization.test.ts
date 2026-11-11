@@ -9,6 +9,7 @@ import {
 import type { OrganizationOperation } from './organization.js'
 const id = '00000000-0000-4000-8000-000000000001'
 const row = {
+	readingProgress: 0,
 	id,
 	title: 'Article',
 	url: null,

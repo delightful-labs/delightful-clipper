@@ -52,7 +52,7 @@
 		text: string
 		sourceUrl: string | undefined
 		preferences: ReaderPreferences
-		progress: number | undefined
+		progress: number
 		focused: boolean
 		enabled: boolean
 		canOrganize: boolean

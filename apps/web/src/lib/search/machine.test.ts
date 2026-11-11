@@ -6,6 +6,7 @@ import type { SearchWorkerOutput, SearchWorkerInput } from './protocol.js'
 import type { LibraryArticle } from '../contracts/articles.js'
 const id = crypto.randomUUID()
 const row: LibraryArticle = {
+	readingProgress: 0,
 	id,
 	title: 'Library article',
 	url: 'https://example.com',

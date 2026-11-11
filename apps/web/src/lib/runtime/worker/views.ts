@@ -50,8 +50,8 @@ function projectRuntimePayload(snapshot: SnapshotFrom<typeof workerHostMachine>)
 	const { positions: _positions, progress: _progress, ...experience } = view.readerExperience
 	const progress =
 		reader?.kind === 'available'
-			? view.readerExperience.progress[reader.document.snapshotId]
-			: undefined
+			? (view.readerExperience.progress[reader.document.snapshotId] ?? 0)
+			: 0
 	return {
 		scope: snapshot.context.scope,
 		account: selectApplicationView(application, true),

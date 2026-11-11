@@ -25,6 +25,7 @@ export function projectLibraryArticles(
 		if (!output.has(key))
 			output.set(key, {
 				id: a.id,
+				readingProgress: 0,
 				title: d?.title ?? a.url,
 				...(excerpt ? { excerpt } : {}),
 				url: a.url,
@@ -39,6 +40,7 @@ export function projectLibraryArticles(
 		if (!output.has(d.id))
 			output.set(d.id, {
 				id: d.id,
+				readingProgress: 0,
 				title: d.title,
 				...(excerpt ? { excerpt } : {}),
 				url: null,

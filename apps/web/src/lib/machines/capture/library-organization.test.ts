@@ -18,6 +18,7 @@ const candidate = {
 	imagesMissing: false
 }
 const row: LibraryArticle = {
+	readingProgress: 0,
 	id,
 	title: 'Saved article',
 	contentId: id,

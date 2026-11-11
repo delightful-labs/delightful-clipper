@@ -41,7 +41,7 @@ export type ArticleSaveCapability = {
 }
 export type LibraryArticle = {
 	excerpt?: string
-	readingProgress?: number | undefined
+	readingProgress: number
 	trashed?: boolean
 	tags?: import('../capture/tags.js').Tag[]
 	tagVocabulary?: import('../capture/tags.js').Tag[]

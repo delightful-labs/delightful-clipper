@@ -6,6 +6,7 @@ import type { LibraryArticle } from '../contracts/articles.js'
 const article = crypto.randomUUID(),
 	libraryId = crypto.randomUUID()
 const row: LibraryArticle = {
+	readingProgress: 0,
 	id: article,
 	title: 'Saved',
 	url: 'https://example.com',
